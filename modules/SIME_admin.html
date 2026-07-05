@@ -131,6 +131,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .tc-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;color:#fff;flex-shrink:0;}
 .tc-name{font-weight:800;font-size:.88rem;}
 .tc-role{font-size:.68rem;color:var(--text2);margin-top:2px;}
+.tc-scope{font-size:.66rem;color:var(--text3);margin-top:2px;}
 .perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .perm-item{display:flex;align-items:center;gap:5px;font-size:.68rem;padding:3px 6px;border-radius:5px;background:var(--bg2);}
 .perm-item.on{background:var(--green-bg);color:var(--green);}
@@ -301,6 +302,50 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 </div>
 
+<!-- ══════ MÍDIAS ══════ -->
+<div id="tab-midias" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Mídias eleitorais</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="midias-sub">Carregando...</div>
+    </div>
+    <button class="btn btn-out" onclick="renderMidias()">↺ Atualizar</button>
+  </div>
+  <div class="grid4" style="margin-bottom:16px;" id="midias-stats"></div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">Coletores de mídia</div>
+    <div id="midias-coletores"></div>
+  </div>
+  <div id="midias-list"></div>
+</div>
+
+<!-- ══════ ATORES ══════ -->
+<div id="tab-atores" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Atores operacionais</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="atores-sub">Carregando...</div>
+    </div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" id="atores-search" placeholder="Buscar nome, seção ou telefone..." oninput="renderAtores()">
+    <select id="atores-funcao" onchange="renderAtores()">
+      <option value="">Todas as funções</option>
+      <option value="mesario">Mesário</option>
+      <option value="motorista">Motorista</option>
+      <option value="tecnico">Técnico</option>
+      <option value="coordenador_acessibilidade">Coord. Acessibilidade</option>
+      <option value="cartorio">Cartório</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Nome</th><th>Seção</th><th>Função</th><th>Telefone</th><th>WA</th></tr></thead>
+      <tbody id="atores-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 </div><!-- /page -->
 
 <!-- MODAL EDITAR/LANÇAR SEÇÃO -->
@@ -322,13 +367,37 @@ const SECTIONS = [
 const TEAM_KEY = 'sime_equipe_v1';
 const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
 const PERMS_LABELS = {ver_secoes:'Ver seções',editar_secoes:'Editar seções',resolver_panico:'Resolver pânico',lancar_telefone:'Lançar por telefone',gestao_dist:'Distribuição',config_equipe:'Config equipe'};
+// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'empresa' (seções das
+//         rotas da empresa) | 'midias' (seções designadas de coleta)
 const PERFIS = {
-  coordenador: {label:'Coordenador Geral',color:'#2a2a2a',perms:PERMS_ALL},
-  monitor:     {label:'Monitor de Campo', color:'#3a5fa0',perms:['ver_secoes','editar_secoes','lancar_telefone']},
-  gestor_prob: {label:'Gestor de Problemas',color:'#c0392b',perms:['ver_secoes','resolver_panico','lancar_telefone']},
-  gestor_dist: {label:'Gestor de Distribuição',color:'#8a5c20',perms:['ver_secoes','gestao_dist']},
-  observador:  {label:'Observador',color:'#6a6560',perms:['ver_secoes']},
+  coordenador: {label:'Coordenador Geral',color:'#2a2a2a',perms:PERMS_ALL,escopo:'tudo'},
+  monitor:     {label:'Monitor de Campo', color:'#3a5fa0',perms:['ver_secoes','editar_secoes','lancar_telefone'],escopo:'tudo'},
+  gestor_prob: {label:'Gestor de Problemas',color:'#c0392b',perms:['ver_secoes','resolver_panico','lancar_telefone'],escopo:'tudo'},
+  gestor_dist: {label:'Gestor de Distribuição',color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'tudo'},
+  observador:  {label:'Observador',color:'#6a6560',perms:['ver_secoes'],escopo:'tudo'},
+  // ── Novos perfis (item #2) ──
+  coord_motoristas:     {label:'Coord. de Motoristas',    color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'empresa'},
+  coord_acessibilidade: {label:'Coord. de Acessibilidade',color:'#6040a0',perms:['ver_secoes','resolver_panico'],escopo:'local'},
+  coletor_midias:       {label:'Coletor de Mídias',       color:'#15803d',perms:['ver_secoes'],escopo:'midias'},
 };
+
+// ── ESCOPO DO USUÁRIO ──────────────────────────────────────
+// Retorna apenas as seções que o perfil atual pode ver.
+function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
+function secoesDoUsuario(){
+  const esc = userEscopo();
+  if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
+  if(esc==='empresa'&& curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
+  if(esc==='midias' && curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
+  return SECTIONS;
+}
+function escopoLabel(){
+  const esc = userEscopo();
+  if(esc==='local'   && curUser.local)  return `Local: ${curUser.local}`;
+  if(esc==='empresa' && curUser.empresa)return `Empresa: ${curUser.empresa}`;
+  if(esc==='midias')                    return `Coleta de mídias designada`;
+  return null;
+}
 
 function loadTeam(){ try{return JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');}catch(e){return[];} }
 function saveTeam(d){ localStorage.setItem(TEAM_KEY,JSON.stringify(d)); }
@@ -352,7 +421,7 @@ function hasPerm(p){ return PERFIS[curUser.perfil]?.perms.includes(p); }
 function switchUser(uid){
   const team = loadTeam();
   const u = team.find(m=>m.id===uid);
-  if(u){ curUser=u; applyUser(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
+  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); renderProblemas(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
 }
 function applyUser(){
   document.getElementById('u-av').textContent   = curUser.iniciais;
@@ -365,12 +434,38 @@ function applyUser(){
 function loadMesa(){ try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
 function saveMesaSec(n,st){ const d=loadMesa(); d[n]={...d[n],...st}; localStorage.setItem('sime_mesa_v1',JSON.stringify(d)); }
 
+// Dados reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade).
+// Usa panico.urna (o Mesário usa panico.urnaprob) — normalizado aqui.
+function loadAcess(){ try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}} }
+
+// Estado unificado de pânico/fila de uma seção, combinando Mesário
+// (sime_mesa_v1) e Coordenador de Acessibilidade (sime_acess_v1).
+// origem: de onde veio cada pânico ativo (para exibição no painel).
+function estadoSecao(n, st, ac){
+  st = st || loadMesa()[n]; ac = ac || loadAcess()[n];
+  const mesaEnergia = !!(st?.panico?.energia   && !st?.panico_resolved?.energia);
+  const mesaUrna    = !!(st?.panico?.urnaprob  && !st?.panico_resolved?.urnaprob);
+  const acEnergia   = !!(ac?.panico?.energia   && !ac?.panico_resolved?.energia);
+  const acUrna      = !!(ac?.panico?.urna      && !ac?.panico_resolved?.urna);
+  const origem = [];
+  if(mesaEnergia||mesaUrna) origem.push('mesário');
+  if(acEnergia||acUrna)     origem.push('acessibilidade');
+  return {
+    energia: mesaEnergia || acEnergia,
+    urna:    mesaUrna    || acUrna,
+    panico:  mesaEnergia || mesaUrna || acEnergia || acUrna,
+    fila:    Math.max(st?.fila>0?st.fila:0, ac?.fila>0?ac.fila:0) || 0,
+    origem,
+  };
+}
+
 function fmtNow(){ const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
 
-function getStatus(st){
-  if(!st) return {label:'Sem dados',cls:'b-off'};
-  const panic = (st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob);
+function getStatus(st,uni){
+  if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
+  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)));
   if(panic)           return {label:'⚠ Problema',cls:'b-err'};
+  if(!st)             return {label:'⚠ Problema',cls:'b-err'};
   if(st.urna_cartorio)return {label:'📦 Cartório',cls:'b-ok'};
   if(st.urna)         return {label:'🚗 Urna saiu',cls:'b-blue'};
   if(st.enc)          return {label:'🔒 Encerrada',cls:'b-blue'};
@@ -385,28 +480,31 @@ function getStatus(st){
 // DASHBOARD
 // ══════════════════════════════════════════════
 function renderDash(){
-  const mesa = loadMesa();
-  let tot=SECTIONS.length,vot=0,enc=0,urna=0,car=0,prob=0;
+  const mesa = loadMesa(); const acess = loadAcess();
+  const escopoSecs = secoesDoUsuario();
+  let tot=escopoSecs.length,vot=0,enc=0,urna=0,car=0,prob=0;
   const evts=[];
-  SECTIONS.forEach(s=>{
+  escopoSecs.forEach(s=>{
     const st=mesa[s.n];
-    if(!st) return;
-    if(st.vot)  vot++;
-    if(st.enc||st.urna||st.urna_cartorio)  enc++;
-    if(st.urna||st.urna_cartorio)  urna++;
-    if(st.urna_cartorio)  car++;
-    const p=(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob);
-    if(p){ prob++;
-      if(st.panico?.energia&&!st.panico_resolved?.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia`,ts:'—'});
-      if(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob) evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna`,ts:'—'});
+    const uni=estadoSecao(s.n, st, acess[s.n]);
+    if(st){
+      if(st.vot)  vot++;
+      if(st.enc||st.urna||st.urna_cartorio)  enc++;
+      if(st.urna||st.urna_cartorio)  urna++;
+      if(st.urna_cartorio)  car++;
     }
-    if(st.enc&&!st.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
-    if(st.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
+    if(uni.panico){ prob++;
+      const tag = uni.origem.includes('acessibilidade') && !uni.origem.includes('mesário') ? ' (acessib.)' : '';
+      if(uni.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia${tag}`,ts:'—'});
+      if(uni.urna)    evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna${tag}`,ts:'—'});
+    }
+    if(st?.enc&&!st?.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
+    if(st?.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
   });
 
   // Stat cards
   const cards = [
-    {val:tot,lbl:'Total de seções',sub:'174 seções cadastradas',color:'var(--text)'},
+    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?'174 seções cadastradas':escopoLabel()||'Escopo restrito',color:'var(--text)'},
     {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'#16a34a'},
     {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'#2563eb'},
     {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'#dc2626':'var(--text3)'},
@@ -437,7 +535,7 @@ function renderDash(){
   const cities = ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
   const cp = document.getElementById('city-progress');
   cp.innerHTML = cities.map(c=>{
-    const secs = SECTIONS.filter(s=>s.city===c);
+    const secs = escopoSecs.filter(s=>s.city===c);
     const done = secs.filter(s=>mesa[s.n]?.vot||mesa[s.n]?.enc).length;
     const pct  = secs.length ? Math.round(done/secs.length*100) : 0;
     return `<div>
@@ -460,13 +558,14 @@ function renderDash(){
 // ══════════════════════════════════════════════
 let allRows = [];
 function renderTable(){
-  const mesa = loadMesa();
-  allRows = SECTIONS.map(s=>{
+  const mesa = loadMesa(); const acess = loadAcess();
+  allRows = secoesDoUsuario().map(s=>{
     const st = mesa[s.n]||null;
-    const panic = st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob));
-    const status = getStatus(st);
+    const uni = estadoSecao(s.n, st, acess[s.n]);
+    const panic = uni.panico;
+    const status = getStatus(st, uni);
     const mv = st?Object.values(st.mesa||{}):[]; const chegou=mv.filter(v=>v>=1).length;
-    const fila = st?.fila>0?st.fila:null;
+    const fila = uni.fila>0?uni.fila:null;
     return {s,st,panic,status,chegou,fila};
   });
   filterTable();
@@ -512,14 +611,13 @@ function filterTable(){
 // PROBLEMAS
 // ══════════════════════════════════════════════
 function renderProblemas(){
-  const mesa = loadMesa(); const items=[];
-  SECTIONS.forEach(s=>{
-    const st=mesa[s.n];
-    if(!st) return;
-    const pe=st.panico?.energia&&!st.panico_resolved?.energia;
-    const pu=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;
-    if(pe) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',st});
-    if(pu) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',st});
+  const mesa = loadMesa(); const acess = loadAcess(); const items=[];
+  secoesDoUsuario().forEach(s=>{
+    const uni=estadoSecao(s.n, mesa[s.n], acess[s.n]);
+    if(!uni.panico) return;
+    const origem = uni.origem.join(' + ');
+    if(uni.energia) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',origem});
+    if(uni.urna)    items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',origem});
   });
 
   document.getElementById('prob-subtitle').textContent = items.length
@@ -540,7 +638,7 @@ function renderProblemas(){
         <div class="pc-sec">Seção ${parseInt(p.n)}</div>
         <div class="pc-loc">${p.loc} · ${p.city}</div>
         <span class="pc-tipo ${cls[p.tipo]}">${tipos[p.tipo]}</span>
-        <div class="pc-ts">Detectado durante monitoramento</div>
+        <div class="pc-ts">Reportado por: ${p.origem||'monitoramento'}</div>
       </div>
       <div class="pc-actions">
         ${canResolve?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${p.n}','${p.tipo}')">✓ Resolver</button>`:''}
@@ -552,12 +650,21 @@ function renderProblemas(){
 
 function resolverPanico(n,tipo){
   if(!hasPerm('resolver_panico')){ showToast('⚠ Sem permissão'); return; }
+  // Resolve nas duas fontes: Mesário (sime_mesa_v1) e Acessibilidade (sime_acess_v1)
   const mesa=loadMesa();
   if(!mesa[n]) mesa[n]={};
   if(!mesa[n].panico_resolved) mesa[n].panico_resolved={};
   if(tipo==='energia') mesa[n].panico_resolved.energia=true;
   if(tipo==='urna')    mesa[n].panico_resolved.urnaprob=true;
   localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+
+  const acess=loadAcess();
+  if(acess[n]){
+    if(!acess[n].panico_resolved) acess[n].panico_resolved={};
+    if(tipo==='energia') acess[n].panico_resolved.energia=true;
+    if(tipo==='urna')    acess[n].panico_resolved.urna=true;
+    localStorage.setItem('sime_acess_v1',JSON.stringify(acess));
+  }
   showToast(`✓ Pânico resolvido — Seção ${parseInt(n)}`);
   renderProblemas(); renderDash(); renderTable();
 }
@@ -569,6 +676,7 @@ function openEditSec(n){
   const sec = SECTIONS.find(s=>s.n===n);
   if(!sec) return;
   const mesa=loadMesa(); const st=mesa[n]||{};
+  const uni=estadoSecao(n, st, loadAcess()[n]);
   const mv=Object.values(st.mesa||{}); const chegou=mv.filter(v=>v>=1).length;
   const canEdit = hasPerm('editar_secoes') || hasPerm('lancar_telefone');
   const canResolve = hasPerm('resolver_panico');
@@ -586,20 +694,20 @@ function openEditSec(n){
       ${!canEdit?'<div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:8px 12px;font-size:.74rem;color:var(--yellow);margin-bottom:12px">⚠ Seu perfil não permite edição — visualização apenas.</div>':''}
 
       <!-- Pânico ativo -->
-      ${(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)?`
+      ${uni.panico?`
       <div style="background:var(--red-bg);border:1.5px solid var(--red-bd);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
         <div style="font-size:1.4rem;animation:pp .7s infinite">🚨</div>
         <div style="flex:1">
-          <div style="font-weight:800;color:var(--red)">Pânico ativo</div>
+          <div style="font-weight:800;color:var(--red)">Pânico ativo <span style="font-weight:600;font-size:.7rem">· ${uni.origem.join(' + ')}</span></div>
           <div style="font-size:.72rem;color:#b91c1c">
-            ${st.panico?.energia&&!st.panico_resolved?.energia?'⚡ Falta de energia<br>':''} 
-            ${st.panico?.urnaprob&&!st.panico_resolved?.urnaprob?'🖥️ Problema na urna':''}
+            ${uni.energia?'⚡ Falta de energia<br>':''}
+            ${uni.urna?'🖥️ Problema na urna':''}
           </div>
         </div>
         ${canResolve?`
         <div style="display:flex;flex-direction:column;gap:4px">
-          ${st.panico?.energia&&!st.panico_resolved?.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
-          ${st.panico?.urnaprob&&!st.panico_resolved?.urnaprob?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''} 
+          ${uni.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
+          ${uni.urna?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''}
         </div>`:''}
       </div>`:''}
 
@@ -652,7 +760,7 @@ function openEditSec(n){
         <div class="sec-title">Fila de votação</div>
         <div class="form-group">
           <label>Número de pessoas na fila (0 = sem fila)</label>
-          <input type="number" id="f-fila" value="${st.fila||0}" min="0" max="999"${dis}>
+          <input type="number" id="f-fila" value="${uni.fila||0}" min="0" max="999"${dis}>
         </div>
       </div>
 
@@ -792,6 +900,10 @@ function renderTeam(){
         <div>
           <div class="tc-name">${m.nome}</div>
           <div class="tc-role">${perfil.label}</div>
+          ${m.local?`<div class="tc-scope">📍 ${m.local}</div>`:''}
+          ${m.empresa?`<div class="tc-scope">🏢 ${m.empresa}${m.secoes?.length?` · ${m.secoes.length} seç.`:''}</div>`:''}
+          ${(perfil.escopo==='midias'&&m.secoes?.length)?`<div class="tc-scope">📦 ${m.secoes.length} seç. de coleta</div>`:''}
+          ${m.substituto?`<div class="tc-scope">🔄 Substituto: ${m.substituto}</div>`:''}
         </div>
         ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" style="margin-left:auto" onclick="editMember('${m.id}')">✏️</button>`:''}
       </div>
@@ -829,10 +941,41 @@ function showMemberModal(m){
         <div class="form-group"><label>Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
       </div>
       <div class="form-group"><label>Perfil de acesso</label>
-        <select id="m-perfil">
+        <select id="m-perfil" onchange="onPerfilChange()">
           ${Object.entries(PERFIS).map(([k,v])=>`<option value="${k}" ${m?.perfil===k?'selected':''} >${v.label}</option>`).join('')}
         </select>
       </div>
+
+      <!-- Escopo: Local (Coord. de Acessibilidade) -->
+      <div class="form-group" id="grp-local" style="display:none">
+        <label>Local de votação (escopo)</label>
+        <select id="m-local">
+          <option value="">— selecionar local —</option>
+          ${[...new Set(SECTIONS.map(s=>s.loc))].sort().map(l=>`<option value="${l}" ${m?.local===l?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- Escopo: Empresa (Coord. de Motoristas) -->
+      <div class="form-group" id="grp-empresa" style="display:none">
+        <label>Empresa contratada</label>
+        <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+      </div>
+
+      <!-- Escopo: Seções designadas (Motoristas / Coletor de Mídias) -->
+      <div class="form-group" id="grp-secoes" style="display:none">
+        <label>Seções designadas (números separados por vírgula)</label>
+        <input type="text" id="m-secoes" value="${(m?.secoes||[]).map(x=>parseInt(x)).join(', ')}" placeholder="ex: 63, 64, 65">
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Vazio = nenhuma seção visível.</div>
+      </div>
+
+      <!-- Substituto temporário (Coletor de Mídias) -->
+      <div id="grp-substituto" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
+          <div class="form-group"><label>WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
+        </div>
+      </div>
+
       <div class="form-group"><label>Cor do avatar</label>
         <input type="color" id="m-cor" value="${m?.cor||'#2a2a2a'}" style="height:36px;padding:2px;">
       </div>
@@ -843,18 +986,54 @@ function showMemberModal(m){
       <button class="btn btn-dark" onclick="saveMember('${m?.id||''}')">💾 Salvar</button>
     </div>`;
   document.getElementById('overlay').classList.add('open');
+  onPerfilChange();
+}
+
+// Mostra/oculta os campos de escopo conforme o perfil escolhido
+function onPerfilChange(){
+  const p = document.getElementById('m-perfil')?.value;
+  const esc = PERFIS[p]?.escopo || 'tudo';
+  const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
+  show('grp-local',      esc==='local');
+  show('grp-empresa',    esc==='empresa');
+  show('grp-secoes',     esc==='empresa' || esc==='midias');
+  show('grp-substituto', p==='coletor_midias');
+}
+
+// "63, 64" → ['0063','0064']
+function parseSecoes(str){
+  return (str||'').split(',').map(x=>x.trim()).filter(Boolean)
+    .map(x=>String(parseInt(x,10)).padStart(4,'0'))
+    .filter(x=>SECTIONS.some(s=>s.n===x));
 }
 
 function saveMember(id){
   const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
+  const perfil=document.getElementById('m-perfil').value;
+  const esc=PERFIS[perfil]?.escopo||'tudo';
+  const base={
+    nome,
+    iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),
+    perfil,
+    cor:document.getElementById('m-cor').value,
+    // campos de escopo — só os relevantes ao perfil
+    local:      esc==='local'   ? (document.getElementById('m-local')?.value||'') : '',
+    empresa:    esc==='empresa' ? (document.getElementById('m-empresa')?.value.trim()||'') : '',
+    secoes:     (esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : [],
+    substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
+    substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
+  };
   const team=loadTeam();
   if(id){
     const idx=team.findIndex(m=>m.id===id);
-    if(idx>-1){ team[idx]={...team[idx],nome,iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),perfil:document.getElementById('m-perfil').value,cor:document.getElementById('m-cor').value}; }
+    if(idx>-1) team[idx]={...team[idx],...base};
   } else {
-    team.push({id:'u'+Date.now(),nome,iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),perfil:document.getElementById('m-perfil').value,cor:document.getElementById('m-cor').value});
+    team.push({id:'u'+Date.now(),...base});
   }
-  saveTeam(team); closeModal(); renderTeam(); showToast('✓ Membro salvo');
+  saveTeam(team); closeModal(); renderTeam();
+  // Se o usuário atual foi editado, reaplica o escopo
+  if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
+  showToast('✓ Membro salvo');
 }
 function deleteMember(id){
   if(!confirm('Remover este membro?')) return;
@@ -950,6 +1129,7 @@ const MIDIA_STATUS_COLOR = {
 };
 
 function renderMidias(){
+  renderColetores();
   const midias = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
   const counts = {};
   Object.values(midias).forEach(m=>{
@@ -981,6 +1161,33 @@ function renderMidias(){
         </div>
         <button class="btn btn-green btn-sm" onclick="coletarMidia('${n}')">✓ Coletar</button>
       </div>`).join('');
+}
+
+// Coletores de mídia — com substituto temporário + notificação WhatsApp
+function renderColetores(){
+  const el=document.getElementById('midias-coletores'); if(!el) return;
+  const coletores=loadTeam().filter(m=>m.perfil==='coletor_midias');
+  if(!coletores.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:.78rem">Nenhum coletor de mídias cadastrado. Adicione em 👥 Equipe.</div>';
+    return;
+  }
+  el.innerHTML=coletores.map(m=>{
+    const secs=(m.secoes||[]).map(x=>parseInt(x)).join(', ')||'—';
+    const temSub=!!m.substituto;
+    const waMsg=encodeURIComponent(`SIME — Você foi designado(a) substituto(a) do coletor de mídias ${m.nome}. Seções de coleta: ${secs}. Confirme o recebimento.`);
+    return `<div class="prob-card" style="margin-bottom:8px;">
+      <div class="pc-icon">📦</div>
+      <div class="pc-info">
+        <div class="pc-sec">${m.nome}</div>
+        <div class="pc-ts">Seções: ${secs}</div>
+        ${temSub?`<span class="pc-tipo" style="background:var(--yellow-bg);color:var(--yellow)">🔄 Substituto: ${m.substituto}${m.substituto_tel?' · '+m.substituto_tel.replace(/(\d{2})(\d{4,5})(\d{4})/,'($1) $2-$3'):''}</span>`:'<span class="pc-tipo b-off">Sem substituto</span>'}
+      </div>
+      <div class="pc-actions">
+        ${hasPerm('config_equipe')?`<button class="btn btn-out btn-sm" onclick="editMember('${m.id}')">✏️ Substituto</button>`:''}
+        ${temSub&&m.substituto_tel?`<a class="btn btn-green btn-sm" href="https://wa.me/55${m.substituto_tel}?text=${waMsg}" target="_blank">💬 Notificar</a>`:''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function coletarMidia(n){
