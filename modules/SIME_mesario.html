@@ -470,26 +470,13 @@ function ask(key) {
     doAction(key);
     return;
   }
-  if(c.confirm === 'fila'){
-    pendingKey = key;
-    filaCount = S.fila !== null ? S.fila : 0;
-    document.getElementById('fila-count').textContent = filaCount;
-    document.getElementById('sh-icon').textContent  = c.icon;
-    document.getElementById('sh-title').textContent = 'Atualizar fila';
-    document.getElementById('sh-sub').textContent   = 'Quantas pessoas na fila agora?';
-    document.getElementById('sh-ok').style.background = '#78350f';
-    document.getElementById('fila-wrap').classList.add('show');
-    document.getElementById('overlay').classList.add('show');
-    vib(40);
-    return;
-  }
-  // ação irreversível — modal
+  // ação irreversível — modal de confirmação
+  // (a fila é ajustada inline por adjFilaDirect, sem modal)
   pendingKey = key;
   document.getElementById('sh-icon').textContent  = c.icon;
   document.getElementById('sh-title').textContent = c.title;
   document.getElementById('sh-sub').textContent   = c.sub;
   document.getElementById('sh-ok').style.background = c.color;
-  document.getElementById('fila-wrap').classList.remove('show');
   document.getElementById('overlay').classList.add('show');
   vib(40);
 }
@@ -513,9 +500,33 @@ function doAction(key) {
   else { saveState(); vib([60,30,60]); }
 }
 
+// Atualiza o display inline da fila a partir de filaCount
+function applyFilaUI() {
+  const num = document.getElementById('fila-num');
+  const sub = document.getElementById('fila-sub-lbl');
+  if(num){ num.textContent = filaCount; num.className = 'fila-num' + (filaCount === 0 ? ' zero' : ''); }
+  if(sub){ sub.textContent = filaCount > 0 ? `${filaCount} eleitor${filaCount!==1?'es':''} na fila` : 'sem fila no momento'; }
+}
+
+// Contador inline de fila (−5/−1/0/+1/+5). v === -999 zera.
+function adjFilaDirect(v) {
+  filaCount = (v === -999) ? 0 : Math.max(0, filaCount + v);
+  S.fila = filaCount;
+  applyFilaUI();
+  if(!S.enc){
+    const chip = document.getElementById('dc-enc');
+    const led  = document.getElementById('led-enc');
+    if(chip){ chip.textContent = filaCount > 0 ? `Fila: ${filaCount}` : 'Fila zerada'; chip.className = filaCount > 0 ? 'dc warn' : 'dc ok'; }
+    if(led){ led.className = filaCount > 0 ? 'led warn' : 'led on'; }
+  }
+  vib(20);
+  saveState();
+}
+
 function adjFila(v) {
   filaCount = Math.max(0, filaCount + v);
-  document.getElementById('fila-count').textContent = filaCount;
+  const el = document.getElementById('fila-count');
+  if(el) el.textContent = filaCount;
   vib(20);
 }
 
