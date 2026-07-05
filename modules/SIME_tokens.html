@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Tokens de Acesso</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
+  --card:#f9f7f4;--border:#d8d3c8;--border2:#cac5b8;
+  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
+  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
+  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
+  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
+  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+
+/* TOPBAR */
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10;}
+.logo{width:36px;height:36px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.9rem;color:#fff;flex-shrink:0;}
+.brand{font-weight:800;font-size:.95rem;}
+.brand-sub{font-size:.7rem;color:var(--text2);margin-top:1px;}
+.topbar-right{margin-left:auto;display:flex;gap:8px;}
+.btn{padding:7px 14px;border-radius:8px;font-size:.76rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:5px;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;} .btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);} .btn-out:hover{background:var(--bg3);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.btn-sm{padding:5px 10px;font-size:.72rem;}
+
+/* LAYOUT */
+.page{max-width:1100px;margin:0 auto;padding:24px 24px 60px;display:grid;grid-template-columns:340px 1fr;gap:20px;}
+@media(max-width:800px){.page{grid-template-columns:1fr;}}
+
+/* SIDEBAR FORM */
+.sidebar-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;height:fit-content;position:sticky;top:72px;}
+.form-title{font-size:.88rem;font-weight:800;margin-bottom:14px;}
+.form-group{margin-bottom:12px;}
+.form-group label{font-size:.73rem;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;}
+.form-group input,.form-group select{width:100%;padding:8px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.82rem;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+
+/* Seletor de rotas */
+.rotas-check{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:180px;overflow-y:auto;padding:2px;}
+.rota-ck{display:flex;align-items:center;gap:6px;font-size:.74rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;transition:all .15s;}
+.rota-ck:hover{background:var(--bg3);}
+.rota-ck.checked{background:var(--blue-bg);border-color:var(--blue-bd);color:var(--blue);font-weight:700;}
+.rota-ck input{display:none;}
+.todas-rotas{font-size:.72rem;color:var(--text2);padding:5px 2px;cursor:pointer;text-decoration:underline;}
+
+/* INFO BOX */
+.info-box{background:var(--blue-bg);border:1px solid var(--blue-bd);border-radius:8px;padding:10px 12px;font-size:.74rem;color:var(--blue);line-height:1.5;margin-bottom:12px;}
+
+/* LISTA DE TOKENS */
+.tokens-list{display:flex;flex-direction:column;gap:12px;}
+.token-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.tc-header{padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);}
+.tc-avatar{width:40px;height:40px;border-radius:10px;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.88rem;flex-shrink:0;}
+.tc-info{flex:1;}
+.tc-nome{font-weight:800;font-size:.92rem;}
+.tc-meta{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.tc-badges{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;}
+.tc-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;}
+.tcb-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.tcb-warn{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.tcb-off{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.tcb-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.tc-actions{display:flex;gap:6px;}
+
+.tc-body{padding:14px 16px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}
+.tc-qr{flex-shrink:0;}
+.qr-container{width:100px;height:100px;background:#fff;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.tc-detail{flex:1;min-width:180px;}
+.tc-url{font-size:.65rem;color:var(--text2);font-family:monospace;word-break:break-all;background:var(--bg2);padding:6px 8px;border-radius:6px;margin-bottom:8px;border:1px solid var(--border);}
+.tc-pin-box{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.pin-label{font-size:.7rem;color:var(--text2);font-weight:700;}
+.pin-digits{display:flex;gap:4px;}
+.pin-digit{width:28px;height:32px;background:#2a2a2a;color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:900;font-variant-numeric:tabular-nums;}
+.tc-rotas{font-size:.72rem;color:var(--text2);}
+.tc-rotas span{font-weight:700;color:var(--blue);}
+.copy-btn{font-size:.66rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);cursor:pointer;}
+
+/* ESTADO VAZIO */
+.empty{text-align:center;padding:48px 20px;color:var(--text3);}
+.empty-icon{font-size:2.5rem;margin-bottom:10px;}
+.empty-txt{font-size:.85rem;}
+
+/* TOAST */
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── IMPRESSÃO ── */
+@media print{
+  body{background:#fff;}
+  .topbar,.sidebar-card,.tc-actions,.copy-btn,.btn,.topbar-right{display:none!important;}
+  .page{display:block;padding:0;max-width:100%;}
+  .tokens-list{gap:0;}
+  .token-card{border:none;border-bottom:1px dashed #ccc;border-radius:0;break-inside:avoid;margin-bottom:16px;}
+  .tc-body{padding:10px 0;}
+  .qr-container{width:120px;height:120px;}
+  .pin-digit{background:#333;}
+  .tc-url{font-size:.6rem;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">S</div>
+  <div>
+    <div class="brand">SIME — Tokens de Acesso</div>
+    <div class="brand-sub">Gere QR Codes e PINs para conferentes</div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-out btn-sm" onclick="window.print()">🖨️ Imprimir todos</button>
+    <button class="btn btn-red btn-sm" onclick="resetarTodos()">🗑 Limpar todos</button>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- SIDEBAR: CRIAR TOKEN -->
+  <div class="sidebar-card">
+    <div class="form-title">➕ Novo token de acesso</div>
+
+    <div class="info-box">
+      O conferente escaneia o QR Code com o celular e já entra direto nas suas rotas. O PIN de 4 dígitos serve como backup caso o QR não funcione.
+    </div>
+
+    <div class="form-group">
+      <label>Nome do conferente</label>
+      <input type="text" id="f-nome" placeholder="ex: Carlos Mendes">
+    </div>
+
+    <div class="form-group">
+      <label>Rotas atribuídas</label>
+      <div class="rotas-check" id="rotas-check"></div>
+      <div class="todas-rotas" onclick="toggleTodas()">
+        <span id="todas-lbl">☐ Selecionar todas as rotas</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Turno</label>
+      <select id="f-turno">
+        <option value="1">1º Turno</option>
+        <option value="2">2º Turno</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Zona</label>
+      <select id="f-zona">
+        <option value="7">7ª Zona — Campo Maior/PI</option>
+        <option value="96">96ª Zona</option>
+      </select>
+    </div>
+
+    <button class="btn btn-dark" style="width:100%;justify-content:center;" onclick="criarToken()">
+      🔑 Gerar QR Code + PIN
+    </button>
+  </div>
+
+  <!-- LISTA DE TOKENS -->
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-size:1rem;font-weight:800;">Tokens gerados</div>
+        <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="token-count">Nenhum token criado ainda</div>
+      </div>
+    </div>
+    <div class="tokens-list" id="tokens-list">
+      <div class="empty">
+        <div class="empty-icon">🔑</div>
+        <div class="empty-txt">Crie o primeiro token usando o formulário ao lado.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════════
+const KEY = 'sime_tokens_v1';
+function loadTokens(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+function saveTokens(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+
+// ══════════════════════════════════════════════════
+// ROTAS
+// ══════════════════════════════════════════════════
+const ROTAS_DISPONIVEIS = [
+  'Rota 001','Rota 002','Rota 003','Rota 004',
+  'Rota 005','Rota 006','Rota 007','Rota 008',
+  'Rota 009','Rota 010','Rota 011','Rota 012',
+];
+
+function buildRotasCheck(){
+  const el = document.getElementById('rotas-check');
+  el.innerHTML = ROTAS_DISPONIVEIS.map(r=>`
+    <label class="rota-ck" id="ck-${r.replace(' ','')}">
+      <input type="checkbox" value="${r}" onchange="onRotaChange(this)">
+      ${r}
+    </label>`).join('');
+}
+buildRotasCheck();
+
+function onRotaChange(inp){
+  const lbl = inp.closest('label');
+  lbl.classList.toggle('checked', inp.checked);
+}
+
+function toggleTodas(){
+  const checks = document.querySelectorAll('#rotas-check input');
+  const allChecked = [...checks].every(c=>c.checked);
+  checks.forEach(c=>{ c.checked=!allChecked; c.closest('label').classList.toggle('checked',!allChecked); });
+  document.getElementById('todas-lbl').textContent = allChecked ? '☐ Selecionar todas as rotas' : '☑ Desmarcar todas';
+}
+
+function getRotasSelecionadas(){
+  return [...document.querySelectorAll('#rotas-check input:checked')].map(c=>c.value);
+}
+
+// ══════════════════════════════════════════════════
+// GERAÇÃO DE TOKEN
+// ══════════════════════════════════════════════════
+function genId(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:8}, ()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+function genPIN(){ return String(Math.floor(1000+Math.random()*9000)); }
+
+function criarToken(){
+  const nome  = document.getElementById('f-nome').value.trim();
+  const rotas = getRotasSelecionadas();
+  const turno = document.getElementById('f-turno').value;
+  const zona  = document.getElementById('f-zona').value;
+
+  if(!nome){ showToast('⚠ Informe o nome do conferente'); return; }
+  if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
+
+  // Calcular expiração: fim do Dia D (23:59) com base na config de eleição
+  let expira_em = null;
+  try{
+    const el = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
+    const t  = el['turno'+turno];
+    if(t?.d){
+      const fim = new Date(t.d+'T23:59:59');
+      expira_em = fim.getTime();
+    }
+  }catch(e){}
+
+  const id  = genId();
+  const pin = genPIN();
+  const token = {
+    id, pin, nome, rotas, turno:+turno, zona,
+    criado_em: Date.now(),
+    expira_em,
+    usado_em: null,
+  };
+
+  const tokens = loadTokens();
+  tokens[id] = token;
+  saveTokens(tokens);
+
+  // Limpar form
+  document.getElementById('f-nome').value = '';
+  document.querySelectorAll('#rotas-check input').forEach(c=>{ c.checked=false; c.closest('label').classList.remove('checked'); });
+  document.getElementById('todas-lbl').textContent = '☐ Selecionar todas as rotas';
+
+  renderTokens();
+  showToast('✓ Token gerado para '+nome);
+
+  // Scroll para o novo token
+  setTimeout(()=>{
+    const el = document.getElementById('tc-'+id);
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 300);
+}
+
+// ══════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════
+function renderTokens(){
+  const tokens = loadTokens();
+  const list   = document.getElementById('tokens-list');
+  const count  = Object.keys(tokens).length;
+  document.getElementById('token-count').textContent =
+    count === 0 ? 'Nenhum token criado ainda' : `${count} token${count>1?'s':''} gerado${count>1?'s':''}`;
+
+  if(!count){
+    list.innerHTML = '<div class="empty"><div class="empty-icon">🔑</div><div class="empty-txt">Crie o primeiro token usando o formulário ao lado.</div></div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  Object.values(tokens)
+    .sort((a,b) => b.criado_em - a.criado_em)
+    .forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'token-card';
+      card.id = 'tc-'+t.id;
+
+      const agora = Date.now();
+      const expirado = t.expira_em && agora > t.expira_em;
+      const iniciais = t.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+      const url = buildUrl(t.id);
+      const rotas_txt = t.rotas.join(' · ');
+
+      card.innerHTML = `
+        <div class="tc-header">
+          <div class="tc-avatar">${iniciais}</div>
+          <div class="tc-info">
+            <div class="tc-nome">${t.nome}</div>
+            <div class="tc-meta">${t.turno}º Turno · Zona ${t.zona} · ${fmtDate(t.criado_em)}</div>
+            <div class="tc-badges">
+              <span class="tc-badge ${expirado?'tcb-warn':'tcb-ok'}">${expirado?'⚠ Expirado':'✓ Válido'}</span>
+              <span class="tc-badge tcb-blue">${t.rotas.length} rota${t.rotas.length>1?'s':''}</span>
+              <span class="tc-badge tcb-off">PIN: ${t.pin}</span>
+              ${t.usado_em ? '<span class="tc-badge tcb-off">Usado '+fmtDate(t.usado_em)+'</span>' : ''}
+            </div>
+          </div>
+          <div class="tc-actions">
+            <button class="btn btn-out btn-sm" onclick="imprimirToken('${t.id}')">🖨️</button>
+            <button class="btn btn-red btn-sm" onclick="deletarToken('${t.id}')">🗑</button>
+          </div>
+        </div>
+        <div class="tc-body">
+          <div class="tc-qr">
+            <div class="qr-container" id="qr-${t.id}"></div>
+            <div style="font-size:.62rem;color:var(--text2);text-align:center;margin-top:4px;">Escanear com celular</div>
+          </div>
+          <div class="tc-detail">
+            <div class="tc-url">${url} <button class="copy-btn" onclick="copyUrl('${url}')">Copiar</button></div>
+            <div class="tc-pin-box">
+              <div class="pin-label">PIN backup:</div>
+              <div class="pin-digits">${t.pin.split('').map(d=>`<div class="pin-digit">${d}</div>`).join('')}</div>
+            </div>
+            <div class="tc-rotas">Rotas: <span>${rotas_txt}</span></div>
+            ${t.expira_em ? `<div style="font-size:.68rem;color:var(--text2);margin-top:5px;">Expira: ${fmtDateTime(t.expira_em)}</div>` : ''}
+          </div>
+        </div>`;
+
+      list.appendChild(card);
+
+      // Gerar QR Code
+      setTimeout(()=>{
+        const qrEl = document.getElementById('qr-'+t.id);
+        if(qrEl && window.QRCode){
+          try{
+            new QRCode(qrEl, {
+              text: url,
+              width:  96,
+              height: 96,
+              colorDark:  '#000000',
+              colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.M,
+            });
+          }catch(e){ qrEl.innerHTML = '<div style="font-size:.6rem;padding:8px;color:#999">QR indisponível</div>'; }
+        }
+      }, 50);
+    });
+}
+
+// ══════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════
+function buildUrl(tokenId){
+  // URL relativa ao mesmo diretório
+  const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
+  return base + 'SIME_conferente.html?token=' + tokenId;
+}
+
+function fmtDate(ts){
+  if(!ts) return '—';
+  return new Date(ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function fmtDateTime(ts){
+  if(!ts) return '—';
+  return new Date(ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function copyUrl(url){
+  navigator.clipboard?.writeText(url);
+  showToast('📋 URL copiada!');
+}
+
+function deletarToken(id){
+  if(!confirm('Excluir este token? O conferente perderá o acesso.')) return;
+  const tokens = loadTokens();
+  delete tokens[id];
+  saveTokens(tokens);
+  renderTokens();
+  showToast('✓ Token excluído');
+}
+
+function resetarTodos(){
+  if(!confirm('Excluir TODOS os tokens? Esta ação não pode ser desfeita.')) return;
+  localStorage.removeItem(KEY);
+  renderTokens();
+  showToast('✓ Todos os tokens foram excluídos');
+}
+
+function imprimirToken(id){
+  // Oculta todos os cards exceto o selecionado, imprime, restaura
+  document.querySelectorAll('.token-card').forEach(c=>{
+    c.style.display = c.id === 'tc-'+id ? '' : 'none';
+  });
+  window.print();
+  document.querySelectorAll('.token-card').forEach(c=>{ c.style.display=''; });
+}
+
+let toastT = null;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+// INIT
+renderTokens();
+</script>
+</body>
+</html>

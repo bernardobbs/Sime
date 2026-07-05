@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SIME · Conferente</title>
+<style>
+:root{
+  --bg:#f2efe9; --bg2:#ebe8e0; --bg3:#e3dfd5;
+  --card:#faf9f6; --border:#d8d3c8; --border2:#cac5b8;
+  --text:#2a2a2a; --text2:#6a6560; --text3:#a09a92;
+  --blue:#3a5fa0; --blue-bg:#dde7f5; --blue-bd:#adc4e0;
+  --green:#2e7d52; --green-bg:#d4f0e0; --green-bd:#80c8a0;
+  --yellow:#8a5c20; --yellow-bg:#f5e8d0; --yellow-bd:#d4a870;
+  --red:#c0392b; --red-bg:#fae8e6; --red-bd:#e0a09a;
+  --orange:#a04020; --orange-bg:#f5e0d8; --orange-bd:#d4906a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px;position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:700;font-size:.92rem;}
+.h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.h-clock{font-size:.78rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+
+/* ── VIEWS ── */
+.view{display:none;flex:1;flex-direction:column;}
+.view.active{display:flex;}
+
+/* ── SELEÇÃO DE ROTA ── */
+.route-list{padding:12px 14px 80px;display:flex;flex-direction:column;gap:8px;}
+.route-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .15s;}
+.route-card:hover{box-shadow:0 3px 12px rgba(0,0,0,.08);}
+.route-card.done{opacity:.5;}
+.route-card.open{border-color:var(--blue-bd);background:var(--blue-bg);}
+.route-card.pronta{border-color:var(--green-bd);background:var(--green-bg);}
+.route-card.alerta{border-color:var(--red-bd);background:var(--red-bg);animation:palert 1s infinite;}
+@keyframes palert{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}50%{box-shadow:0 0 0 6px rgba(192,57,43,.2);}}
+.rc-num{width:48px;height:48px;border-radius:10px;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;flex-shrink:0;}
+.rc-info{flex:1;}
+.rc-name{font-weight:700;font-size:.9rem;}
+.rc-meta{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.rc-right{text-align:right;}
+.rc-prog{font-size:.72rem;font-weight:700;}
+.rc-status{font-size:.66rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:3px;display:inline-block;}
+.s-aguardando{background:var(--bg2);color:var(--text3);}
+.s-embarcando{background:var(--blue-bg);color:var(--blue);}
+.s-pronta{background:var(--green-bg);color:var(--green);}
+.s-alerta{background:var(--red-bg);color:var(--red);}
+.s-saiu{background:#1a1a22;color:#c0c0d8;}
+
+/* ── EMBARQUE (visão de rota aberta) ── */
+.emb-header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 14px;flex-shrink:0;}
+.emb-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.emb-back{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.emb-rota{font-weight:800;font-size:1rem;}
+.emb-meta{font-size:.72rem;color:var(--text2);margin-top:1px;}
+.emb-conf-row{display:flex;gap:8px;align-items:center;}
+.emb-conf-inp{flex:1;padding:7px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);font-size:.82rem;color:var(--text);outline:none;}
+.emb-prog-wrap{margin-top:8px;}
+.emb-prog-bar{height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.emb-prog-fill{height:100%;border-radius:99px;background:var(--green);transition:width .3s;}
+.emb-prog-txt{font-size:.7rem;color:var(--text2);margin-top:3px;display:flex;justify-content:space-between;}
+
+.emb-note{background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 11px;font-size:.72rem;color:var(--yellow);margin:8px 14px 0;flex-shrink:0;}
+
+.urna-list{padding:8px 14px 140px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;flex:1;}
+.ordem-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 2px 3px;}
+
+.urna-item{
+  background:var(--card);border:1.5px solid var(--border);
+  border-radius:12px;padding:13px 14px;
+  display:flex;align-items:center;gap:12px;
+  cursor:pointer;
+  transition:background .12s,border-color .12s,transform .07s;
+  position:relative;
+  /* área de toque maior */
+  min-height:60px;
+}
+.urna-item.embarcada{background:var(--green-bg);border-color:var(--green-bd);}
+.urna-item.ausente{background:var(--red-bg);border-color:var(--red-bd);}
+.urna-item:active{transform:scale(.97);}
+.urna-item.saiu{opacity:.6;cursor:default;}
+
+.ui-check{
+  width:34px;height:34px;border-radius:9px;
+  border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all .12s;
+  font-size:1.1rem;background:var(--bg);
+}
+.urna-item.embarcada .ui-check{background:var(--green);border-color:var(--green);color:#fff;}
+.ui-seq{width:22px;height:22px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:var(--text2);flex-shrink:0;}
+.ui-info{flex:1;}
+.ui-sec{font-weight:800;font-size:1rem;}
+.ui-local{font-size:.73rem;color:var(--text2);line-height:1.3;}
+.ui-parada{font-size:.62rem;color:var(--text3);}
+.ui-right{text-align:right;}
+.ui-mun{font-size:.62rem;color:var(--text3);}
+
+/* footer fixo */
+.emb-footer{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:10px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 -4px 20px rgba(0,0,0,.08);}
+.btn-pronta{width:100%;padding:16px;border-radius:12px;font-size:.95rem;font-weight:800;cursor:pointer;border:none;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.01em;}
+.btn-pronta.ok     {background:#2e7d52;color:#fff;}
+.btn-pronta.blocked{background:var(--bg3);color:var(--text3);cursor:not-allowed;font-size:.82rem;}
+.btn-pronta.alerta {background:var(--red);color:#fff;animation:shake .4s ease;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.btn-saiu{width:100%;padding:14px;border-radius:12px;font-size:.9rem;font-weight:800;cursor:pointer;border:none;background:#1a1a22;color:#e0e0f0;}
+.footer-row{display:flex;gap:8px;}
+.btn-desfazer{flex:1;padding:10px;border-radius:9px;font-size:.76rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.btn-desfazer:active{background:var(--bg3);}
+
+/* ── LOGIN SCREEN ── */
+.login-view{display:none;flex:1;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;gap:20px;}
+.login-view.active{display:flex;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 24px;width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:16px;}
+.login-logo{width:56px;height:56px;border-radius:14px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.3rem;color:#fff;}
+.login-title{font-size:1rem;font-weight:800;text-align:center;}
+.login-sub{font-size:.78rem;color:var(--text2);text-align:center;line-height:1.5;}
+.pin-input-wrap{display:flex;gap:8px;justify-content:center;}
+.pin-inp{width:50px;height:58px;border-radius:10px;border:2px solid var(--border2);background:var(--bg2);text-align:center;font-size:1.5rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);outline:none;transition:border-color .15s;}
+.pin-inp:focus{border-color:var(--blue);background:#fff;}
+.pin-inp.error{border-color:var(--red);background:var(--red-bg);}
+.btn-login{width:100%;padding:14px;border-radius:10px;font-size:.88rem;font-weight:800;cursor:pointer;border:none;background:#2a2a2a;color:#fff;}
+.btn-login:active{background:#444;}
+.login-hint{font-size:.7rem;color:var(--text3);text-align:center;}
+
+/* BADGE DE USUÁRIO NO HEADER */
+.h-user{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
+.h-user-nome{font-size:.72rem;font-weight:700;color:var(--text);}
+.h-user-rotas{font-size:.62rem;color:var(--text2);}
+
+/* Destaque de rotas do usuário */
+.route-card.minha-rota{border-width:2px;border-color:var(--blue-bd);background:var(--blue-bg);}
+.route-card.minha-rota .rc-num{background:var(--blue);}
+.sec-label-rotas{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);padding:8px 14px 4px;}
+
+/* overlay modal */
+.overlay{position:fixed;inset:0;background:rgba(42,40,56,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.show{opacity:1;pointer-events:all;}
+.sheet{background:var(--card);border-radius:18px 18px 0 0;padding:20px 18px 36px;width:100%;max-width:460px;border-top:1px solid var(--border);}
+.sh-icon{font-size:2.4rem;text-align:center;margin-bottom:10px;}
+.sh-title{font-size:.98rem;font-weight:800;text-align:center;margin-bottom:5px;}
+.sh-sub{font-size:.78rem;color:var(--text2);text-align:center;margin-bottom:18px;line-height:1.5;}
+.sh-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sbtn{padding:13px;border-radius:10px;font-size:.82rem;font-weight:700;cursor:pointer;border:none;}
+.sbtn.cancel{background:var(--bg2);color:var(--text2);}
+.sbtn.ok{background:#2a2a2a;color:#fff;}
+.sbtn.danger{background:var(--red);color:#fff;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">S</div>
+  <div class="h-info">
+    <div class="h-title" id="h-title">SIME Conferente</div>
+    <div class="h-sub" id="h-sub">Selecione uma rota para iniciar</div>
+  </div>
+  <div class="h-user" id="h-user" style="display:none">
+    <div class="h-user-nome" id="h-user-nome"></div>
+    <div class="h-user-rotas" id="h-user-rotas"></div>
+  </div>
+  <div class="h-clock" id="clock">--:--</div>
+</div>
+
+<!-- VIEW: LOGIN -->
+<div id="view-login" class="login-view">
+  <div class="login-card">
+    <div class="login-logo">S</div>
+    <div class="login-title">SIME Conferente</div>
+    <div class="login-sub">Digite o PIN de 4 dígitos recebido do cartório ou escaneie o QR Code com a câmera do celular.</div>
+    <div class="pin-input-wrap">
+      <input class="pin-inp" id="pin-0" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,0)">
+      <input class="pin-inp" id="pin-1" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,1)">
+      <input class="pin-inp" id="pin-2" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,2)">
+      <input class="pin-inp" id="pin-3" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,3)">
+    </div>
+    <button class="btn-login" onclick="loginWithPIN()">Entrar →</button>
+    <div class="login-hint">Não tem PIN? Peça ao coordenador do cartório.</div>
+  </div>
+</div>
+
+<!-- VIEW: LISTA DE ROTAS -->
+<div id="view-rotas" class="view">
+  <div class="route-list" id="route-list"></div>
+</div>
+
+<!-- VIEW: EMBARQUE DE URNAS -->
+<div id="view-emb" class="view">
+  <div class="emb-header">
+    <div class="emb-top">
+      <button class="emb-back" onclick="voltarRotas()">‹</button>
+      <div>
+        <div class="emb-rota" id="emb-rota-nome">—</div>
+        <div class="emb-meta" id="emb-rota-meta">—</div>
+      </div>
+    </div>
+    <div class="emb-conf-row">
+      <input class="emb-conf-inp" id="conf-nome" placeholder="Seu nome (obrigatório)" oninput="saveConferente()">
+    </div>
+    <div id="emb-timestamps" style="font-size:.65rem;color:var(--text3);margin-top:4px;min-height:14px;padding:0 2px;"></div>
+    <div class="emb-prog-wrap">
+      <div class="emb-prog-bar"><div class="emb-prog-fill" id="emb-prog-fill" style="width:0%"></div></div>
+      <div class="emb-prog-txt"><span id="emb-prog-txt">0 urnas embarcadas</span><span id="emb-hora-prev"></span></div>
+    </div>
+  </div>
+  <div class="emb-note" id="emb-note" style="display:none">
+    ⚠️ Ordem de carregamento: a <strong>última parada</strong> da rota entra <strong>primeiro</strong> no veículo.
+  </div>
+  <div class="urna-list" id="urna-list"></div>
+  <div class="emb-footer">
+    <button class="btn-pronta blocked" id="btn-pronta" onclick="confirmarPronta()">
+      🔒 Embarque em andamento
+    </button>
+    <div id="btn-saiu-wrap" style="display:none">
+      <div class="footer-row">
+        <button class="btn-desfazer" onclick="desfazerPronta()">↩ Desfazer</button>
+        <button class="btn-saiu" style="flex:3" onclick="confirmarSaiu()">🚗 Confirmar saída do veículo</button>
+      </div>
+    </div>
+    <div id="btn-desfazer-wrap" style="display:none"></div>
+  </div>
+</div>
+
+<!-- OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sh-icon" id="sh-icon">✅</div>
+    <div class="sh-title" id="sh-title">Confirmar</div>
+    <div class="sh-sub" id="sh-sub"></div>
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn ok" id="sh-ok" onclick="sheetConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// DADOS DAS ROTAS
+// Seções em ORDEM DE DISTRIBUIÇÃO (1ª a última parada)
+// Ordem de embarque = INVERSA
+// ══════════════════════════════════════════════
+const ROTAS = {
+  'Rota 001': { municipios:'Campo Maior', secs:[
+    {n:'0135',local:'G.E. Profª Maroquinha',    mun:'CM', parada:1},
+    {n:'0144',local:'G.E. Profª Maroquinha',    mun:'CM', parada:1},
+    {n:'0180',local:'U.E. José Gomes Oliveira', mun:'CM', parada:2},
+    {n:'0163',local:"Salão Com. 'Mario Cazuza'",mun:'CM', parada:3},
+  ]},
+  'Rota 002': { municipios:'Campo Maior', secs:[
+    {n:'0187',local:'Esc. Mun. R.A. Maximino',  mun:'CM', parada:1},
+    {n:'0209',local:'Assoc. Moradores Tangará',  mun:'CM', parada:2},
+    {n:'0164',local:'Salão Com. Santo Antônio',  mun:'CM', parada:3},
+    {n:'0186',local:'Esc. Reassentamento Cored.',mun:'CM', parada:4},
+    {n:'0195',local:'Salão Com. Corredores',     mun:'CM', parada:5},
+    {n:'0234',local:'Salão Com. Corredores',     mun:'CM', parada:5},
+  ]},
+  'Rota 003': { municipios:'Campo Maior', secs:[
+    {n:'0141',local:'U.E. Linoca Gayoso',        mun:'CM', parada:1},
+    {n:'0192',local:'U.E. Linoca Gayoso',        mun:'CM', parada:1},
+    {n:'0244',local:'U.E. Linoca Gayoso',        mun:'CM', parada:1},
+    {n:'0196',local:'U.E. José Gonçalves Oliveira',mun:'CM', parada:2},
+  ]},
+  'Rota 004': { municipios:'Campo Maior', secs:[
+    {n:'0063',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0064',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0065',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0066',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0124',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0145',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0181',local:'G.E. Treze de Março',       mun:'CM', parada:1},
+    {n:'0062',local:'FSESP',                     mun:'CM', parada:2},
+    {n:'0122',local:'FSESP',                     mun:'CM', parada:2},
+    {n:'0242',local:'Esc. Mun. N.S. de Fátima',  mun:'CM', parada:3},
+    {n:'0248',local:'Esc. Mun. N.S. de Fátima',  mun:'CM', parada:3},
+    {n:'0256',local:'Esc. Mun. N.S. de Fátima',  mun:'CM', parada:3},
+    {n:'0205',local:'U.E. Vida Verde',           mun:'CM', parada:4},
+    {n:'0217',local:'U.E. Vida Verde',           mun:'CM', parada:4},
+    {n:'0233',local:'U.E. Vida Verde',           mun:'CM', parada:4},
+    {n:'0255',local:'U.E. Vida Verde',           mun:'CM', parada:4},
+  ]},
+  'Rota 005': { municipios:'Campo Maior', secs:[
+    {n:'0044',local:'Sec. Est. de Fazenda',      mun:'CM', parada:1},
+    {n:'0191',local:'Sec. Est. de Fazenda',      mun:'CM', parada:1},
+    {n:'0029',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0030',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0031',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0123',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0148',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0259',local:'G.E. Marion Saraiva',       mun:'CM', parada:2},
+    {n:'0071',local:'CAIC',                      mun:'CM', parada:3},
+    {n:'0155',local:'CAIC',                      mun:'CM', parada:3},
+    {n:'0202',local:'CAIC',                      mun:'CM', parada:3},
+    {n:'0223',local:'CAIC',                      mun:'CM', parada:3},
+    {n:'0240',local:'IFPI',                      mun:'CM', parada:4},
+    {n:'0251',local:'IFPI',                      mun:'CM', parada:4},
+  ]},
+  'Rota 006': { municipios:'Campo Maior', secs:[
+    {n:'0017',local:'Col. Est. Profª Raimundinho',mun:'CM', parada:1},
+    {n:'0018',local:'Col. Est. Profª Raimundinho',mun:'CM', parada:1},
+    {n:'0019',local:'Col. Est. Profª Raimundinho',mun:'CM', parada:1},
+    {n:'0020',local:'Col. Est. Profª Raimundinho',mun:'CM', parada:1},
+    {n:'0157',local:'Col. Est. Profª Raimundinho',mun:'CM', parada:1},
+    {n:'0006',local:'Sec. Mun. de Educação',     mun:'CM', parada:2},
+    {n:'0012',local:'Sec. Mun. de Educação',     mun:'CM', parada:2},
+    {n:'0149',local:'Sec. Mun. de Educação',     mun:'CM', parada:2},
+    {n:'0015',local:'Clube dos Comerciários',    mun:'CM', parada:3},
+    {n:'0016',local:'Clube dos Comerciários',    mun:'CM', parada:3},
+    {n:'0125',local:'Clube dos Comerciários',    mun:'CM', parada:3},
+    {n:'0045',local:'Prefeitura Municipal',      mun:'CM', parada:4},
+    {n:'0046',local:'Prefeitura Municipal',      mun:'CM', parada:4},
+    {n:'0047',local:'Prefeitura Municipal',      mun:'CM', parada:4},
+    {n:'0116',local:'Prefeitura Municipal',      mun:'CM', parada:4},
+    {n:'0117',local:'Prefeitura Municipal',      mun:'CM', parada:4},
+    {n:'0005',local:'SAAE',                      mun:'CM', parada:5},
+    {n:'0033',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0034',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0035',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0036',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0115',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0128',local:'G.E. Valdivino Tito',       mun:'CM', parada:6},
+    {n:'0001',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0002',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0003',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0049',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0050',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0126',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0156',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0237',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0249',local:'Centro Ed. JA Mulata Lima', mun:'CM', parada:7},
+    {n:'0004',local:'EMATER',                    mun:'CM', parada:8},
+    {n:'0014',local:'EMATER',                    mun:'CM', parada:8},
+    {n:'0037',local:'EMATER',                    mun:'CM', parada:8},
+    {n:'0038',local:'EMATER',                    mun:'CM', parada:8},
+  ]},
+  'Rota 007': { municipios:'Sigefredo Pacheco', secs:[
+    {n:'0204',local:'U.E. Ivon Pacheco',         mun:'SP', parada:1},
+    {n:'0247',local:'U.E. Ivon Pacheco',         mun:'SP', parada:1},
+    {n:'0136',local:'G.E. Manoel Francisco',     mun:'SP', parada:2},
+    {n:'0152',local:'G.E. Manoel Francisco',     mun:'SP', parada:2},
+    {n:'0140',local:'U.E. Antônio Pereira S.',   mun:'SP', parada:3},
+    {n:'0201',local:'U.E. Antônio Pereira S.',   mun:'SP', parada:3},
+    {n:'0189',local:'G.E. Manoel Pereira Reis',  mun:'SP', parada:4},
+    {n:'0159',local:'U.E. Miguel Rocha',         mun:'SP', parada:5},
+    {n:'0246',local:'U.E. Miguel Rocha',         mun:'SP', parada:5},
+  ]},
+  'Rota 008': { municipios:'Sigefredo Pacheco', secs:[
+    {n:'0079',local:'U.E. da Paz Sousa',         mun:'SP', parada:1},
+    {n:'0080',local:'U.E. da Paz Sousa',         mun:'SP', parada:1},
+    {n:'0081',local:'U.E. da Paz Sousa',         mun:'SP', parada:1},
+    {n:'0133',local:'U.E. da Paz Sousa',         mun:'SP', parada:1},
+    {n:'0252',local:'U.E. da Paz Sousa',         mun:'SP', parada:1},
+    {n:'0166',local:'U.E. Antonio Cícero Oliv.', mun:'SP', parada:2},
+    {n:'0228',local:'U.E. Antonio Cícero Oliv.', mun:'SP', parada:2},
+    {n:'0213',local:'U.E. Manoel Rodrigues Melo',mun:'SP', parada:3},
+    {n:'0167',local:'U.E. Antonio Carmelo B.',   mun:'SP', parada:4},
+    {n:'0230',local:'U.E. Antonio Carmelo B.',   mun:'SP', parada:4},
+  ]},
+  'Rota 009': { municipios:'Sigefredo Pacheco', secs:[
+    {n:'0085',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0086',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0087',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0088',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0089',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0090',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0132',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0151',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0158',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0177',local:'G.E. Monsenhor Mateus',     mun:'SP', parada:1},
+    {n:'0203',local:'U.E. José Ribeiro da Luz',  mun:'SP', parada:2},
+    {n:'0211',local:'U.E. José Ribeiro da Luz',  mun:'SP', parada:2},
+    {n:'0222',local:'U.E. José Ribeiro da Luz',  mun:'SP', parada:2},
+    {n:'0241',local:'U.E. Dr. Jerônimo S. Silva',mun:'SP', parada:3},
+    {n:'0250',local:'U.E. Dr. Jerônimo S. Silva',mun:'SP', parada:3},
+    {n:'0193',local:'Esc. Rural Sto. Antônio CV',mun:'SP', parada:4},
+    {n:'0214',local:'Esc. Rural Sto. Antônio CV',mun:'SP', parada:4},
+  ]},
+  'Rota 010': { municipios:'Campo Maior / Jatobá', secs:[
+    {n:'0147',local:'G.E. Aguida M. Conceição',  mun:'CM', parada:1},
+    {n:'0173',local:'G.E. Aguida M. Conceição',  mun:'CM', parada:1},
+    {n:'0198',local:'G.E. Aguida M. Conceição',  mun:'CM', parada:1},
+    {n:'0215',local:'G.E. Aguida M. Conceição',  mun:'CM', parada:1},
+    {n:'0235',local:'G.E. Aguida M. Conceição',  mun:'CM', parada:1},
+    {n:'0165',local:'U.E. Oscar Gil C. Branco',  mun:'JP', parada:2},
+    {n:'0208',local:'U.E. Oscar Gil C. Branco',  mun:'JP', parada:2},
+    {n:'0253',local:'U.E. Oscar Gil C. Branco',  mun:'JP', parada:2},
+    {n:'0212',local:'Esc. Mun. A.M. C. Branco',  mun:'JP', parada:3},
+    {n:'0245',local:'Esc. Mun. A.M. C. Branco',  mun:'JP', parada:3},
+    {n:'0175',local:'G.E. Anita Gaioso',         mun:'JP', parada:4},
+    {n:'0238',local:'G.E. Anita Gaioso',         mun:'JP', parada:4},
+    {n:'0178',local:'U.E. José Cândido Gaioso',  mun:'JP', parada:5},
+  ]},
+  'Rota 011': { municipios:'Campo Maior / Jatobá', secs:[
+    {n:'0218',local:'Posto Saúde da Varjota',    mun:'CM', parada:1},
+    {n:'0185',local:'Esc. Mun. Dr. Mano C.B.',   mun:'CM', parada:2},
+    {n:'0226',local:'Esc. Mun. Dr. Mano C.B.',   mun:'CM', parada:2},
+    {n:'0199',local:'U.E. Rafael Nogueira P.',   mun:'JP', parada:3},
+    {n:'0179',local:'G.E. de Tanques',           mun:'JP', parada:4},
+    {n:'0194',local:'G.E. de Tanques',           mun:'JP', parada:4},
+    {n:'0221',local:'Igreja da Morada Nova',     mun:'JP', parada:5},
+    {n:'0243',local:'Igreja da Morada Nova',     mun:'JP', parada:5},
+    {n:'0188',local:'Escola Mun. da Montanha',   mun:'JP', parada:6},
+    {n:'0216',local:'U.E. Francisco F.P. Oliv.', mun:'JP', parada:7},
+    {n:'0227',local:'U.E. Francisco F.P. Oliv.', mun:'JP', parada:7},
+  ]},
+  'Rota 012': { municipios:'Jatobá / Sigefredo', secs:[
+    {n:'0160',local:'Posto Saúde M. Sousa Dié',  mun:'JP', parada:1},
+    {n:'0162',local:'Posto Saúde M. Sousa Dié',  mun:'JP', parada:1},
+    {n:'0258',local:'Posto Saúde M. Sousa Dié',  mun:'JP', parada:1},
+    {n:'0200',local:'Salão Comunitário',         mun:'JP', parada:2},
+    {n:'0168',local:'G.E. Prof. Francisco Luis', mun:'JP', parada:3},
+    {n:'0101',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0102',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0103',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0112',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0171',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0172',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0176',local:'U.E. Tertuliano Pereira',   mun:'JP', parada:4},
+    {n:'0207',local:'U.E. João Félix de Andrade',mun:'JP', parada:5},
+    {n:'0239',local:'U.E. João Félix de Andrade',mun:'JP', parada:5},
+    {n:'0174',local:'Creche Mamãe Lima M.Oliv.', mun:'JP', parada:6},
+    {n:'0210',local:'Creche Mamãe Lima M.Oliv.', mun:'JP', parada:6},
+    {n:'0232',local:'Creche Mamãe Lima M.Oliv.', mun:'JP', parada:6},
+    {n:'0260',local:'Creche Mamãe Lima M.Oliv.', mun:'JP', parada:6},
+    {n:'0225',local:'Esc. Mun. A.F. Ribeiro Paz',mun:'JP', parada:7},
+    {n:'0138',local:'U.E. Jovino Josino Oliveira',mun:'SP', parada:8},
+    {n:'0231',local:'U.E. Jovino Josino Oliveira',mun:'SP', parada:8},
+  ]},
+};
+
+// ══════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════
+const KEY = 'sime_dist_v1';
+
+function loadDist(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+function saveDist(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
+
+function getRotaState(rota){
+  const d = loadDist();
+  if(!d.rotas) d.rotas = {};
+  if(!d.rotas[rota]){
+    const urnas = {};
+    ROTAS[rota].secs.forEach(s => urnas[s.n] = false);
+    d.rotas[rota] = { status:'aguardando', urnas, conferente:'', ts_aberta:null, ts_pronta:null, ts_saiu:null, alerta:false };
+    saveDist(d);
+  }
+  return d.rotas[rota];
+}
+
+function updateRotaState(rota, patch){
+  const d = loadDist();
+  if(!d.rotas) d.rotas = {};
+  d.rotas[rota] = { ...getRotaState(rota), ...patch };
+  saveDist(d);
+}
+
+function getConfig(){
+  const d = loadDist();
+  return d.config || {};
+}
+
+// ══════════════════════════════════════════════
+// CURRENT STATE
+// ══════════════════════════════════════════════
+let curRota = null;
+let pendingAction = null;
+let toastTimer = null;
+
+// ══════════════════════════════════════════════
+// LISTA DE ROTAS
+// ══════════════════════════════════════════════
+function renderRotas(){
+  const list = document.getElementById('route-list');
+  list.innerHTML = '';
+  const cfg = getConfig();
+
+  // Determinar quais rotas são "minhas" (do usuário logado)
+  const minhasRotas = currentUser?.rotas?.length ? currentUser.rotas : [];
+  const temFiltro   = minhasRotas.length > 0;
+  const todasRotas  = Object.keys(ROTAS);
+
+  // Separar: minhas rotas primeiro, depois as demais
+  const ordenadas = temFiltro
+    ? [...minhasRotas, ...todasRotas.filter(r => !minhasRotas.includes(r))]
+    : todasRotas;
+
+  // Label separador "Minhas rotas"
+  if(temFiltro){
+    const lbl1 = document.createElement('div');
+    lbl1.className = 'sec-label-rotas';
+    lbl1.textContent = `Suas rotas (${minhasRotas.length})`;
+    list.appendChild(lbl1);
+  }
+
+  let passouParaOutras = false;
+
+  ordenadas.forEach((nome) => {
+    const rdata = ROTAS[nome];
+    const st = getRotaState(nome);
+    const total = rdata.secs.length;
+    const embarcadas = Object.values(st.urnas).filter(Boolean).length;
+    const rcfg = cfg.rotas?.[nome] || {};
+    const ordem = rcfg.ordem_saida || '—';
+    const horaPrev = rcfg.saida_prev || '—';
+    const isMinha = !temFiltro || minhasRotas.includes(nome);
+
+    // Separador entre minhas e outras
+    if(temFiltro && !isMinha && !passouParaOutras){
+      passouParaOutras = true;
+      const lbl2 = document.createElement('div');
+      lbl2.className = 'sec-label-rotas';
+      lbl2.style.color = 'var(--text3)';
+      lbl2.textContent = 'Outras rotas';
+      list.appendChild(lbl2);
+    }
+
+    const card = document.createElement('div');
+    card.className = [
+      'route-card',
+      st.status === 'saiu'   ? 'done'   : '',
+      st.status === 'pronta' ? 'pronta' : '',
+      st.status === 'alerta' ? 'alerta' : '',
+      st.status === 'embarcando' ? 'open' : '',
+      isMinha ? 'minha-rota' : '',
+    ].filter(Boolean).join(' ');
+
+    const statusLabels = { aguardando:'Aguardando', embarcando:'Embarcando', pronta:'✓ Pronta p/ sair', alerta:'⚠ Urna faltando!', saiu:'🚗 Saiu' };
+    const statusCls    = { aguardando:'s-aguardando', embarcando:'s-embarcando', pronta:'s-pronta', alerta:'s-alerta', saiu:'s-saiu' };
+
+    card.innerHTML = `
+      <div class="rc-num" style="background:${st.status==='saiu'?'#888':isMinha?'var(--blue)':'#2a2a2a'}">${nome.replace('Rota ','R')}</div>
+      <div class="rc-info">
+        <div class="rc-name">${nome}</div>
+        <div class="rc-meta">${rdata.municipios} · ${total} urnas · Saída ${ordem}ª · ${horaPrev}</div>
+      </div>
+      <div class="rc-right">
+        <div class="rc-prog" style="color:${embarcadas===total?'#16a34a':'#6a6560'}">${embarcadas}/${total}</div>
+        <div class="rc-status ${statusCls[st.status]||'s-aguardando'}">${statusLabels[st.status]||'Aguardando'}</div>
+      </div>`;
+
+    if(st.status !== 'saiu') card.onclick = () => abrirRota(nome);
+    list.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════
+// ABRIR ROTA
+// ══════════════════════════════════════════════
+function abrirRota(rota){
+  curRota = rota;
+  const st = getRotaState(rota);
+  if(st.status === 'aguardando'){
+    updateRotaState(rota, { status:'embarcando', ts_aberta: Date.now() });
+  }
+
+  document.getElementById('h-title').textContent = rota;
+  document.getElementById('h-sub').textContent = ROTAS[rota].municipios;
+  document.getElementById('emb-rota-nome').textContent = rota;
+
+  const cfg = getConfig();
+  const rcfg = cfg.rotas?.[rota] || {};
+  document.getElementById('emb-rota-meta').textContent =
+    `${ROTAS[rota].municipios} · ${ROTAS[rota].secs.length} urnas · Saída: ${rcfg.saida_prev||'a definir'}`;
+  document.getElementById('conf-nome').value = st.conferente || '';
+  document.getElementById('emb-note').style.display = 'block';
+
+  document.getElementById('view-rotas').classList.remove('active');
+  document.getElementById('view-emb').classList.add('active');
+
+  renderUrnas();
+}
+
+function voltarRotas(){
+  curRota = null;
+  document.getElementById('view-emb').classList.remove('active');
+  document.getElementById('view-rotas').classList.add('active');
+  document.getElementById('h-title').textContent = 'SIME Conferente';
+  document.getElementById('h-sub').textContent = 'Selecione uma rota para iniciar';
+  renderRotas();
+}
+
+function saveConferente(){
+  if(!curRota) return;
+  const nome = document.getElementById('conf-nome').value;
+  updateRotaState(curRota, { conferente: nome });
+}
+
+// ══════════════════════════════════════════════
+// RENDER URNAS (ordem inversa de distribuição)
+// ══════════════════════════════════════════════
+function renderUrnas(){
+  if(!curRota) return;
+  const rdata = ROTAS[curRota];
+  const st = getRotaState(curRota);
+  const isSaiu = st.status === 'saiu';
+
+  const total = rdata.secs.length;
+  const embarcadas = Object.values(st.urnas).filter(Boolean).length;
+  const pct = Math.round(embarcadas/total*100);
+
+  document.getElementById('emb-prog-fill').style.width = pct + '%';
+  document.getElementById('emb-prog-txt').textContent = `${embarcadas} de ${total} urnas embarcadas`;
+
+  const cfg = getConfig();
+  const rcfg = cfg.rotas?.[curRota] || {};
+  document.getElementById('emb-hora-prev').textContent = rcfg.saida_prev ? `Saída: ${rcfg.saida_prev}` : '';
+
+  // Ordem de embarque = inversa das paradas (última parada entra primeiro)
+  const maxParada = Math.max(...rdata.secs.map(s => s.parada));
+  const secsByParada = {};
+  for(let p = maxParada; p >= 1; p--){
+    secsByParada[p] = rdata.secs.filter(s => s.parada === p);
+  }
+
+  const list = document.getElementById('urna-list');
+  list.innerHTML = '';
+  let embIdx = 0;
+
+  for(let p = maxParada; p >= 1; p--){
+    const secs = secsByParada[p];
+    if(!secs.length) continue;
+
+    const label = document.createElement('div');
+    label.className = 'ordem-label';
+    label.textContent = p === maxParada
+      ? `🚚 Embarque ${maxParada-p+1}° (parada ${p} — 1ª entrega)`
+      : p === 1
+      ? `🏁 Embarque ${maxParada-p+1}° (parada ${p} — última entrega)`
+      : `📦 Embarque ${maxParada-p+1}° (parada ${p})`;
+    list.appendChild(label);
+
+    secs.forEach(sec => {
+      embIdx++;
+      const isEmb = !!st.urnas[sec.n];
+      const item = document.createElement('div');
+      item.className = 'urna-item' + (isEmb ? ' embarcada' : '');
+
+      item.innerHTML = `
+        <div class="ui-check">${isEmb ? '✓' : ''}</div>
+        <div class="ui-seq">${embIdx}</div>
+        <div class="ui-info">
+          <div class="ui-sec">Seção ${parseInt(sec.n)}</div>
+          <div class="ui-local">${sec.local}</div>
+          <div class="ui-parada">Parada ${sec.parada} de ${maxParada}</div>
+        </div>
+        <div class="ui-right">
+          <div class="ui-mun">${sec.mun === 'CM' ? 'Campo Maior' : sec.mun === 'JP' ? 'Jatobá' : 'Sigefredo'}</div>
+        </div>`;
+
+      if(!isSaiu){
+        item.onclick = () => toggleUrna(sec.n);
+      }
+      list.appendChild(item);
+    });
+  }
+
+  // ─── Timestamps visíveis ───────────────────
+  const tsEl = document.getElementById('emb-timestamps');
+  if(tsEl){
+    const fmtTs = ts => ts ? new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
+    const parts = [];
+    if(st.ts_aberta) parts.push(`Aberta: ${fmtTs(st.ts_aberta)}`);
+    if(st.ts_pronta) parts.push(`Pronta: ${fmtTs(st.ts_pronta)}`);
+    if(st.ts_saiu)   parts.push(`Saiu: ${fmtTs(st.ts_saiu)}`);
+    tsEl.textContent = parts.join('  ·  ');
+  }
+
+  // ─── Botão pronta ───────────────────────────
+  const btn  = document.getElementById('btn-pronta');
+  const saiu = document.getElementById('btn-saiu-wrap');
+
+  if(isSaiu){
+    btn.style.display = 'none';
+    saiu.style.display = 'none';
+  } else if(st.status === 'pronta'){
+    btn.style.display = 'none';
+    saiu.style.display = 'block';
+  } else {
+    btn.style.display = '';
+    saiu.style.display = 'none';
+    const faltam = total - embarcadas;
+    if(st.status === 'alerta' && faltam > 0){
+      btn.className = 'btn-pronta alerta';
+      btn.innerHTML = `🚨 ${faltam} urna${faltam>1?'s':''} faltando — verifique!`;
+    } else if(faltam === 0){
+      btn.className = 'btn-pronta ok';
+      btn.innerHTML = '✅ Marcar rota como pronta';
+    } else {
+      btn.className = 'btn-pronta blocked';
+      btn.innerHTML = `🔒 Faltam ${faltam} urna${faltam>1?'s':''}`;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// TOGGLE URNA — toque direto, sem modal
+// ══════════════════════════════════════════════
+function toggleUrna(secNum){
+  const st = getRotaState(curRota);
+  if(st.status === 'saiu') return; // só bloqueia após saída confirmada
+
+  // se estava pronta e desmarcou uma urna → volta para embarcando automaticamente
+  const wasAlert = st.status === 'alerta';
+  st.urnas[secNum] = !st.urnas[secNum];
+  st.status = 'embarcando';
+  st.alerta = false;
+  updateRotaState(curRota, { urnas: st.urnas, status:'embarcando', alerta:false });
+
+  vib(st.urnas[secNum] ? [30,10,30] : 20);
+  renderUrnas();
+}
+
+// ══════════════════════════════════════════════
+// CONFIRMAR PRONTA
+// ══════════════════════════════════════════════
+function confirmarPronta(){
+  const st     = getRotaState(curRota);
+  const rdata  = ROTAS[curRota];
+  const total  = rdata.secs.length;
+  const emb    = Object.values(st.urnas).filter(Boolean).length;
+  const faltam = total - emb;
+
+  if(st.status === 'pronta') return;
+
+  if(faltam > 0){
+    // Marca alerta — sem modal, aviso imediato
+    updateRotaState(curRota, { status:'alerta', alerta:true });
+    renderUrnas();
+    vib([100,50,100,50,100]);
+    showToast(`🚨 ${faltam} urna${faltam>1?'s':''} faltando!`);
+    return;
+  }
+
+  // Nome é registrado se preenchido, mas não bloqueia
+  const nome = document.getElementById('conf-nome').value.trim();
+  if(nome) updateRotaState(curRota, { conferente: nome });
+
+  openSheet({
+    icon:'✅',
+    title:`${curRota} — confirmar`,
+    sub:`${total} urnas embarcadas. A rota está pronta para sair?`,
+    okLabel:'Pronta para sair',
+    okBg:'#2e7d52',
+    action:() => {
+      updateRotaState(curRota, { status:'pronta', ts_pronta:Date.now(), alerta:false });
+      renderUrnas();
+      showToast('✅ Rota pronta!');
+      vib([60,30,60]);
+    }
+  });
+}
+
+function desfazerPronta(){
+  // Sem modal — desfaz direto
+  updateRotaState(curRota, { status:'embarcando', ts_pronta:null });
+  renderUrnas();
+  showToast('↩ Voltou para embarque');
+  vib(40);
+}
+
+function confirmarSaiu(){
+  openSheet({
+    icon: '🚗',
+    title: `Confirmar saída — ${curRota}`,
+    sub: 'O veículo saiu do cartório com todas as urnas?',
+    okLabel: 'Confirmar saída',
+    okClass: 'sbtn danger',
+    action: () => {
+      updateRotaState(curRota, { status:'saiu', ts_saiu: Date.now() });
+      renderUrnas();
+      showToast('🚗 Saída registrada!');
+      // Recalcular próximas saídas
+      recalcSaidas(curRota);
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// RECALCULO DE HORÁRIOS (quando rota sai antes)
+// ══════════════════════════════════════════════
+function recalcSaidas(rotaSaiu){
+  const d = loadDist();
+  if(!d.config?.rotas) return;
+  const cfg = d.config;
+  const rotasCfg = cfg.rotas;
+  const intervalo = cfg.intervalo_min || 10;
+
+  // Recalcula APENAS rotas que ainda não iniciaram o embarque
+  // Rotas 'pronta' e 'alerta' já estão em operação — não alterar seus horários
+  const pendentes = Object.entries(rotasCfg)
+    .filter(([nome]) => nome !== rotaSaiu)
+    .filter(([nome]) => {
+      const status = d.rotas?.[nome]?.status;
+      return !status || status === 'aguardando';
+    })
+    .sort((a, b) => (a[1].ordem_saida||99) - (b[1].ordem_saida||99));
+
+  if(!pendentes.length) return;
+
+  // Base: horário atual + 1 intervalo
+  const agora = new Date();
+  let baseMin = agora.getHours()*60 + agora.getMinutes() + intervalo;
+
+  pendentes.forEach(([nome]) => {
+    const hh = Math.floor(baseMin/60);
+    const mm = baseMin%60;
+    rotasCfg[nome].saida_prev = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+    baseMin += intervalo;
+  });
+
+  d.config.rotas = rotasCfg;
+  saveDist(d);
+}
+
+// ══════════════════════════════════════════════
+// SHEET / MODAL
+// ══════════════════════════════════════════════
+let sheetAction = null;
+function openSheet({icon,title,sub,okLabel,okBg,okClass,action}){
+  sheetAction = action;
+  document.getElementById('sh-icon').textContent  = icon;
+  document.getElementById('sh-title').textContent = title;
+  document.getElementById('sh-sub').textContent   = sub;
+  const ok = document.getElementById('sh-ok');
+  ok.textContent = okLabel;
+  ok.className = okClass || 'sbtn ok';
+  if(okBg) ok.style.background = okBg;
+  else ok.style.background = '';
+  document.getElementById('overlay').classList.add('show');
+}
+function closeSheet(){ document.getElementById('overlay').classList.remove('show'); sheetAction = null; }
+function sheetConfirm(){ const a = sheetAction; closeSheet(); if(a) a(); }
+document.getElementById('overlay').addEventListener('click', e => { if(e.target===document.getElementById('overlay')) closeSheet(); });
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function tick(){
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+tick(); setInterval(tick, 10000);
+
+// ══════════════════════════════════════════════
+// AUTENTICAÇÃO — TOKEN E PIN
+// ══════════════════════════════════════════════
+const TOKENS_KEY = 'sime_tokens_v1';
+let currentUser = null; // { id, nome, rotas, turno, zona }
+
+function loadAllTokens(){
+  try{ return JSON.parse(localStorage.getItem(TOKENS_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+function findTokenById(id){
+  const tokens = loadAllTokens();
+  return tokens[id] || null;
+}
+
+function findTokenByPIN(pin){
+  const tokens = loadAllTokens();
+  return Object.values(tokens).find(t => t.pin === pin) || null;
+}
+
+function validateToken(token){
+  if(!token) return false;
+  if(token.expira_em && Date.now() > token.expira_em) return false;
+  return true;
+}
+
+function applyToken(token){
+  // Marca como usado na primeira vez
+  if(!token.usado_em){
+    const tokens = loadAllTokens();
+    if(tokens[token.id]){
+      tokens[token.id].usado_em = Date.now();
+      localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+    }
+  }
+  currentUser = { id:token.id, nome:token.nome, rotas:token.rotas, turno:token.turno, zona:token.zona };
+  enterApp();
+}
+
+function enterApp(){
+  // Atualiza header com nome do usuário
+  const hu = document.getElementById('h-user');
+  if(hu){
+    hu.style.display = 'flex';
+    document.getElementById('h-user-nome').textContent = currentUser.nome;
+    const rStr = currentUser.rotas.length === Object.keys(ROTAS).length
+      ? 'Todas as rotas'
+      : currentUser.rotas.join(' · ');
+    document.getElementById('h-user-rotas').textContent = rStr;
+  }
+
+  // Mostra lista de rotas
+  showView('view-rotas');
+  renderRotas();
+}
+
+// ── PIN INPUTS ──────────────────────────────────
+function pinInput(el, idx){
+  // Limita a 1 dígito
+  if(el.value.length > 1) el.value = el.value.slice(-1);
+  // Avança para próximo campo
+  if(el.value && idx < 3){
+    document.getElementById('pin-'+(idx+1)).focus();
+  }
+  // Se preencheu tudo, tenta login
+  if(idx === 3 && el.value) loginWithPIN();
+}
+
+function loginWithPIN(){
+  const pin = [0,1,2,3].map(i => document.getElementById('pin-'+i).value).join('');
+  if(pin.length < 4){
+    showToast('⚠ Digite os 4 dígitos do PIN');
+    document.getElementById('pin-0').focus();
+    return;
+  }
+  const token = findTokenByPIN(pin);
+  if(!token){ 
+    [0,1,2,3].forEach(i=>{ const el=document.getElementById('pin-'+i); el.classList.add('error'); setTimeout(()=>el.classList.remove('error'),800); });
+    showToast('⚠ PIN inválido — verifique e tente novamente');
+    return;
+  }
+  if(!validateToken(token)){
+    showToast('⚠ Este token expirou. Contate o cartório.');
+    return;
+  }
+  applyToken(token);
+}
+
+// ── NAVEGAÇÃO DE VIEWS ──────────────────────────
+function showView(id){
+  document.querySelectorAll('.view, .login-view').forEach(v=>v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ══════════════════════════════════════════════
+// INIT — detecta token na URL ou sessão salva
+// ══════════════════════════════════════════════
+(function init(){
+  // 1. Verificar token na URL: ?token=XXXXXXXX
+  const params = new URLSearchParams(window.location.search);
+  const tokenId = params.get('token');
+  const pinParam = params.get('pin');
+
+  if(tokenId){
+    const token = findTokenById(tokenId);
+    if(token && validateToken(token)){
+      applyToken(token);
+      return;
+    } else {
+      showToast('Token inválido ou expirado — use o PIN');
+    }
+  }
+
+  if(pinParam){
+    const token = findTokenByPIN(pinParam);
+    if(token && validateToken(token)){ applyToken(token); return; }
+  }
+
+  // 2. Verificar sessão salva no localStorage desta aba
+  try{
+    const saved = sessionStorage.getItem('sime_conf_session');
+    if(saved){
+      const session = JSON.parse(saved);
+      const token = findTokenById(session.id);
+      if(token && validateToken(token)){ applyToken(token); return; }
+    }
+  }catch(e){}
+
+  // 3. Verificar se há tokens cadastrados — se não houver, entra direto (modo admin/dev)
+  const tokens = loadAllTokens();
+  if(Object.keys(tokens).length === 0){
+    // Modo sem autenticação — entra com acesso total
+    currentUser = { id:'admin', nome:'Acesso Geral', rotas:[], turno:1, zona:'7' };
+    enterApp();
+    return;
+  }
+
+  // Inicializar config de distribuição se não existir
+  (function initConfig(){
+    const d = loadDist();
+    if(!d.config){
+      const ordemSugerida = [
+        'Rota 009','Rota 012','Rota 008','Rota 007',
+        'Rota 011','Rota 010','Rota 006','Rota 005',
+        'Rota 004','Rota 003','Rota 002','Rota 001',
+      ];
+      const intervalo = 10;
+      let baseMin = 5*60 + 30;
+      const rotasCfg = {};
+      ordemSugerida.forEach((nome, idx) => {
+        const hh = Math.floor(baseMin/60), mm = baseMin%60;
+        rotasCfg[nome] = {
+          ordem_saida: idx+1,
+          saida_prev: `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`,
+          municipios: ROTAS[nome]?.municipios || '',
+          motorista: '', veiculo: '',
+        };
+        baseMin += intervalo;
+      });
+      d.config = { intervalo_min: intervalo, rotas: rotasCfg };
+      saveDist(d);
+    }
+  })();
+
+  // 4. Mostrar tela de PIN
+  showView('view-login');
+  setTimeout(()=>{ document.getElementById('pin-0')?.focus(); }, 300);
+})();
+
+renderRotas();
+setInterval(renderRotas, 5000);
+</script>
+</body>
+</html>

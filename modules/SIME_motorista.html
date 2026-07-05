@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SIME · Motorista</title>
+<style>
+:root{
+  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
+  --card:#faf9f6;--border:#d8d3c8;--border2:#cac5b8;
+  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
+  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
+  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
+  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
+  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* HEADER */
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.h-right{display:flex;align-items:center;gap:6px;}
+.h-clock{font-size:.76rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+.fase-pill{font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid;}
+
+/* SELEÇÃO DE ROTA (quando não tem ?rota=) */
+.rota-sel{padding:16px 14px 80px;display:flex;flex-direction:column;gap:8px;}
+.rota-sel-title{font-size:.8rem;font-weight:700;color:var(--text2);padding:4px 2px 8px;}
+.rs-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:all .15s;}
+.rs-card:active{transform:scale(.98);}
+.rs-num{width:46px;height:46px;border-radius:10px;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.9rem;flex-shrink:0;}
+.rs-info{flex:1;}
+.rs-name{font-weight:700;font-size:.88rem;}
+.rs-meta{font-size:.7rem;color:var(--text2);margin-top:2px;}
+
+/* MAIN VIEW */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* PROGRESS HEADER */
+.prog-hdr{background:var(--card);border-bottom:1px solid var(--border);padding:10px 14px;flex-shrink:0;}
+.prog-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.prog-label{font-size:.72rem;font-weight:700;color:var(--text2);}
+.prog-count{font-size:.72rem;font-weight:700;margin-left:auto;}
+.prog-bar{height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:99px;transition:width .3s;}
+
+/* PARADAS LIST */
+.paradas{flex:1;overflow-y:auto;padding:8px 14px 120px;}
+.parada-block{margin-bottom:12px;}
+.parada-hdr{display:flex;align-items:center;gap:8px;padding:6px 2px 6px;position:sticky;top:0;background:var(--bg);z-index:2;}
+.parada-num{width:28px;height:28px;border-radius:50%;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;flex-shrink:0;}
+.parada-nome{font-size:.78rem;font-weight:700;}
+.parada-done{font-size:.62rem;font-weight:700;margin-left:auto;padding:2px 8px;border-radius:99px;}
+.parada-done.ok{background:var(--green-bg);color:var(--green);}
+.parada-done.pend{background:var(--bg2);color:var(--text3);}
+
+/* SEÇÃO ITEM */
+.sec-item{
+  background:var(--card);border:1.5px solid var(--border);
+  border-radius:11px;padding:13px 14px;
+  display:flex;align-items:center;gap:12px;
+  margin-bottom:6px;
+  transition:all .15s;
+}
+.sec-item.done-entrega{background:var(--green-bg);border-color:var(--green-bd);}
+.sec-item.done-recolh{background:var(--blue-bg);border-color:var(--blue-bd);}
+.sec-item.done-cartorio{background:#f0fdf6;border-color:#6ee7b0;}
+.sec-item.aguard-mes{background:var(--yellow-bg);border-color:var(--yellow-bd);}
+
+.si-check{
+  width:36px;height:36px;border-radius:9px;
+  border:2px solid var(--border2);background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;flex-shrink:0;transition:all .12s;
+}
+.sec-item.done-entrega  .si-check{background:var(--green);border-color:var(--green);color:#fff;}
+.sec-item.done-recolh   .si-check{background:var(--blue);border-color:var(--blue);color:#fff;}
+.sec-item.done-cartorio .si-check{background:#16a34a;border-color:#16a34a;color:#fff;}
+
+.si-info{flex:1;}
+.si-sec{font-weight:800;font-size:.98rem;}
+.si-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.si-status{font-size:.64rem;font-weight:700;margin-top:3px;}
+.si-status.ok   {color:var(--green);}
+.si-status.blue {color:var(--blue);}
+.si-status.warn {color:var(--yellow);}
+.si-status.off  {color:var(--text3);}
+
+.si-btn{
+  padding:9px 13px;border-radius:9px;font-size:.72rem;font-weight:800;
+  cursor:pointer;border:none;flex-shrink:0;
+  transition:all .12s;
+}
+.si-btn:active{transform:scale(.96);}
+.btn-entregar {background:#2a2a2a;color:#fff;}
+.btn-recolher {background:var(--blue);color:#fff;}
+.btn-cartorio {background:#16a34a;color:#fff;}
+.btn-aguardar {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);cursor:not-allowed;}
+
+/* FOOTER */
+.footer{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:10px 14px;box-shadow:0 -4px 20px rgba(0,0,0,.07);}
+.btn-cartorio-all{
+  width:100%;padding:15px;border-radius:12px;
+  font-size:.9rem;font-weight:800;cursor:pointer;border:none;
+  background:#2a2a2a;color:#fff;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-cartorio-all:disabled{background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+.btn-cartorio-all.ready{background:#16a34a;}
+
+/* OVERLAY */
+.overlay{position:fixed;inset:0;background:rgba(42,40,56,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.show{opacity:1;pointer-events:all;}
+.sheet{background:var(--card);border-radius:18px 18px 0 0;padding:20px 18px 36px;width:100%;max-width:460px;border-top:1px solid var(--border);}
+.sh-icon{font-size:2.4rem;text-align:center;margin-bottom:10px;}
+.sh-title{font-size:.98rem;font-weight:800;text-align:center;margin-bottom:5px;}
+.sh-sub{font-size:.78rem;color:var(--text2);text-align:center;margin-bottom:18px;line-height:1.5;white-space:pre-line;}
+.sh-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sbtn{padding:13px;border-radius:10px;font-size:.82rem;font-weight:700;cursor:pointer;border:none;}
+.sbtn.cancel{background:var(--bg2);color:var(--text2);}
+.sbtn.ok{background:#2a2a2a;color:#fff;}
+.sbtn.green{background:#16a34a;color:#fff;}
+
+/* TOAST */
+.toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* EMPTY STATE */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:12px;padding:40px;color:var(--text3);}
+.empty-icon{font-size:3rem;}
+.empty-txt{font-size:.88rem;font-weight:700;text-align:center;}
+.empty-sub{font-size:.76rem;text-align:center;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">S</div>
+  <div class="h-info">
+    <div class="h-title" id="h-title">SIME Motorista</div>
+    <div class="h-sub"   id="h-sub">Carregando rota...</div>
+  </div>
+  <div class="h-right">
+    <div class="fase-pill" id="fase-pill" style="background:var(--bg2);color:var(--text2);border-color:var(--border)">—</div>
+    <div class="h-clock"  id="clock">--:--</div>
+  </div>
+</div>
+
+<!-- VIEW: SELEÇÃO DE ROTA (sem ?rota=) -->
+<div id="view-sel" style="display:none;flex:1;overflow-y:auto;">
+  <div class="rota-sel">
+    <div class="rota-sel-title">Selecione sua rota</div>
+    <div id="rota-sel-list"></div>
+  </div>
+</div>
+
+<!-- VIEW: ROTA ATIVA -->
+<div id="view-main" class="main" style="display:none;">
+  <div class="prog-hdr">
+    <div class="prog-row">
+      <div class="prog-label" id="prog-label-ent">Entregas</div>
+      <div class="prog-count" id="prog-count-ent" style="color:var(--green)">0/0</div>
+    </div>
+    <div class="prog-bar" style="margin-bottom:6px;">
+      <div class="prog-fill" id="prog-fill-ent" style="width:0%;background:var(--green)"></div>
+    </div>
+    <div class="prog-row">
+      <div class="prog-label" id="prog-label-rec">Recolhimentos</div>
+      <div class="prog-count" id="prog-count-rec" style="color:var(--blue)">0/0</div>
+    </div>
+    <div class="prog-bar">
+      <div class="prog-fill" id="prog-fill-rec" style="width:0%;background:var(--blue)"></div>
+    </div>
+  </div>
+
+  <div class="paradas" id="paradas-list"></div>
+
+  <div class="footer">
+    <button class="btn-cartorio-all" id="btn-cartorio-all" disabled onclick="confirmarChegadaCartorio()">
+      🏁 Confirmar chegada de todas as urnas ao cartório
+    </button>
+  </div>
+</div>
+
+<!-- VIEW: EMPTY / ROTA NÃO ENCONTRADA -->
+<div id="view-empty" style="display:none;flex:1;display:none;">
+  <div class="empty">
+    <div class="empty-icon">🗺️</div>
+    <div class="empty-txt" id="empty-txt">Rota não encontrada</div>
+    <div class="empty-sub" id="empty-sub">Verifique o QR Code ou acesse pelo link correto.</div>
+  </div>
+</div>
+
+<!-- OVERLAY CONFIRMAÇÃO -->
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sh-icon"  id="sh-icon">✅</div>
+    <div class="sh-title" id="sh-title">Confirmar</div>
+    <div class="sh-sub"   id="sh-sub"></div>
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn ok"     id="sh-ok" onclick="sheetConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// DADOS DAS ROTAS (ordem de entrega = paradas)
+// ══════════════════════════════════════════════
+const ROTAS = {
+  '001':{ nome:'Rota 001', mun:'Campo Maior', paradas:[
+    {n:1,loc:'G.E. Profª Maroquinha',        secs:['0135','0144']},
+    {n:2,loc:'U.E. José Gomes Oliveira',      secs:['0180']},
+    {n:3,loc:"Salão Com. 'Mario Cazuza'",     secs:['0163']},
+  ]},
+  '002':{ nome:'Rota 002', mun:'Campo Maior', paradas:[
+    {n:1,loc:'Esc. Mun. R.A. Maximino',       secs:['0187']},
+    {n:2,loc:'Assoc. Moradores Tangará',       secs:['0209']},
+    {n:3,loc:'Salão Com. Santo Antônio',       secs:['0164']},
+    {n:4,loc:'Esc. Reassentamento Corredores', secs:['0186']},
+    {n:5,loc:'Salão Com. Corredores',          secs:['0195','0234']},
+  ]},
+  '003':{ nome:'Rota 003', mun:'Campo Maior', paradas:[
+    {n:1,loc:'U.E. Linoca Gayoso',             secs:['0141','0192','0244']},
+    {n:2,loc:'U.E. José Gonçalves Oliveira',   secs:['0196']},
+  ]},
+  '004':{ nome:'Rota 004', mun:'Campo Maior', paradas:[
+    {n:1,loc:'G.E. Treze de Março',            secs:['0063','0064','0065','0066','0124','0145','0181']},
+    {n:2,loc:'FSESP',                          secs:['0062','0122']},
+    {n:3,loc:'Esc. Mun. N.S. de Fátima',      secs:['0242','0248','0256']},
+    {n:4,loc:'U.E. Vida Verde',                secs:['0205','0217','0233','0255']},
+  ]},
+  '005':{ nome:'Rota 005', mun:'Campo Maior', paradas:[
+    {n:1,loc:'Sec. Est. de Fazenda',           secs:['0044','0191']},
+    {n:2,loc:'G.E. Marion Saraiva',            secs:['0029','0030','0031','0123','0148','0259']},
+    {n:3,loc:'CAIC',                           secs:['0071','0155','0202','0223']},
+    {n:4,loc:'IFPI',                           secs:['0240','0251']},
+  ]},
+  '006':{ nome:'Rota 006', mun:'Campo Maior', paradas:[
+    {n:1,loc:'Col. Est. Profª Raimundinho',    secs:['0017','0018','0019','0020','0157']},
+    {n:2,loc:'Sec. Mun. de Educação',          secs:['0006','0012','0149']},
+    {n:3,loc:'Clube dos Comerciários',         secs:['0015','0016','0125']},
+    {n:4,loc:'Prefeitura Municipal',           secs:['0045','0046','0047','0116','0117']},
+    {n:5,loc:'SAAE',                           secs:['0005']},
+    {n:6,loc:'G.E. Valdivino Tito',            secs:['0033','0034','0035','0036','0115','0128']},
+    {n:7,loc:'Centro Ed. JA Mulata Lima',      secs:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},
+    {n:8,loc:'EMATER',                         secs:['0004','0014','0037','0038']},
+  ]},
+  '007':{ nome:'Rota 007', mun:'Sigefredo Pacheco', paradas:[
+    {n:1,loc:'U.E. Ivon Pacheco',              secs:['0204','0247']},
+    {n:2,loc:'G.E. Manoel Francisco',          secs:['0136','0152']},
+    {n:3,loc:'U.E. Antônio Pereira Santos',    secs:['0140','0201']},
+    {n:4,loc:'G.E. Manoel Pereira Reis',       secs:['0189']},
+    {n:5,loc:'U.E. Miguel Rocha',              secs:['0159','0246']},
+  ]},
+  '008':{ nome:'Rota 008', mun:'Sigefredo Pacheco', paradas:[
+    {n:1,loc:'U.E. da Paz Sousa',              secs:['0079','0080','0081','0133','0252']},
+    {n:2,loc:'U.E. Antonio Cícero Oliveira',   secs:['0166','0228']},
+    {n:3,loc:'U.E. Manoel Rodrigues Melo',     secs:['0213']},
+    {n:4,loc:'U.E. Antonio Carmelo Barbosa',   secs:['0167','0230']},
+  ]},
+  '009':{ nome:'Rota 009', mun:'Sigefredo Pacheco', paradas:[
+    {n:1,loc:'G.E. Monsenhor Mateus',          secs:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},
+    {n:2,loc:'U.E. José Ribeiro da Luz',       secs:['0203','0211','0222']},
+    {n:3,loc:'U.E. Dr. Jerônimo S. Silva',     secs:['0241','0250']},
+    {n:4,loc:'Esc. Rural Sto. Antônio C.V.',   secs:['0193','0214']},
+  ]},
+  '010':{ nome:'Rota 010', mun:'Campo Maior / Jatobá', paradas:[
+    {n:1,loc:'G.E. Aguida M. Conceição',       secs:['0147','0173','0198','0215','0235']},
+    {n:2,loc:'U.E. Oscar Gil C. Branco',       secs:['0165','0208','0253']},
+    {n:3,loc:'Esc. Mun. A.M. Castelo Branco',  secs:['0212','0245']},
+    {n:4,loc:'G.E. Anita Gaioso',              secs:['0175','0238']},
+    {n:5,loc:'U.E. José Cândido Gaioso',       secs:['0178']},
+  ]},
+  '011':{ nome:'Rota 011', mun:'Campo Maior / Jatobá', paradas:[
+    {n:1,loc:'Posto Saúde da Varjota',         secs:['0218']},
+    {n:2,loc:'Esc. Mun. Mano Castelo Branco',  secs:['0185','0226']},
+    {n:3,loc:'U.E. Rafael Nogueira Passos',    secs:['0199']},
+    {n:4,loc:'G.E. de Tanques',                secs:['0179','0194']},
+    {n:5,loc:'Igreja da Morada Nova',          secs:['0221','0243']},
+    {n:6,loc:'Escola Mun. da Montanha',        secs:['0188']},
+    {n:7,loc:'U.E. Francisco F.P. Oliveira',   secs:['0216','0227']},
+  ]},
+  '012':{ nome:'Rota 012', mun:'Jatobá / Sigefredo', paradas:[
+    {n:1,loc:'Posto Saúde M. Sousa Dié',       secs:['0160','0162','0258']},
+    {n:2,loc:'Salão Comunitário',              secs:['0200']},
+    {n:3,loc:'G.E. Prof. Francisco Luis',      secs:['0168']},
+    {n:4,loc:'U.E. Tertuliano Pereira',        secs:['0101','0102','0103','0112','0171','0172','0176']},
+    {n:5,loc:'U.E. João Félix de Andrade',     secs:['0207','0239']},
+    {n:6,loc:'Creche Mamãe Lima M. Oliveira',  secs:['0174','0210','0232','0260']},
+    {n:7,loc:'Esc. Mun. A.F. Ribeiro Paz',    secs:['0225']},
+    {n:8,loc:'U.E. Jovino Josino Oliveira',    secs:['0138','0231']},
+  ]},
+};
+
+// ══════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════
+const MOTOR_KEY = 'sime_motorista_v1';
+const MESA_KEY  = 'sime_mesa_v1';
+
+function loadMotor(){ try{return JSON.parse(localStorage.getItem(MOTOR_KEY)||'{}')}catch(e){return{}} }
+function saveMotor(d){ localStorage.setItem(MOTOR_KEY,JSON.stringify(d)); }
+function loadMesa() { try{return JSON.parse(localStorage.getItem(MESA_KEY)||'{}')}catch(e){return{}} }
+function saveMesa(d){ localStorage.setItem(MESA_KEY,JSON.stringify(d)); }
+
+// Estado por rota: { [rota]: { entregue:{[sec]:ts}, recolhido:{[sec]:ts}, cartorio_ts:null } }
+function getRotaState(rota){
+  const d = loadMotor();
+  if(!d[rota]) d[rota] = { entregue:{}, recolhido:{}, cartorio_ts:null };
+  saveMotor(d);
+  return d[rota];
+}
+function patchRotaState(rota,patch){
+  const d=loadMotor(); d[rota]={...getRotaState(rota),...patch}; saveMotor(d);
+}
+
+// ══════════════════════════════════════════════
+// FASE — entrega (D-1) ou recolhimento (Dia D)
+// ══════════════════════════════════════════════
+function getFase(){
+  try{
+    const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
+    const t=el['turno'+(el.turno_ativo||1)]||{};
+    const hoje=new Date().toISOString().slice(0,10);
+    if(t.d && hoje===t.d)    return 'recolhimento';
+    if(t.d1&& hoje===t.d1)   return 'entrega';
+    if(t.d && hoje>t.d)      return 'recolhimento';
+    if(t.d1&& hoje>t.d1)     return 'entrega';
+  }catch(e){}
+  // Fallback: detectar pelo horário — antes das 12h = entrega, depois = recolhimento
+  return new Date().getHours() < 12 ? 'entrega' : 'recolhimento';
+}
+
+// ══════════════════════════════════════════════
+// ESTADO ATUAL DA ROTA
+// ══════════════════════════════════════════════
+let curRota = null;
+let fase    = 'entrega';
+let sheetAction = null;
+let toastTimer  = null;
+
+// ══════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════
+function renderRota(){
+  if(!curRota || !ROTAS[curRota]){ showEmpty('Rota não encontrada','Verifique o QR Code ou o link de acesso.'); return; }
+  const rdata = ROTAS[curRota];
+  const rst   = getRotaState(curRota);
+  const mesa  = loadMesa();
+
+  document.getElementById('h-title').textContent = rdata.nome;
+  document.getElementById('h-sub').textContent   = rdata.mun;
+
+  const pill = document.getElementById('fase-pill');
+  if(fase==='entrega'){
+    pill.textContent='🚗 Entrega'; pill.style.background='var(--yellow-bg)'; pill.style.color='var(--yellow)'; pill.style.borderColor='var(--yellow-bd)';
+  } else {
+    pill.textContent='📦 Recolhimento'; pill.style.background='var(--blue-bg)'; pill.style.color='var(--blue)'; pill.style.borderColor='var(--blue-bd)';
+  }
+
+  // Totais
+  const allSecs = rdata.paradas.flatMap(p=>p.secs);
+  const totSecs = allSecs.length;
+  const totEnt  = Object.keys(rst.entregue).length;
+  const totRec  = Object.keys(rst.recolhido).length;
+  const pctEnt  = totSecs ? Math.round(totEnt/totSecs*100) : 0;
+  const pctRec  = totSecs ? Math.round(totRec/totSecs*100) : 0;
+
+  document.getElementById('prog-count-ent').textContent = `${totEnt}/${totSecs}`;
+  document.getElementById('prog-fill-ent').style.width  = pctEnt+'%';
+  document.getElementById('prog-count-rec').textContent = `${totRec}/${totSecs}`;
+  document.getElementById('prog-fill-rec').style.width  = pctRec+'%';
+
+  // Mostrar/ocultar barra de recolhimento
+  document.getElementById('prog-label-ent').parentElement.parentElement.style.display = 'block';
+
+  // Botão cartório
+  const btnCar = document.getElementById('btn-cartorio-all');
+  const todasRecolh = totRec === totSecs;
+  btnCar.disabled = !todasRecolh || !!rst.cartorio_ts;
+  btnCar.className = 'btn-cartorio-all' + (todasRecolh&&!rst.cartorio_ts?' ready':'');
+  if(rst.cartorio_ts){
+    btnCar.innerHTML = `✅ Chegada ao cartório confirmada — ${fmtTs(rst.cartorio_ts)}`;
+  } else if(todasRecolh){
+    btnCar.innerHTML = '🏁 Confirmar chegada de todas as urnas ao cartório';
+  } else {
+    const falta = totSecs - totRec;
+    btnCar.innerHTML = `🔒 ${falta} urna${falta>1?'s':''} ainda não recolhida${falta>1?'s':''}`;
+  }
+
+  // Paradas
+  const list = document.getElementById('paradas-list');
+  list.innerHTML = '';
+
+  rdata.paradas.forEach(parada=>{
+    const block = document.createElement('div');
+    block.className = 'parada-block';
+
+    const todasEnt = parada.secs.every(s=>rst.entregue[s]);
+    const todasRec = parada.secs.every(s=>rst.recolhido[s]);
+
+    block.innerHTML = `<div class="parada-hdr">
+      <div class="parada-num">${parada.n}</div>
+      <div class="parada-nome">${parada.loc}</div>
+      <div class="parada-done ${(fase==='entrega'?todasEnt:todasRec)?'ok':'pend'}">
+        ${(fase==='entrega'?todasEnt:todasRec)?'✓ Concluída':'Pendente'}
+      </div>
+    </div>`;
+
+    parada.secs.forEach(sec=>{
+      const entregue  = !!rst.entregue[sec];
+      const recolhido = !!rst.recolhido[sec];
+      const cartorio  = !!rst.cartorio_ts;
+      const mesaEst   = mesa[sec];
+      const mesaEnc   = mesaEst?.enc || mesaEst?.urna;
+
+      // Classe do item
+      let cls = '';
+      let statusTxt='', statusCls='off', btnHtml='';
+
+      if(fase==='entrega'){
+        if(entregue){
+          cls = 'done-entrega';
+          statusTxt = `✓ Entregue às ${fmtTs(rst.entregue[sec])}`;
+          statusCls = 'ok';
+          btnHtml = `<div style="font-size:.65rem;color:var(--green);font-weight:700">✓</div>`;
+        } else {
+          statusTxt = 'Aguardando entrega';
+          btnHtml = `<button class="si-btn btn-entregar" onclick="confirmarEntrega('${sec}','${parada.n}','${parada.loc}')">📦 Entregar</button>`;
+        }
+      } else {
+        // Recolhimento
+        if(cartorio || recolhido){
+          cls = recolhido&&rst.cartorio_ts ? 'done-cartorio' : 'done-recolh';
+          statusTxt = rst.cartorio_ts
+            ? `📦 No cartório`
+            : `✓ Recolhida às ${fmtTs(rst.recolhido[sec])}`;
+          statusCls = recolhido ? 'blue' : 'ok';
+          btnHtml = `<div style="font-size:.65rem;color:var(--blue);font-weight:700">✓</div>`;
+        } else if(!mesaEnc){
+          cls = 'aguard-mes';
+          statusTxt = 'Aguardando encerramento';
+          statusCls = 'warn';
+          btnHtml = `<button class="si-btn btn-aguardar" disabled>⏳ Aguardando</button>`;
+        } else {
+          statusTxt = 'Pronta para recolher';
+          statusCls = 'ok';
+          btnHtml = `<button class="si-btn btn-recolher" onclick="confirmarRecolhimento('${sec}','${parada.n}','${parada.loc}')">🚗 Recolher</button>`;
+        }
+      }
+
+      const item = document.createElement('div');
+      item.className = `sec-item ${cls}`;
+      item.innerHTML = `
+        <div class="si-check">${entregue&&fase==='entrega'?'✓':recolhido&&fase==='recolhimento'?'✓':''}</div>
+        <div class="si-info">
+          <div class="si-sec">Seção ${parseInt(sec)}</div>
+          <div class="si-loc">${parada.loc}</div>
+          <div class="si-status ${statusCls}">${statusTxt}</div>
+        </div>
+        ${btnHtml}`;
+      block.appendChild(item);
+    });
+
+    list.appendChild(block);
+  });
+}
+
+// ══════════════════════════════════════════════
+// AÇÕES — confirmações
+// ══════════════════════════════════════════════
+function confirmarEntrega(sec, paradaN, paradaLoc){
+  openSheet({
+    icon:'📦',
+    title:`Seção ${parseInt(sec)}`,
+    sub:`Confirmar entrega da urna na\n${paradaLoc}\nParada ${paradaN}`,
+    okLabel:'✓ Confirmar entrega',
+    okCls:'ok',
+    action:()=>{
+      const rst = getRotaState(curRota);
+      rst.entregue[sec] = Date.now();
+      patchRotaState(curRota, {entregue:rst.entregue});
+      vib([30,10,30]);
+      showToast(`✓ Seção ${parseInt(sec)} entregue`);
+      renderRota();
+    }
+  });
+}
+
+function confirmarRecolhimento(sec, paradaN, paradaLoc){
+  openSheet({
+    icon:'🚗',
+    title:`Seção ${parseInt(sec)}`,
+    sub:`Confirmar recolhimento da urna em\n${paradaLoc}\nParada ${paradaN}`,
+    okLabel:'✓ Confirmar recolhimento',
+    okCls:'ok',
+    action:()=>{
+      const rst = getRotaState(curRota);
+      rst.recolhido[sec] = Date.now();
+      patchRotaState(curRota, {recolhido:rst.recolhido});
+      // Atualiza sime_mesa_v1 também (resilient — qualquer um pode confirmar)
+      const mesa = loadMesa();
+      if(!mesa[sec]) mesa[sec]={};
+      mesa[sec].urna = true;
+      saveMesa(mesa);
+      vib([30,10,30]);
+      showToast(`✓ Seção ${parseInt(sec)} recolhida`);
+      renderRota();
+    }
+  });
+}
+
+function confirmarChegadaCartorio(){
+  const rst    = getRotaState(curRota);
+  const rdata  = ROTAS[curRota];
+  const totSec = rdata.paradas.flatMap(p=>p.secs).length;
+  const totRec = Object.keys(rst.recolhido).length;
+  if(totRec < totSec){ showToast('⚠ Ainda há urnas não recolhidas'); return; }
+
+  openSheet({
+    icon:'🏁',
+    title:'Chegada ao cartório',
+    sub:`Todas as ${totSec} urnas da ${ROTAS[curRota].nome}\nestão no cartório?`,
+    okLabel:'✓ Confirmar chegada',
+    okCls:'green',
+    action:()=>{
+      const ts = Date.now();
+      patchRotaState(curRota, {cartorio_ts: ts});
+      // Atualiza urna_cartorio em todas as seções da rota no sime_mesa_v1
+      const mesa = loadMesa();
+      rdata.paradas.forEach(p=>p.secs.forEach(s=>{
+        if(!mesa[s]) mesa[s]={};
+        mesa[s].urna = true;
+        mesa[s].urna_cartorio = true;
+      }));
+      saveMesa(mesa);
+      vib([80,40,80,40,80]);
+      showToast('🏁 Chegada ao cartório confirmada!');
+      renderRota();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// SELEÇÃO DE ROTA (sem ?rota=)
+// ══════════════════════════════════════════════
+function renderSelecaoRota(){
+  const list = document.getElementById('rota-sel-list');
+  list.innerHTML = '';
+  Object.entries(ROTAS).forEach(([id,rdata])=>{
+    const rst = getRotaState(id);
+    const allSecs = rdata.paradas.flatMap(p=>p.secs);
+    const ent = Object.keys(rst.entregue).length;
+    const rec = Object.keys(rst.recolhido).length;
+    const div = document.createElement('div');
+    div.className = 'rs-card';
+    div.innerHTML = `
+      <div class="rs-num">${id}</div>
+      <div class="rs-info">
+        <div class="rs-name">${rdata.nome}</div>
+        <div class="rs-meta">${rdata.mun} · ${allSecs.length} seções · Entregues: ${ent} · Recolhidas: ${rec}</div>
+      </div>
+      <div style="font-size:1rem">›</div>`;
+    div.onclick = ()=>{ curRota=id; showMain(); };
+    list.appendChild(div);
+  });
+  document.getElementById('view-sel').style.display='block';
+  document.getElementById('view-main').style.display='none';
+  document.getElementById('view-empty').style.display='none';
+  document.getElementById('h-title').textContent = 'SIME Motorista';
+  document.getElementById('h-sub').textContent   = 'Selecione sua rota';
+}
+
+function showMain(){
+  document.getElementById('view-sel').style.display='none';
+  document.getElementById('view-main').style.display='flex';
+  document.getElementById('view-empty').style.display='none';
+  renderRota();
+}
+
+function showEmpty(txt,sub){
+  document.getElementById('view-empty').style.display='flex';
+  document.getElementById('view-main').style.display='none';
+  document.getElementById('view-sel').style.display='none';
+  document.getElementById('empty-txt').textContent=txt;
+  document.getElementById('empty-sub').textContent=sub;
+}
+
+// ══════════════════════════════════════════════
+// SHEET
+// ══════════════════════════════════════════════
+function openSheet({icon,title,sub,okLabel,okCls,action}){
+  sheetAction=action;
+  document.getElementById('sh-icon').textContent  = icon;
+  document.getElementById('sh-title').textContent = title;
+  document.getElementById('sh-sub').textContent   = sub;
+  const ok = document.getElementById('sh-ok');
+  ok.textContent = okLabel;
+  ok.className = 'sbtn '+(okCls||'ok');
+  document.getElementById('overlay').classList.add('show');
+}
+function closeSheet(){ document.getElementById('overlay').classList.remove('show'); sheetAction=null; }
+function sheetConfirm(){ const a=sheetAction; closeSheet(); if(a) a(); }
+document.getElementById('overlay').addEventListener('click',e=>{
+  if(e.target===document.getElementById('overlay')) closeSheet();
+});
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+function fmtTs(ts){
+  if(!ts) return '—';
+  const d=new Date(ts);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+}
+function vib(pat){
+  try{ navigator.vibrate(Array.isArray(pat)?pat:[pat]); }catch(e){}
+}
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+tick(); setInterval(tick,10000);
+
+// ══════════════════════════════════════════════
+// INIT — detecta ?rota= na URL
+// ══════════════════════════════════════════════
+(function init(){
+  fase = getFase();
+  const params = new URLSearchParams(window.location.search);
+  const rotaId = params.get('rota')?.padStart(3,'0');
+
+  if(rotaId){
+    if(ROTAS[rotaId]){
+      curRota = rotaId;
+      showMain();
+    } else {
+      showEmpty('Rota não encontrada', `"Rota ${rotaId}" não existe neste sistema.\nVerifique o QR Code.`);
+    }
+  } else {
+    renderSelecaoRota();
+  }
+
+  setInterval(renderRota, 10000);
+})();
+</script>
+</body>
+</html>

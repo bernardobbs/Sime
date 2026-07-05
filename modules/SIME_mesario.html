@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SIME · Mesário</title>
+<style>
+:root {
+  --body-bg:#16161e;
+  --remote-bg:#1e1e28;
+  --display-bg:#0b0b0e;
+  --text:#e8e8f2;
+  --text2:#8080a8;
+  --text3:#3a3a55;
+
+  --btn-dark:#252532;
+  --btn-darker:#181824;
+  --btn-shadow:rgba(0,0,0,.7);
+
+  --green:#22c55e; --green-d:#0d2218; --green-s:#061510;
+  --yellow:#f59e0b; --yellow-d:#3d2608; --yellow-s:#221400;
+  --blue:#4f7dff;  --blue-d:#0e1e46;  --blue-s:#070e28;
+  --teal:#14b8a6;  --teal-d:#062c28;  --teal-s:#031614;
+  --red:#ef4444;   --red-d:#3a0e0e;   --red-s:#200606;
+  --orange:#f97316;--orange-d:#3d1508;--orange-s:#220a00;
+  --purple:#a855f7;--purple-d:#2d1248;--purple-s:#1a0a2a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
+
+/* ── CORPO DO CONTROLE ── */
+.remote{
+  width:100%;max-width:390px;
+  background:linear-gradient(160deg,#232330 0%,#1c1c26 50%,#181820 100%);
+  border-left:1px solid #2a2a3a;border-right:1px solid #2a2a3a;
+  display:flex;flex-direction:column;padding:16px 18px 40px;gap:12px;
+  position:relative;
+}
+.remote::before,.remote::after{content:'';position:absolute;top:80px;bottom:80px;width:4px;background:linear-gradient(to bottom,transparent,#2a2a40 20%,#2a2a40 80%,transparent);border-radius:2px;}
+.remote::before{left:0;} .remote::after{right:0;}
+
+/* ── DISPLAY ── */
+.display{background:var(--display-bg);border-radius:14px;padding:12px 14px;border:1px solid #22223a;box-shadow:inset 0 3px 10px rgba(0,0,0,.6);}
+.d-brand{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px;}
+.d-sec{font-size:1.55rem;font-weight:900;color:var(--text);line-height:1;}
+.d-local{font-size:.7rem;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.d-row{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;}
+.dc{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:99px;white-space:nowrap;}
+.dc.ok  {background:rgba(34,197,94,.14);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+.dc.act {background:rgba(79,125,255,.14);color:var(--blue);border:1px solid rgba(79,125,255,.25);}
+.dc.warn{background:rgba(245,158,11,.14);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+.dc.err {background:rgba(239,68,68,.14);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+.dc.off {background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.07);}
+
+/* ── SEPARADORES ── */
+.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);text-align:center;display:flex;align-items:center;gap:8px;}
+.sec-label::before,.sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(to right,transparent,#2a2a40,transparent);}
+
+/* ── BOTÃO BASE (tecla física) ── */
+.rbtn{
+  position:relative;border:none;border-radius:14px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;padding:16px 8px 14px;
+  transition:transform .07s,box-shadow .07s;
+  -webkit-user-select:none;user-select:none;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+.rbtn:active,.rbtn.pressing{transform:translateY(4px)!important;}
+.rbtn.disabled{opacity:.3;pointer-events:none;}
+
+/* tamanhos */
+.rbtn.sz-sm{padding:12px 6px 10px;}
+.rbtn.sz-lg{padding:18px 10px 16px;}
+.rbtn.wide{flex-direction:row;gap:10px;padding:15px 18px;justify-content:flex-start;border-radius:14px;}
+.rbtn.wide .ricon{font-size:1.3rem;}
+.rbtn.wide .rlabel{text-align:left;font-size:.74rem;}
+
+/* ícone e label */
+.ricon{font-size:1.5rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));}
+.rlabel{font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.65);text-align:center;line-height:1.25;}
+.rsub{font-size:.56rem;color:rgba(255,255,255,.3);text-align:center;margin-top:-2px;}
+.rbtn.wide .rsub{text-align:left;}
+
+/* badge de status no canto */
+.rbadge{position:absolute;top:6px;right:8px;font-size:.62rem;font-weight:800;}
+
+/* paleta de cores */
+.c-neutral{background:linear-gradient(160deg,#2d2d3e,#212130);box-shadow:0 5px 0 #141420,0 7px 14px var(--btn-shadow);}
+.c-neutral:active,.c-neutral.pressing{box-shadow:0 2px 0 #141420,0 3px 7px var(--btn-shadow);}
+
+.c-green {background:linear-gradient(160deg,#1a3d24,#122b1a);box-shadow:0 5px 0 var(--green-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(34,197,94,.15);}
+.c-green:active,.c-green.pressing{box-shadow:0 2px 0 var(--green-s),0 3px 7px var(--btn-shadow);}
+
+.c-yellow{background:linear-gradient(160deg,#3d2c0a,#2a1e06);box-shadow:0 5px 0 var(--yellow-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(245,158,11,.15);}
+.c-yellow:active,.c-yellow.pressing{box-shadow:0 2px 0 var(--yellow-s),0 3px 7px var(--btn-shadow);}
+
+.c-blue  {background:linear-gradient(160deg,#162048,#0e162e);box-shadow:0 5px 0 var(--blue-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(79,125,255,.15);}
+.c-blue:active,.c-blue.pressing{box-shadow:0 2px 0 var(--blue-s),0 3px 7px var(--btn-shadow);}
+
+.c-teal  {background:linear-gradient(160deg,#0a2e2a,#061e1a);box-shadow:0 5px 0 var(--teal-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(20,184,166,.15);}
+.c-teal:active,.c-teal.pressing{box-shadow:0 2px 0 var(--teal-s),0 3px 7px var(--btn-shadow);}
+
+.c-red   {background:linear-gradient(160deg,#3a1212,#260c0c);box-shadow:0 5px 0 var(--red-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(239,68,68,.15);}
+.c-red:active,.c-red.pressing{box-shadow:0 2px 0 var(--red-s),0 3px 7px var(--btn-shadow);}
+
+.c-orange{background:linear-gradient(160deg,#3d1a08,#2a1004);box-shadow:0 5px 0 var(--orange-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(249,115,22,.15);}
+.c-orange:active,.c-orange.pressing{box-shadow:0 2px 0 var(--orange-s),0 3px 7px var(--btn-shadow);}
+
+.c-purple{background:linear-gradient(160deg,#2a1040,#1c0a2c);box-shadow:0 5px 0 var(--purple-s),0 7px 14px var(--btn-shadow);border-top-color:rgba(168,85,247,.15);}
+.c-purple:active,.c-purple.pressing{box-shadow:0 2px 0 var(--purple-s),0 3px 7px var(--btn-shadow);}
+
+/* estado "problema" no botão de mesa */
+.c-warn-state{background:linear-gradient(160deg,#3d2c0a,#2a1e06)!important;box-shadow:0 5px 0 var(--yellow-s),0 7px 14px var(--btn-shadow)!important;animation:pulse-warn 1.4s infinite;}
+@keyframes pulse-warn{0%,100%{box-shadow:0 5px 0 var(--yellow-s),0 0 0 0 rgba(245,158,11,0)}50%{box-shadow:0 5px 0 var(--yellow-s),0 0 0 6px rgba(245,158,11,0.2);}}
+
+/* panico ativo */
+.c-panic-active{animation:pulse-panic 1s infinite;}
+@keyframes pulse-panic{0%,100%{box-shadow:0 5px 0 var(--red-s),0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 5px 0 var(--red-s),0 0 0 8px rgba(239,68,68,0.25);}}
+
+/* panico resolvido */
+.c-panic-resolved{background:linear-gradient(160deg,#0d2218,#081610)!important;box-shadow:0 5px 0 var(--green-s),0 7px 14px var(--btn-shadow)!important;}
+
+/* ── GRIDS ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+.g1{display:flex;flex-direction:column;gap:10px;}
+
+/* ── PAINEL MESA ── */
+.mesa-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;padding:12px 4px 10px;
+  border-radius:12px;border:none;cursor:pointer;
+  transition:transform .07s,box-shadow .07s;
+  -webkit-user-select:none;user-select:none;
+  border-top:1px solid rgba(255,255,255,.06);
+  position:relative;
+}
+.mesa-btn:active{transform:translateY(3px);}
+.mesa-icon{font-size:1.2rem;}
+.mesa-label{font-size:.58rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:rgba(255,255,255,.5);text-align:center;line-height:1.2;}
+.mesa-dot{width:8px;height:8px;border-radius:50%;background:#2a2a3a;border:1px solid #33334a;margin-top:2px;transition:all .3s;}
+.mesa-dot.chegou{background:var(--green);box-shadow:0 0 6px var(--green);border-color:var(--green);}
+.mesa-dot.problema{background:var(--yellow);box-shadow:0 0 6px var(--yellow);border-color:var(--yellow);animation:pulse-warn 1.4s infinite;}
+
+/* neutro base mesa */
+.mesa-btn.m-neutro{background:linear-gradient(160deg,#2a2a3a,#1e1e2e);box-shadow:0 4px 0 #0e0e1a,0 6px 12px var(--btn-shadow);}
+.mesa-btn.m-chegou{background:linear-gradient(160deg,#162a1e,#0e1e14);box-shadow:0 4px 0 var(--green-s),0 6px 12px var(--btn-shadow);}
+.mesa-btn.m-prob  {background:linear-gradient(160deg,#3a2a08,#281e04);box-shadow:0 4px 0 var(--yellow-s),0 6px 12px var(--btn-shadow);}
+
+/* ── MODAL OVERLAY ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.show{opacity:1;pointer-events:all;}
+.sheet{background:#1e1e2c;border-radius:20px 20px 0 0;padding:22px 20px 36px;width:100%;max-width:390px;border-top:1px solid #2a2a40;transform:translateY(20px);transition:transform .22s;}
+.overlay.show .sheet{transform:translateY(0);}
+.sh-icon{font-size:2.6rem;text-align:center;margin-bottom:10px;}
+.sh-title{font-size:1rem;font-weight:800;color:var(--text);text-align:center;margin-bottom:5px;}
+.sh-sub{font-size:.8rem;color:var(--text2);text-align:center;margin-bottom:18px;line-height:1.5;}
+.sh-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sbtn{padding:13px;border-radius:11px;font-size:.83rem;font-weight:700;cursor:pointer;border:none;transition:all .1s;}
+.sbtn.cancel{background:#2a2a3e;color:var(--text2);}
+.sbtn.ok{color:#fff;}
+
+/* fila counter */
+.fila-inline{
+  background:linear-gradient(160deg,#2a1e06,#3d2c0a);
+  border-radius:14px;
+  border-top:1px solid rgba(245,158,11,.18);
+  box-shadow:0 5px 0 var(--yellow-s),0 7px 14px var(--btn-shadow);
+  padding:10px 14px 14px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  transition:all .15s;
+}
+.fila-lbl{font-size:.62rem;font-weight:800;letter-spacing:.1em;color:#a07830;text-transform:uppercase;}
+.fila-num{font-size:2.6rem;font-weight:900;color:#fbbf24;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.4);}
+.fila-num.zero{color:#9090a8;font-size:2rem;}
+.fila-row{display:flex;align-items:center;gap:8px;width:100%;}
+.fbtn{
+  flex:1;height:52px;border-radius:11px;border:none;cursor:pointer;
+  font-size:1.4rem;font-weight:900;
+  transition:all .08s;
+  display:flex;align-items:center;justify-content:center;
+}
+.fbtn:active{transform:scale(.93);}
+.fbtn.minus{background:#1a1020;color:#f97316;}
+.fbtn.plus {background:#0a2010;color:#34d399;}
+.fbtn.big  {font-size:1.1rem;font-weight:800;}
+.fbtn.zero-btn{flex:none;width:52px;background:#1a1a2e;color:#6060a8;font-size:.75rem;font-weight:700;}
+.fila-sub-lbl{font-size:.68rem;color:#806040;margin-top:2px;}
+.fcount-btn{width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;font-size:1.3rem;font-weight:700;background:#2a2a3e;color:var(--text);transition:all .1s;}
+.fcount-btn:active{transform:scale(.92);}
+.fcount-val{font-size:2rem;font-weight:900;color:var(--text);min-width:60px;text-align:center;}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(12px);background:#1e1e2e;color:var(--text);padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;border:1px solid #2a2a40;box-shadow:0 4px 16px rgba(0,0,0,.5);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── LEDs topo ── */
+.led-row{display:flex;justify-content:center;gap:7px;padding:2px 0;}
+.led{width:7px;height:7px;border-radius:50%;background:#1e1e2e;border:1px solid #2a2a3a;transition:all .3s;}
+.led.on{background:var(--green);box-shadow:0 0 5px var(--green);border-color:var(--green);}
+.led.warn{background:var(--yellow);box-shadow:0 0 5px var(--yellow);border-color:var(--yellow);}
+.led.err{background:var(--red);box-shadow:0 0 5px var(--red);border-color:var(--red);}
+
+/* MÍDIA */
+.midia-block{padding:14px 14px 0;margin-top:4px;}
+.midia-hdr{font-size:.62rem;font-weight:800;letter-spacing:.1em;color:#9090b8;margin-bottom:8px;}
+.midia-btn{
+  width:100%;padding:16px 14px;border-radius:13px;
+  font-size:.95rem;font-weight:800;cursor:pointer;border:none;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  transition:all .15s;
+}
+.midia-btn:active:not(:disabled){transform:scale(.97);}
+.midia-btn.locked{
+  background:#1a1828;color:#5050780;cursor:not-allowed;
+  border:1.5px dashed #3a3858;color:#6060a0;
+}
+.midia-btn.ready{
+  background:linear-gradient(160deg,#2a1660,#4a28a0);
+  color:#fff;
+  border-top:1px solid rgba(160,130,255,.25);
+  box-shadow:0 5px 0 #1a0c60,0 7px 14px rgba(0,0,0,.4);
+}
+.midia-btn.ready:active{box-shadow:0 2px 0 #1a0c60,0 3px 7px rgba(0,0,0,.3);}
+.midia-btn.done{
+  background:linear-gradient(160deg,#0a2e18,#1a5c38);
+  color:#6ee7b0;cursor:default;
+  border-top:1px solid rgba(100,220,160,.2);
+  box-shadow:0 5px 0 #062010,0 7px 14px rgba(0,0,0,.4);
+}
+.midia-tip{font-size:.68rem;color:#6060a0;text-align:center;margin-top:7px;}
+.midia-tip.ok{color:#4a9060;}
+</style>
+</head>
+<body>
+<div class="remote">
+
+  <!-- ── DISPLAY ── -->
+  <div class="display">
+    <div class="d-brand">SIME · Mesário</div>
+    <div class="d-sec">Seção 063</div>
+    <div class="d-local">Col. Est. Profª Raimundinho Andrade — Campo Maior</div>
+    <div class="d-row" id="display-chips">
+      <span class="dc off" id="dc-mesa">Mesa incompleta</span>
+      <span class="dc off" id="dc-zero">Zerésima</span>
+      <span class="dc off" id="dc-vot">Votação</span>
+      <span class="dc off" id="dc-enc">Encerrada</span>
+      <span class="dc off" id="dc-bu">BU</span>
+    </div>
+  </div>
+
+  <!-- LEDs -->
+  <div class="led-row">
+    <div class="led" id="led-p" title="Presidente"></div>
+    <div class="led" id="led-m1" title="1º Mesário"></div>
+    <div class="led" id="led-m2" title="2º Mesário"></div>
+    <div class="led" id="led-sec" title="Secretário"></div>
+    <div style="width:16px"></div>
+    <div class="led" id="led-zero" title="Zerésima"></div>
+    <div class="led" id="led-vot" title="Votação"></div>
+    <div class="led" id="led-enc" title="Encerrada"></div>
+    <div class="led" id="led-bu" title="BU"></div>
+  </div>
+
+  <!-- ── SEÇÃO 1: CHEGADA DA MESA ── -->
+  <div class="sec-label">Chegada da mesa</div>
+
+  <div class="g4">
+    <button class="mesa-btn m-neutro" id="mb-pres" onclick="toggleMesa('pres')">
+      <span class="mesa-icon">👑</span>
+      <span class="mesa-label">Presi-<br>dente</span>
+      <div class="mesa-dot" id="dot-pres"></div>
+    </button>
+    <button class="mesa-btn m-neutro" id="mb-m1" onclick="toggleMesa('m1')">
+      <span class="mesa-icon">🙋</span>
+      <span class="mesa-label">1º<br>Mesário</span>
+      <div class="mesa-dot" id="dot-m1"></div>
+    </button>
+    <button class="mesa-btn m-neutro" id="mb-m2" onclick="toggleMesa('m2')">
+      <span class="mesa-icon">🙋</span>
+      <span class="mesa-label">2º<br>Mesário</span>
+      <div class="mesa-dot" id="dot-m2"></div>
+    </button>
+    <button class="mesa-btn m-neutro" id="mb-sec" onclick="toggleMesa('sec')">
+      <span class="mesa-icon">📋</span>
+      <span class="mesa-label">Secre-<br>tário</span>
+      <div class="mesa-dot" id="dot-sec"></div>
+    </button>
+  </div>
+
+  <!-- ── SEÇÃO 2: INÍCIO ── -->
+  <div class="sec-label">Abertura</div>
+
+  <div class="g2">
+    <button class="rbtn c-blue sz-lg" id="btn-zero" onclick="ask('zero')">
+      <span class="ricon">🖨️</span>
+      <span class="rlabel">Zerésima</span>
+      <span class="rsub">impressa</span>
+    </button>
+    <button class="rbtn c-green sz-lg" id="btn-vot" onclick="ask('vot')">
+      <span class="ricon">🗳️</span>
+      <span class="rlabel">Iniciar</span>
+      <span class="rsub">votação aberta</span>
+    </button>
+  </div>
+
+  <!-- ── SEÇÃO 3: ENCERRAMENTO (aparece após 17h) ── -->
+  <div class="sec-label" id="enc-label">Encerramento</div>
+
+  <div class="g2" id="enc-section">
+    <!-- FILA INLINE — sempre visível -->
+    <div class="fila-inline" id="fila-inline">
+      <div class="fila-lbl">👥 Fila de eleitores</div>
+      <div class="fila-num zero" id="fila-num">0</div>
+      <div class="fila-row">
+        <button class="fbtn minus big" onclick="adjFilaDirect(-5)" title="-5">−5</button>
+        <button class="fbtn minus"     onclick="adjFilaDirect(-1)" title="-1">−</button>
+        <button class="fbtn zero-btn"  onclick="adjFilaDirect(-999)" title="Zerar">0</button>
+        <button class="fbtn plus"      onclick="adjFilaDirect(1)"  title="+1">+</button>
+        <button class="fbtn plus big"  onclick="adjFilaDirect(5)"  title="+5">+5</button>
+      </div>
+      <div class="fila-sub-lbl" id="fila-sub-lbl">sem fila no momento</div>
+    </div>
+    <button class="rbtn c-neutral sz-lg" id="btn-enc" onclick="ask('enc')">
+      <span class="ricon">🔒</span>
+      <span class="rlabel">Encerrada</span>
+      <span class="rsub">sem mais fila</span>
+    </button>
+  </div>
+
+  <div class="g2" id="recolh-section">
+    <button class="rbtn c-teal sz-lg" id="btn-bu" onclick="ask('bu')">
+      <span class="ricon">📄</span>
+      <span class="rlabel">BU impresso</span>
+      <span class="rsub">boletim de urna</span>
+    </button>
+    <button class="rbtn c-blue sz-lg" id="btn-mat" onclick="ask('mat')">
+      <span class="ricon">📦</span>
+      <span class="rlabel">Material</span>
+      <span class="rsub">recolhido</span>
+    </button>
+  </div>
+
+  <button class="rbtn c-purple wide" id="btn-urna" onclick="ask('urna')">
+    <span class="ricon">🚗</span>
+    <div>
+      <div class="rlabel">Urna recolhida</div>
+      <div class="rsub">motorista levou a urna</div>
+    </div>
+  </button>
+
+  <!-- ── SEÇÃO 4: PÂNICO ── -->
+  <div class="sec-label">Emergência</div>
+
+  <button class="rbtn c-red wide" id="btn-energia" onclick="togglePanico('energia')">
+    <span class="ricon" id="icon-energia">⚡</span>
+    <div>
+      <div class="rlabel" id="lbl-energia">Falta de energia</div>
+      <div class="rsub" id="sub-energia">toque para acionar — toque novamente para resolver</div>
+    </div>
+    <span class="rbadge" id="badge-energia"></span>
+  </button>
+
+  <button class="rbtn c-red wide" id="btn-urna-prob" onclick="togglePanico('urnaprob')">
+    <span class="ricon" id="icon-urnaprob">🖥️</span>
+    <div>
+      <div class="rlabel" id="lbl-urnaprob">Urna com problema</div>
+      <div class="rsub" id="sub-urnaprob">toque para acionar — toque novamente para resolver</div>
+    </div>
+    <span class="rbadge" id="badge-urnaprob"></span>
+  </button>
+
+</div><!-- /remote -->
+
+<!-- ── MODAL ── -->
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sh-icon" id="sh-icon">🗳️</div>
+    <div class="sh-title" id="sh-title">Confirmar</div>
+    <div class="sh-sub" id="sh-sub">Deseja registrar?</div>
+
+    <!-- fila inline acima substitui o modal de fila -->
+
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeModal()">Cancelar</button>
+      <button class="sbtn ok" id="sh-ok" onclick="confirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── ESTADO ────────────────────────────────────────────────
+const S = {
+  mesa: { pres:0, m1:0, m2:0, sec:0 }, // 0=ausente 1=chegou 2=problema
+  zero:false, vot:false, enc:false, bu:false, mat:false, urna:false, fila:null,
+  panico: { energia:false, urnaprob:false },
+  panico_resolved: { energia:false, urnaprob:false },
+};
+
+const MESA_CFG = {
+  pres: {icon:'👑', led:'led-p'},
+  m1:   {icon:'🙋', led:'led-m1'},
+  m2:   {icon:'🙋', led:'led-m2'},
+  sec:  {icon:'📋', led:'led-sec'},
+};
+
+// confirm:false → toque direto, sem modal
+// confirm:true  → ação irreversível, exige confirmação
+const BTN_CFG = {
+  zero: {icon:'🖨️', confirm:false, led:'led-zero', chip:'dc-zero', chipTxt:'Zerésima ✓', chipCls:'ok',  toast:'🖨️ Zerésima impressa ✓'},
+  vot:  {icon:'🗳️', confirm:true,  led:'led-vot',  chip:'dc-vot',  chipTxt:'Votando',    chipCls:'act', toast:'🗳️ Votação iniciada!',
+         title:'Iniciar votação', sub:'Confirmar abertura da votação nesta seção?', color:'#14532d'},
+  fila: {icon:'👥', confirm:'fila', led:null, chip:null, chipTxt:null, chipCls:null, toast:null},
+  enc:  {icon:'🔒', confirm:true,  led:'led-enc',  chip:'dc-enc',  chipTxt:'Encerrada ✓',chipCls:'ok',  toast:'🔒 Votação encerrada',
+         title:'Encerrar votação', sub:'Confirmar encerramento — sem fila?', color:'#38200a'},
+  bu:   {icon:'📄', confirm:true,  led:'led-bu',   chip:'dc-bu',   chipTxt:'BU ✓',       chipCls:'ok',  toast:'📄 BU impresso ✓',
+         title:'BU impresso', sub:'Confirmar que o boletim de urna foi impresso e assinado?', color:'#062c28'},
+  mat:  {icon:'📦', confirm:false, led:null,       chip:null,      chipTxt:null,         chipCls:null,  toast:'📦 Material recolhido ✓'},
+  urna: {icon:'🚗', confirm:true,  led:null,       chip:null,      chipTxt:null,         chipCls:null,  toast:'🚗 Urna recolhida — ciclo completo ✓',
+         title:'Urna recolhida', sub:'Confirmar que a urna foi entregue ao motorista?', color:'#2a1048'},
+};
+
+let pendingKey = null;
+let filaCount  = 0;
+let toastTimer = null;
+
+// ─── MESA ──────────────────────────────────────────────────
+function toggleMesa(id) {
+  vib(40);
+  const cur = S.mesa[id];
+  const next = (cur === 0) ? 1 : (cur === 1) ? 2 : 1; // 0→1→2→1
+  S.mesa[id] = next;
+
+  const btn = document.getElementById('mb-' + id);
+  const dot = document.getElementById('dot-' + id);
+  const led = document.getElementById(MESA_CFG[id].led);
+
+  btn.className = `mesa-btn ${next === 2 ? 'm-prob' : 'm-chegou'}`;
+  dot.className = `mesa-dot ${next === 2 ? 'problema' : 'chegou'}`;
+  if(led) { led.className = `led ${next === 2 ? 'warn' : 'on'}`; }
+
+  const labels = {0:'ausente', 1:'chegou ✓', 2:'⚠ problema'};
+  showToast(`${MESA_CFG[id].icon} ${labels[next]}`);
+  updateMesaChip();
+  saveState();
+}
+
+function updateMesaChip() {
+  const vals = Object.values(S.mesa);
+  const chegou = vals.filter(v=>v===1).length;
+  const prob   = vals.filter(v=>v===2).length;
+  const chip = document.getElementById('dc-mesa');
+  if(chegou + prob === 4 && prob === 0) { chip.textContent='Mesa completa ✓'; chip.className='dc ok'; }
+  else if(prob > 0)  { chip.textContent=`${prob} com problema`; chip.className='dc warn'; }
+  else if(chegou > 0){ chip.textContent=`${chegou}/4 presentes`; chip.className='dc act'; }
+  else               { chip.textContent='Mesa incompleta'; chip.className='dc off'; }
+}
+
+// ─── BOTÕES PRINCIPAIS ─────────────────────────────────────
+// confirm:false → executa direto sem modal
+// confirm:true  → abre modal de confirmação
+// confirm:'fila'→ abre modal do contador de fila
+function ask(key) {
+  const c = BTN_CFG[key];
+  if(c.confirm === false){
+    // ação simples — executa direto
+    doAction(key);
+    return;
+  }
+  if(c.confirm === 'fila'){
+    pendingKey = key;
+    filaCount = S.fila !== null ? S.fila : 0;
+    document.getElementById('fila-count').textContent = filaCount;
+    document.getElementById('sh-icon').textContent  = c.icon;
+    document.getElementById('sh-title').textContent = 'Atualizar fila';
+    document.getElementById('sh-sub').textContent   = 'Quantas pessoas na fila agora?';
+    document.getElementById('sh-ok').style.background = '#78350f';
+    document.getElementById('fila-wrap').classList.add('show');
+    document.getElementById('overlay').classList.add('show');
+    vib(40);
+    return;
+  }
+  // ação irreversível — modal
+  pendingKey = key;
+  document.getElementById('sh-icon').textContent  = c.icon;
+  document.getElementById('sh-title').textContent = c.title;
+  document.getElementById('sh-sub').textContent   = c.sub;
+  document.getElementById('sh-ok').style.background = c.color;
+  document.getElementById('fila-wrap').classList.remove('show');
+  document.getElementById('overlay').classList.add('show');
+  vib(40);
+}
+
+function doAction(key) {
+  const c = BTN_CFG[key];
+
+  // marcar como concluído
+  if(key !== 'fila'){
+    const btn = document.getElementById('btn-' + key);
+    if(btn){ btn.classList.add('disabled'); }
+  }
+  if(c.led){ const led=document.getElementById(c.led); if(led) led.className='led on'; }
+  if(c.chip){ const chip=document.getElementById(c.chip); if(chip){ chip.textContent=c.chipTxt; chip.className=`dc ${c.chipCls}`; } }
+  if(c.toast) showToast(c.toast);
+
+  // ações específicas de estado
+  if(key==='vot')  { S.vot=true;  saveState(); vib([60,30,60,30,60]); }
+  else if(key==='mat') { S.mat=true; saveState(); vib([60,30,60]); }
+  else if(key==='zero'){ S.zero=true; saveState(); vib([30,15,30]); }
+  else { saveState(); vib([60,30,60]); }
+}
+
+function adjFila(v) {
+  filaCount = Math.max(0, filaCount + v);
+  document.getElementById('fila-count').textContent = filaCount;
+  vib(20);
+}
+
+function confirm() {
+  const key = pendingKey;
+  closeModal();
+
+  if(key === 'fila'){
+    // fila now saved inline via adjFilaDirect — no modal path
+    S.fila = filaCount;
+    const sub   = null; // removed
+    const badge = null; // removed
+    const btn   = null; // removed
+    const led   = document.getElementById('led-enc');
+    const chip  = document.getElementById('dc-enc');
+    if(sub)   sub.textContent   = filaCount > 0 ? `${filaCount} na fila` : 'sem fila agora';
+    if(badge) badge.textContent = filaCount > 0 ? filaCount : '';
+    if(btn)   btn.className     = filaCount > 0 ? 'rbtn c-yellow sz-lg' : 'rbtn c-green sz-lg';
+    if(filaCount > 0){
+      if(led) led.className = 'led warn';
+      if(chip){ chip.textContent=`Fila: ${filaCount}`; chip.className='dc warn'; }
+    } else {
+      if(led) led.className = 'led on';
+      if(chip){ chip.textContent='Fila zerada'; chip.className='dc ok'; }
+    }
+    showToast(filaCount>0 ? `👥 ${filaCount} eleitor${filaCount!==1?'es':''} na fila` : '✅ Fila zerada');
+    saveState();
+    return;
+  }
+
+  if(key === 'enc'){
+    S.enc = true;
+    const btnFila = document.getElementById('btn-fila');
+    const led     = document.getElementById('led-enc');
+    const chip    = document.getElementById('dc-enc');
+    const btn     = document.getElementById('btn-enc');
+    if(btnFila) btnFila.style.display = 'none';
+    if(led)  led.className = 'led on';
+    if(chip){ chip.textContent='Encerrada ✓'; chip.className='dc ok'; }
+    if(btn)  btn.classList.add('disabled');
+    showToast('🔒 Votação encerrada');
+    saveState(); vib([60,30,60]);
+    return;
+  }
+
+  // demais ações com modal (vot, bu, urna)
+  doAction(key);
+}
+
+// ─── PÂNICO ────────────────────────────────────────────────
+function togglePanico(id) {
+  vib([80,40,80]);
+  const isActive   = S.panico[id];
+  const isResolved = S.panico_resolved[id];
+
+  if(!isActive) {
+    // acionar pânico
+    S.panico[id] = true;
+    S.panico_resolved[id] = false;
+    applyPanico(id, 'active');
+    const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!'};
+    showToast(labels[id]);
+    vib([100,50,100,50,100]);
+  } else {
+    // resolver pânico
+    S.panico[id] = false;
+    S.panico_resolved[id] = true;
+    applyPanico(id, 'resolved');
+    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓'};
+    showToast(labels[id]);
+    vib([60,30,60]);
+  }
+  saveState();
+}
+
+function applyPanico(id, state) {
+  const btn   = document.getElementById('btn-' + (id==='urnaprob'?'urna-prob':id));
+  const icon  = document.getElementById('icon-' + id);
+  const lbl   = document.getElementById('lbl-' + id);
+  const sub   = document.getElementById('sub-' + id);
+  const badge = document.getElementById('badge-' + id);
+
+  if(state === 'active') {
+    btn.className = 'rbtn c-red wide c-panic-active';
+    lbl.style.color = 'var(--red)';
+    badge.textContent = '🔴';
+    sub.textContent = 'ATIVO — toque para marcar como resolvido';
+  } else {
+    btn.className = 'rbtn wide c-panic-resolved';
+    lbl.style.color = 'var(--green)';
+    badge.textContent = '✓';
+    sub.textContent = 'Resolvido';
+  }
+}
+
+// ─── PERSISTÊNCIA ──────────────────────────────────────────
+// Chave: sime_mesa_{secao} — lida pelo dashboard operacional
+const SECAO_ID = '0063'; // TODO: virá do QR Code no futuro
+const MESA_KEY = 'sime_mesa_v1';
+
+function saveState() {
+  try {
+    const all = JSON.parse(localStorage.getItem(MESA_KEY) || '{}');
+    all[SECAO_ID] = {
+      mesa: { ...S.mesa },
+      zero: S.zero, vot: S.vot, enc: S.enc, bu: S.bu,
+      mat: S.mat, urna: S.urna, fila: S.fila,
+      panico: { ...S.panico },
+      panico_resolved: { ...S.panico_resolved },
+      ts: Date.now(),
+    };
+    localStorage.setItem(MESA_KEY, JSON.stringify(all));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const all = JSON.parse(localStorage.getItem(MESA_KEY) || '{}');
+    const d = all[SECAO_ID];
+    if (!d) return;
+    // restaurar mesa
+    Object.keys(S.mesa).forEach(k => { if(d.mesa?.[k] !== undefined) S.mesa[k] = d.mesa[k]; });
+    // restaurar flags
+    ['zero','vot','enc','bu','mat','urna'].forEach(k => { if(d[k] !== undefined) S[k] = d[k]; });
+    S.fila = d.fila ?? null;
+    if(d.panico) Object.assign(S.panico, d.panico);
+    if(d.panico_resolved) Object.assign(S.panico_resolved, d.panico_resolved);
+  } catch(e) {}
+}
+
+function restoreUI() {
+  // Restaurar membros da mesa
+  Object.keys(MESA_CFG).forEach(id => {
+    const v = S.mesa[id];
+    if(v === 0) return;
+    const btn = document.getElementById('mb-' + id);
+    const dot = document.getElementById('dot-' + id);
+    const led = document.getElementById(MESA_CFG[id].led);
+    btn.className = `mesa-btn ${v === 2 ? 'm-prob' : 'm-chegou'}`;
+    dot.className = `mesa-dot ${v === 2 ? 'problema' : 'chegou'}`;
+    if(led) led.className = `led ${v === 2 ? 'warn' : 'on'}`;
+  });
+  updateMesaChip();
+  // Restaurar botões de fluxo
+  const RESTORE = ['zero','vot','enc','bu','mat','urna'];
+  RESTORE.forEach(key => {
+    if(!S[key]) return;
+    const btn = document.getElementById('btn-' + key);
+    const c = BTN_CFG[key];
+    if(btn) btn.classList.add('disabled');
+    if(c?.led) { const led = document.getElementById(c.led); if(led) led.className = 'led on'; }
+    if(c?.chip) { const chip = document.getElementById(c.chip); if(chip) { chip.textContent = c.chipTxt; chip.className = 'dc ' + c.chipCls; } }
+  });
+  // Restaurar fila
+  if(S.fila !== null) {
+    filaCount = S.fila;
+    applyFilaUI();
+    const chip = document.getElementById('dc-enc');
+    if(chip && !S.enc) { chip.textContent = S.fila > 0 ? `Fila: ${S.fila}` : 'Fila zerada'; chip.className = S.fila > 0 ? 'dc warn' : 'dc ok'; }
+  }
+  if(S.enc) {
+    const btnFila = document.getElementById('btn-fila');
+    if(btnFila) btnFila.style.display = 'none';
+  }
+  // Restaurar pânico
+  Object.keys(S.panico).forEach(id => {
+    if(S.panico[id]) applyPanico(id, 'active');
+    else if(S.panico_resolved[id]) applyPanico(id, 'resolved');
+  });
+}
+
+// Injetar save após cada ação
+const _origToggleMesa = toggleMesa;
+// Já que toggleMesa é declarada acima, vamos adicionar o save ao final das funções relevantes
+// O save é chamado explicitamente nos pontos de mutação de estado
+
+// ─── MODAL ─────────────────────────────────────────────────
+function closeModal() {
+  document.getElementById('overlay').classList.remove('show');
+  pendingKey = null;
+}
+document.getElementById('overlay').addEventListener('click', e => {
+  if(e.target === document.getElementById('overlay')) closeModal();
+});
+
+// ─── UTILS ─────────────────────────────────────────────────
+function vib(p) { try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ─── PRESS VISUAL ──────────────────────────────────────────
+document.querySelectorAll('.rbtn').forEach(b => {
+  b.addEventListener('touchstart', () => b.classList.add('pressing'), {passive:true});
+  b.addEventListener('touchend',   () => setTimeout(()=>b.classList.remove('pressing'),120), {passive:true});
+});
+document.querySelectorAll('.mesa-btn').forEach(b => {
+  b.addEventListener('touchstart', () => { b.style.transform='translateY(3px)'; }, {passive:true});
+  b.addEventListener('touchend',   () => { setTimeout(()=>b.style.transform='',120); }, {passive:true});
+});
+
+// ─── INIT — restaurar estado salvo ─────────────────────────
+loadState();
+restoreUI();
+
+
+// ── MÍDIA ──────────────────────────────────────────
+const MIDIA_KEY = 'sime_midias_v1';
+function loadMidia(n){ try{const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');return d[n]||{status:'aguardando_encerramento'};}catch(e){return{};} }
+function saveMidia(n,patch){ const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');d[n]={...loadMidia(n),...patch,updated_at:Date.now()};localStorage.setItem(MIDIA_KEY,JSON.stringify(d)); }
+
+function marcarMidiaPronta(){
+  const btn=document.getElementById('midia-btn');
+  if(!btn||btn.disabled||btn.classList.contains('done')) return;
+  // Precisa de encerramento
+  if(!S.enc && !S.bu){ showToast('⚠ Encerre a votação primeiro'); return; }
+  const n=SECAO_ID||'0063';
+  const ts=Date.now();
+  saveMidia(n,{status:'pronta_para_coleta',pronta_ts:ts});
+  if(navigator.vibrate) navigator.vibrate([40,20,80]);
+  renderMidiaBtn();
+  showToast('📦 Mídia marcada como pronta — aguardando coleta');
+}
+
+function renderMidiaBtn(){
+  const btn=document.getElementById('midia-btn');
+  const tip=document.getElementById('midia-tip');
+  if(!btn) return;
+  const n=SECAO_ID||'0063';
+  const mid=loadMidia(n);
+
+  if(mid.status==='pronta_para_coleta'||mid.status==='coletada'||mid.status==='entregue_transmissao'){
+    // Já confirmada
+    btn.disabled=false;
+    btn.className='midia-btn done';
+    if(mid.status==='entregue_transmissao'){
+      btn.innerHTML='📡 Mídia entregue na transmissão';
+    } else if(mid.status==='coletada'){
+      btn.innerHTML='✅ Mídia recolhida pelo coletor';
+    } else {
+      const d=new Date(mid.pronta_ts);
+      const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      btn.innerHTML='✅ Mídia pronta — confirmada às '+hm;
+    }
+    if(tip){ tip.textContent='Aguardando coleta pelo responsável'; tip.className='midia-tip ok'; }
+  } else if(S.enc||S.bu){
+    // Encerrada — botão disponível
+    btn.disabled=false;
+    btn.className='midia-btn ready';
+    btn.innerHTML='📦 MÍDIA PRONTA PARA RECOLHIMENTO';
+    if(tip){ tip.textContent='Toque para confirmar que a mídia está embalada e pronta'; tip.className='midia-tip'; }
+  } else {
+    // Ainda votando — bloqueado
+    btn.disabled=true;
+    btn.className='midia-btn locked';
+    btn.innerHTML='🔒 Disponível após encerramento';
+    if(tip){ tip.textContent='Aguardando encerramento da seção'; tip.className='midia-tip'; }
+  }
+}
+
+// Checar a cada 3s (usa S — estado em memória, sempre atualizado)
+setInterval(renderMidiaBtn, 3000);
+setTimeout(renderMidiaBtn, 400);
+</script>
+
+<!-- MÍDIA — sempre visível, muda de estado -->
+<div class="midia-block" id="midia-block">
+  <div class="midia-hdr">📦 MÍDIA ELEITORAL</div>
+  <button class="midia-btn locked" id="midia-btn" onclick="marcarMidiaPronta()" disabled>
+    🔒 Disponível após encerramento
+  </button>
+  <div class="midia-tip" id="midia-tip">Aguardando encerramento da seção</div>
+</div>
+</body>
+</html>

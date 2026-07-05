@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>SIME · Atores</title>
+<style>
+:root{
+  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
+  --card:#faf9f6;--border:#d8d3c8;--border2:#cac5b8;
+  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
+  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
+  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
+  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
+  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);}
+.tabs{background:var(--card);border-bottom:1px solid var(--border);display:flex;padding:0 12px;}
+.tab{padding:10px 14px;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.tab.active{color:var(--text);border-bottom-color:var(--text);}
+.content{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;}
+
+/* BUSCA */
+.search-row{display:flex;gap:8px;flex-wrap:wrap;}
+.search-row input,.search-row select{padding:9px 12px;border-radius:9px;border:1px solid var(--border2);background:var(--card);font-size:.85rem;color:var(--text);outline:none;}
+.search-row input{flex:1;min-width:180px;}
+.search-row select{min-width:140px;}
+
+/* ATOR CARD */
+.ator-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:13px 14px;display:flex;align-items:center;gap:12px;}
+.ac-av{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;color:#fff;flex-shrink:0;}
+.ac-info{flex:1;}
+.ac-name{font-weight:800;font-size:.9rem;}
+.ac-detail{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;}
+.ac-btn{padding:10px 14px;border-radius:9px;font-size:.78rem;font-weight:800;cursor:pointer;border:none;background:#25d366;color:#fff;display:flex;align-items:center;gap:5px;flex-shrink:0;text-decoration:none;}
+
+/* FUNCAO COLORS */
+.f-mesario              {background:#3a5fa0;}
+.f-motorista            {background:#2e7d52;}
+.f-tecnico              {background:#8a5c20;}
+.f-coordenador_acessibilidade{background:#6040a0;}
+.f-cartorio             {background:#2a2a2a;}
+
+/* IMPORTAÇÃO */
+.import-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:18px;}
+.ic-title{font-weight:800;margin-bottom:6px;}
+.ic-sub{font-size:.78rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.drop-zone{border:2px dashed var(--border2);border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg2);margin-bottom:12px;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:var(--blue-bg);}
+.dz-icon{font-size:2rem;margin-bottom:8px;}
+.dz-txt{font-size:.8rem;font-weight:700;color:var(--text2);}
+.dz-sub{font-size:.7rem;color:var(--text3);margin-top:4px;}
+.csv-preview{background:var(--bg);border-radius:8px;padding:10px;font-size:.72rem;font-family:monospace;color:var(--text2);max-height:120px;overflow-y:auto;border:1px solid var(--border);}
+.import-result{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:.78rem;font-weight:700;}
+.ir-ok  {background:var(--green-bg);color:var(--green);}
+.ir-err {background:var(--red-bg);color:var(--red);}
+.ir-warn{background:var(--yellow-bg);color:var(--yellow);}
+
+/* BUTTONS */
+.btn{padding:9px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;}
+.btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:13px;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.m-title{font-weight:800;font-size:.92rem;}
+.m-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
+.m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
+.form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
+.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">S</div>
+  <div class="h-info">
+    <div class="h-title">SIME · Atores</div>
+    <div class="h-sub" id="h-sub">0 atores cadastrados</div>
+  </div>
+  <button class="btn btn-dark" style="font-size:.72rem;padding:6px 10px;" onclick="abrirModal(null)">+ Novo</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" id="tab-lista-btn" onclick="goTab('lista',this)">📋 Lista</div>
+  <div class="tab"        id="tab-guerra-btn" onclick="goTab('guerra',this)">⚡ Modo Guerra</div>
+  <div class="tab"        id="tab-import-btn" onclick="goTab('import',this)">📥 Importar CSV</div>
+</div>
+
+<div class="content" id="content"></div>
+
+<!-- MODAL NOVO/EDITAR ATOR -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ATORES_KEY = 'sime_atores_v1';
+const LOG_KEY    = 'sime_logs_v1';
+const FUNCOES    = ['mesario','motorista','tecnico','coordenador_acessibilidade','cartorio'];
+const FUNC_LABEL = {mesario:'Mesário',motorista:'Motorista',tecnico:'Técnico',coordenador_acessibilidade:'Coord. Acessibilidade',cartorio:'Cartório'};
+const FUNC_EMOJI = {mesario:'🗳️',motorista:'🚗',tecnico:'🔧',coordenador_acessibilidade:'♿',cartorio:'🏛️'};
+
+function loadAtores()  { try{return JSON.parse(localStorage.getItem(ATORES_KEY)||'[]')}catch(e){return[]} }
+function saveAtores(d) { localStorage.setItem(ATORES_KEY, JSON.stringify(d)); }
+function fmtTel(t)     { const d=t.replace(/\D/g,''); return d.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')||t; }
+function waLink(t)     { return 'https://wa.me/55'+t.replace(/\D/g,''); }
+function serverTs()    { return Date.now(); }
+function log(acao,secao,payload) {
+  const logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
+  logs.unshift({acao,modulo:'atores',secao,payload,ts:serverTs()});
+  if(logs.length>500) logs.splice(400);
+  localStorage.setItem(LOG_KEY,JSON.stringify(logs));
+}
+
+let curTab='lista';
+let toastTimer=null;
+let searchQ='', filterFuncao='', filterSecao='';
+let csvParsed=[];
+
+function goTab(tab,btn){
+  curTab=tab;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  render();
+}
+
+function render(){
+  const atores=loadAtores();
+  document.getElementById('h-sub').textContent=`${atores.length} ator${atores.length!==1?'es':''} cadastrado${atores.length!==1?'s':''}`;
+
+  if(curTab==='import'){ renderImport(); return; }
+  if(curTab==='guerra'){ renderGuerra(atores); return; }
+  renderLista(atores);
+}
+
+function filterAtores(atores){
+  return atores.filter(a=>{
+    if(filterFuncao && a.funcao!==filterFuncao) return false;
+    if(filterSecao  && a.secao!==filterSecao)   return false;
+    if(searchQ){
+      const q=searchQ.toLowerCase();
+      if(!a.nome.toLowerCase().includes(q) && !a.telefone.includes(q) && !a.secao.includes(q)) return false;
+    }
+    return a.ativo!==false;
+  });
+}
+
+function renderLista(atores){
+  const filtered=filterAtores(atores);
+  const secoes=[...new Set(atores.map(a=>a.secao))].sort();
+  const c=document.getElementById('content');
+  c.innerHTML=`
+    <div class="search-row">
+      <input type="text" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <select onchange="filterFuncao=this.value;render()">
+        <option value="">Todas funções</option>
+        ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
+      </select>
+    </div>`;
+  if(!filtered.length){
+    c.innerHTML+='<div style="text-align:center;padding:40px;color:var(--text3);font-size:.85rem">Nenhum ator encontrado.<br><br><button class="btn btn-dark" onclick="abrirModal(null)">+ Cadastrar primeiro ator</button></div>';
+    return;
+  }
+  filtered.forEach(a=>{
+    const av=document.createElement('div'); av.className='ator-card';
+    av.innerHTML=`
+      <div class="ac-av f-${a.funcao}">${a.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+      <div class="ac-info">
+        <div class="ac-name">${a.nome}</div>
+        <div class="ac-detail">${a.secao?'Seção '+parseInt(a.secao):''} ${a.local||''}</div>
+        <div class="ac-detail">${fmtTel(a.telefone)}</div>
+        <span class="ac-badge f-${a.funcao}">${FUNC_EMOJI[a.funcao]} ${FUNC_LABEL[a.funcao]}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" title="Abrir WhatsApp">💬 WA</a>
+        <button class="btn btn-out" style="font-size:.65rem;padding:5px 8px" onclick="abrirModal('${a.id}')">✏️</button>
+      </div>`;
+    c.appendChild(av);
+  });
+}
+
+function renderGuerra(atores){
+  const filtered=filterAtores(atores).filter(a=>a.ativo!==false);
+  const c=document.getElementById('content');
+  c.innerHTML=`
+    <div style="background:var(--red-bg);border:1.5px solid var(--red-bd);border-radius:10px;padding:12px 14px;font-size:.78rem;font-weight:700;color:var(--red)">
+      ⚡ MODO GUERRA — Contato direto. Use apenas em emergências. Todo acionamento é registrado.
+    </div>
+    <div class="search-row">
+      <input type="text" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <select onchange="filterFuncao=this.value;render()">
+        <option value="">Todas funções</option>
+        ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
+      </select>
+    </div>`;
+  if(!filtered.length){
+    c.innerHTML+='<div style="text-align:center;padding:32px;color:var(--text3)">Nenhum ator cadastrado para contato.</div>';
+    return;
+  }
+  // Group by secao
+  const bySec={};
+  filtered.forEach(a=>{ if(!bySec[a.secao]) bySec[a.secao]=[]; bySec[a.secao].push(a); });
+  Object.keys(bySec).sort().forEach(sec=>{
+    const grp=document.createElement('div');
+    grp.innerHTML=`<div style="font-size:.68rem;font-weight:700;color:var(--text3);letter-spacing:.1em;padding:8px 2px 4px">SEÇÃO ${parseInt(sec)||sec}</div>`;
+    bySec[sec].forEach(a=>{
+      const row=document.createElement('div'); row.className='ator-card';
+      row.innerHTML=`
+        <div class="ac-av f-${a.funcao}">${FUNC_EMOJI[a.funcao]}</div>
+        <div class="ac-info">
+          <div class="ac-name">${a.nome}</div>
+          <div class="ac-detail">${FUNC_LABEL[a.funcao]} · ${fmtTel(a.telefone)}</div>
+        </div>
+        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — '+String.fromCharCode(${a.nome.charCodeAt(0)})+'...')">
+          📲 CONTATAR
+        </a>`;
+      grp.appendChild(row);
+    });
+    c.appendChild(grp);
+  });
+}
+
+function renderImport(){
+  const c=document.getElementById('content');
+  c.innerHTML=`
+    <div class="import-card">
+      <div class="ic-title">📥 Importar Atores via CSV</div>
+      <div class="ic-sub">Faça upload de um arquivo .csv com os campos:<br><code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.78rem">nome,telefone,secao,funcao</code><br><br>
+      Funções válidas: <b>mesario</b> · motorista · tecnico · coordenador_acessibilidade · cartorio<br>
+      Telefone: com DDD, somente números. Ex: 86999991234</div>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()" 
+           ondragover="event.preventDefault();this.classList.add('drag')" 
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <div class="dz-icon">📄</div>
+        <div class="dz-txt">Clique ou arraste o arquivo CSV aqui</div>
+        <div class="dz-sub">Apenas arquivos .csv</div>
+      </div>
+      <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="handleFile(this.files[0])">
+      <div id="csv-preview-area"></div>
+      <div id="import-result"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-dark" id="btn-import" style="display:none" onclick="importarCSV()">✓ Importar</button>
+        <button class="btn btn-out" onclick="csvParsed=[];document.getElementById('csv-preview-area').innerHTML='';document.getElementById('btn-import').style.display='none';document.getElementById('import-result').innerHTML=''">✕ Limpar</button>
+        <button class="btn btn-out" onclick="downloadTemplate()">⬇ Baixar modelo</button>
+      </div>
+    </div>`;
+}
+
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag');
+  const f=e.dataTransfer.files[0];
+  if(f) handleFile(f);
+}
+
+function handleFile(file){
+  if(!file||!file.name.endsWith('.csv')){ showToast('⚠ Selecione um arquivo .csv'); return; }
+  const r=new FileReader();
+  r.onload=e=>parseCSV(e.target.result);
+  r.readAsText(file, 'UTF-8');
+}
+
+function parseCSV(text){
+  const lines=text.trim().split('\n').filter(l=>l.trim());
+  const header=lines[0].toLowerCase().replace(/["\r]/g,'').split(',');
+  const iNome=header.indexOf('nome'),iTel=header.indexOf('telefone'),iSec=header.indexOf('secao'),iFunc=header.indexOf('funcao');
+  if([iNome,iTel,iSec,iFunc].includes(-1)){ showToast('⚠ Colunas não encontradas: nome,telefone,secao,funcao'); return; }
+  
+  csvParsed=[];
+  const erros=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].replace(/\r/g,'').split(',').map(c=>c.replace(/^"|"$/g,'').trim());
+    const nome=cols[iNome]||'', tel=cols[iTel]||''.replace(/\D/g,''),
+          sec=cols[iSec]||'', func=(cols[iFunc]||'').toLowerCase();
+    if(!nome){ erros.push(`Linha ${i+1}: nome vazio`); continue; }
+    const telClean=tel.replace(/\D/g,'');
+    if(telClean.length<10||telClean.length>11){ erros.push(`Linha ${i+1}: telefone inválido (${tel})`); continue; }
+    if(!FUNCOES.includes(func)){ erros.push(`Linha ${i+1}: função inválida (${func})`); continue; }
+    csvParsed.push({nome,telefone:telClean,secao:sec.padStart(4,'0'),funcao:func});
+  }
+
+  const pa=document.getElementById('csv-preview-area');
+  pa.innerHTML=`<div class="csv-preview">${csvParsed.slice(0,5).map(r=>`${r.nome} | ${fmtTel(r.telefone)} | Seção ${parseInt(r.secao)} | ${FUNC_LABEL[r.funcao]}`).join('\n')}${csvParsed.length>5?`\n... + ${csvParsed.length-5} mais`:''}</div>`;
+  
+  const ir=document.getElementById('import-result');
+  ir.innerHTML=erros.length?`<div class="import-result ir-warn">⚠ ${csvParsed.length} válidos · ${erros.length} erros:<br>${erros.slice(0,3).join('<br>')}${erros.length>3?'<br>...':''}</div>`
+                            :`<div class="import-result ir-ok">✓ ${csvParsed.length} registros prontos para importar</div>`;
+  if(csvParsed.length) document.getElementById('btn-import').style.display='inline-flex';
+}
+
+function importarCSV(){
+  if(!csvParsed.length){ showToast('⚠ Nenhum dado para importar'); return; }
+  const atores=loadAtores();
+  let adicionados=0, duplicatas=0;
+  csvParsed.forEach(r=>{
+    const dup=atores.find(a=>a.telefone===r.telefone&&a.secao===r.secao&&a.funcao===r.funcao&&a.ativo!==false);
+    if(dup){ duplicatas++; return; }
+    atores.push({...r, id:'a'+Date.now()+Math.random().toString(36).slice(2,6), ativo:true, created_at:serverTs()});
+    adicionados++;
+  });
+  saveAtores(atores);
+  log('importacao_csv','null',{adicionados,duplicatas});
+  document.getElementById('import-result').innerHTML=`<div class="import-result ir-ok">✅ ${adicionados} importados · ${duplicatas} duplicatas ignoradas</div>`;
+  csvParsed=[];
+  document.getElementById('btn-import').style.display='none';
+  showToast(`✓ ${adicionados} atores importados`);
+  setTimeout(()=>{ goTab('lista'); document.getElementById('tab-lista-btn').click(); },1500);
+}
+
+function downloadTemplate(){
+  const csv='nome,telefone,secao,funcao\nMaria Silva,86999991234,0063,mesario\nJoão Souza,86988887654,0063,tecnico\n';
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='sime_atores_modelo.csv'; a.click();
+}
+
+// MODAL CRUD
+function abrirModal(id){
+  const atores=loadAtores();
+  const a=id?atores.find(x=>x.id===id):null;
+  document.getElementById('modal-body').innerHTML=`
+    <div class="m-hdr">
+      <div class="m-title">${a?'Editar ator':'Novo ator'}</div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
+      <div class="form-group"><label>Telefone / WhatsApp (com DDD)</label><input type="tel" id="m-tel" value="${a?.telefone||''}" placeholder="86999991234"></div>
+      <div class="form-group"><label>Número da seção</label><input type="number" id="m-sec" value="${a?parseInt(a.secao):''}" placeholder="63"></div>
+      <div class="form-group"><label>Função</label>
+        <select id="m-func">
+          ${FUNCOES.map(f=>`<option value="${f}" ${a?.funcao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Observação</label><input type="text" id="m-obs" value="${a?.obs||''}"></div>
+    </div>
+    <div class="m-foot">
+      ${a?`<button class="btn btn-red" onclick="removerAtor('${id}')">🗑 Remover</button>`:''}
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="salvarAtor('${id||''}')">💾 Salvar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function salvarAtor(id){
+  const nome=document.getElementById('m-nome').value.trim();
+  const tel=(document.getElementById('m-tel').value||'').replace(/\D/g,'');
+  const sec=(document.getElementById('m-sec').value||'').toString().padStart(4,'0');
+  const func=document.getElementById('m-func').value;
+  const obs=document.getElementById('m-obs').value;
+  if(!nome){ showToast('⚠ Nome obrigatório'); return; }
+  if(tel.length<10||tel.length>11){ showToast('⚠ Telefone inválido'); return; }
+  const atores=loadAtores();
+  if(id){
+    const idx=atores.findIndex(a=>a.id===id);
+    if(idx>-1) atores[idx]={...atores[idx],nome,telefone:tel,secao:sec,funcao:func,obs,updated_at:serverTs()};
+  } else {
+    atores.push({id:'a'+Date.now()+Math.random().toString(36).slice(2,6),nome,telefone:tel,secao:sec,funcao:func,obs,ativo:true,created_at:serverTs()});
+  }
+  saveAtores(atores); closeModal(); showToast('✓ Ator salvo'); render();
+}
+
+function removerAtor(id){
+  if(!confirm('Remover este ator?')) return;
+  const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
+  saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
+}
+
+function closeModal(e){
+  if(!e||e.target===document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('open');
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+render();
+</script>
+</body>
+</html>

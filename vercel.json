@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "functions": {
+    "api/hermes-update.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/modules/SIME_principal.html" }
+  ]
+}

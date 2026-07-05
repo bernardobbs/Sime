@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME TV Distribuição</title>
+<style>
+:root{
+  --bg:#eceaf4; --bg2:#e3e1ef; --card:#fafaf8;
+  --border:#d0cde0; --text:#1e1b2e; --text2:#6a6880; --text3:#b0aec8;
+  --blue:#2d50a0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
+  font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;}
+body{display:flex;flex-direction:column;}
+
+/* ── TOP BAR ── */
+.topbar{height:38px;flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px;gap:10px;}
+.t-logo{font-size:.72rem;font-weight:900;letter-spacing:.1em;color:var(--blue);}
+.t-sep{width:1px;height:16px;background:var(--border);}
+.t-title{font-size:.75rem;font-weight:700;color:var(--text2);}
+.t-stats{display:flex;gap:10px;flex:1;}
+.ts{font-size:.64rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.tsd{width:6px;height:6px;border-radius:50%;}
+.t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.t-clock{font-size:.8rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+
+/* ── GRID DE ROTAS ── */
+.routes-grid{
+  flex:1; padding:8px 10px 6px;
+  display:grid;
+  gap:7px;
+  overflow:hidden;
+}
+/* Colunas calculadas por JS via --cols */
+#routes-grid{ grid-template-columns:repeat(var(--cols,4),1fr); }
+
+/* ── CARD DE ROTA ── */
+.rota-card{
+  background:var(--card);border:2px solid var(--border);
+  border-radius:12px;padding:10px 12px;
+  display:flex;flex-direction:column;gap:6px;
+  position:relative;transition:all .3s;
+}
+/* estados */
+.rota-card.aguardando{}
+.rota-card.embarcando{border-color:#93c5fd;background:#f0f6ff;}
+.rota-card.pronta{border-color:#6ee7b0;background:#f0fdf6;}
+.rota-card.saiu{border-color:#c4b5fd;background:#f5f3ff;opacity:.75;}
+.rota-card.alerta{
+  border-color:#ef4444;background:#fef2f2;
+  animation:alarm 0.6s ease-in-out infinite;
+}
+@keyframes alarm{
+  0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0);}
+  50%    {box-shadow:0 0 0 10px rgba(239,68,68,.25);}
+}
+
+/* cabeçalho */
+.rc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;}
+.rc-num{font-size:1.5rem;font-weight:900;line-height:1;color:var(--text);}
+.rota-card.alerta .rc-num{color:#ef4444;}
+.rota-card.pronta .rc-num{color:#15803d;}
+.rota-card.saiu .rc-num{color:#7c3aed;}
+.rc-ordem{font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:99px;background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+
+/* metadata */
+.rc-mun{font-size:.62rem;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* status badge */
+.rc-status{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:99px;display:inline-flex;align-items:center;gap:3px;width:fit-content;}
+.st-aguardando{background:#f1f0f8;color:#9090b8;border:1px solid #d0cee8;}
+.st-embarcando{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;}
+.st-pronta    {background:#dcfce7;color:#15803d;border:1px solid #6ee7b0;}
+.st-alerta    {background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;}
+.st-saiu      {background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;}
+
+/* progresso */
+.rc-prog-wrap{display:flex;align-items:center;gap:6px;}
+.rc-prog-bar{flex:1;height:5px;background:var(--bg2);border-radius:99px;overflow:hidden;}
+.rc-prog-fill{height:100%;border-radius:99px;transition:width .4s ease;}
+.st-aguardando .rc-prog-fill,.prog-aguardando{background:#b8b5d0;}
+.prog-embarcando{background:#2563eb;}
+.prog-pronta{background:#16a34a;}
+.prog-alerta{background:#ef4444;}
+.prog-saiu{background:#7c3aed;}
+.rc-prog-txt{font-size:.62rem;font-weight:700;white-space:nowrap;color:var(--text2);}
+
+/* paradas */
+.rc-paradas{display:flex;gap:3px;flex-wrap:wrap;}
+.parada-dot{width:6px;height:6px;border-radius:50%;}
+
+/* horário */
+.rc-hora{font-size:.7rem;font-weight:700;color:var(--text2);}
+.rc-hora.atrasada{color:#dc2626;}
+.rc-hora.ok{color:#16a34a;}
+
+/* footer */
+.rc-footer{display:flex;align-items:center;justify-content:space-between;margin-top:2px;}
+
+/* ── LEGENDA ── */
+.legend{height:26px;flex-shrink:0;background:var(--card);border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;gap:18px;padding:0 16px;}
+.li{display:flex;align-items:center;gap:4px;font-size:.6rem;color:var(--text2);}
+.lid{width:8px;height:8px;border-radius:2px;}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="t-logo">SIME</div>
+  <div class="t-sep"></div>
+  <div class="t-title">TV Distribuição de Urnas</div>
+  <div class="t-sep"></div>
+  <div class="t-stats" id="t-stats"></div>
+  <div class="t-right">
+    <div class="t-clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<!-- GRID DE 12 ROTAS -->
+<div class="routes-grid" id="routes-grid"></div>
+
+<!-- LEGENDA -->
+<div class="legend">
+  <div class="li"><div class="lid" style="background:#b8b5d0;border-radius:99px"></div>Aguardando</div>
+  <div class="li"><div class="lid" style="background:#2563eb;border-radius:99px"></div>Embarcando</div>
+  <div class="li"><div class="lid" style="background:#16a34a;border-radius:99px"></div>Pronta p/ sair</div>
+  <div class="li"><div class="lid" style="background:#ef4444;border-radius:99px"></div>Urna faltando</div>
+  <div class="li"><div class="lid" style="background:#7c3aed;border-radius:99px"></div>Saiu</div>
+  <div class="li" style="color:var(--text3)">Atualiza a cada 3s · Alarme sonoro em caso de alerta</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// DADOS — lê do localStorage (config do conferente)
+// Fallback: dados hardcoded das 12 rotas da 7ª Zona
+// ══════════════════════════════════════════════
+const ROTAS_FALLBACK = {
+  'Rota 001':{ mun:'Campo Maior',       total:4  },
+  'Rota 002':{ mun:'Campo Maior',       total:6  },
+  'Rota 003':{ mun:'Campo Maior',       total:4  },
+  'Rota 004':{ mun:'Campo Maior',       total:16 },
+  'Rota 005':{ mun:'Campo Maior',       total:14 },
+  'Rota 006':{ mun:'Campo Maior',       total:36 },
+  'Rota 007':{ mun:'Sigefredo Pacheco', total:9  },
+  'Rota 008':{ mun:'Sigefredo Pacheco', total:10 },
+  'Rota 009':{ mun:'Sigefredo Pacheco', total:17 },
+  'Rota 010':{ mun:'CM / Jatobá',      total:13 },
+  'Rota 011':{ mun:'CM / Jatobá',      total:11 },
+  'Rota 012':{ mun:'Jatobá / SP',      total:21 },
+};
+
+function getRotasInfo(){
+  try {
+    const d = loadDist();
+    const rotasState  = d.rotas   || {};
+    const rotasCfg    = d.config?.rotas || {};
+    const hasCfg      = Object.keys(rotasCfg).length > 0;
+    const hasState    = Object.keys(rotasState).length > 0;
+
+    if(hasCfg || hasState){
+      const info = {};
+      // Rotas que já foram abertas pelo conferente
+      Object.entries(rotasState).forEach(([nome, rst]) => {
+        const total   = Object.keys(rst.urnas || {}).length;
+        const rcfg    = rotasCfg[nome] || {};
+        // Prioridade: config.municipios → fallback hardcoded
+        const mun     = rcfg.municipios || ROTAS_FALLBACK[nome]?.mun || '—';
+        info[nome]    = { mun, total };
+      });
+      // Rotas configuradas mas ainda não abertas
+      Object.keys(rotasCfg).forEach(nome => {
+        if(!info[nome]){
+          const rcfg = rotasCfg[nome];
+          const mun  = rcfg.municipios || ROTAS_FALLBACK[nome]?.mun || '—';
+          info[nome] = { mun, total: ROTAS_FALLBACK[nome]?.total || 0 };
+        }
+      });
+      if(Object.keys(info).length > 0) return info;
+    }
+  } catch(e){}
+  return ROTAS_FALLBACK;
+}
+
+// ══════════════════════════════════════════════
+// GRID — colunas e paginação dinâmicas
+// ──────────────────────────────────────────────
+// ≤ 6  → 3 colunas  (3×2)
+// ≤ 9  → 3 colunas  (3×3)
+// ≤ 12 → 4 colunas  (4×3)
+// ≤ 16 → 4 colunas  (4×4)
+// ≤ 20 → 5 colunas  (5×4)
+// ≤ 25 → 5 colunas  (5×5)
+// > 25 → 6 colunas com paginação automática
+// ══════════════════════════════════════════════
+function calcCols(n){
+  if(n <=  6) return 3;
+  if(n <=  9) return 3;
+  if(n <= 12) return 4;
+  if(n <= 16) return 4;
+  if(n <= 20) return 5;
+  if(n <= 25) return 5;
+  return 6;
+}
+
+// Paginação para grades > 25 (aprox. 25 cards por página)
+const PAGE_SIZE = 24;  // múltiplo de 6 → cabe exato na grade 6-col
+let curPage = 0;
+let totalPages = 1;
+let rotDelay = 10;
+let cdTimer = null;
+let cdSecs = rotDelay;
+let paused = false;
+
+function calcPages(total, cols){
+  const maxRows = Math.floor((window.innerHeight - 64 - 26) / 120); // altura útil / altura mínima de card
+  const perPage = cols * maxRows;
+  return Math.max(1, Math.ceil(total / perPage));
+}
+
+
+// ══════════════════════════════════════════════
+// STORAGE
+// ══════════════════════════════════════════════
+const KEY = 'sime_dist_v1';
+function loadDist(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+
+// ══════════════════════════════════════════════
+// ÁUDIO — alarme
+// ══════════════════════════════════════════════
+let audioCtx = null;
+let alarmInterval = null;
+let alertasAtivos = new Set();
+
+function initAudio(){ if(!audioCtx) audioCtx = new(window.AudioContext||window.webkitAudioContext)(); }
+
+function tocarAlarme(){
+  initAudio();
+  // Alarme: 3 bips rápidos e urgentes
+  [0, 0.25, 0.5].forEach(t => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = 'square';
+    o.frequency.setValueAtTime(880, audioCtx.currentTime + t);
+    o.frequency.setValueAtTime(660, audioCtx.currentTime + t + 0.1);
+    g.gain.setValueAtTime(0.4, audioCtx.currentTime + t);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.22);
+    o.start(audioCtx.currentTime + t);
+    o.stop(audioCtx.currentTime + t + 0.22);
+  });
+}
+
+function gerenciarAlarme(novoAlerta){
+  if(novoAlerta && alertasAtivos.size > 0){
+    // Já há alerta ativo — o intervalo já está rodando
+    if(!alarmInterval){
+      alarmInterval = setInterval(tocarAlarme, 4000);
+      tocarAlarme();
+    }
+  } else if(!novoAlerta && alertasAtivos.size === 0){
+    clearInterval(alarmInterval);
+    alarmInterval = null;
+  }
+}
+
+// ══════════════════════════════════════════════
+// TEMPO — verificar atraso
+// ══════════════════════════════════════════════
+function nowMin(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
+function toMin(hm){ if(!hm)return null; const[h,m]=hm.split(':').map(Number); return h*60+m; }
+function diffMin(hm){ const t=toMin(hm); if(!t)return null; return nowMin()-t; }
+function fmtHora(hm){ return hm||'—'; }
+
+// ══════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════
+let lastAlertaCount = 0;
+
+function render(){
+  const d          = loadDist();
+  const cfg        = d.config || {};
+  const rotasCfg   = cfg.rotas || {};
+  const rotasState = d.rotas || {};
+  const ROTAS_INFO = getRotasInfo();
+  const grid       = document.getElementById('routes-grid');
+
+  let countAguardando=0, countEmb=0, countPronta=0, countAlerta=0, countSaiu=0;
+  const novosAlertas = new Set();
+
+  // Ordena por ordem de saída
+  const ordemRotas = Object.keys(ROTAS_INFO).sort((a,b) => {
+    const oa = rotasCfg[a]?.ordem_saida || 99;
+    const ob = rotasCfg[b]?.ordem_saida || 99;
+    return oa - ob;
+  });
+
+  const total  = ordemRotas.length;
+  const cols   = calcCols(total);
+  totalPages   = calcPages(total, cols);   // usa altura real da tela
+  curPage      = Math.min(curPage, totalPages - 1);
+
+  // Aplica colunas via CSS var
+  grid.style.setProperty('--cols', cols);
+
+  // Seleciona slice da página atual
+  const perPage = Math.ceil(total / totalPages);
+  const start  = curPage * perPage;
+  const slice  = totalPages > 1 ? ordemRotas.slice(start, start + perPage) : ordemRotas;
+
+  grid.innerHTML = '';
+
+  slice.forEach(nome => {
+    const rdata = ROTAS_INFO[nome];
+    const rcfg  = rotasCfg[nome] || {};
+    const rst   = rotasState[nome];
+
+    const status     = rst?.status || 'aguardando';
+    const embarcadas = rst ? Object.values(rst.urnas||{}).filter(Boolean).length : 0;
+    const total_r    = rdata?.total || 0;
+    const pct        = total_r > 0 ? Math.round(embarcadas/total_r*100) : 0;
+    const conferente = rst?.conferente || '';
+
+    if(status === 'aguardando') countAguardando++;
+    else if(status === 'embarcando') countEmb++;
+    else if(status === 'pronta') countPronta++;
+    else if(status === 'alerta') { countAlerta++; novosAlertas.add(nome); }
+    else if(status === 'saiu') countSaiu++;
+
+    const ordem    = rcfg.ordem_saida ? `${rcfg.ordem_saida}ª saída` : '';
+    const horaPrev = rcfg.saida_prev || '';
+    const diff     = status !== 'saiu' ? diffMin(horaPrev) : null;
+    const atrasada = diff !== null && diff > 2;
+
+    const statusLabels = {
+      aguardando: 'Aguardando',
+      embarcando: `Embarcando ${embarcadas}/${total_r}`,
+      pronta:     '✓ Pronta p/ sair',
+      alerta:     `⚠ ${total_r-embarcadas} urna${total_r-embarcadas>1?'s':''} faltando`,
+      saiu:       '🚗 Saiu',
+    };
+    const statusCls = { aguardando:'st-aguardando', embarcando:'st-embarcando', pronta:'st-pronta', alerta:'st-alerta', saiu:'st-saiu' };
+    const progCls   = { aguardando:'prog-aguardando', embarcando:'prog-embarcando', pronta:'prog-pronta', alerta:'prog-alerta', saiu:'prog-saiu' };
+
+    const numRota = nome.replace('Rota ', '');
+    const card    = document.createElement('div');
+    card.className = `rota-card ${status}`;
+    card.innerHTML = `
+      <div class="rc-top">
+        <div class="rc-num">${numRota}</div>
+        ${ordem ? `<div class="rc-ordem">${ordem}</div>` : ''}
+      </div>
+      <div class="rc-mun">${rdata?.mun||'—'}</div>
+      <div class="rc-status ${statusCls[status]||'st-aguardando'}">${statusLabels[status]||'Aguardando'}</div>
+      <div class="rc-prog-wrap">
+        <div class="rc-prog-bar">
+          <div class="rc-prog-fill ${progCls[status]||'prog-aguardando'}" style="width:${pct}%"></div>
+        </div>
+        <div class="rc-prog-txt">${embarcadas}/${total_r}</div>
+      </div>
+      <div class="rc-footer">
+        <div class="rc-hora ${atrasada?'atrasada':status==='saiu'?'ok':''}">
+          ${status==='saiu' && rst?.ts_saiu
+            ? `Saiu ${new Date(rst.ts_saiu).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`
+            : horaPrev ? `⏱ ${fmtHora(horaPrev)}${atrasada?' +'+diff+'min':''}` : '—'}
+        </div>
+        ${conferente ? `<div style="font-size:.58rem;color:var(--text3)">${conferente}</div>` : ''}
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  // Paginação — barra inferior
+  updatePagBar(total, totalPages);
+
+  // Stats topbar
+  document.getElementById('t-stats').innerHTML = [
+    countAguardando ? `<span class="ts" style="color:#9090b8"><div class="tsd" style="background:#9090b8"></div>${countAguardando} aguardando</span>` : '',
+    countEmb        ? `<span class="ts" style="color:#2563eb"><div class="tsd" style="background:#2563eb"></div>${countEmb} embarcando</span>` : '',
+    countPronta     ? `<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${countPronta} prontas</span>` : '',
+    countAlerta     ? `<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${countAlerta} ALERTA!</span>` : '',
+    countSaiu       ? `<span class="ts" style="color:#7c3aed"><div class="tsd" style="background:#7c3aed"></div>${countSaiu} saíram</span>` : '',
+    `<span class="ts" style="color:var(--text3)">${total} rotas</span>`,
+  ].join('');
+
+  // Alarme
+  const novosCount = novosAlertas.size;
+  if(novosCount > lastAlertaCount){ alertasAtivos = novosAlertas; gerenciarAlarme(true); }
+  else if(novosCount === 0){ alertasAtivos.clear(); gerenciarAlarme(false); }
+  else { alertasAtivos = novosAlertas; }
+  lastAlertaCount = novosCount;
+}
+
+// ── BARRA DE PAGINAÇÃO (aparece só se > 1 página) ──────────
+function updatePagBar(total, pages){
+  let bar = document.getElementById('pag-bar');
+  const legend = document.querySelector('.legend');
+  if(pages <= 1){
+    if(bar) bar.remove();
+    return;
+  }
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'pag-bar';
+    bar.style.cssText = 'height:28px;flex-shrink:0;background:var(--card);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;';
+    document.body.insertBefore(bar, legend);
+  }
+  // dots
+  const dots = Array.from({length:pages},(_,i) =>
+    `<div onclick="goPage(${i})" style="width:9px;height:9px;border-radius:50%;cursor:pointer;background:${i===curPage?'var(--blue)':'var(--border)'};border:2px solid ${i===curPage?'var(--blue)':'var(--border2)'};transition:all .2s"></div>`
+  ).join('');
+
+  bar.innerHTML = `
+    <button onclick="goPage(curPage-1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;color:var(--text2)">‹</button>
+    <div style="display:flex;gap:5px;align-items:center">${dots}</div>
+    <div style="font-size:.7rem;font-weight:700;color:var(--text2);min-width:120px;text-align:center">Pág. ${curPage+1} de ${pages} · ${total} rotas</div>
+    <div style="flex:1;height:4px;background:var(--bg2);border-radius:99px;overflow:hidden">
+      <div id="cd-fill-bar" style="height:100%;border-radius:99px;background:var(--blue);transition:width 1s linear;width:100%"></div>
+    </div>
+    <div id="cd-num" style="font-size:.62rem;font-weight:700;color:var(--text3);min-width:24px;text-align:right">${cdSecs}s</div>
+    <button onclick="togglePause()" id="pause-btn" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.78rem;display:flex;align-items:center;justify-content:center;color:var(--text2)">${paused?'▶':'⏸'}</button>
+    <button onclick="goPage(curPage+1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;color:var(--text2)">›</button>
+    <div style="font-size:.64rem;color:var(--text2);display:flex;align-items:center;gap:4px">⏱ <input type="number" value="${rotDelay}" min="5" max="60" onchange="setDelay(+this.value)" style="width:36px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);font-size:.62rem;text-align:center">s</div>`;
+}
+
+function goPage(idx){
+  const ROTAS_INFO = getRotasInfo();
+  const total = Object.keys(ROTAS_INFO).length;
+  const cols  = calcCols(total);
+  totalPages  = calcPages(total, cols);
+  curPage     = ((idx % totalPages) + totalPages) % totalPages;
+  cdSecs      = rotDelay;
+  render();
+}
+function togglePause(){ paused = !paused; }
+function setDelay(v){ rotDelay = Math.max(5, Math.min(60, v)); cdSecs = rotDelay; startCd(); }
+
+function startCd(){
+  clearInterval(cdTimer);
+  cdTimer = setInterval(()=>{
+    if(paused || totalPages <= 1) return;
+    cdSecs--;
+    const fill = document.getElementById('cd-fill-bar');
+    const num  = document.getElementById('cd-num');
+    if(fill) fill.style.width = (cdSecs/rotDelay*100)+'%';
+    if(num)  num.textContent = cdSecs+'s';
+    if(cdSecs <= 0){ goPage(curPage+1); cdSecs = rotDelay; }
+  }, 1000);
+}
+
+
+// ══════════════════════════════════════════════
+// RELÓGIO
+// ══════════════════════════════════════════════
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+}
+tick(); setInterval(tick,1000);
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+render();
+startCd();
+setInterval(render, 3000);
+document.addEventListener('click', () => { initAudio(); }, { once: true });
+</script>
+</body>
+</html>

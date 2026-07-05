@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME TV Véspera</title>
+<style>
+:root{
+  --bg:    #eceaf4;
+  --bg2:   #e3e1ef;
+  --card:  #fafaf8;
+  --border:#d0cde0;
+  --text:  #1e1b2e;
+  --text2: #6a6880;
+  --text3: #aeacc6;
+
+  --arc-done: #16a34a;
+  --arc-off:  #dddaea;
+
+  --cm:#2d50a0;
+  --jp:#1e7048;
+  --sp:#5c3a98;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
+  font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;}
+body{display:flex;flex-direction:column;}
+
+/* ── TOP BAR ── */
+.topbar{
+  height:40px;flex-shrink:0;background:var(--card);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 18px;gap:12px;
+}
+.t-logo{font-size:.78rem;font-weight:900;letter-spacing:.12em;color:var(--cm);}
+.t-sep{width:1px;height:18px;background:var(--border);}
+.t-tag{font-size:.72rem;color:var(--text2);font-weight:600;}
+.t-stats{display:flex;gap:10px;flex:1;flex-wrap:wrap;}
+.ts{font-size:.65rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.ts-d{width:6px;height:6px;border-radius:50%;}
+.t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.t-clock{font-size:.82rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;min-width:72px;text-align:right;}
+.cfg-btn{padding:4px 10px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);}
+.cfg-btn:hover{background:var(--border);}
+
+/* ── CONTENT AREA (paginada) ── */
+.content{flex:1;overflow:hidden;position:relative;}
+.page{
+  position:absolute;inset:0;padding:6px 10px 2px;
+  display:flex;flex-direction:column;gap:0;
+  opacity:0;transition:opacity .45s ease;pointer-events:none;
+}
+.page.active{opacity:1;pointer-events:all;}
+
+/* cabeçalho da cidade */
+.city-hdr{
+  display:flex;align-items:center;gap:10px;
+  padding:4px 2px 6px;flex-shrink:0;
+}
+.city-bar{width:4px;border-radius:2px;height:28px;flex-shrink:0;}
+.city-nome{font-size:1.05rem;font-weight:800;letter-spacing:.04em;}
+.city-meta{font-size:.7rem;color:var(--text2);}
+.city-prog{margin-left:auto;font-size:.78rem;font-weight:700;}
+
+/* grid de locais */
+.loc-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:5px;
+  align-content:start;
+  flex:1;overflow:hidden;
+}
+
+/* caixa do local */
+.loc{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:7px 7px 6px;
+  display:flex;flex-direction:column;gap:4px;
+  transition:background .3s,border-color .3s;
+  cursor:pointer;
+}
+.loc.done   {background:#f0fdf6;border-color:#6ee7b0;}
+.loc.delayed:not(.done){background:#fffbf0;border-color:#fcd34d;}
+.loc.prob:not(.done)   {background:#fef2f2;border-color:#fca5a5;}
+
+.loc-name{font-size:.66rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.loc.done .loc-name{color:#15803d;}
+
+.loc-time{min-height:13px;display:flex;align-items:center;}
+.lt{font-size:.6rem;font-weight:700;}
+.lt.ok   {color:#16a34a;} .lt.late{color:#dc2626;} .lt.on{color:#d97706;}
+
+.loc-circles{display:flex;flex-wrap:wrap;gap:4px;}
+
+/* ── CÍRCULO DE SEÇÃO ── */
+.sw{position:relative;width:52px;height:52px;flex-shrink:0;}
+.pb{
+  position:absolute;top:-4px;right:-4px;
+  width:14px;height:14px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.5rem;font-weight:900;color:#fff;z-index:2;
+  border:2px solid var(--bg);
+}
+.pb.err {background:#ef4444;animation:pp .8s ease-in-out infinite;}
+.pb.warn{background:#f97316;animation:pw 1.2s ease-in-out infinite;}
+@keyframes pp{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 5px rgba(239,68,68,.35);}}
+@keyframes pw{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}50%{box-shadow:0 0 0 4px rgba(249,115,22,.3);}}
+
+/* ── BARRA DE NAVEGAÇÃO / PAGINAÇÃO ── */
+.nav{
+  height:38px;flex-shrink:0;background:var(--card);
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 14px;gap:10px;
+}
+.nav-btn{
+  width:30px;height:30px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg2);cursor:pointer;font-size:.9rem;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--text2);transition:all .15s;font-weight:700;
+}
+.nav-btn:hover{background:var(--border);color:var(--text);}
+.page-dots{display:flex;gap:6px;align-items:center;}
+.pdot{width:10px;height:10px;border-radius:50%;border:2px solid var(--border);background:transparent;cursor:pointer;transition:all .2s;}
+.pdot.active{background:var(--cm);border-color:var(--cm);transform:scale(1.2);}
+.page-label{font-size:.72rem;font-weight:700;color:var(--text2);min-width:180px;text-align:center;}
+/* countdown */
+.cdown-wrap{flex:1;display:flex;align-items:center;gap:8px;}
+.cdown-track{flex:1;height:4px;background:var(--bg2);border-radius:99px;overflow:hidden;}
+.cdown-fill{height:100%;border-radius:99px;background:var(--cm);transition:width 1s linear;transform-origin:left;}
+.cdown-num{font-size:.65rem;font-weight:700;color:var(--text3);min-width:22px;text-align:right;}
+.pause-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.pause-btn:hover{background:var(--border);}
+/* delay config */
+.delay-wrap{display:flex;align-items:center;gap:5px;font-size:.67rem;color:var(--text2);}
+.delay-wrap input{width:42px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);font-size:.67rem;text-align:center;color:var(--text);}
+/* legenda */
+.leg{display:flex;gap:12px;align-items:center;}
+.li{display:flex;align-items:center;gap:3px;font-size:.6rem;color:var(--text3);}
+.li-d{width:6px;height:6px;border-radius:50%;}
+
+/* ── MODAL CONFIG ── */
+.overlay{position:fixed;inset:0;background:rgba(30,27,46,.5);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;}
+.overlay.show{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:12px;padding:22px;width:100%;max-width:720px;max-height:88vh;overflow-y:auto;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.16);}
+.modal h2{font-size:.95rem;font-weight:800;margin-bottom:4px;}
+.modal p{font-size:.75rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.ctable{width:100%;border-collapse:collapse;font-size:.75rem;}
+.ctable th{text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);font-size:.66rem;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;}
+.ctable td{padding:5px 8px;border-bottom:1px solid var(--border);}
+.ctable tr:hover td{background:var(--bg2);}
+.ctable input[type=time]{padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg2);color:var(--text);font-size:.73rem;width:76px;}
+.mbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}
+.btn{padding:7px 14px;border-radius:7px;font-size:.75rem;font-weight:700;cursor:pointer;border:none;}
+.btn-dk{background:#2a2838;color:#fff;} .btn-ol{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="t-logo">SIME</div>
+  <div class="t-sep"></div>
+  <div class="t-tag">TV Véspera — Instalação</div>
+  <div class="t-sep"></div>
+  <div class="t-stats" id="t-stats"></div>
+  <div class="t-right">
+    <button class="cfg-btn" onclick="openCfg()">⚙ Horários</button>
+    <div class="t-clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<!-- PAGES (geradas por JS) -->
+<div class="content" id="content"></div>
+
+<!-- BARRA DE NAVEGAÇÃO -->
+<div class="nav">
+  <button class="nav-btn" onclick="goPage(curPage-1)" title="Anterior">‹</button>
+  <div class="page-dots" id="page-dots"></div>
+  <div class="page-label" id="page-label">—</div>
+  <div class="cdown-wrap">
+    <div class="cdown-track"><div class="cdown-fill" id="cdown-fill" style="width:100%"></div></div>
+    <div class="cdown-num" id="cdown-num">—</div>
+  </div>
+  <button class="pause-btn" id="pause-btn" onclick="togglePause()" title="Pausar/Retomar">⏸</button>
+  <button class="nav-btn" onclick="goPage(curPage+1)" title="Próxima">›</button>
+  <div class="t-sep"></div>
+  <div class="delay-wrap">
+    ⏱ <input type="number" id="delay-inp" value="10" min="3" max="60" onchange="setDelay(+this.value)">s
+  </div>
+  <div class="t-sep"></div>
+  <div class="leg">
+    <div class="li"><div class="li-d" style="background:#dc2626"></div>Não saiu</div>
+    <div class="li"><div class="li-d" style="background:#d97706"></div>Trânsito</div>
+    <div class="li"><div class="li-d" style="background:#ca8a04"></div>Chegou</div>
+    <div class="li"><div class="li-d" style="background:#16a34a"></div>Pronta</div>
+    <div class="li"><div class="li-d" style="background:#ef4444"></div>Problema</div>
+  </div>
+</div>
+
+<!-- MODAL CONFIG HORÁRIOS -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>⚙️ Horários de expectativa por local</h2>
+    <p>Defina chegada prevista da urna e conclusão da instalação. Duplo clique em qualquer local abre este painel direto no local selecionado.</p>
+    <table class="ctable">
+      <thead><tr><th>Local</th><th>Município</th><th>Chegada prevista</th><th>Instalação prevista</th></tr></thead>
+      <tbody id="cfg-tbody"></tbody>
+    </table>
+    <div class="mbtns">
+      <button class="btn btn-ol" onclick="closeCfg()">Cancelar</button>
+      <button class="btn btn-dk" onclick="saveCfg()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+// DADOS
+// ══════════════════════════════════════════════════
+const CITIES = [
+  { city:'Campo Maior',     color:'#2d50a0', locs:[
+    {id:'CM-01', n:'Assoc. Moradores Tangará',       s:['0209']},
+    {id:'CM-02', n:'CAIC',                           s:['0071','0155','0202','0223']},
+    {id:'CM-03', n:'Centro Ed. JA Mulata Lima',      s:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},
+    {id:'CM-04', n:'Clube dos Comerciários',         s:['0015','0016','0125']},
+    {id:'CM-05', n:'Col. Est. Profª Raimundinho',    s:['0017','0018','0019','0020','0157']},
+    {id:'CM-06', n:'Creche Tia Medeiros',            s:['0074','0197','0206','0219','0224','0229','0236','0257','0261']},
+    {id:'CM-07', n:'Creche Vovô José',              s:['0254']},
+    {id:'CM-08', n:'EMATER',                         s:['0004','0014','0037','0038']},
+    {id:'CM-09', n:'Esc. Reassentamento Corredores', s:['0186']},
+    {id:'CM-10', n:'Esc. Mun. Mano Castelo Branco',  s:['0185','0226']},
+    {id:'CM-11', n:'Esc. Mun. N.S. de Fátima',      s:['0242','0248','0256']},
+    {id:'CM-12', n:'Esc. Mun. R.A. Maximino',       s:['0187']},
+    {id:'CM-13', n:'FSESP',                          s:['0062','0122']},
+    {id:'CM-14', n:'G.E. Aguida M. Conceição',      s:['0147','0173','0198','0215','0235']},
+    {id:'CM-15', n:'G.E. Povoado Tapera',            s:['0137','0220']},
+    {id:'CM-16', n:'G.E. Marion Saraiva',            s:['0029','0030','0031','0123','0148','0259']},
+    {id:'CM-17', n:'G.E. Profª Maroquinha',          s:['0135','0144']},
+    {id:'CM-18', n:'G.E. Treze de Março',            s:['0063','0064','0065','0066','0124','0145','0181']},
+    {id:'CM-19', n:'G.E. Valdivino Tito',            s:['0033','0034','0035','0036','0115','0128']},
+    {id:'CM-20', n:'IFPI',                           s:['0240','0251']},
+    {id:'CM-21', n:'Posto Saúde da Varjota',         s:['0218']},
+    {id:'CM-22', n:'Prefeitura Municipal',           s:['0045','0046','0047','0116','0117']},
+    {id:'CM-23', n:'SAAE',                           s:['0005']},
+    {id:'CM-24', n:'Salão Com. Corredores',          s:['0195','0234']},
+    {id:'CM-25', n:"Salão Com. 'Mario Cazuza'",     s:['0163']},
+    {id:'CM-26', n:'Salão Com. Santo Antônio',       s:['0164']},
+    {id:'CM-27', n:'Sec. Est. de Fazenda',           s:['0044','0191']},
+    {id:'CM-28', n:'Sec. Mun. de Educação',          s:['0006','0012','0149']},
+    {id:'CM-29', n:'U.E. José Gomes de Oliveira',    s:['0180']},
+    {id:'CM-30', n:'U.E. José Gonçalves Oliveira',   s:['0196']},
+    {id:'CM-31', n:'U.E. Linoca Gayoso',             s:['0141','0192','0244']},
+    {id:'CM-32', n:'U.E. Vida Verde',                s:['0205','0217','0233','0255']},
+  ]},
+  { city:'Jatobá do Piauí', color:'#1e7048', locs:[
+    {id:'JP-01', n:'Creche Mamãe Lima M. Oliveira',  s:['0174','0210','0232','0260']},
+    {id:'JP-02', n:'Esc. Mun. A.M. Castelo Branco',  s:['0212','0245']},
+    {id:'JP-03', n:'Esc. Mun. A.F. Ribeiro Paz',    s:['0225']},
+    {id:'JP-04', n:'Escola Mun. da Montanha',        s:['0188']},
+    {id:'JP-05', n:'G.E. Anita Gaioso',              s:['0175','0238']},
+    {id:'JP-06', n:'G.E. de Tanques',                s:['0179','0194']},
+    {id:'JP-07', n:'G.E. Prof. Francisco Luis',      s:['0168']},
+    {id:'JP-08', n:'Grupo Escolar',                  s:['0139']},
+    {id:'JP-09', n:'Igreja da Morada Nova',          s:['0221','0243']},
+    {id:'JP-10', n:'Posto Saúde M. Sousa Dié',       s:['0160','0162','0258']},
+    {id:'JP-11', n:'Salão Comunitário',              s:['0200']},
+    {id:'JP-12', n:'U.E. Francisco F.P. Oliveira',   s:['0216','0227']},
+    {id:'JP-13', n:'U.E. João Félix de Andrade',     s:['0207','0239']},
+    {id:'JP-14', n:'U.E. José Cândido Gaioso',       s:['0178']},
+    {id:'JP-15', n:'U.E. Oscar Gil C. Branco',       s:['0165','0208','0253']},
+    {id:'JP-16', n:'U.E. Rafael Nogueira Passos',    s:['0199']},
+    {id:'JP-17', n:'U.E. Tertuliano Pereira',        s:['0101','0102','0103','0112','0171','0172','0176']},
+  ]},
+  { city:'Sigefredo Pacheco', color:'#5c3a98', locs:[
+    {id:'SP-01', n:'Esc. Rural Sto. Antônio C.V.',   s:['0193','0214']},
+    {id:'SP-02', n:'G.E. Manoel Francisco',          s:['0136','0152']},
+    {id:'SP-03', n:'G.E. Manoel Pereira dos Reis',   s:['0189']},
+    {id:'SP-04', n:'G.E. Monsenhor Mateus',          s:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},
+    {id:'SP-05', n:'U.E. Antonio Carmelo Barbosa',   s:['0167','0230']},
+    {id:'SP-06', n:'U.E. Antonio Cícero Oliveira',   s:['0166','0228']},
+    {id:'SP-07', n:'U.E. Antônio Pereira Santos',    s:['0140','0201']},
+    {id:'SP-08', n:'U.E. da Paz Sousa',              s:['0079','0080','0081','0133','0252']},
+    {id:'SP-09', n:'U.E. Dr. Jerônimo S. Silva',     s:['0241','0250']},
+    {id:'SP-10', n:'U.E. Ivon Pacheco',              s:['0204','0247']},
+    {id:'SP-11', n:'U.E. José Ribeiro da Luz',       s:['0203','0211','0222']},
+    {id:'SP-12', n:'U.E. Jovino Josino Oliveira',    s:['0138','0231']},
+    {id:'SP-13', n:'U.E. Manoel Rodrigues Melo',     s:['0213']},
+    {id:'SP-14', n:'U.E. Miguel Rocha',              s:['0159','0246']},
+  ]},
+];
+
+const ALL_LOCS = CITIES.flatMap(c => c.locs.map(l => ({...l, cityName: c.city})));
+
+// ══════════════════════════════════════════════════
+// CONFIG (horários)
+// ══════════════════════════════════════════════════
+const CFG_KEY = 'sime_vespera_cfg';
+function loadCfg(){ try{ return JSON.parse(localStorage.getItem(CFG_KEY)||'{}'); }catch(e){ return {}; } }
+function writeCfg(d){ localStorage.setItem(CFG_KEY, JSON.stringify(d)); }
+let pendingCfg = {};
+
+// ══════════════════════════════════════════════════
+// ESTADO DAS SEÇÕES
+// Fontes reais:
+//   sime_lacre_v3  → coordenador de preparação  (lacrada = arco 1)
+//   sime_inst_v1   → instalador  (s1=chegou arco 2 · s3=instalada arco 3 · prob)
+// ══════════════════════════════════════════════════
+function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
+function loadInst() { try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
+
+function demoSt(n){
+  const v=((parseInt(n)*2654435761)>>>0)/4294967296;
+  if(v<.50) return {saiu:true, chegou:true, inst:true, prob:false};
+  if(v<.65) return {saiu:true, chegou:true, inst:false,prob:false};
+  if(v<.74) return {saiu:true, chegou:false,inst:false,prob:false};
+  if(v<.88) return {saiu:false,chegou:false,inst:false,prob:false};
+  if(v<.92) return {saiu:false,chegou:false,inst:true, prob:false};
+  return           {saiu:true, chegou:true, inst:false,prob:true};
+}
+function getSt(n, lacre, inst){
+  const fl=lacre[n], fi=inst[n];
+  if(fl || fi) return {
+    saiu:   !!(fl?.lacre),                      // lacrada pelo coordenador
+    chegou: !!(fi?.s1),                         // chegou (instalador)
+    inst:   !!(fi?.s3),                         // instalada (instalador)
+    prob:   !!(fi?.prob && !fi?.probResolvido),  // problema ativo
+    real:   true,
+  };
+  return {...demoSt(n), real:false};
+}
+
+// ══════════════════════════════════════════════════
+// SVG — círculo grande (52px)
+// ══════════════════════════════════════════════════
+const CX=26,CY=26,R=22,RC=14,SW=5;
+const ARCS=[[-88,28],[32,148],[152,268]];
+
+function pol(d){ const r=d*Math.PI/180; return [CX+R*Math.cos(r),CY+R*Math.sin(r)]; }
+function ap(a1,a2){
+  const[x1,y1]=pol(a1),[x2,y2]=pol(a2);
+  const lg=((a2-a1+360)%360)>180?1:0;
+  return `M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x2.toFixed(2)},${y2.toFixed(2)}`;
+}
+
+function mkSVG(n, st){
+  let cc;
+  if(st.inst&&st.chegou)  cc='#16a34a';
+  else if(st.inst)         cc='#ea580c';
+  else if(st.chegou)       cc='#ca8a04';
+  else if(st.saiu)         cc='#d97706';
+  else                     cc='#dc2626';
+
+  const ad=[st.saiu,st.chegou,st.inst];
+  const paths=ARCS.map((a,i)=>
+    `<path d="${ap(a[0],a[1])}" stroke="${ad[i]?'var(--arc-done)':'var(--arc-off)'}" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`
+  ).join('');
+
+  // número: mostrar sem zeros à esquerda, ex: "063" → "63"
+  const num = parseInt(n).toString();
+  // tamanho de fonte: 1-2 dígitos → 12px, 3 dígitos → 10px
+  const fs  = num.length <= 2 ? 12 : 10;
+
+  return `<svg width="52" height="52" viewBox="0 0 52 52">
+    ${paths}
+    <circle cx="${CX}" cy="${CY}" r="${RC}" fill="${cc}"/>
+    <text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central"
+      font-size="${fs}" font-weight="800" fill="rgba(255,255,255,.95)"
+      font-family="'Segoe UI',system-ui,sans-serif">${num}</text>
+  </svg>`;
+}
+
+// ══════════════════════════════════════════════════
+// PAGINAÇÃO
+// ══════════════════════════════════════════════════
+const NUMPAGES = CITIES.length;
+let curPage  = 0;
+let rotDelay = 10;       // segundos
+let countdown= rotDelay;
+let paused   = false;
+let ticker   = null;
+
+function startTicker(){
+  clearInterval(ticker);
+  countdown = rotDelay;
+  updateCountdown();
+  ticker = setInterval(()=>{
+    if(paused) return;
+    countdown--;
+    updateCountdown();
+    if(countdown <= 0){ goPage(curPage + 1); }
+  }, 1000);
+}
+
+function updateCountdown(){
+  const pct = (countdown / rotDelay) * 100;
+  document.getElementById('cdown-fill').style.width = Math.max(0,pct) + '%';
+  document.getElementById('cdown-num').textContent  = countdown + 's';
+  // cor da barra varia conforme urgência
+  const fill = document.getElementById('cdown-fill');
+  fill.style.background = countdown <= 3 ? '#ef4444' : countdown <= 5 ? '#f59e0b' : 'var(--cm)';
+}
+
+function setDelay(v){
+  rotDelay = Math.max(3, Math.min(60, v));
+  startTicker();
+}
+
+function togglePause(){
+  paused = !paused;
+  document.getElementById('pause-btn').textContent = paused ? '▶' : '⏸';
+}
+
+function goPage(idx){
+  curPage = ((idx % NUMPAGES) + NUMPAGES) % NUMPAGES;
+  countdown = rotDelay;
+  updateCountdown();
+  renderCurrentPage();
+  updateNav();
+}
+
+function updateNav(){
+  // dots
+  const dots = document.getElementById('page-dots');
+  dots.innerHTML = '';
+  CITIES.forEach((c,i)=>{
+    const d = document.createElement('div');
+    d.className = 'pdot' + (i===curPage?' active':'');
+    d.style.borderColor = i===curPage ? c.color : '';
+    d.style.background  = i===curPage ? c.color : '';
+    d.onclick = ()=>goPage(i);
+    d.title = c.city;
+    dots.appendChild(d);
+  });
+  // label
+  const c = CITIES[curPage];
+  document.getElementById('page-label').textContent =
+    `${c.city}  ·  Página ${curPage+1} de ${NUMPAGES}`;
+  document.getElementById('page-label').style.color = c.color;
+}
+
+// ══════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════
+let lastProbCnt = 0;
+let audioCtx    = null;
+
+function beep(){
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.connect(g);g.connect(audioCtx.destination);
+    o.frequency.setValueAtTime(880,audioCtx.currentTime);
+    o.frequency.setValueAtTime(660,audioCtx.currentTime+.2);
+    g.gain.setValueAtTime(.3,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.5);
+    o.start();o.stop(audioCtx.currentTime+.5);
+  }catch(e){}
+}
+
+function buildPageEl(cityIdx, inst, dist, cfg){
+  const city = CITIES[cityIdx];
+  const div = document.createElement('div');
+  div.className = 'page';
+  div.id = 'page-' + cityIdx;
+
+  // stats da cidade
+  let done=0,tot=0;
+  city.locs.forEach(l=>{ tot+=l.s.length; if(l.s.every(n=>{ const st=getSt(n,lacre,inst); return st.inst&&st.chegou; })) done+=l.s.length; });
+
+  div.innerHTML = `<div class="city-hdr">
+    <div class="city-bar" style="background:${city.color}"></div>
+    <div>
+      <div class="city-nome" style="color:${city.color}">${city.city}</div>
+      <div class="city-meta">${city.locs.length} locais · ${tot} seções</div>
+    </div>
+    <div class="city-prog" style="color:${city.color}">${done} / ${tot} instaladas</div>
+  </div>`;
+
+  const grid = document.createElement('div');
+  grid.className = 'loc-grid';
+
+  city.locs.forEach(loc=>{
+    const lcfg = cfg[loc.id] || {};
+    const states = loc.s.map(n=>getSt(n,lacre,inst));
+    const allDone= states.every(st=>st.inst&&st.chegou);
+    const hasProb= states.some(st=>st.prob);
+    const hasInco= states.some(st=>st.inst&&!st.chegou);
+    const anyCh  = states.some(st=>st.chegou);
+
+    // atraso
+    function nowMin(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
+    function toM(hm){ if(!hm)return null; const[h,m]=hm.split(':').map(Number); return h*60+m; }
+    const expCh = toM(lcfg.chegada), expIn = toM(lcfg.instal);
+    const nm = nowMin();
+    const delCh = expCh && !anyCh  && nm>expCh ? nm-expCh : null;
+    const delIn = expIn && !allDone && nm>expIn ? nm-expIn : null;
+    const delayed = delCh||delIn;
+
+    const box = document.createElement('div');
+    box.className = 'loc' +
+      (allDone              ? ' done'    : '') +
+      (!allDone&&(hasProb||hasInco) ? ' prob' : '') +
+      (!allDone&&!hasProb&&!hasInco&&delayed ? ' delayed' : '');
+
+    // linha de tempo
+    let timeLn = '';
+    if(allDone) timeLn = `<div class="loc-time"><span class="lt ok">✓ Pronto</span></div>`;
+    else if(delIn) timeLn = `<div class="loc-time"><span class="lt late">Instal. +${delIn}min</span></div>`;
+    else if(delCh) timeLn = `<div class="loc-time"><span class="lt late">Chegada +${delCh}min</span></div>`;
+    else if(lcfg.chegada&&!anyCh) timeLn = `<div class="loc-time"><span class="lt on">Chegada: ${lcfg.chegada}</span></div>`;
+    else if(lcfg.instal&&!allDone) timeLn = `<div class="loc-time"><span class="lt on">Instal.: ${lcfg.instal}</span></div>`;
+    else timeLn = `<div class="loc-time"></div>`;
+
+    // círculos
+    let circs = '';
+    loc.s.forEach(n=>{
+      const st = getSt(n,lacre,inst);
+      const badge = st.prob
+        ? `<div class="pb err">!</div>`
+        : (st.inst&&!st.chegou ? `<div class="pb warn">!</div>` : '');
+      circs += `<div class="sw" title="Seção ${n}">${mkSVG(n,st)}${badge}</div>`;
+    });
+
+    box.innerHTML = `<div class="loc-name">${loc.n}</div>${timeLn}<div class="loc-circles">${circs}</div>`;
+    box.ondblclick = ()=>openCfg(loc.id);
+    grid.appendChild(box);
+  });
+
+  div.appendChild(grid);
+  return div;
+}
+
+// stats globais
+function calcStats(inst, dist){
+  let ok=0,ch=0,tr=0,pd=0,pr=0,inc=0,tot=0;
+  CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{
+    tot++;
+    const st=getSt(n,lacre,inst);
+    if(st.inst&&st.chegou) ok++;
+    else if(st.chegou)     ch++;
+    else if(st.saiu)       tr++;
+    else if(!st.prob)      pd++;
+    if(st.prob)            pr++;
+    if(st.inst&&!st.chegou)inc++;
+  })));
+  return {ok,ch,tr,pd,pr,inc,tot};
+}
+
+function renderCurrentPage(){
+  // aplica .active apenas na page correta, fade nos outros
+  document.querySelectorAll('.page').forEach((p,i)=>{
+    p.classList.toggle('active', i===curPage);
+  });
+}
+
+function fullRender(){
+  const inst=loadInst(), lacre=loadLacre(), cfg=loadCfg();
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+
+  CITIES.forEach((_,i)=>{
+    const el = buildPageEl(i, inst, dist, cfg);
+    content.appendChild(el);
+  });
+
+  renderCurrentPage();
+
+  // stats topbar
+  const s = calcStats(inst, dist);
+  document.getElementById('t-stats').innerHTML = [
+    s.ok  ?`<span class="ts" style="color:#16a34a"><div class="ts-d" style="background:#16a34a"></div>${s.ok} prontas</span>`:'',
+    s.ch  ?`<span class="ts" style="color:#ca8a04"><div class="ts-d" style="background:#ca8a04"></div>${s.ch} chegaram</span>`:'',
+    s.tr  ?`<span class="ts" style="color:#d97706"><div class="ts-d" style="background:#d97706"></div>${s.tr} trânsito</span>`:'',
+    s.pd  ?`<span class="ts" style="color:#9090b0"><div class="ts-d" style="background:#dc2626"></div>${s.pd} aguardando</span>`:'',
+    s.inc ?`<span class="ts" style="color:#ea580c"><div class="ts-d" style="background:#ea580c"></div>${s.inc} inconsistências</span>`:'',
+    s.pr  ?`<span class="ts" style="color:#ef4444"><div class="ts-d" style="background:#ef4444"></div>${s.pr} problemas</span>`:'',
+    `<span class="ts" style="color:var(--text3)">${s.tot} total</span>`,
+  ].join('');
+
+  // alerta sonoro
+  if(s.pr+s.inc > lastProbCnt) beep();
+  lastProbCnt = s.pr+s.inc;
+}
+
+// ══════════════════════════════════════════════════
+// CONFIG MODAL
+// ══════════════════════════════════════════════════
+function openCfg(scrollToId=null){
+  const cfg = loadCfg();
+  pendingCfg = {...cfg};
+  const tb = document.getElementById('cfg-tbody');
+  tb.innerHTML='';
+  ALL_LOCS.forEach(l=>{
+    const lc = cfg[l.id]||{};
+    tb.innerHTML+=`<tr id="cfgrow-${l.id}">
+      <td><strong>${l.n}</strong></td>
+      <td style="font-size:.68rem;color:var(--text2)">${l.cityName}</td>
+      <td><input type="time" value="${lc.chegada||''}"
+        onchange="pendingCfg['${l.id}']={...(pendingCfg['${l.id}']||{}),chegada:this.value}"></td>
+      <td><input type="time" value="${lc.instal||''}"
+        onchange="pendingCfg['${l.id}']={...(pendingCfg['${l.id}']||{}),instal:this.value}"></td>
+    </tr>`;
+  });
+  document.getElementById('overlay').classList.add('show');
+  if(scrollToId){
+    setTimeout(()=>{
+      const row=document.getElementById('cfgrow-'+scrollToId);
+      if(row) row.scrollIntoView({block:'center'});
+    },150);
+  }
+}
+function saveCfg(){ writeCfg(pendingCfg); closeCfg(); fullRender(); }
+function closeCfg(){ document.getElementById('overlay').classList.remove('show'); }
+document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeCfg(); });
+
+// ══════════════════════════════════════════════════
+// RELÓGIO
+// ══════════════════════════════════════════════════
+function tick(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+}
+tick(); setInterval(tick, 1000);
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+fullRender();
+updateNav();
+startTicker();
+
+// atualiza dados a cada 5s (sem mudar de página)
+setInterval(()=>{ fullRender(); }, 5000);
+
+// ativa áudio no primeiro toque
+document.addEventListener('click',()=>{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); },{once:true});
+</script>
+</body>
+</html>
