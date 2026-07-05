@@ -23,6 +23,14 @@ CREATE INDEX idx_notif_status  ON sime_notificacoes(status);
 CREATE INDEX idx_notif_secao   ON sime_notificacoes(secao_id);
 CREATE INDEX idx_notif_created ON sime_notificacoes(created_at DESC);
 
+-- RLS: usuário autenticado só vê notificações de seções da sua zona.
+-- (sime_user_zona() é criada em SIME_schema.sql, executado antes deste arquivo.)
+ALTER TABLE sime_notificacoes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS notif_zona_policy ON sime_notificacoes;
+CREATE POLICY notif_zona_policy ON sime_notificacoes
+  FOR ALL USING     (secao_id IN (SELECT id FROM sime_secoes WHERE zona_id = sime_user_zona()))
+          WITH CHECK (secao_id IN (SELECT id FROM sime_secoes WHERE zona_id = sime_user_zona()));
+
 -- ------------------------------------------------------------
 -- 2. FUNÇÃO QUE CHAMA O WEBHOOK (Edge Function)
 -- ------------------------------------------------------------
@@ -31,6 +39,16 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_payload JSONB;
 BEGIN
+  -- Em UPDATE, só notifica se um dos campos monitorados mudou de valor.
+  -- (A checagem fica aqui — TG_OP não é válido na cláusula WHEN de CREATE TRIGGER.)
+  IF TG_OP = 'UPDATE' AND NOT (
+       NEW.status             IS DISTINCT FROM OLD.status OR
+       NEW.rota_id            IS DISTINCT FROM OLD.rota_id OR
+       NEW.responsavel_coleta IS DISTINCT FROM OLD.responsavel_coleta
+     ) THEN
+    RETURN NEW;
+  END IF;
+
   -- Monta payload para a Edge Function
   v_payload := jsonb_build_object(
     'type',       TG_OP,
@@ -69,15 +87,6 @@ CREATE OR REPLACE TRIGGER trg_midias_notif_whatsapp
     status, rota_id, responsavel_coleta
   ON sime_midias
   FOR EACH ROW
-  WHEN (
-    -- Só dispara quando há mudança real de valor
-    (TG_OP = 'INSERT') OR
-    (TG_OP = 'UPDATE' AND (
-      NEW.status            IS DISTINCT FROM OLD.status            OR
-      NEW.rota_id           IS DISTINCT FROM OLD.rota_id           OR
-      NEW.responsavel_coleta IS DISTINCT FROM OLD.responsavel_coleta
-    ))
-  )
   EXECUTE FUNCTION sime_notificar_whatsapp();
 
 -- ------------------------------------------------------------

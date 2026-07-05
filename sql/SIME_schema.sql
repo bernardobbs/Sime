@@ -407,33 +407,86 @@ $$ LANGUAGE plpgsql;
 
 -- ------------------------------------------------------------
 -- RLS (Row Level Security) — produção
+-- Filosofia #8: "RLS sempre ativo — usuário só lê/escreve dados da sua zona".
+--
+-- Escopo: protege o acesso AUTENTICADO (admins do cartório via Supabase Auth).
+-- O acesso de campo (mesário/motorista/etc. via QR Code + PIN, sem auth.uid())
+-- é feito por Edge Function/API com service_role, que ignora RLS por design.
 -- ------------------------------------------------------------
 
-ALTER TABLE sime_midias ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sime_atores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sime_logs   ENABLE ROW LEVEL SECURITY;
+-- Helper: zona do usuário autenticado.
+-- SECURITY DEFINER + search_path fixo evita recursão de RLS quando as próprias
+-- políticas consultam sime_usuarios (que também tem RLS habilitado).
+CREATE OR REPLACE FUNCTION sime_user_zona()
+RETURNS UUID
+LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT zona_id FROM sime_usuarios WHERE id = auth.uid();
+$$;
 
--- Usuários autenticados leem sua zona
-CREATE POLICY midias_zona_policy ON sime_midias
-  USING (eleicao_id IN (
-    SELECT e.id FROM sime_eleicoes e
-    JOIN sime_usuarios u ON u.zona_id = e.zona_id
-    WHERE u.id = auth.uid()
-  ));
+-- Habilita RLS em todas as tabelas com dados de zona
+ALTER TABLE sime_zonas       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_secoes      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_rotas       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_eleicoes    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_empresas    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_usuarios    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_tokens      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_mesa_estado ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_midias      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_atores      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_logs        ENABLE ROW LEVEL SECURITY;
 
+-- ── Tabelas com zona_id direto (a própria zona é o id em sime_zonas) ──
+DROP POLICY IF EXISTS zonas_zona_policy ON sime_zonas;
+CREATE POLICY zonas_zona_policy ON sime_zonas
+  FOR ALL USING (id = sime_user_zona()) WITH CHECK (id = sime_user_zona());
+
+DROP POLICY IF EXISTS secoes_zona_policy ON sime_secoes;
+CREATE POLICY secoes_zona_policy ON sime_secoes
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+
+DROP POLICY IF EXISTS rotas_zona_policy ON sime_rotas;
+CREATE POLICY rotas_zona_policy ON sime_rotas
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+
+DROP POLICY IF EXISTS eleicoes_zona_policy ON sime_eleicoes;
+CREATE POLICY eleicoes_zona_policy ON sime_eleicoes
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+
+DROP POLICY IF EXISTS empresas_zona_policy ON sime_empresas;
+CREATE POLICY empresas_zona_policy ON sime_empresas
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+
+DROP POLICY IF EXISTS usuarios_zona_policy ON sime_usuarios;
+CREATE POLICY usuarios_zona_policy ON sime_usuarios
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+
+DROP POLICY IF EXISTS atores_zona_policy ON sime_atores;
 CREATE POLICY atores_zona_policy ON sime_atores
-  USING (zona_id IN (
-    SELECT zona_id FROM sime_usuarios WHERE id = auth.uid()
-  ));
+  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
 
--- Logs: append-only (sem DELETE, sem UPDATE via RLS)
+-- ── Tabelas ligadas à zona via eleicao_id → sime_eleicoes ──
+DROP POLICY IF EXISTS tokens_zona_policy ON sime_tokens;
+CREATE POLICY tokens_zona_policy ON sime_tokens
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+
+DROP POLICY IF EXISTS mesa_zona_policy ON sime_mesa_estado;
+CREATE POLICY mesa_zona_policy ON sime_mesa_estado
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+
+DROP POLICY IF EXISTS midias_zona_policy ON sime_midias;
+CREATE POLICY midias_zona_policy ON sime_midias
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+
+-- ── Logs: append-only (INSERT livre p/ autenticados; SELECT por zona; nunca UPDATE/DELETE) ──
+DROP POLICY IF EXISTS logs_insert_policy ON sime_logs;
 CREATE POLICY logs_insert_policy ON sime_logs FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS logs_select_policy ON sime_logs;
 CREATE POLICY logs_select_policy ON sime_logs FOR SELECT
-  USING (eleicao_id IN (
-    SELECT e.id FROM sime_eleicoes e
-    JOIN sime_usuarios u ON u.zona_id = e.zona_id
-    WHERE u.id = auth.uid()
-  ));
+  USING (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
 
 -- ------------------------------------------------------------
 -- DADOS INICIAIS (seed) — 7ª Zona Piauí
