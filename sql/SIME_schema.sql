@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS sime_rotas (
   ativo       BOOLEAN NOT NULL DEFAULT true
 );
 
+-- Empresas contratadas (motoristas terceirizados)
+CREATE TABLE IF NOT EXISTS sime_empresas (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  zona_id     UUID REFERENCES sime_zonas(id),
+  nome        TEXT NOT NULL,
+  rotas       UUID[],  -- rotas atribuídas à empresa (sime_rotas.id)
+  ativo       BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_empresas_zona ON sime_empresas(zona_id);
+
 -- Eleições (por zona e turno)
 CREATE TABLE IF NOT EXISTS sime_eleicoes (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -64,10 +75,22 @@ CREATE TABLE IF NOT EXISTS sime_usuarios (
   zona_id     UUID REFERENCES sime_zonas(id),
   nome        TEXT NOT NULL,
   email       TEXT UNIQUE,
-  perfil      TEXT NOT NULL CHECK(perfil IN ('coordenador','monitor','gestor_prob','gestor_dist','observador')),
+  perfil      TEXT NOT NULL CHECK(perfil IN (
+                'coordenador','monitor','gestor_prob','gestor_dist','observador',
+                'coord_motoristas','coord_acessibilidade','coletor_midias')),
+  empresa_id  UUID REFERENCES sime_empresas(id),  -- Coord. de Motoristas (preposto): só vê rotas da empresa
+  local_id    UUID,                               -- Coord. de Acessibilidade: só vê seções do local
   ativo       BOOLEAN NOT NULL DEFAULT true,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migração para bancos já existentes (colunas + novos perfis)
+ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES sime_empresas(id);
+ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS local_id UUID;
+ALTER TABLE sime_usuarios DROP CONSTRAINT IF EXISTS sime_usuarios_perfil_check;
+ALTER TABLE sime_usuarios ADD CONSTRAINT sime_usuarios_perfil_check CHECK (perfil IN (
+  'coordenador','monitor','gestor_prob','gestor_dist','observador',
+  'coord_motoristas','coord_acessibilidade','coletor_midias'));
 
 -- Tokens de acesso para operadores de campo
 CREATE TABLE IF NOT EXISTS sime_tokens (
@@ -76,11 +99,19 @@ CREATE TABLE IF NOT EXISTS sime_tokens (
   usuario_id  UUID REFERENCES sime_usuarios(id),
   token       VARCHAR(8) NOT NULL UNIQUE,
   pin         VARCHAR(4) NOT NULL,
-  rotas       TEXT[],
+  tipo        TEXT NOT NULL DEFAULT 'conferente', -- 'conferente' | 'coord_acessibilidade' | ...
+  rotas       TEXT[],   -- escopo por rota (conferente/motorista)
+  local_id    UUID,     -- escopo por local (coord_acessibilidade)
+  local_nome  TEXT,     -- nome do local (exibição no módulo de campo)
   expira_em   TIMESTAMPTZ,
   usado_em    TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migração para bancos já existentes
+ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS tipo       TEXT NOT NULL DEFAULT 'conferente';
+ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS local_id   UUID;
+ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS local_nome TEXT;
 
 -- Estado operacional das seções (Dia D)
 CREATE TABLE IF NOT EXISTS sime_mesa_estado (
@@ -173,9 +204,22 @@ CREATE TYPE sime_ator_funcao AS ENUM (
   'mesario',
   'motorista',
   'tecnico',
-  'coordenador_acessibilidade',
-  'cartorio'
+  'auxiliar_eleicao',
+  'coord_acessibilidade',
+  'coord_motoristas',
+  'coletor_midias',
+  'preposto',
+  'cartorio',
+  'coordenador_acessibilidade'  -- alias legado (dados antigos)
 );
+
+-- Migração do enum para bancos já existentes:
+--   ALTER TYPE ... ADD VALUE deve rodar fora de bloco transacional.
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'auxiliar_eleicao';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_acessibilidade';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_motoristas';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coletor_midias';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'preposto';
 
 CREATE TABLE IF NOT EXISTS sime_atores (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
