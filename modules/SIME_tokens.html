@@ -127,20 +127,35 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="form-title">➕ Novo token de acesso</div>
 
     <div class="info-box">
-      O conferente escaneia o QR Code com o celular e já entra direto nas suas rotas. O PIN de 4 dígitos serve como backup caso o QR não funcione.
+      O operador escaneia o QR Code com o celular e já entra direto no seu escopo (rotas do conferente ou local da acessibilidade). O PIN de 4 dígitos serve como backup caso o QR não funcione.
     </div>
 
     <div class="form-group">
-      <label>Nome do conferente</label>
+      <label>Nome do operador</label>
       <input type="text" id="f-nome" placeholder="ex: Carlos Mendes">
     </div>
 
     <div class="form-group">
+      <label>Tipo de acesso</label>
+      <select id="f-tipo" onchange="onTipoChange()">
+        <option value="conferente">🚚 Conferente (por rotas)</option>
+        <option value="coord_acessibilidade">♿ Coord. de Acessibilidade (por local)</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="grp-rotas">
       <label>Rotas atribuídas</label>
       <div class="rotas-check" id="rotas-check"></div>
       <div class="todas-rotas" onclick="toggleTodas()">
         <span id="todas-lbl">☐ Selecionar todas as rotas</span>
       </div>
+    </div>
+
+    <div class="form-group" id="grp-local" style="display:none">
+      <label>Local de votação</label>
+      <select id="f-local">
+        <option value="">— selecionar local —</option>
+      </select>
     </div>
 
     <div class="form-group">
@@ -211,6 +226,31 @@ function buildRotasCheck(){
 }
 buildRotasCheck();
 
+// ══════════════════════════════════════════════════
+// LOCAIS (Coord. de Acessibilidade) — em produção vem de sime_secoes.
+// Os nomes precisam casar com os locais de SIME_acessibilidade.html.
+// ══════════════════════════════════════════════════
+const LOCAIS_DISPONIVEIS = [
+  'G.E. Treze de Março',
+  'Col. Est. Profª Raimundinho Andrade',
+  'G.E. Valdivino Tito',
+  'Esc. Mun. N.S. de Fátima',
+];
+function buildLocalSelect(){
+  const el = document.getElementById('f-local');
+  el.innerHTML = '<option value="">— selecionar local —</option>' +
+    LOCAIS_DISPONIVEIS.map(l=>`<option value="${l}">${l}</option>`).join('');
+}
+buildLocalSelect();
+
+// Alterna os campos conforme o tipo de acesso escolhido
+function onTipoChange(){
+  const tipo = document.getElementById('f-tipo').value;
+  const acess = tipo === 'coord_acessibilidade';
+  document.getElementById('grp-rotas').style.display = acess ? 'none' : '';
+  document.getElementById('grp-local').style.display = acess ? '' : 'none';
+}
+
 function onRotaChange(inp){
   const lbl = inp.closest('label');
   lbl.classList.toggle('checked', inp.checked);
@@ -238,12 +278,18 @@ function genPIN(){ return String(Math.floor(1000+Math.random()*9000)); }
 
 function criarToken(){
   const nome  = document.getElementById('f-nome').value.trim();
+  const tipo  = document.getElementById('f-tipo').value;
   const rotas = getRotasSelecionadas();
+  const local = document.getElementById('f-local').value;
   const turno = document.getElementById('f-turno').value;
   const zona  = document.getElementById('f-zona').value;
 
-  if(!nome){ showToast('⚠ Informe o nome do conferente'); return; }
-  if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
+  if(!nome){ showToast('⚠ Informe o nome do operador'); return; }
+  if(tipo === 'coord_acessibilidade'){
+    if(!local){ showToast('⚠ Selecione o local de votação'); return; }
+  } else {
+    if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
+  }
 
   // Calcular expiração: fim do Dia D (23:59) com base na config de eleição
   let expira_em = null;
@@ -259,7 +305,10 @@ function criarToken(){
   const id  = genId();
   const pin = genPIN();
   const token = {
-    id, pin, nome, rotas, turno:+turno, zona,
+    id, pin, nome, tipo,
+    rotas: tipo === 'coord_acessibilidade' ? [] : rotas,
+    local: tipo === 'coord_acessibilidade' ? local : null,
+    turno:+turno, zona,
     criado_em: Date.now(),
     expira_em,
     usado_em: null,
@@ -271,6 +320,7 @@ function criarToken(){
 
   // Limpar form
   document.getElementById('f-nome').value = '';
+  document.getElementById('f-local').value = '';
   document.querySelectorAll('#rotas-check input').forEach(c=>{ c.checked=false; c.closest('label').classList.remove('checked'); });
   document.getElementById('todas-lbl').textContent = '☐ Selecionar todas as rotas';
 
@@ -310,7 +360,8 @@ function renderTokens(){
       const agora = Date.now();
       const expirado = t.expira_em && agora > t.expira_em;
       const iniciais = t.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-      const url = buildUrl(t.id);
+      const isAcess = t.tipo === 'coord_acessibilidade';
+      const url = buildUrl(t.id, t.tipo);
       const rotas_txt = t.rotas.join(' · ');
 
       card.innerHTML = `
@@ -321,7 +372,9 @@ function renderTokens(){
             <div class="tc-meta">${t.turno}º Turno · Zona ${t.zona} · ${fmtDate(t.criado_em)}</div>
             <div class="tc-badges">
               <span class="tc-badge ${expirado?'tcb-warn':'tcb-ok'}">${expirado?'⚠ Expirado':'✓ Válido'}</span>
-              <span class="tc-badge tcb-blue">${t.rotas.length} rota${t.rotas.length>1?'s':''}</span>
+              ${isAcess
+                ? '<span class="tc-badge tcb-blue">♿ Acessibilidade</span>'
+                : `<span class="tc-badge tcb-blue">${t.rotas.length} rota${t.rotas.length>1?'s':''}</span>`}
               <span class="tc-badge tcb-off">PIN: ${t.pin}</span>
               ${t.usado_em ? '<span class="tc-badge tcb-off">Usado '+fmtDate(t.usado_em)+'</span>' : ''}
             </div>
@@ -342,7 +395,7 @@ function renderTokens(){
               <div class="pin-label">PIN backup:</div>
               <div class="pin-digits">${t.pin.split('').map(d=>`<div class="pin-digit">${d}</div>`).join('')}</div>
             </div>
-            <div class="tc-rotas">Rotas: <span>${rotas_txt}</span></div>
+            <div class="tc-rotas">${isAcess ? 'Local: <span>'+(t.local||'—')+'</span>' : 'Rotas: <span>'+rotas_txt+'</span>'}</div>
             ${t.expira_em ? `<div style="font-size:.68rem;color:var(--text2);margin-top:5px;">Expira: ${fmtDateTime(t.expira_em)}</div>` : ''}
           </div>
         </div>`;
@@ -371,10 +424,11 @@ function renderTokens(){
 // ══════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════
-function buildUrl(tokenId){
-  // URL relativa ao mesmo diretório
+function buildUrl(tokenId, tipo){
+  // URL relativa ao mesmo diretório — módulo destino conforme o tipo
   const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
-  return base + 'SIME_conferente.html?token=' + tokenId;
+  const modulo = tipo === 'coord_acessibilidade' ? 'SIME_acessibilidade.html' : 'SIME_conferente.html';
+  return base + modulo + '?token=' + tokenId;
 }
 
 function fmtDate(ts){
