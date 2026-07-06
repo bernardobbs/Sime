@@ -40,6 +40,17 @@ async function buscarSecao(numeroStr) {
   return data;
 }
 
+// Eleição ativa (necessária para a chave composta eleicao_id+secao_id)
+async function buscarEleicaoAtiva() {
+  const { data } = await supabase
+    .from('sime_eleicoes')
+    .select('id')
+    .eq('ativa', true)
+    .limit(1)
+    .maybeSingle();
+  return data?.id || null;
+}
+
 // Server timestamp — NUNCA usar Date.now() do device
 async function serverTs() {
   const { data } = await supabase.rpc('sime_now');
@@ -112,6 +123,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `Evento desconhecido: ${evento}` });
   }
 
+  // Eleição ativa — necessária para a chave composta (eleicao_id, secao_id)
+  const eleicaoId = await buscarEleicaoAtiva();
+  if (!eleicaoId) {
+    return res.status(409).json({ error: 'Nenhuma eleição ativa configurada no SIME' });
+  }
+
   const ts = await serverTs();
   let resultado = {};
 
@@ -123,11 +140,12 @@ export default async function handler(req, res) {
       const { error } = await supabase
         .from('sime_mesa_estado')
         .upsert({
+          eleicao_id: eleicaoId,
           secao_id: secaoData.id,
           mesa_pres: 1, mesa_m1: 1, mesa_m2: 1, mesa_sec: 1,
           updated_at: ts,
           updated_by_origem: origem || 'hermes_whatsapp',
-        }, { onConflict: 'secao_id' });
+        }, { onConflict: 'eleicao_id,secao_id' });
       if (error) throw error;
       resultado = { campo: 'mesa_completa', valor: true };
     }
@@ -137,6 +155,7 @@ export default async function handler(req, res) {
       const { data: estado } = await supabase
         .from('sime_mesa_estado')
         .select('panico_energia, panico_urna')
+        .eq('eleicao_id', eleicaoId)
         .eq('secao_id', secaoData.id)
         .single();
 
@@ -147,6 +166,7 @@ export default async function handler(req, res) {
       const { error } = await supabase
         .from('sime_mesa_estado')
         .update(patch)
+        .eq('eleicao_id', eleicaoId)
         .eq('secao_id', secaoData.id);
       if (error) throw error;
       resultado = { campo: 'panico_resolvido', valor: true };
@@ -157,11 +177,12 @@ export default async function handler(req, res) {
       const { error } = await supabase
         .from('sime_midias')
         .upsert({
+          eleicao_id: eleicaoId,
           secao_id: secaoData.id,
           status: mapa.valor_fixo,
           pronta_ts: ts,
           updated_at: ts,
-        }, { onConflict: 'secao_id' });
+        }, { onConflict: 'eleicao_id,secao_id' });
       if (error) throw error;
       resultado = { campo: 'status', valor: mapa.valor_fixo };
 
@@ -181,11 +202,12 @@ export default async function handler(req, res) {
       const { error } = await supabase
         .from('sime_mesa_estado')
         .upsert({
+          eleicao_id: eleicaoId,
           secao_id: secaoData.id,
           [mapa.campo]: valorFinal,
           updated_at: ts,
           updated_by_origem: origem || 'hermes_whatsapp',
-        }, { onConflict: 'secao_id' });
+        }, { onConflict: 'eleicao_id,secao_id' });
       if (error) throw error;
       resultado = { campo: mapa.campo, valor: valorFinal };
 

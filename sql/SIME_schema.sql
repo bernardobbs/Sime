@@ -136,8 +136,10 @@ CREATE TABLE IF NOT EXISTS sime_mesa_estado (
   observacao      TEXT,
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by      UUID REFERENCES sime_usuarios(id),
+  updated_by_origem TEXT,   -- origem da última atualização (ex.: 'hermes_whatsapp'); usado pela API do Hermes
   UNIQUE(eleicao_id, secao_id)
 );
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS updated_by_origem TEXT;  -- migração p/ bancos existentes
 CREATE INDEX idx_mesa_eleicao ON sime_mesa_estado(eleicao_id);
 CREATE INDEX idx_mesa_secao ON sime_mesa_estado(secao_id);
 
