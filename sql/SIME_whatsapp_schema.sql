@@ -30,9 +30,9 @@ CREATE TABLE IF NOT EXISTS sime_notificacoes (
   erro_msg        TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_notif_status  ON sime_notificacoes(status);
-CREATE INDEX idx_notif_secao   ON sime_notificacoes(secao_id);
-CREATE INDEX idx_notif_created ON sime_notificacoes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notif_status  ON sime_notificacoes(status);
+CREATE INDEX IF NOT EXISTS idx_notif_secao   ON sime_notificacoes(secao_id);
+CREATE INDEX IF NOT EXISTS idx_notif_created ON sime_notificacoes(created_at DESC);
 
 -- RLS: usuário autenticado só vê notificações de seções da sua zona.
 -- (sime_user_zona() é criada em SIME_schema.sql, executado antes deste arquivo.)

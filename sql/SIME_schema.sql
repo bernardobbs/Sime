@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS sime_secoes (
   eleitores   INTEGER,
   ativo       BOOLEAN NOT NULL DEFAULT true
 );
-CREATE INDEX idx_secoes_zona ON sime_secoes(zona_id);
-CREATE INDEX idx_secoes_numero ON sime_secoes(numero);
+CREATE INDEX IF NOT EXISTS idx_secoes_zona ON sime_secoes(zona_id);
+CREATE INDEX IF NOT EXISTS idx_secoes_numero ON sime_secoes(numero);
 
 -- Rotas de distribuição
 CREATE TABLE IF NOT EXISTS sime_rotas (
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS sime_empresas (
   ativo       BOOLEAN NOT NULL DEFAULT true,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_empresas_zona ON sime_empresas(zona_id);
+CREATE INDEX IF NOT EXISTS idx_empresas_zona ON sime_empresas(zona_id);
 
 -- Eleições (por zona e turno)
 CREATE TABLE IF NOT EXISTS sime_eleicoes (
@@ -140,27 +140,34 @@ CREATE TABLE IF NOT EXISTS sime_mesa_estado (
   UNIQUE(eleicao_id, secao_id)
 );
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS updated_by_origem TEXT;  -- migração p/ bancos existentes
-CREATE INDEX idx_mesa_eleicao ON sime_mesa_estado(eleicao_id);
-CREATE INDEX idx_mesa_secao ON sime_mesa_estado(secao_id);
+CREATE INDEX IF NOT EXISTS idx_mesa_eleicao ON sime_mesa_estado(eleicao_id);
+CREATE INDEX IF NOT EXISTS idx_mesa_secao ON sime_mesa_estado(secao_id);
 
 -- ------------------------------------------------------------
 -- NOVO: MÓDULO DE MÍDIAS
 -- ------------------------------------------------------------
 
-CREATE TYPE sime_midia_status AS ENUM (
-  'aguardando_encerramento',
-  'pronta_para_coleta',
-  'em_coleta_rota',
-  'coleta_dedicada',
-  'coletada',
-  'entregue_transmissao'
-);
+-- CREATE TYPE não aceita IF NOT EXISTS — usa bloco DO com captura de duplicidade
+DO $$ BEGIN
+  CREATE TYPE sime_midia_status AS ENUM (
+    'aguardando_encerramento',
+    'pronta_para_coleta',
+    'em_coleta_rota',
+    'coleta_dedicada',
+    'coletada',
+    'entregue_transmissao'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE sime_tipo_coleta AS ENUM (
-  'rota',
-  'dedicada',
-  'mesario_entrega'
-);
+DO $$ BEGIN
+  CREATE TYPE sime_tipo_coleta AS ENUM (
+    'rota',
+    'dedicada',
+    'mesario_entrega'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS sime_midias (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -180,10 +187,10 @@ CREATE TABLE IF NOT EXISTS sime_midias (
   UNIQUE(eleicao_id, secao_id)
 );
 
-CREATE INDEX idx_midias_eleicao   ON sime_midias(eleicao_id);
-CREATE INDEX idx_midias_secao     ON sime_midias(secao_id);
-CREATE INDEX idx_midias_rota      ON sime_midias(rota_id);
-CREATE INDEX idx_midias_status    ON sime_midias(status);
+CREATE INDEX IF NOT EXISTS idx_midias_eleicao   ON sime_midias(eleicao_id);
+CREATE INDEX IF NOT EXISTS idx_midias_secao     ON sime_midias(secao_id);
+CREATE INDEX IF NOT EXISTS idx_midias_rota      ON sime_midias(rota_id);
+CREATE INDEX IF NOT EXISTS idx_midias_status    ON sime_midias(status);
 
 -- Trigger: atualiza updated_at automaticamente
 CREATE OR REPLACE FUNCTION update_midia_updated_at()
@@ -194,7 +201,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_midias_updated_at
+CREATE OR REPLACE TRIGGER trg_midias_updated_at
   BEFORE UPDATE ON sime_midias
   FOR EACH ROW EXECUTE FUNCTION update_midia_updated_at();
 
@@ -202,18 +209,21 @@ CREATE TRIGGER trg_midias_updated_at
 -- NOVO: MÓDULO DE ATORES
 -- ------------------------------------------------------------
 
-CREATE TYPE sime_ator_funcao AS ENUM (
-  'mesario',
-  'motorista',
-  'tecnico',
-  'auxiliar_eleicao',
-  'coord_acessibilidade',
-  'coord_motoristas',
-  'coletor_midias',
-  'preposto',
-  'cartorio',
-  'coordenador_acessibilidade'  -- alias legado (dados antigos)
-);
+DO $$ BEGIN
+  CREATE TYPE sime_ator_funcao AS ENUM (
+    'mesario',
+    'motorista',
+    'tecnico',
+    'auxiliar_eleicao',
+    'coord_acessibilidade',
+    'coord_motoristas',
+    'coletor_midias',
+    'preposto',
+    'cartorio',
+    'coordenador_acessibilidade'  -- alias legado (dados antigos)
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Migração do enum para bancos já existentes:
 --   ALTER TYPE ... ADD VALUE deve rodar fora de bloco transacional.
@@ -238,15 +248,15 @@ CREATE TABLE IF NOT EXISTS sime_atores (
   created_by        UUID REFERENCES sime_usuarios(id)
 );
 
-CREATE INDEX idx_atores_zona     ON sime_atores(zona_id);
-CREATE INDEX idx_atores_eleicao  ON sime_atores(eleicao_id);
-CREATE INDEX idx_atores_secao    ON sime_atores(secao_id);
-CREATE INDEX idx_atores_funcao   ON sime_atores(funcao);
+CREATE INDEX IF NOT EXISTS idx_atores_zona     ON sime_atores(zona_id);
+CREATE INDEX IF NOT EXISTS idx_atores_eleicao  ON sime_atores(eleicao_id);
+CREATE INDEX IF NOT EXISTS idx_atores_secao    ON sime_atores(secao_id);
+CREATE INDEX IF NOT EXISTS idx_atores_funcao   ON sime_atores(funcao);
 -- Busca fuzzy por nome
-CREATE INDEX idx_atores_nome_trgm ON sime_atores USING gin(nome_completo gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_atores_nome_trgm ON sime_atores USING gin(nome_completo gin_trgm_ops);
 
 -- Garantir telefone único por seção + função + eleição (evitar duplicidade na importação)
-CREATE UNIQUE INDEX idx_atores_unique 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_unique 
   ON sime_atores(eleicao_id, secao_id, telefone_whatsapp, funcao)
   WHERE ativo = true;
 
@@ -267,11 +277,11 @@ CREATE TABLE IF NOT EXISTS sime_logs (
   ts          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_logs_acao      ON sime_logs(acao);
-CREATE INDEX idx_logs_modulo    ON sime_logs(modulo);
-CREATE INDEX idx_logs_secao     ON sime_logs(secao_id);
-CREATE INDEX idx_logs_eleicao   ON sime_logs(eleicao_id);
-CREATE INDEX idx_logs_ts        ON sime_logs(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_acao      ON sime_logs(acao);
+CREATE INDEX IF NOT EXISTS idx_logs_modulo    ON sime_logs(modulo);
+CREATE INDEX IF NOT EXISTS idx_logs_secao     ON sime_logs(secao_id);
+CREATE INDEX IF NOT EXISTS idx_logs_eleicao   ON sime_logs(eleicao_id);
+CREATE INDEX IF NOT EXISTS idx_logs_ts        ON sime_logs(ts DESC);
 -- Logs são append-only: nunca UPDATE nem DELETE
 
 -- Particionamento por mês (recomendado para produção)
