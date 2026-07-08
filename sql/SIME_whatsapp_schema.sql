@@ -34,13 +34,14 @@ CREATE INDEX IF NOT EXISTS idx_notif_status  ON sime_notificacoes(status);
 CREATE INDEX IF NOT EXISTS idx_notif_secao   ON sime_notificacoes(secao_id);
 CREATE INDEX IF NOT EXISTS idx_notif_created ON sime_notificacoes(created_at DESC);
 
--- RLS: usuário autenticado só vê notificações de seções da sua zona.
--- (sime_user_zona() é criada em SIME_schema.sql, executado antes deste arquivo.)
+-- RLS: usuário autenticado só vê notificações de seções da sua zona
+-- (ou de todas, se super_admin). sime_zona_visivel() é criada em SIME_schema.sql,
+-- executado antes deste arquivo.
 ALTER TABLE sime_notificacoes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS notif_zona_policy ON sime_notificacoes;
 CREATE POLICY notif_zona_policy ON sime_notificacoes
-  FOR ALL USING     (secao_id IN (SELECT id FROM sime_secoes WHERE zona_id = sime_user_zona()))
-          WITH CHECK (secao_id IN (SELECT id FROM sime_secoes WHERE zona_id = sime_user_zona()));
+  FOR ALL USING     (secao_id IN (SELECT id FROM sime_secoes WHERE sime_zona_visivel(zona_id)))
+          WITH CHECK (secao_id IN (SELECT id FROM sime_secoes WHERE sime_zona_visivel(zona_id)));
 
 -- ------------------------------------------------------------
 -- 2. RPC: NOTIFICAR MANUALMENTE (chamada do frontend)

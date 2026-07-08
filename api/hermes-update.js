@@ -10,8 +10,38 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const HERMES_SECRET = process.env.HERMES_WEBHOOK_SECRET;
-const HERMES_URL    = process.env.HERMES_URL; // http://SEU_ORACLE_IP:3000
+const HERMES_URL = process.env.HERMES_URL; // http://SEU_ORACLE_IP:3000
+
+// Cada zona roda sua própria instância Hermes/Oracle (ver hermes/setup.sh),
+// cada uma com seu próprio secret: HERMES_SECRET_ZONA_7, HERMES_SECRET_ZONA_96, ...
+// Onboarding de zona nova = só adicionar a env var, sem mudar código.
+function secretsPorZona() {
+  const mapa = {};
+  for (const [key, val] of Object.entries(process.env)) {
+    const m = key.match(/^HERMES_SECRET_ZONA_(.+)$/);
+    if (m && val) mapa[m[1]] = val; // ex.: mapa['7'] = 'xxxx'
+  }
+  return mapa;
+}
+
+// Resolve qual zona autenticou a requisição a partir do Bearer recebido.
+// Retorna { numeroZona, secret } ou null se não bateu com nenhum secret.
+function resolverZonaPorAuth(authHeader) {
+  for (const [numeroZona, secret] of Object.entries(secretsPorZona())) {
+    if (authHeader === `Bearer ${secret}`) return { numeroZona, secret };
+  }
+  return null;
+}
+
+// Busca o UUID da zona pelo número (sime_zonas.numero)
+async function buscarZonaId(numeroZona) {
+  const { data } = await supabase
+    .from('sime_zonas')
+    .select('id')
+    .eq('numero', parseInt(numeroZona))
+    .maybeSingle();
+  return data?.id || null;
+}
 
 // Mapeamento: evento (texto) → campo do banco
 const EVENTO_MAP = {
@@ -28,24 +58,31 @@ const EVENTO_MAP = {
   mesa_completa:    { tabela: 'sime_mesa_estado', campo: null,               tipo: 'mesa'   },
 };
 
-// Busca secao_id pelo numero
-async function buscarSecao(numeroStr) {
+// Busca secao_id pelo numero, restrito à zona que autenticou a requisição
+// (números de seção podem se repetir entre zonas diferentes).
+async function buscarSecao(numeroStr, zonaId) {
   const numero = parseInt(numeroStr);
   const { data, error } = await supabase
     .from('sime_secoes')
     .select('id, local_nome, municipio')
     .eq('numero', numero)
+    .eq('zona_id', zonaId)
     .single();
   if (error || !data) return null;
   return data;
 }
 
-// Eleição ativa (necessária para a chave composta eleicao_id+secao_id)
-async function buscarEleicaoAtiva() {
+// Eleição ativa da zona (necessária para a chave composta eleicao_id+secao_id).
+// Com múltiplas zonas ativas simultaneamente, pegar qualquer 'ativa=true' sem
+// filtro de zona resolveria a eleição errada — daí o .eq('zona_id', zonaId).
+// ORDER BY como proteção extra contra duas eleições ativas na mesma zona.
+async function buscarEleicaoAtiva(zonaId) {
   const { data } = await supabase
     .from('sime_eleicoes')
     .select('id')
+    .eq('zona_id', zonaId)
     .eq('ativa', true)
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   return data?.id || null;
@@ -68,15 +105,16 @@ async function registrarLog(acao, secaoId, payload) {
   });
 }
 
-// Notifica Hermes para enviar WhatsApp
-async function chamarHermes(skill, dados) {
+// Notifica Hermes para enviar WhatsApp — usa o secret da MESMA zona que
+// autenticou a requisição, para responder à instância Hermes correta.
+async function chamarHermes(skill, dados, secretZona) {
   if (!HERMES_URL) return;
   try {
     await fetch(`${HERMES_URL}/hermes/skill/${skill}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HERMES_SECRET}`,
+        'Authorization': `Bearer ${secretZona}`,
       },
       body: JSON.stringify(dados),
       signal: AbortSignal.timeout(5000),
@@ -92,9 +130,10 @@ async function chamarHermes(skill, dados) {
 // ─────────────────────────────────────────────────────────
 export default async function handler(req, res) {
 
-  // Verificar secret
+  // Verificar secret — determina de qual zona veio a requisição
   const auth = req.headers['authorization'] || '';
-  if (auth !== `Bearer ${HERMES_SECRET}`) {
+  const zona = resolverZonaPorAuth(auth);
+  if (!zona) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -109,8 +148,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'secao e evento sao obrigatorios' });
   }
 
-  // Buscar secao no banco
-  const secaoData = await buscarSecao(secao);
+  const zonaId = await buscarZonaId(zona.numeroZona);
+  if (!zonaId) {
+    return res.status(500).json({ error: `Zona ${zona.numeroZona} não cadastrada no SIME` });
+  }
+
+  // Buscar secao no banco, restrito à zona autenticada
+  const secaoData = await buscarSecao(secao, zonaId);
   if (!secaoData) {
     return res.status(404).json({
       error: `Secao ${secao} nao encontrada no SIME`,
@@ -123,8 +167,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `Evento desconhecido: ${evento}` });
   }
 
-  // Eleição ativa — necessária para a chave composta (eleicao_id, secao_id)
-  const eleicaoId = await buscarEleicaoAtiva();
+  // Eleição ativa da zona — necessária para a chave composta (eleicao_id, secao_id)
+  const eleicaoId = await buscarEleicaoAtiva(zonaId);
   if (!eleicaoId) {
     return res.status(409).json({ error: 'Nenhuma eleição ativa configurada no SIME' });
   }
@@ -193,7 +237,7 @@ export default async function handler(req, res) {
         local: secaoData.local_nome,
         cidade: secaoData.municipio,
         ts: new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      });
+      }, zona.secret);
     }
 
     // Caso padrao: campo booleano ou inteiro
@@ -220,7 +264,7 @@ export default async function handler(req, res) {
           cidade: secaoData.municipio,
           ts: new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
           // destinatarios buscados automaticamente dos atores cadastrados
-        });
+        }, zona.secret);
       }
     }
 

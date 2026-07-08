@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS sime_usuarios (
   email       TEXT UNIQUE,
   perfil      TEXT NOT NULL CHECK(perfil IN (
                 'coordenador','monitor','gestor_prob','gestor_dist','observador',
-                'coord_motoristas','coord_acessibilidade','coletor_midias')),
+                'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin')),
   empresa_id  UUID REFERENCES sime_empresas(id),  -- Coord. de Motoristas (preposto): só vê rotas da empresa
   local_id    UUID,                               -- Coord. de Acessibilidade: só vê seções do local
   ativo       BOOLEAN NOT NULL DEFAULT true,
@@ -90,7 +90,7 @@ ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS local_id UUID;
 ALTER TABLE sime_usuarios DROP CONSTRAINT IF EXISTS sime_usuarios_perfil_check;
 ALTER TABLE sime_usuarios ADD CONSTRAINT sime_usuarios_perfil_check CHECK (perfil IN (
   'coordenador','monitor','gestor_prob','gestor_dist','observador',
-  'coord_motoristas','coord_acessibilidade','coletor_midias'));
+  'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin'));
 
 -- Tokens de acesso para operadores de campo
 CREATE TABLE IF NOT EXISTS sime_tokens (
@@ -435,6 +435,25 @@ LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT zona_id FROM sime_usuarios WHERE id = auth.uid();
 $$;
 
+-- Helper: usuário autenticado é super_admin (enxerga todas as zonas).
+-- Mesmo padrão de sime_user_zona() — SECURITY DEFINER evita recursão de RLS.
+CREATE OR REPLACE FUNCTION sime_is_super_admin()
+RETURNS BOOLEAN
+LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM sime_usuarios WHERE id = auth.uid() AND perfil = 'super_admin' AND ativo
+  );
+$$;
+
+-- Predicado único de visibilidade por zona: usado em toda política RLS abaixo,
+-- em vez de espalhar "OR sime_is_super_admin()" em cada uma. Mudar quem enxerga
+-- o quê (ex.: um futuro perfil de auditor cross-zona) passa a tocar só esta função.
+CREATE OR REPLACE FUNCTION sime_zona_visivel(p_zona_id UUID)
+RETURNS BOOLEAN
+LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT p_zona_id = sime_user_zona() OR sime_is_super_admin();
+$$;
+
 -- Habilita RLS em todas as tabelas com dados de zona
 ALTER TABLE sime_zonas       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sime_secoes      ENABLE ROW LEVEL SECURITY;
@@ -451,54 +470,54 @@ ALTER TABLE sime_logs        ENABLE ROW LEVEL SECURITY;
 -- ── Tabelas com zona_id direto (a própria zona é o id em sime_zonas) ──
 DROP POLICY IF EXISTS zonas_zona_policy ON sime_zonas;
 CREATE POLICY zonas_zona_policy ON sime_zonas
-  FOR ALL USING (id = sime_user_zona()) WITH CHECK (id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(id)) WITH CHECK (sime_zona_visivel(id));
 
 DROP POLICY IF EXISTS secoes_zona_policy ON sime_secoes;
 CREATE POLICY secoes_zona_policy ON sime_secoes
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 DROP POLICY IF EXISTS rotas_zona_policy ON sime_rotas;
 CREATE POLICY rotas_zona_policy ON sime_rotas
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 DROP POLICY IF EXISTS eleicoes_zona_policy ON sime_eleicoes;
 CREATE POLICY eleicoes_zona_policy ON sime_eleicoes
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 DROP POLICY IF EXISTS empresas_zona_policy ON sime_empresas;
 CREATE POLICY empresas_zona_policy ON sime_empresas
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 DROP POLICY IF EXISTS usuarios_zona_policy ON sime_usuarios;
 CREATE POLICY usuarios_zona_policy ON sime_usuarios
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 DROP POLICY IF EXISTS atores_zona_policy ON sime_atores;
 CREATE POLICY atores_zona_policy ON sime_atores
-  FOR ALL USING (zona_id = sime_user_zona()) WITH CHECK (zona_id = sime_user_zona());
+  FOR ALL USING (sime_zona_visivel(zona_id)) WITH CHECK (sime_zona_visivel(zona_id));
 
 -- ── Tabelas ligadas à zona via eleicao_id → sime_eleicoes ──
 DROP POLICY IF EXISTS tokens_zona_policy ON sime_tokens;
 CREATE POLICY tokens_zona_policy ON sime_tokens
-  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
-          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
 
 DROP POLICY IF EXISTS mesa_zona_policy ON sime_mesa_estado;
 CREATE POLICY mesa_zona_policy ON sime_mesa_estado
-  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
-          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
 
 DROP POLICY IF EXISTS midias_zona_policy ON sime_midias;
 CREATE POLICY midias_zona_policy ON sime_midias
-  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()))
-          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
 
 -- ── Logs: append-only (INSERT livre p/ autenticados; SELECT por zona; nunca UPDATE/DELETE) ──
 DROP POLICY IF EXISTS logs_insert_policy ON sime_logs;
 CREATE POLICY logs_insert_policy ON sime_logs FOR INSERT WITH CHECK (true);
 DROP POLICY IF EXISTS logs_select_policy ON sime_logs;
 CREATE POLICY logs_select_policy ON sime_logs FOR SELECT
-  USING (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona_id = sime_user_zona()));
+  USING (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
 
 -- ------------------------------------------------------------
 -- DADOS INICIAIS (seed) — 7ª Zona Piauí
