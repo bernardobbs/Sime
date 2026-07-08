@@ -213,11 +213,32 @@ body{display:flex;flex-direction:column;}
   </div>
 </div>
 
+<script type="module">
+import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
+
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+  await atualizarCacheTv(CITIES_CACHE_KEY, async () => {
+    const secoes = await getSecoes({ fallback: null });
+    return secoes ? agruparSecoesPorCidade(secoes) : null;
+  });
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════════
 // DADOS
 // ══════════════════════════════════════════════════
-const CITIES = [
+// CITIES vem do cache (populado via Supabase pelo módulo acima, se a TV tiver
+// sessão) ou, na ausência dele, da massa hardcoded original (offline-first).
+function _lerCacheTvSync(key){ try{ const r=localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; } }
+const CITIES_FALLBACK = [
   { city:'Campo Maior',     color:'#2d50a0', locs:[
     {id:'CM-01', n:'Assoc. Moradores Tangará',       s:['0209']},
     {id:'CM-02', n:'CAIC',                           s:['0071','0155','0202','0223']},
@@ -288,6 +309,8 @@ const CITIES = [
     {id:'SP-14', n:'U.E. Miguel Rocha',              s:['0159','0246']},
   ]},
 ];
+// 'sime_tv_cities_v1' precisa bater com CITIES_CACHE_KEY no <script type="module"> acima
+const CITIES = _lerCacheTvSync('sime_tv_cities_v1') || CITIES_FALLBACK;
 
 const ALL_LOCS = CITIES.flatMap(c => c.locs.map(l => ({...l, cityName: c.city})));
 
@@ -457,7 +480,7 @@ function beep(){
   }catch(e){}
 }
 
-function buildPageEl(cityIdx, inst, dist, cfg){
+function buildPageEl(cityIdx, inst, lacre, cfg){
   const city = CITIES[cityIdx];
   const div = document.createElement('div');
   div.className = 'page';
@@ -531,7 +554,7 @@ function buildPageEl(cityIdx, inst, dist, cfg){
 }
 
 // stats globais
-function calcStats(inst, dist){
+function calcStats(inst, lacre){
   let ok=0,ch=0,tr=0,pd=0,pr=0,inc=0,tot=0;
   CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{
     tot++;
@@ -559,14 +582,14 @@ function fullRender(){
   content.innerHTML = '';
 
   CITIES.forEach((_,i)=>{
-    const el = buildPageEl(i, inst, dist, cfg);
+    const el = buildPageEl(i, inst, lacre, cfg);
     content.appendChild(el);
   });
 
   renderCurrentPage();
 
   // stats topbar
-  const s = calcStats(inst, dist);
+  const s = calcStats(inst, lacre);
   document.getElementById('t-stats').innerHTML = [
     s.ok  ?`<span class="ts" style="color:#16a34a"><div class="ts-d" style="background:#16a34a"></div>${s.ok} prontas</span>`:'',
     s.ch  ?`<span class="ts" style="color:#ca8a04"><div class="ts-d" style="background:#ca8a04"></div>${s.ch} chegaram</span>`:'',

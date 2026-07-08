@@ -627,6 +627,13 @@ async function enviarWA(telefone, mensagem){
   }
 }
 
+// Rodapé das mensagens — antes fixo em "Campo Maior" mesmo para seções de
+// Jatobá do Piauí/Sigefredo Pacheco; agora deriva o município real da seção.
+function rodapeZona(secao){
+  const s = SECOES.find(x=>x.n===String(secao).padStart(4,'0'));
+  return `7ª Zona Eleitoral · ${s?.city || 'Campo Maior'}`;
+}
+
 // Monta mensagem formatada
 function montarMsgRotaAlterada(secao, localNome, resp){
   return `📦 *SIME — Alteração de Rota*
@@ -640,7 +647,7 @@ A rota que você é responsável foi *alterada*.
 ➤ Esta seção foi removida da sua rota e será recolhida por coleta dedicada.
 
 Horário: ${fmtNow()}
-_7ª Zona Eleitoral · Campo Maior_`;
+_${rodapeZona(secao)}_`;
 }
 
 function montarMsgNovoResponsavel(secao, localNome, resp){
@@ -657,7 +664,7 @@ Você foi *designado(a)* para recolher a mídia de:
 Por favor, confirme o recebimento.
 
 Horário: ${fmtNow()}
-_7ª Zona Eleitoral · Campo Maior_`;
+_${rodapeZona(secao)}_`;
 }
 
 function montarMsgMidiaPronta(secao, localNome){
@@ -668,7 +675,7 @@ function montarMsgMidiaPronta(secao, localNome){
 O mesário confirmou que a *mídia eleitoral está embalada e pronta* para recolhimento.
 
 Horário: ${fmtNow()}
-_7ª Zona Eleitoral · Campo Maior_`;
+_${rodapeZona(secao)}_`;
 }
 
 // Dispara notificação de rota alterada — 2 destinatários

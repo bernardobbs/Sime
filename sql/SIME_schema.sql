@@ -17,11 +17,22 @@ CREATE TABLE IF NOT EXISTS sime_zonas (
   numero      INTEGER NOT NULL,
   municipio   TEXT NOT NULL,
   estado      CHAR(2) NOT NULL DEFAULT 'PI',
+  lat         DOUBLE PRECISION, -- usado pelo card de clima da TV Dia
+  lon         DOUBLE PRECISION,
   ativo       BOOLEAN NOT NULL DEFAULT true,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Migração para bancos já existentes
+ALTER TABLE sime_zonas ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE sime_zonas ADD COLUMN IF NOT EXISTS lon DOUBLE PRECISION;
+-- Backfill da 7ª Zona com as coordenadas hoje hardcoded em SIME_tv_dia.html
+UPDATE sime_zonas SET lat = -4.8252, lon = -42.1733
+WHERE numero = 7 AND lat IS NULL;
+
 -- Seções eleitorais
+-- (rota_id/parada ligam a sime_rotas, definida a seguir — a FK e os índices
+-- entram por ALTER logo depois que sime_rotas existir, ver abaixo)
 CREATE TABLE IF NOT EXISTS sime_secoes (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   zona_id     UUID REFERENCES sime_zonas(id),
@@ -43,6 +54,14 @@ CREATE TABLE IF NOT EXISTS sime_rotas (
   municipios  TEXT[],
   ativo       BOOLEAN NOT NULL DEFAULT true
 );
+
+-- sime_secoes.rota_id/parada: liga cada seção à sua rota de distribuição e à
+-- ordem de parada dentro dela (1, 2, 3...). Antes desta fase essa relação só
+-- existia em arrays hardcoded no client (`ROTAS` em SIME_conferente.html/
+-- SIME_motorista.html) — necessário para modules/sime_dados.js.getRotas().
+ALTER TABLE sime_secoes ADD COLUMN IF NOT EXISTS rota_id UUID REFERENCES sime_rotas(id);
+ALTER TABLE sime_secoes ADD COLUMN IF NOT EXISTS parada INTEGER;
+CREATE INDEX IF NOT EXISTS idx_secoes_rota ON sime_secoes(rota_id);
 
 -- Empresas contratadas (motoristas terceirizados)
 CREATE TABLE IF NOT EXISTS sime_empresas (
@@ -71,35 +90,48 @@ CREATE TABLE IF NOT EXISTS sime_eleicoes (
 
 -- Usuários administrativos
 CREATE TABLE IF NOT EXISTS sime_usuarios (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  zona_id     UUID REFERENCES sime_zonas(id),
-  nome        TEXT NOT NULL,
-  email       TEXT UNIQUE,
-  perfil      TEXT NOT NULL CHECK(perfil IN (
-                'coordenador','monitor','gestor_prob','gestor_dist','observador',
-                'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin')),
-  empresa_id  UUID REFERENCES sime_empresas(id),  -- Coord. de Motoristas (preposto): só vê rotas da empresa
-  local_id    UUID,                               -- Coord. de Acessibilidade: só vê seções do local
-  ativo       BOOLEAN NOT NULL DEFAULT true,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  zona_id       UUID REFERENCES sime_zonas(id),
+  nome          TEXT NOT NULL,
+  email         TEXT UNIQUE,
+  perfil        TEXT NOT NULL CHECK(perfil IN (
+                  'coordenador','monitor','gestor_prob','gestor_dist','observador',
+                  'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin')),
+  empresa_id    UUID REFERENCES sime_empresas(id),  -- Coord. de Motoristas (preposto): só vê rotas da empresa
+  local_id      UUID,                               -- Coord. de Acessibilidade: só vê seções do local
+  auth_user_id  UUID UNIQUE,                        -- sub do JWT (login real via auth.users OU
+                                                     -- assinado manualmente por sime-login p/ TV/campo)
+  ativo         BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Migração para bancos já existentes (colunas + novos perfis)
 ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS empresa_id UUID REFERENCES sime_empresas(id);
 ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS local_id UUID;
+ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS auth_user_id UUID UNIQUE;
 ALTER TABLE sime_usuarios DROP CONSTRAINT IF EXISTS sime_usuarios_perfil_check;
 ALTER TABLE sime_usuarios ADD CONSTRAINT sime_usuarios_perfil_check CHECK (perfil IN (
   'coordenador','monitor','gestor_prob','gestor_dist','observador',
   'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin'));
 
--- Tokens de acesso para operadores de campo
+-- Tokens de acesso para operadores de campo E para as TVs (tipo='tv').
+-- Trocados por uma sessão JWT via a Edge Function supabase/functions/sime-login
+-- (ver Fase 3/4 do plano multi-zona) — token de TV não usa `pin` (a function pula
+-- essa checagem quando tipo='tv'), mas a coluna é NOT NULL: insira um placeholder
+-- fixo (ex.: '0000'). Exemplo de provisionamento de um token de TV para a zona 7
+-- (rodar manualmente no SQL Editor até o Fase 4 trazer isso para SIME_tokens.html):
+--   INSERT INTO sime_tokens (eleicao_id, token, pin, tipo, expira_em)
+--   SELECT e.id, 'TV' || substr(md5(random()::text), 1, 6), '0000', 'tv',
+--          now() + interval '90 days'
+--   FROM sime_eleicoes e WHERE e.zona_id = (SELECT id FROM sime_zonas WHERE numero = 7)
+--     AND e.ativa;
 CREATE TABLE IF NOT EXISTS sime_tokens (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   eleicao_id  UUID REFERENCES sime_eleicoes(id),
   usuario_id  UUID REFERENCES sime_usuarios(id),
   token       VARCHAR(8) NOT NULL UNIQUE,
   pin         VARCHAR(4) NOT NULL,
-  tipo        TEXT NOT NULL DEFAULT 'conferente', -- 'conferente' | 'coord_acessibilidade' | ...
+  tipo        TEXT NOT NULL DEFAULT 'conferente', -- 'conferente' | 'coord_acessibilidade' | 'tv' | ...
   rotas       TEXT[],   -- escopo por rota (conferente/motorista)
   local_id    UUID,     -- escopo por local (coord_acessibilidade)
   local_nome  TEXT,     -- nome do local (exibição no módulo de campo)
@@ -429,10 +461,14 @@ $$ LANGUAGE plpgsql;
 -- Helper: zona do usuário autenticado.
 -- SECURITY DEFINER + search_path fixo evita recursão de RLS quando as próprias
 -- políticas consultam sime_usuarios (que também tem RLS habilitado).
+-- Casa por auth_user_id (não por id): o UUID interno do registro em sime_usuarios
+-- é independente do "sub" do JWT, porque nem toda sessão vem de auth.users (login
+-- de senha do Admin sim; token de TV e, na Fase 4, token de campo são JWT assinados
+-- manualmente por sime-login, sem usuário real em auth.users).
 CREATE OR REPLACE FUNCTION sime_user_zona()
 RETURNS UUID
 LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT zona_id FROM sime_usuarios WHERE id = auth.uid();
+  SELECT zona_id FROM sime_usuarios WHERE auth_user_id = auth.uid();
 $$;
 
 -- Helper: usuário autenticado é super_admin (enxerga todas as zonas).
@@ -441,7 +477,7 @@ CREATE OR REPLACE FUNCTION sime_is_super_admin()
 RETURNS BOOLEAN
 LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT EXISTS (
-    SELECT 1 FROM sime_usuarios WHERE id = auth.uid() AND perfil = 'super_admin' AND ativo
+    SELECT 1 FROM sime_usuarios WHERE auth_user_id = auth.uid() AND perfil = 'super_admin' AND ativo
   );
 $$;
 

@@ -109,6 +109,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — mesmo padrão de SIME_admin.html: bloqueia até validar sessão do
+     Supabase, mas sempre com saída offline (plano de contingência). -->
+<div id="login-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#fff;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
+    <div style="font-weight:800;font-size:1rem;">SIME Coordenador de Preparação</div>
+    <div style="font-size:.72rem;color:#666;">Entre com seu e-mail e senha.</div>
+    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #ccc;border-radius:8px;">
+    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #ccc;border-radius:8px;">
+    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#111;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #ccc;border-radius:8px;background:transparent;color:#666;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <div class="header">
   <div class="header-top">
     <div class="logo">S</div>
@@ -155,10 +169,56 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="btn-reset" onclick="resetAll()">↺ Resetar</button>
 </div>
 
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { initSimeDados, getSecoes, getMunicipios, getZonaInfo } from './sime_dados.js';
+
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+async function carregarDadosReais(){
+  initSimeDados(supabase);
+  const secoesReais = await getSecoes({ fallback: null });
+  if (secoesReais) {
+    window.SECOES = secoesReais.map(s => ({
+      n: String(s.numero).padStart(4, '0'),
+      local: s.local_nome,
+      mun: s.municipio,
+      rota: s.rota_codigo ? `Rota ${s.rota_codigo}` : '—',
+      aptos: s.aptos || 0,
+    }));
+    const municipios = await getMunicipios({ fallback: null });
+    if (municipios) window.cities = municipios.map(m => m.nome);
+    const zona = await getZonaInfo({ fallback: null });
+    if (window.recarregarAppComSecoesNovas) window.recarregarAppComSecoesNovas(zona);
+  }
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  esconderLogin();
+  await carregarDadosReais();
+});
+
+document.getElementById('login-offline').addEventListener('click', () => { esconderLogin(); });
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { esconderLogin(); await carregarDadosReais(); }
+})();
+</script>
 <script>
 // Ordenado por município (Campo Maior → Jatobá do Piauí → Sigefredo Pacheco)
 // e por número de seção crescente dentro de cada município
-const SECOES = [
+const SECOES_FALLBACK = [
   // ─── CAMPO MAIOR ─────────────────────────────────────────
   {n:'0001',local:'Centro Ed. Jovens e Adultos Mulata Lima',mun:'Campo Maior',rota:'Rota 006',aptos:178},
   {n:'0002',local:'Centro Ed. Jovens e Adultos Mulata Lima',mun:'Campo Maior',rota:'Rota 006',aptos:171},
@@ -337,6 +397,7 @@ const SECOES = [
   {n:'0250',local:'U.E. Dr. Jerônimo dos Santos e Silva',mun:'Sigefredo Pacheco',rota:'Rota 009',aptos:218},
   {n:'0252',local:'U.E. da Paz Sousa',mun:'Sigefredo Pacheco',rota:'Rota 008',aptos:262},
 ];
+var SECOES = SECOES_FALLBACK;
 
 // ── Estado ──────────────────────────────────────────────────
 let state = {};
@@ -396,7 +457,7 @@ function mkCk(sec,field,label,emoji){
 function buildList(){
   const wrap = document.getElementById('list-wrap'); wrap.innerHTML='';
   // Grupos por município na ordem definida
-  const MUNS = ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
+  const MUNS = window.cities || ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
   MUNS.forEach(mun => {
     const secs = SECOES.filter(s=>s.mun===mun);
     const l = secs.filter(s=>state[s.n].lacre).length;
@@ -480,6 +541,30 @@ function resetAll(){ if(!confirm('Resetar todas as marcações?'))return; SECOES
 
 function tickH(){ const n=new Date(); document.getElementById('h-time').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
 tickH(); setInterval(tickH,10000);
+
+// Chamado pelo <script type="module"> do topo assim que SECOES/cities viram
+// dado real do Supabase — reconstrói o `state` (preservando o progresso já
+// marcado) e substitui os totais fixos do cabeçalho/rodapé (antes hardcoded
+// pra 7ª Zona: "174 seções", "63 locais", "34.967 eleitores") pelos números
+// reais da zona autenticada.
+function recarregarAppComSecoesNovas(zona){
+  const estadoAntigo = state;
+  state = {};
+  SECOES.forEach(s => { state[s.n] = estadoAntigo[s.n] || {carga:false, prep:false, lacre:false}; });
+
+  const totalEleitores = SECOES.reduce((acc, s) => acc + (s.aptos || 0), 0);
+  const totalLocais = new Set(SECOES.map(s => s.local)).size;
+  const zonaTxt = zona ? `${zona.numero}ª Zona/${zona.estado || 'PI'}` : '7ª Zona/PI';
+  const subEl = document.querySelector('.h-sub');
+  if (subEl) {
+    subEl.innerHTML = `${zonaTxt} · ${SECOES.length} seções · ${totalLocais} locais · ${totalEleitores.toLocaleString('pt-BR')} eleitores · <span id="h-time">—</span>`;
+    tickH();
+  }
+  const footTotalEl = document.querySelector('.f-count.total .f-val');
+  if (footTotalEl) footTotalEl.textContent = SECOES.length;
+
+  load(); buildList(); updateStats();
+}
 
 load(); buildList(); updateStats();
 </script>

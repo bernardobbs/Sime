@@ -168,6 +168,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — bloqueia o acesso até validar sessão do Supabase, mas nunca sem
+     saída: se o Supabase estiver fora do ar (plano de contingência), o botão
+     "continuar offline" segue liberando a UI com os dados locais/fallback. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
+    <div style="font-weight:800;font-size:1rem;">SIME — Administração</div>
+    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de coordenador.</div>
+    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="logo">S</div>
@@ -359,13 +374,63 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { initSimeDados, getSecoes, getMunicipios } from './sime_dados.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+// Depois de autenticado (ou explicitamente offline): busca SECTIONS/cities
+// reais e reconstrói a UI que já estava de pé com o fallback hardcoded — não
+// há corrida de dados porque o overlay bloqueia a interação até aqui.
+async function carregarDadosReais(){
+  initSimeDados(supabase);
+  const secoesReais = await getSecoes({ fallback: null });
+  if (secoesReais) {
+    window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
+    const municipios = await getMunicipios({ fallback: null });
+    if (municipios) window.cities = municipios.map(m => m.nome);
+    if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
+  }
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  esconderLogin();
+  await carregarDadosReais();
+});
+
+// Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
+// pré-configurado"): login nunca é um bloqueio absoluto. Segue com os dados
+// locais/fallback, sem sincronizar, se o coordenador escolher isso.
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { esconderLogin(); await carregarDadosReais(); }
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS E CONSTANTES
 // ══════════════════════════════════════════════
-const SECTIONS = [
+const SECTIONS_FALLBACK = [
   {n:'0001',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0002',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0003',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0004',loc:'EMATER',city:'Campo Maior'},{n:'0005',loc:'SAAE',city:'Campo Maior'},{n:'0006',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0012',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0014',loc:'EMATER',city:'Campo Maior'},{n:'0015',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0016',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0017',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0018',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0019',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0020',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0029',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0030',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0031',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0033',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0034',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0035',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0036',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0037',loc:'EMATER',city:'Campo Maior'},{n:'0038',loc:'EMATER',city:'Campo Maior'},{n:'0044',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0045',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0046',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0047',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0049',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0050',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0062',loc:'FSESP',city:'Campo Maior'},{n:'0063',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0064',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0065',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0066',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0071',loc:'CAIC',city:'Campo Maior'},{n:'0074',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0079',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0080',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0081',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0085',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0086',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0087',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0088',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0089',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0090',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0101',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0102',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0103',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0112',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0115',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0116',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0117',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0122',loc:'FSESP',city:'Campo Maior'},{n:'0123',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0124',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0125',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0126',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0128',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0132',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0133',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0135',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0136',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0137',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0138',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0139',loc:'Grupo Escolar',city:'Jatobá do Piauí'},{n:'0140',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0141',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0144',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0145',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0147',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0148',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0149',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0151',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0152',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0155',loc:'CAIC',city:'Campo Maior'},{n:'0156',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0157',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0158',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0159',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0160',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0162',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0163',loc:"Salão Com. 'Mario Cazuza'",city:'Campo Maior'},{n:'0164',loc:'Salão Com. Santo Antônio',city:'Campo Maior'},{n:'0165',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0166',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0167',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0168',loc:'G.E. Prof. Francisco Luis',city:'Jatobá do Piauí'},{n:'0171',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0172',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0173',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0174',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0175',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0176',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0177',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0178',loc:'U.E. José Cândido Gaioso',city:'Jatobá do Piauí'},{n:'0179',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0180',loc:'U.E. José Gomes de Oliveira',city:'Campo Maior'},{n:'0181',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0185',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0186',loc:'Esc. Reassentamento Corredores',city:'Campo Maior'},{n:'0187',loc:'Esc. Mun. R.A. Maximino',city:'Campo Maior'},{n:'0188',loc:'Escola Mun. da Montanha',city:'Jatobá do Piauí'},{n:'0189',loc:'G.E. Manoel Pereira dos Reis',city:'Sigefredo Pacheco'},{n:'0191',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0192',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0193',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0194',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0195',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0196',loc:'U.E. José Gonçalves Oliveira',city:'Campo Maior'},{n:'0197',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0198',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0199',loc:'U.E. Rafael Nogueira Passos',city:'Jatobá do Piauí'},{n:'0200',loc:'Salão Comunitário',city:'Jatobá do Piauí'},{n:'0201',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0202',loc:'CAIC',city:'Campo Maior'},{n:'0203',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0204',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0205',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0206',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0207',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0208',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0209',loc:'Assoc. Moradores Tangará',city:'Campo Maior'},{n:'0210',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0211',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0212',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0213',loc:'U.E. Manoel Rodrigues Melo',city:'Sigefredo Pacheco'},{n:'0214',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0215',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0216',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0217',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0218',loc:'Posto Saúde da Varjota',city:'Campo Maior'},{n:'0219',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0220',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0221',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0222',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0223',loc:'CAIC',city:'Campo Maior'},{n:'0224',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0225',loc:'Esc. Mun. A.F. Ribeiro Paz',city:'Jatobá do Piauí'},{n:'0226',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0227',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0228',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0229',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0230',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0231',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0232',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0233',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0234',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0235',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0236',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0237',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0238',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0239',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0240',loc:'IFPI',city:'Campo Maior'},{n:'0241',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0242',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0243',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0244',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0245',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0246',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0247',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0248',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0249',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0250',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0251',loc:'IFPI',city:'Campo Maior'},{n:'0252',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0253',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0254',loc:'Creche Vovô José',city:'Campo Maior'},{n:'0255',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0256',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0257',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0258',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0259',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0260',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0261',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0146',loc:'U.E. Antônio Rodrigues',city:'Campo Maior'}
 ];
+var SECTIONS = SECTIONS_FALLBACK;
 
 // ── MEMBROS DA EQUIPE ──────────────────────────────────────
 const TEAM_KEY = 'sime_equipe_v1';
@@ -388,6 +453,11 @@ const PERFIS = {
 // ── ESCOPO DO USUÁRIO ──────────────────────────────────────
 // Retorna apenas as seções que o perfil atual pode ver.
 function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
+// DÍVIDA TÉCNICA (Fase 3 do plano multi-zona): 'empresa' ainda escopa por uma
+// lista de seções digitada à mão (curUser.secoes), sem nenhuma relação real
+// com sime_empresas.rotas (que já existe no schema, mas não é lida por este
+// arquivo ainda). Fechar esse gap é a próxima passada natural, mas fica fora
+// do escopo desta migração para não aumentar o raio de mudança agora.
 function secoesDoUsuario(){
   const esc = userEscopo();
   if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
@@ -535,8 +605,9 @@ function renderDash(){
       </div>`).join('');
   }
 
-  // Progresso por cidade
-  const cities = ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
+  // Progresso por cidade (window.cities: populado com dado real do Supabase,
+  // se autenticado — ver <script type="module"> no topo do arquivo)
+  const cities = window.cities || ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
   const cp = document.getElementById('city-progress');
   cp.innerHTML = cities.map(c=>{
     const secs = escopoSecs.filter(s=>s.city===c);
@@ -1106,6 +1177,25 @@ tick(); setInterval(tick,10000);
 // ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
+
+// Chamado pelo <script type="module"> do topo assim que SECTIONS/cities
+// viram dado real do Supabase (login bem-sucedido) — repopula o dropdown de
+// município (antes fixo nos 3 da 7ª Zona) e reconstrói as telas já montadas
+// com o fallback.
+function recarregarAppComSectionsNovas(){
+  const sel = document.getElementById('sec-filter-cidade');
+  if (sel && window.cities) {
+    const valorAtual = sel.value;
+    sel.innerHTML = '<option value="">Todas as cidades</option>' +
+      window.cities.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.value = valorAtual;
+  }
+  applyUser();
+  renderDash();
+  renderTable();
+  renderConfig();
+}
+
 applyUser();
 renderDash();
 renderTable();

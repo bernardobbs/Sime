@@ -134,6 +134,34 @@ body{display:flex;flex-direction:column;}
   <div class="li" style="color:var(--text3)">Atualiza a cada 3s · Alarme sonoro em caso de alerta</div>
 </div>
 
+<script type="module">
+import { bootstrapTvSession } from './sime_tv_auth.js';
+import { initSimeDados, getRotas } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+// Converte pro mesmo shape de ROTAS_FALLBACK ({'Rota 001': {mun, total}}) —
+// getRotasInfo() já roda a cada 3s, então não precisa de cache+reload como as
+// TVs que montam DOM uma vez só: um `window.ROTAS_SUPABASE` global já é visto
+// no próximo tick.
+function adaptarParaRotasShape(rotas) {
+  const out = {};
+  for (const r of rotas) {
+    const total = r.paradas.reduce((acc, p) => acc + p.secoes.length, 0);
+    out['Rota ' + r.codigo] = { mun: (r.municipios || []).join(' / ') || '—', total };
+  }
+  return out;
+}
+
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+  const rotas = await getRotas({ fallback: null });
+  if (rotas) window.ROTAS_SUPABASE = adaptarParaRotasShape(rotas);
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS — lê do localStorage (config do conferente)
@@ -183,7 +211,9 @@ function getRotasInfo(){
       if(Object.keys(info).length > 0) return info;
     }
   } catch(e){}
-  return ROTAS_FALLBACK;
+  // Sem estado/config do conferente ainda: prioriza o dado real do Supabase
+  // (zona-scoped, populado pelo módulo acima) sobre a massa hardcoded da 7ª Zona.
+  return window.ROTAS_SUPABASE || ROTAS_FALLBACK;
 }
 
 // ══════════════════════════════════════════════

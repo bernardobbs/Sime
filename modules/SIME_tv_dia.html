@@ -332,9 +332,51 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="v-leg" id="v-leg"></div>
 </div>
+<script type="module">
+import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes, getZonaInfo } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
+
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+
+  // CITIES: NUMPAGES e os pontos de paginação são montados uma única vez no
+  // carregamento — troca via cache+reload (mesmo padrão de SIME_tv_vespera.html).
+  await atualizarCacheTv(CITIES_CACHE_KEY, async () => {
+    const secoes = await getSecoes({ fallback: null });
+    return secoes ? agruparSecoesPorCidade(secoes) : null;
+  });
+
+  // Clima: fetchWeather() já lê WEATHER_URL/WEATHER_LABEL por closure a cada
+  // chamada — não precisa de reload, só reatribuir e disparar uma nova busca
+  // imediata (sem esperar os próximos 10min do setInterval).
+  const zona = await getZonaInfo({ fallback: null });
+  if (zona && zona.lat != null && zona.lon != null) {
+    window.WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
+      `?latitude=${zona.lat}&longitude=${zona.lon}` +
+      '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
+      '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';
+    window.WEATHER_LABEL = zona.municipio ? zona.municipio.toUpperCase() : null;
+    if (window.fetchWeather) window.fetchWeather();
+    const hdr = document.querySelector('.wc-hdr');
+    if (hdr && window.WEATHER_LABEL) hdr.textContent = `🌦 CLIMA · ${window.WEATHER_LABEL}`;
+  }
+})();
+</script>
 <script>
 
-const CITIES=[{city:'Campo Maior',color:'#2d50a0',locs:[{n:'Assoc. Moradores Tangará',s:['0209']},{n:'CAIC',s:['0071','0155','0202','0223']},{n:'Centro Ed. JA Mulata Lima',s:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},{n:'Clube dos Comerciários',s:['0015','0016','0125']},{n:'Col. Est. Profª Raimundinho',s:['0017','0018','0019','0020','0157']},{n:'Creche Tia Medeiros',s:['0074','0197','0206','0219','0224','0229','0236','0257','0261']},{n:'Creche Vovô José',s:['0254']},{n:'EMATER',s:['0004','0014','0037','0038']},{n:'Esc. Reassentamento Corredores',s:['0186']},{n:'Esc. Mun. Mano Castelo Branco',s:['0185','0226']},{n:'Esc. Mun. N.S. de Fátima',s:['0242','0248','0256']},{n:'Esc. Mun. R.A. Maximino',s:['0187']},{n:'FSESP',s:['0062','0122']},{n:'G.E. Aguida M. Conceição',s:['0147','0173','0198','0215','0235']},{n:'G.E. Povoado Tapera',s:['0137','0220']},{n:'G.E. Marion Saraiva',s:['0029','0030','0031','0123','0148','0259']},{n:'G.E. Profª Maroquinha',s:['0135','0144']},{n:'G.E. Treze de Março',s:['0063','0064','0065','0066','0124','0145','0181']},{n:'G.E. Valdivino Tito',s:['0033','0034','0035','0036','0115','0128']},{n:'IFPI',s:['0240','0251']},{n:'Posto Saúde da Varjota',s:['0218']},{n:'Prefeitura Municipal',s:['0045','0046','0047','0116','0117']},{n:'SAAE',s:['0005']},{n:'Salão Com. Corredores',s:['0195','0234']},{n:"Salão Com. 'Mario Cazuza'",s:['0163']},{n:'Salão Com. Santo Antônio',s:['0164']},{n:'Sec. Est. de Fazenda',s:['0044','0191']},{n:'Sec. Mun. de Educação',s:['0006','0012','0149']},{n:'U.E. José Gomes de Oliveira',s:['0180']},{n:'U.E. José Gonçalves Oliveira',s:['0196']},{n:'U.E. Linoca Gayoso',s:['0141','0192','0244']},{n:'U.E. Vida Verde',s:['0205','0217','0233','0255']}]},{city:'Jatobá do Piauí',color:'#1e7048',locs:[{n:'Creche Mamãe Lima M. Oliveira',s:['0174','0210','0232','0260']},{n:'Esc. Mun. A.M. Castelo Branco',s:['0212','0245']},{n:'Esc. Mun. A.F. Ribeiro Paz',s:['0225']},{n:'Escola Mun. da Montanha',s:['0188']},{n:'G.E. Anita Gaioso',s:['0175','0238']},{n:'G.E. de Tanques',s:['0179','0194']},{n:'G.E. Prof. Francisco Luis',s:['0168']},{n:'Grupo Escolar',s:['0139']},{n:'Igreja da Morada Nova',s:['0221','0243']},{n:'Posto Saúde M. Sousa Dié',s:['0160','0162','0258']},{n:'Salão Comunitário',s:['0200']},{n:'U.E. Francisco F.P. Oliveira',s:['0216','0227']},{n:'U.E. João Félix de Andrade',s:['0207','0239']},{n:'U.E. José Cândido Gaioso',s:['0178']},{n:'U.E. Oscar Gil C. Branco',s:['0165','0208','0253']},{n:'U.E. Rafael Nogueira Passos',s:['0199']},{n:'U.E. Tertuliano Pereira',s:['0101','0102','0103','0112','0171','0172','0176']}]},{city:'Sigefredo Pacheco',color:'#5c3a98',locs:[{n:'Esc. Rural Sto. Antônio C.V.',s:['0193','0214']},{n:'G.E. Manoel Francisco',s:['0136','0152']},{n:'G.E. Manoel Pereira dos Reis',s:['0189']},{n:'G.E. Monsenhor Mateus',s:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},{n:'U.E. Antonio Carmelo Barbosa',s:['0167','0230']},{n:'U.E. Antonio Cícero Oliveira',s:['0166','0228']},{n:'U.E. Antônio Pereira Santos',s:['0140','0201']},{n:'U.E. da Paz Sousa',s:['0079','0080','0081','0133','0252']},{n:'U.E. Dr. Jerônimo S. Silva',s:['0241','0250']},{n:'U.E. Ivon Pacheco',s:['0204','0247']},{n:'U.E. José Ribeiro da Luz',s:['0203','0211','0222']},{n:'U.E. Jovino Josino Oliveira',s:['0138','0231']},{n:'U.E. Manoel Rodrigues Melo',s:['0213']},{n:'U.E. Miguel Rocha',s:['0159','0246']}]}];
+// CITIES vem do cache (populado via Supabase pelo módulo acima, se a TV tiver
+// sessão) ou, na ausência dele, da massa hardcoded original (offline-first).
+// NUMPAGES/paginação são montados uma única vez a partir de CITIES logo
+// abaixo, por isso a leitura do cache precisa ser síncrona, antes disso.
+function _lerCacheTvSync(key){ try{ const r=localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; } }
+const CITIES_FALLBACK=[{city:'Campo Maior',color:'#2d50a0',locs:[{n:'Assoc. Moradores Tangará',s:['0209']},{n:'CAIC',s:['0071','0155','0202','0223']},{n:'Centro Ed. JA Mulata Lima',s:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},{n:'Clube dos Comerciários',s:['0015','0016','0125']},{n:'Col. Est. Profª Raimundinho',s:['0017','0018','0019','0020','0157']},{n:'Creche Tia Medeiros',s:['0074','0197','0206','0219','0224','0229','0236','0257','0261']},{n:'Creche Vovô José',s:['0254']},{n:'EMATER',s:['0004','0014','0037','0038']},{n:'Esc. Reassentamento Corredores',s:['0186']},{n:'Esc. Mun. Mano Castelo Branco',s:['0185','0226']},{n:'Esc. Mun. N.S. de Fátima',s:['0242','0248','0256']},{n:'Esc. Mun. R.A. Maximino',s:['0187']},{n:'FSESP',s:['0062','0122']},{n:'G.E. Aguida M. Conceição',s:['0147','0173','0198','0215','0235']},{n:'G.E. Povoado Tapera',s:['0137','0220']},{n:'G.E. Marion Saraiva',s:['0029','0030','0031','0123','0148','0259']},{n:'G.E. Profª Maroquinha',s:['0135','0144']},{n:'G.E. Treze de Março',s:['0063','0064','0065','0066','0124','0145','0181']},{n:'G.E. Valdivino Tito',s:['0033','0034','0035','0036','0115','0128']},{n:'IFPI',s:['0240','0251']},{n:'Posto Saúde da Varjota',s:['0218']},{n:'Prefeitura Municipal',s:['0045','0046','0047','0116','0117']},{n:'SAAE',s:['0005']},{n:'Salão Com. Corredores',s:['0195','0234']},{n:"Salão Com. 'Mario Cazuza'",s:['0163']},{n:'Salão Com. Santo Antônio',s:['0164']},{n:'Sec. Est. de Fazenda',s:['0044','0191']},{n:'Sec. Mun. de Educação',s:['0006','0012','0149']},{n:'U.E. José Gomes de Oliveira',s:['0180']},{n:'U.E. José Gonçalves Oliveira',s:['0196']},{n:'U.E. Linoca Gayoso',s:['0141','0192','0244']},{n:'U.E. Vida Verde',s:['0205','0217','0233','0255']}]},{city:'Jatobá do Piauí',color:'#1e7048',locs:[{n:'Creche Mamãe Lima M. Oliveira',s:['0174','0210','0232','0260']},{n:'Esc. Mun. A.M. Castelo Branco',s:['0212','0245']},{n:'Esc. Mun. A.F. Ribeiro Paz',s:['0225']},{n:'Escola Mun. da Montanha',s:['0188']},{n:'G.E. Anita Gaioso',s:['0175','0238']},{n:'G.E. de Tanques',s:['0179','0194']},{n:'G.E. Prof. Francisco Luis',s:['0168']},{n:'Grupo Escolar',s:['0139']},{n:'Igreja da Morada Nova',s:['0221','0243']},{n:'Posto Saúde M. Sousa Dié',s:['0160','0162','0258']},{n:'Salão Comunitário',s:['0200']},{n:'U.E. Francisco F.P. Oliveira',s:['0216','0227']},{n:'U.E. João Félix de Andrade',s:['0207','0239']},{n:'U.E. José Cândido Gaioso',s:['0178']},{n:'U.E. Oscar Gil C. Branco',s:['0165','0208','0253']},{n:'U.E. Rafael Nogueira Passos',s:['0199']},{n:'U.E. Tertuliano Pereira',s:['0101','0102','0103','0112','0171','0172','0176']}]},{city:'Sigefredo Pacheco',color:'#5c3a98',locs:[{n:'Esc. Rural Sto. Antônio C.V.',s:['0193','0214']},{n:'G.E. Manoel Francisco',s:['0136','0152']},{n:'G.E. Manoel Pereira dos Reis',s:['0189']},{n:'G.E. Monsenhor Mateus',s:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},{n:'U.E. Antonio Carmelo Barbosa',s:['0167','0230']},{n:'U.E. Antonio Cícero Oliveira',s:['0166','0228']},{n:'U.E. Antônio Pereira Santos',s:['0140','0201']},{n:'U.E. da Paz Sousa',s:['0079','0080','0081','0133','0252']},{n:'U.E. Dr. Jerônimo S. Silva',s:['0241','0250']},{n:'U.E. Ivon Pacheco',s:['0204','0247']},{n:'U.E. José Ribeiro da Luz',s:['0203','0211','0222']},{n:'U.E. Jovino Josino Oliveira',s:['0138','0231']},{n:'U.E. Manoel Rodrigues Melo',s:['0213']},{n:'U.E. Miguel Rocha',s:['0159','0246']}]}];
+const CITIES = _lerCacheTvSync('sime_tv_cities_v1') || CITIES_FALLBACK;
 function loadMesa(){try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}}}
 // Pânico/fila reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade)
 function loadAcess(){try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}}}
@@ -765,9 +807,11 @@ document.addEventListener('click',()=>initAudio(),{once:true});
 
 
 // ── CLIMA ──────────────────────────────────────────────────
-// Usa Open-Meteo (gratuito, sem API key) para Campo Maior-PI
-// Lat: -4.8252, Lon: -42.1733
-const WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
+// Fallback: Campo Maior-PI (Lat -4.8252, Lon -42.1733). `var` (não `const`):
+// o módulo acima reatribui via `window.WEATHER_URL` assim que souber lat/lon
+// reais da zona (sime_zonas.lat/lon) — fetchWeather() lê esta variável a cada
+// chamada, então não precisa de reload, só disparar uma nova busca imediata.
+var WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
   '?latitude=-4.8252&longitude=-42.1733' +
   '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
   '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';

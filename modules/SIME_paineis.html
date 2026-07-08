@@ -319,11 +319,34 @@ body{display:flex;flex-direction:column;}
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { bootstrapTvSession, agruparSecoesPorCidade } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES` — basta
+// reatribuir a variável (sem reload) que o próximo tick já usa o dado real.
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) {
+    window.CITIES = agruparSecoesPorCidade(secoes);
+    if (window.recalcularDerivadosDeCities) window.recalcularDerivadosDeCities();
+  }
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════════════
 // DADOS — seções agrupadas por cidade e local
 // ══════════════════════════════════════════════════════
-const CITIES=[
+// `var` (não `let`/`const`): precisa ser a MESMA variável que `window.CITIES`,
+// já que o módulo acima reatribui via `window.CITIES = ...` — `let` no escopo
+// global NÃO vira propriedade de `window` (só `var`/function declarations viram).
+var CITIES=[
   {city:'Campo Maior',color:'#2d50a0',locs:[
     {id:'CM-01',n:'Assoc. Moradores Tangará',      s:['0209']},
     {id:'CM-02',n:'CAIC',                          s:['0071','0155','0202','0223']},
@@ -395,11 +418,16 @@ const CITIES=[
   ]},
 ];
 
-// Lista plana de todas as seções
-const ALL_SECS = CITIES.flatMap(c=>c.locs.flatMap(l=>l.s));
-// Mapa: ID da seção → { city, loc }
-const SEC_MAP = {};
-CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{ SEC_MAP[n]={city:c.city,loc:l.n,cityColor:c.color}; })));
+// Lista plana de todas as seções + mapa ID→{city,loc}. `var` pelo mesmo motivo
+// de CITIES: recalculados por recalcularDerivadosDeCities() sempre que CITIES
+// for substituído pelo dado real do Supabase (ver <script type="module"> acima).
+function recalcularDerivadosDeCities(){
+  window.ALL_SECS = CITIES.flatMap(c=>c.locs.flatMap(l=>l.s));
+  window.SEC_MAP = {};
+  CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{ SEC_MAP[n]={city:c.city,loc:l.n,cityColor:c.color}; })));
+}
+var ALL_SECS, SEC_MAP;
+recalcularDerivadosDeCities();
 
 // ══════════════════════════════════════════════════════
 // ARMAZENAMENTO DOS PAINÉIS

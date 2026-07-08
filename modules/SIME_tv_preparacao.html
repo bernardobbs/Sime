@@ -69,6 +69,29 @@ body { display:flex; flex-direction:column; }
     <div class="fc total"><div class="fc-val" id="fc-total">174</div><div class="fc-lbl">Total</div></div>
   </div>
 </div>
+<script type="module">
+import { bootstrapTvSession } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes, getZonaInfo } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV (mesmos valores públicos do
+// projeto Supabase — anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+window.SIME_TOTAL_REAL = null; // preenchido via Supabase quando a sessão da TV existir
+
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+  const [secoes, zona] = await Promise.all([
+    getSecoes({ fallback: null }),
+    getZonaInfo({ fallback: null }),
+  ]);
+  if (secoes) window.SIME_TOTAL_REAL = secoes.length;
+  if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
+  if (window.updateBars) window.updateBars(); // não espera o próximo tick de 3s
+})();
+</script>
 <script>
 function tick() {
   const n=new Date();
@@ -79,9 +102,11 @@ function tick() {
 }
 tick(); setInterval(tick,1000);
 
-// Total é calculado dinamicamente a partir dos dados do coordenador
-// fallback para 174 (7ª Zona/PI) caso não haja dados
+// Total real vem do Supabase (window.SIME_TOTAL_REAL, zona-scoped via RLS);
+// sem sessão de TV configurada ainda, cai no total local (sime_lacre_v3) e,
+// por fim, no fallback histórico da 7ª Zona/PI (174) — offline-first.
 function calcTotal(){
+  if (window.SIME_TOTAL_REAL) return window.SIME_TOTAL_REAL;
   try{ const d=localStorage.getItem('sime_lacre_v3'); if(d){ const t=Object.keys(JSON.parse(d)).length; return t>0?t:174; }}catch(e){} return 174;
 }
 function updateBars(){
