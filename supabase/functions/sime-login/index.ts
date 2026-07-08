@@ -17,7 +17,10 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
-const JWT_SECRET = Deno.env.get('SUPABASE_JWT_SECRET')!;
+// Não pode se chamar SUPABASE_JWT_SECRET: o dashboard do Supabase reserva o
+// prefixo SUPABASE_ só para os secrets automáticos da plataforma (URL,
+// service_role, etc.) e recusa salvar qualquer secret custom com esse prefixo.
+const JWT_SECRET = Deno.env.get('SIME_JWT_SECRET')!;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
