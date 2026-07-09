@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS sime_tokens (
   rotas       TEXT[],   -- escopo por rota (conferente/motorista)
   local_id    UUID,     -- escopo por local (coord_acessibilidade)
   local_nome  TEXT,     -- nome do local (exibição no módulo de campo)
+  secoes      TEXT[],   -- escopo por seção (mesário: 1 elemento; instalador/mídias: N)
   expira_em   TIMESTAMPTZ,
   usado_em    TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -143,6 +144,7 @@ CREATE TABLE IF NOT EXISTS sime_tokens (
 -- Migração para bancos já existentes
 ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS tipo       TEXT NOT NULL DEFAULT 'conferente';
 ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS local_id   UUID;
+ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS secoes     TEXT[];
 ALTER TABLE sime_tokens ADD COLUMN IF NOT EXISTS local_nome TEXT;
 
 -- Estado operacional das seções (Dia D)
@@ -174,6 +176,68 @@ CREATE TABLE IF NOT EXISTS sime_mesa_estado (
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS updated_by_origem TEXT;  -- migração p/ bancos existentes
 CREATE INDEX IF NOT EXISTS idx_mesa_eleicao ON sime_mesa_estado(eleicao_id);
 CREATE INDEX IF NOT EXISTS idx_mesa_secao ON sime_mesa_estado(secao_id);
+
+-- Fase 4 (JWT de campo): colunas descobertas em falta ao conectar os módulos
+-- de campo de verdade — cada uma tinha um fato sendo gravado só em
+-- localStorage, sem coluna nenhuma correspondente.
+--   urna_entregue*      — SIME_motorista.html, entrega da urna na seção (D-1)
+--   urna_recolhida_ts    — timestamp do já existente urna_recolhida (Dia D)
+--   urna_cartorio_ts     — timestamp do já existente urna_cartorio (Dia D)
+--   material_recolhido  — SIME_mesario.html, campo "mat" (material da eleição recolhido)
+--   urna_chegou/posicionada/instalada* — SIME_instalador.html, checklist de véspera
+--     (D-1, distinto de urna_entregue do motorista: são confirmações de atores
+--     diferentes — motorista confirma que entregou, instalador confirma que
+--     recebeu/montou; mantidos como sinais separados, não deduplicados)
+--   problema_instalacao* — SIME_instalador.html, problema na instalação da urna
+--     em D-1 (distinto de panico_urna, que é do Dia D)
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_entregue BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_entregue_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_recolhida_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_cartorio_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS material_recolhido BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_chegou BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_chegou_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_posicionada BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_posicionada_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_instalada BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_instalada_ts TIMESTAMPTZ;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao_resolvido BOOLEAN DEFAULT false;
+
+-- ------------------------------------------------------------
+-- NOVO: ESTADO DE EMBARQUE DE ROTA (Conferente, D-1)
+-- ------------------------------------------------------------
+-- Antes da Fase 4 não existia NENHUMA tabela pra isso — SIME_conferente.html
+-- só gravava em localStorage (sime_dist_v1). Duas tabelas porque o objeto
+-- original mistura duas granularidades: estado agregado da rota (1 linha) e
+-- checklist de urna por seção (N linhas) — não dá pra normalizar numa só.
+CREATE TABLE IF NOT EXISTS sime_rotas_estado (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  eleicao_id      UUID REFERENCES sime_eleicoes(id),
+  rota_id         UUID REFERENCES sime_rotas(id),
+  status          TEXT NOT NULL DEFAULT 'aguardando'
+                  CHECK (status IN ('aguardando','embarcando','pronta','alerta','saiu')),
+  conferente_nome TEXT,
+  ts_aberta       TIMESTAMPTZ,
+  ts_pronta       TIMESTAMPTZ,
+  ts_saiu         TIMESTAMPTZ,
+  alerta          BOOLEAN NOT NULL DEFAULT false,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(eleicao_id, rota_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rotas_estado_eleicao ON sime_rotas_estado(eleicao_id);
+CREATE INDEX IF NOT EXISTS idx_rotas_estado_rota    ON sime_rotas_estado(rota_id);
+
+CREATE TABLE IF NOT EXISTS sime_rotas_urnas (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  rota_estado_id  UUID REFERENCES sime_rotas_estado(id),
+  secao_id        UUID REFERENCES sime_secoes(id),
+  embarcada       BOOLEAN NOT NULL DEFAULT false,
+  embarcada_ts    TIMESTAMPTZ,
+  UNIQUE(rota_estado_id, secao_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rotas_urnas_estado ON sime_rotas_urnas(rota_estado_id);
+CREATE INDEX IF NOT EXISTS idx_rotas_urnas_secao  ON sime_rotas_urnas(secao_id);
 
 -- ------------------------------------------------------------
 -- NOVO: MÓDULO DE MÍDIAS
@@ -211,7 +275,7 @@ CREATE TABLE IF NOT EXISTS sime_midias (
   em_coleta_ts        TIMESTAMPTZ,
   coletada_ts         TIMESTAMPTZ,
   entregue_ts         TIMESTAMPTZ,
-  responsavel_coleta  UUID REFERENCES sime_usuarios(id),
+  responsavel_coleta  UUID, -- FK pra sime_atores(id) adicionada por ALTER mais abaixo (tabela ainda não existe aqui)
   tipo_coleta         sime_tipo_coleta,
   observacao          TEXT,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -288,9 +352,18 @@ CREATE INDEX IF NOT EXISTS idx_atores_funcao   ON sime_atores(funcao);
 CREATE INDEX IF NOT EXISTS idx_atores_nome_trgm ON sime_atores USING gin(nome_completo gin_trgm_ops);
 
 -- Garantir telefone único por seção + função + eleição (evitar duplicidade na importação)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_unique 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_unique
   ON sime_atores(eleicao_id, secao_id, telefone_whatsapp, funcao)
   WHERE ativo = true;
+
+-- sime_midias.responsavel_coleta referencia sime_atores (não sime_usuarios):
+-- quem coleta mídia em campo é sempre um ator externo (motorista/técnico
+-- convocado), nunca um admin do cartório. Corrigido aqui (não na definição da
+-- tabela, lá em cima) porque sime_atores só existe a partir deste ponto do
+-- arquivo. Drop+add deixa idempotente mesmo trocando a tabela referenciada.
+ALTER TABLE sime_midias DROP CONSTRAINT IF EXISTS sime_midias_responsavel_coleta_fkey;
+ALTER TABLE sime_midias ADD CONSTRAINT sime_midias_responsavel_coleta_fkey
+  FOREIGN KEY (responsavel_coleta) REFERENCES sime_atores(id);
 
 -- ------------------------------------------------------------
 -- NOVO: LOGS DE AUDITORIA
@@ -404,6 +477,199 @@ BEGIN
     coletada_ts  = CASE WHEN p_status = 'coletada'             AND sime_midias.coletada_ts  IS NULL THEN v_now ELSE sime_midias.coletada_ts  END,
     entregue_ts  = CASE WHEN p_status = 'entregue_transmissao' AND sime_midias.entregue_ts  IS NULL THEN v_now ELSE sime_midias.entregue_ts  END,
     updated_at   = v_now
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: ação do Coord. de Acessibilidade (fila/pânico de energia/urna) — Fase 4.
+-- Sem RPC dedicada até agora (SIME_acessibilidade.html só gravava em
+-- localStorage); parâmetros opcionais (NULL = não mexe) porque a UI sempre
+-- atualiza um campo por vez (um botão de fila, ou um toggle de pânico).
+CREATE OR REPLACE FUNCTION sime_acao_acessibilidade(
+  p_secao_id    UUID,
+  p_eleicao_id  UUID,
+  p_fila        INTEGER DEFAULT NULL,
+  p_panico_energia            BOOLEAN DEFAULT NULL,
+  p_panico_urna               BOOLEAN DEFAULT NULL,
+  p_panico_energia_resolvido  BOOLEAN DEFAULT NULL,
+  p_panico_urna_resolvido     BOOLEAN DEFAULT NULL
+) RETURNS sime_mesa_estado AS $$
+DECLARE
+  v_row sime_mesa_estado;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_mesa_estado(eleicao_id, secao_id, fila, panico_energia, panico_urna,
+    panico_energia_resolvido, panico_urna_resolvido, updated_at, updated_by_origem)
+  VALUES (p_eleicao_id, p_secao_id, COALESCE(p_fila, 0), COALESCE(p_panico_energia, false),
+    COALESCE(p_panico_urna, false), COALESCE(p_panico_energia_resolvido, false),
+    COALESCE(p_panico_urna_resolvido, false), v_now, 'coord_acessibilidade')
+  ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
+    fila                      = COALESCE(p_fila, sime_mesa_estado.fila),
+    panico_energia            = COALESCE(p_panico_energia, sime_mesa_estado.panico_energia),
+    panico_urna               = COALESCE(p_panico_urna, sime_mesa_estado.panico_urna),
+    panico_energia_resolvido  = COALESCE(p_panico_energia_resolvido, sime_mesa_estado.panico_energia_resolvido),
+    panico_urna_resolvido     = COALESCE(p_panico_urna_resolvido, sime_mesa_estado.panico_urna_resolvido),
+    updated_at                = v_now,
+    updated_by_origem         = 'coord_acessibilidade'
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: ação genérica sobre sime_mesa_estado — usada por mesário, motorista e
+-- instalador (Fase 4). Parâmetros opcionais (NULL = não mexe) porque cada UI
+-- só manda os campos que mudaram naquele toque. As colunas *_ts (urna_entregue,
+-- urna_recolhida, urna_cartorio, urna_chegou/posicionada/instalada) só são
+-- setadas na PRIMEIRA vez que o booleano correspondente vira true — chamadas
+-- seguintes não sobrescrevem o timestamp do evento original.
+CREATE OR REPLACE FUNCTION sime_acao_mesa(
+  p_secao_id    UUID,
+  p_eleicao_id  UUID,
+  p_mesa_pres   INTEGER DEFAULT NULL,
+  p_mesa_m1     INTEGER DEFAULT NULL,
+  p_mesa_m2     INTEGER DEFAULT NULL,
+  p_mesa_sec    INTEGER DEFAULT NULL,
+  p_zeresima    BOOLEAN DEFAULT NULL,
+  p_votacao     BOOLEAN DEFAULT NULL,
+  p_encerrada   BOOLEAN DEFAULT NULL,
+  p_bu_impresso BOOLEAN DEFAULT NULL,
+  p_material_recolhido BOOLEAN DEFAULT NULL,
+  p_fila        INTEGER DEFAULT NULL,
+  p_panico_energia  BOOLEAN DEFAULT NULL,
+  p_panico_urna     BOOLEAN DEFAULT NULL,
+  p_panico_energia_resolvido BOOLEAN DEFAULT NULL,
+  p_panico_urna_resolvido    BOOLEAN DEFAULT NULL,
+  p_urna_entregue    BOOLEAN DEFAULT NULL,
+  p_urna_recolhida   BOOLEAN DEFAULT NULL,
+  p_urna_cartorio    BOOLEAN DEFAULT NULL,
+  p_urna_chegou      BOOLEAN DEFAULT NULL,
+  p_urna_posicionada BOOLEAN DEFAULT NULL,
+  p_urna_instalada   BOOLEAN DEFAULT NULL,
+  p_problema_instalacao           BOOLEAN DEFAULT NULL,
+  p_problema_instalacao_resolvido BOOLEAN DEFAULT NULL,
+  p_origem      TEXT DEFAULT NULL
+) RETURNS sime_mesa_estado AS $$
+DECLARE
+  v_row sime_mesa_estado;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_mesa_estado (
+    eleicao_id, secao_id, mesa_pres, mesa_m1, mesa_m2, mesa_sec,
+    zeresima, votacao, encerrada, bu_impresso, material_recolhido, fila,
+    panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido,
+    urna_entregue, urna_entregue_ts, urna_recolhida, urna_recolhida_ts,
+    urna_cartorio, urna_cartorio_ts, urna_chegou, urna_chegou_ts,
+    urna_posicionada, urna_posicionada_ts, urna_instalada, urna_instalada_ts,
+    problema_instalacao, problema_instalacao_resolvido,
+    updated_at, updated_by_origem
+  ) VALUES (
+    p_eleicao_id, p_secao_id,
+    COALESCE(p_mesa_pres,0), COALESCE(p_mesa_m1,0), COALESCE(p_mesa_m2,0), COALESCE(p_mesa_sec,0),
+    COALESCE(p_zeresima,false), COALESCE(p_votacao,false), COALESCE(p_encerrada,false), COALESCE(p_bu_impresso,false),
+    COALESCE(p_material_recolhido,false), COALESCE(p_fila,0),
+    COALESCE(p_panico_energia,false), COALESCE(p_panico_urna,false),
+    COALESCE(p_panico_energia_resolvido,false), COALESCE(p_panico_urna_resolvido,false),
+    COALESCE(p_urna_entregue,false),    CASE WHEN p_urna_entregue    THEN v_now END,
+    COALESCE(p_urna_recolhida,false),   CASE WHEN p_urna_recolhida   THEN v_now END,
+    COALESCE(p_urna_cartorio,false),    CASE WHEN p_urna_cartorio    THEN v_now END,
+    COALESCE(p_urna_chegou,false),      CASE WHEN p_urna_chegou      THEN v_now END,
+    COALESCE(p_urna_posicionada,false), CASE WHEN p_urna_posicionada THEN v_now END,
+    COALESCE(p_urna_instalada,false),   CASE WHEN p_urna_instalada   THEN v_now END,
+    COALESCE(p_problema_instalacao,false), COALESCE(p_problema_instalacao_resolvido,false),
+    v_now, p_origem
+  )
+  ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
+    mesa_pres = COALESCE(p_mesa_pres, sime_mesa_estado.mesa_pres),
+    mesa_m1   = COALESCE(p_mesa_m1, sime_mesa_estado.mesa_m1),
+    mesa_m2   = COALESCE(p_mesa_m2, sime_mesa_estado.mesa_m2),
+    mesa_sec  = COALESCE(p_mesa_sec, sime_mesa_estado.mesa_sec),
+    zeresima  = COALESCE(p_zeresima, sime_mesa_estado.zeresima),
+    votacao   = COALESCE(p_votacao, sime_mesa_estado.votacao),
+    encerrada = COALESCE(p_encerrada, sime_mesa_estado.encerrada),
+    bu_impresso = COALESCE(p_bu_impresso, sime_mesa_estado.bu_impresso),
+    material_recolhido = COALESCE(p_material_recolhido, sime_mesa_estado.material_recolhido),
+    fila = COALESCE(p_fila, sime_mesa_estado.fila),
+    panico_energia = COALESCE(p_panico_energia, sime_mesa_estado.panico_energia),
+    panico_urna    = COALESCE(p_panico_urna, sime_mesa_estado.panico_urna),
+    panico_energia_resolvido = COALESCE(p_panico_energia_resolvido, sime_mesa_estado.panico_energia_resolvido),
+    panico_urna_resolvido    = COALESCE(p_panico_urna_resolvido, sime_mesa_estado.panico_urna_resolvido),
+    urna_entregue    = COALESCE(p_urna_entregue, sime_mesa_estado.urna_entregue),
+    urna_entregue_ts = CASE WHEN p_urna_entregue AND sime_mesa_estado.urna_entregue_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_entregue_ts END,
+    urna_recolhida    = COALESCE(p_urna_recolhida, sime_mesa_estado.urna_recolhida),
+    urna_recolhida_ts = CASE WHEN p_urna_recolhida AND sime_mesa_estado.urna_recolhida_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_recolhida_ts END,
+    urna_cartorio    = COALESCE(p_urna_cartorio, sime_mesa_estado.urna_cartorio),
+    urna_cartorio_ts = CASE WHEN p_urna_cartorio AND sime_mesa_estado.urna_cartorio_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_cartorio_ts END,
+    urna_chegou    = COALESCE(p_urna_chegou, sime_mesa_estado.urna_chegou),
+    urna_chegou_ts = CASE WHEN p_urna_chegou AND sime_mesa_estado.urna_chegou_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_chegou_ts END,
+    urna_posicionada    = COALESCE(p_urna_posicionada, sime_mesa_estado.urna_posicionada),
+    urna_posicionada_ts = CASE WHEN p_urna_posicionada AND sime_mesa_estado.urna_posicionada_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_posicionada_ts END,
+    urna_instalada    = COALESCE(p_urna_instalada, sime_mesa_estado.urna_instalada),
+    urna_instalada_ts = CASE WHEN p_urna_instalada AND sime_mesa_estado.urna_instalada_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_instalada_ts END,
+    problema_instalacao = COALESCE(p_problema_instalacao, sime_mesa_estado.problema_instalacao),
+    problema_instalacao_resolvido = COALESCE(p_problema_instalacao_resolvido, sime_mesa_estado.problema_instalacao_resolvido),
+    updated_at = v_now,
+    updated_by_origem = COALESCE(p_origem, sime_mesa_estado.updated_by_origem)
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: upsert do estado de embarque de uma rota (Conferente de Embarque —
+-- Fase 4). ts_aberta/ts_pronta/ts_saiu só são setados na PRIMEIRA vez que o
+-- booleano correspondente vira true (mesmo padrão de sime_acao_mesa). Retorna
+-- a linha inteira porque o client precisa do `id` gerado como FK ao gravar em
+-- sime_rotas_urnas logo em seguida.
+CREATE OR REPLACE FUNCTION sime_rota_estado_upsert(
+  p_eleicao_id UUID,
+  p_rota_id    UUID,
+  p_status     TEXT DEFAULT NULL,
+  p_conferente_nome TEXT DEFAULT NULL,
+  p_ts_aberta  BOOLEAN DEFAULT NULL,
+  p_ts_pronta  BOOLEAN DEFAULT NULL,
+  p_ts_saiu    BOOLEAN DEFAULT NULL,
+  p_alerta     BOOLEAN DEFAULT NULL
+) RETURNS sime_rotas_estado AS $$
+DECLARE
+  v_row sime_rotas_estado;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_rotas_estado (eleicao_id, rota_id, status, conferente_nome,
+    ts_aberta, ts_pronta, ts_saiu, alerta, updated_at)
+  VALUES (p_eleicao_id, p_rota_id, COALESCE(p_status, 'aguardando'), p_conferente_nome,
+    CASE WHEN p_ts_aberta THEN v_now END, CASE WHEN p_ts_pronta THEN v_now END,
+    CASE WHEN p_ts_saiu THEN v_now END, COALESCE(p_alerta, false), v_now)
+  ON CONFLICT (eleicao_id, rota_id) DO UPDATE SET
+    status          = COALESCE(p_status, sime_rotas_estado.status),
+    conferente_nome = COALESCE(p_conferente_nome, sime_rotas_estado.conferente_nome),
+    ts_aberta = CASE WHEN p_ts_aberta AND sime_rotas_estado.ts_aberta IS NULL THEN v_now ELSE sime_rotas_estado.ts_aberta END,
+    ts_pronta = CASE WHEN p_ts_pronta AND sime_rotas_estado.ts_pronta IS NULL THEN v_now ELSE sime_rotas_estado.ts_pronta END,
+    ts_saiu   = CASE WHEN p_ts_saiu   AND sime_rotas_estado.ts_saiu   IS NULL THEN v_now ELSE sime_rotas_estado.ts_saiu   END,
+    alerta    = COALESCE(p_alerta, sime_rotas_estado.alerta),
+    updated_at = v_now
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: toggle de uma urna dentro do embarque de uma rota — Fase 4. Diferente
+-- das colunas *_ts de sime_acao_mesa (evento irreversível), embarque de urna
+-- é um toggle real (o conferente pode desmarcar por engano) — o timestamp
+-- reflete sempre a ÚLTIMA marcação como embarcada, não a primeira.
+CREATE OR REPLACE FUNCTION sime_rota_urna_toggle(
+  p_rota_estado_id UUID,
+  p_secao_id       UUID,
+  p_embarcada      BOOLEAN
+) RETURNS sime_rotas_urnas AS $$
+DECLARE
+  v_row sime_rotas_urnas;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_rotas_urnas (rota_estado_id, secao_id, embarcada, embarcada_ts)
+  VALUES (p_rota_estado_id, p_secao_id, p_embarcada, CASE WHEN p_embarcada THEN v_now END)
+  ON CONFLICT (rota_estado_id, secao_id) DO UPDATE SET
+    embarcada    = p_embarcada,
+    embarcada_ts = CASE WHEN p_embarcada THEN v_now ELSE NULL END
   RETURNING * INTO v_row;
   RETURN v_row;
 END;
@@ -547,6 +813,29 @@ DROP POLICY IF EXISTS midias_zona_policy ON sime_midias;
 CREATE POLICY midias_zona_policy ON sime_midias
   FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)))
           WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
+
+ALTER TABLE sime_rotas_estado ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sime_rotas_urnas  ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS rotas_estado_zona_policy ON sime_rotas_estado;
+CREATE POLICY rotas_estado_zona_policy ON sime_rotas_estado
+  FOR ALL USING     (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)))
+          WITH CHECK (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
+
+-- sime_rotas_urnas não tem eleicao_id direto — sobe até sime_rotas_estado pra
+-- checar a zona (mesmo raciocínio de sime_tokens/sime_mesa_estado, um nível a mais).
+DROP POLICY IF EXISTS rotas_urnas_zona_policy ON sime_rotas_urnas;
+CREATE POLICY rotas_urnas_zona_policy ON sime_rotas_urnas
+  FOR ALL USING (rota_estado_id IN (
+    SELECT re.id FROM sime_rotas_estado re
+    JOIN sime_eleicoes e ON e.id = re.eleicao_id
+    WHERE sime_zona_visivel(e.zona_id)
+  ))
+  WITH CHECK (rota_estado_id IN (
+    SELECT re.id FROM sime_rotas_estado re
+    JOIN sime_eleicoes e ON e.id = re.eleicao_id
+    WHERE sime_zona_visivel(e.zona_id)
+  ));
 
 -- ── Logs: append-only (INSERT livre p/ autenticados; SELECT por zona; nunca UPDATE/DELETE) ──
 DROP POLICY IF EXISTS logs_insert_policy ON sime_logs;

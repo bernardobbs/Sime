@@ -179,6 +179,57 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const { error } = await campoClient.rpc('sime_acao_acessibilidade', dados);
+  if (error) throw error;
+}
+
+// Exposto pro <script> clássico (adjFila/togglePanico). secaoNumero é a
+// string tipo '0063'. Login local (PIN) já validou e a UI já está de pé —
+// isto só tenta uma sessão real do Supabase em paralelo, sem bloquear nada.
+window.simeCampo = {
+  syncAcessibilidade(secaoNumero, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId) return;
+    const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial };
+    syncQueueFn('acessibilidade', dados).catch(() => enqueue('acessibilidade', dados));
+  },
+};
+
+window.tentarLoginCampo = async function(token, pin) {
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) return false;
+  campoClient = client;
+  await resolverEscopo();
+  iniciarRetryPeriodico(syncQueueFn);
+  return true;
+};
+</script>
 <script>
 // ══════════════════════════════════════════════════════════════
 // DADOS DE SEÇÕES (fase homologação — em produção vem do local_id
@@ -263,6 +314,7 @@ function adjFila(n, delta){
   s.ts = Date.now();
   vib(20);
   saveSecao(n);
+  if (window.simeCampo) window.simeCampo.syncAcessibilidade(n, { p_fila: s.fila });
   renderCard(n);
 }
 
@@ -284,6 +336,11 @@ function togglePanico(n, tipo){  // tipo: 'energia' | 'urna'
   }
   s.ts = Date.now();
   saveSecao(n);
+  if (window.simeCampo) {
+    const campo = tipo === 'energia' ? 'p_panico_energia' : 'p_panico_urna';
+    const campoResolvido = tipo === 'energia' ? 'p_panico_energia_resolvido' : 'p_panico_urna_resolvido';
+    window.simeCampo.syncAcessibilidade(n, { [campo]: s.panico[tipo], [campoResolvido]: s.panico_resolved[tipo] });
+  }
   renderCard(n);
   renderChips();
 }
@@ -442,6 +499,10 @@ function applyToken(t){
   coordNome   = t.nome || null;
   localFiltro = tokenLocal(t);
   enterApp();
+  // Login local (PIN) já validou e a UI já está de pé — tenta a sessão real
+  // do Supabase em paralelo, sem bloquear (offline-first: continua 100%
+  // funcional se falhar, só não sincroniza com o cartório).
+  if (window.tentarLoginCampo && t.pin) window.tentarLoginCampo(t.id, t.pin);
 }
 
 function enterApp(){

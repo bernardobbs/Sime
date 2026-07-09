@@ -242,6 +242,105 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getRotas, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let eleicaoId = null;
+// codigo ('001') -> rotaId (UUID de sime_rotas)
+const rotaIdPorCodigo = {};
+// numero (63) -> secaoId (UUID de sime_secoes)
+const secaoIdPorNumero = {};
+// codigo -> rota_estado_id (preenchido na 1ª sincronização daquela rota nesta sessão)
+const rotaEstadoIdPorCodigo = {};
+
+// 'Rota 001' (chave usada no restante do arquivo) -> '001' (codigo real do schema)
+function codigoDaRota(nomeRota) {
+  const m = /(\d+)/.exec(nomeRota);
+  return m ? m[1].padStart(3, '0') : null;
+}
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const rotas = await getRotas({ fallback: null });
+  if (rotas) for (const r of rotas) rotaIdPorCodigo[r.codigo] = r.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const rpc = acao === 'rota_urna' ? 'sime_rota_urna_toggle' : 'sime_rota_estado_upsert';
+  const { data, error } = await campoClient.rpc(rpc, dados);
+  if (error) throw error;
+  return data;
+}
+
+async function sincronizarOuEnfileirar(acao, dados) {
+  try {
+    return await syncQueueFn(acao, dados);
+  } catch (e) {
+    await enqueue(acao, dados);
+    return null;
+  }
+}
+
+// Exposto pro <script> clássico. Sem secaoId/rotaId (login nunca aconteceu, ou
+// "continuar offline") a ação fica só no localStorage.
+window.simeCampo = {
+  async syncRotaEstado(nomeRota, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const codigo = codigoDaRota(nomeRota);
+    const rotaId = rotaIdPorCodigo[codigo];
+    if (!rotaId) return;
+    const row = await sincronizarOuEnfileirar('rota_estado', {
+      p_eleicao_id: eleicaoId, p_rota_id: rotaId, ...partial,
+    });
+    if (row?.id) rotaEstadoIdPorCodigo[codigo] = row.id;
+  },
+  async syncUrna(nomeRota, secaoNumero, embarcada) {
+    if (!campoClient || !eleicaoId) return;
+    const codigo = codigoDaRota(nomeRota);
+    const rotaId = rotaIdPorCodigo[codigo];
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!rotaId || !secaoId) return;
+    let rotaEstadoId = rotaEstadoIdPorCodigo[codigo];
+    if (!rotaEstadoId) {
+      // Garante que a rota já tem uma linha de estado antes de gravar a urna
+      // (abrirRota já chama syncRotaEstado antes, mas por segurança tentamos
+      // de novo aqui se ainda não resolveu — ex.: sessão offline no momento).
+      const row = await sincronizarOuEnfileirar('rota_estado', { p_eleicao_id: eleicaoId, p_rota_id: rotaId });
+      if (row?.id) { rotaEstadoId = row.id; rotaEstadoIdPorCodigo[codigo] = row.id; }
+      else return; // sem rota_estado_id não há como gravar a urna (FK)
+    }
+    await sincronizarOuEnfileirar('rota_urna', { p_rota_estado_id: rotaEstadoId, p_secao_id: secaoId, p_embarcada: embarcada });
+  },
+};
+
+// Chamado pelo <script> clássico dentro de applyToken() — o login local
+// (PIN contra sime_tokens_v1) já aconteceu e a UI já está de pé; isto só
+// tenta obter uma sessão real do Supabase em paralelo, sem bloquear nada.
+async function tentarLoginCampo(token, pin) {
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) return false;
+  campoClient = client;
+  await resolverEscopo();
+  iniciarRetryPeriodico(syncQueueFn);
+  return true;
+}
+window.tentarLoginCampo = tentarLoginCampo;
+</script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS DAS ROTAS
@@ -560,6 +659,7 @@ function abrirRota(rota){
   const st = getRotaState(rota);
   if(st.status === 'aguardando'){
     updateRotaState(rota, { status:'embarcando', ts_aberta: Date.now() });
+    if (window.simeCampo) window.simeCampo.syncRotaEstado(rota, { p_status: 'embarcando', p_ts_aberta: true });
   }
 
   document.getElementById('h-title').textContent = rota;
@@ -592,6 +692,7 @@ function saveConferente(){
   if(!curRota) return;
   const nome = document.getElementById('conf-nome').value;
   updateRotaState(curRota, { conferente: nome });
+  if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_conferente_nome: nome });
 }
 
 // ══════════════════════════════════════════════
@@ -714,6 +815,10 @@ function toggleUrna(secNum){
   st.status = 'embarcando';
   st.alerta = false;
   updateRotaState(curRota, { urnas: st.urnas, status:'embarcando', alerta:false });
+  if (window.simeCampo) {
+    window.simeCampo.syncRotaEstado(curRota, { p_status: 'embarcando', p_alerta: false });
+    window.simeCampo.syncUrna(curRota, secNum, st.urnas[secNum]);
+  }
 
   vib(st.urnas[secNum] ? [30,10,30] : 20);
   renderUrnas();
@@ -734,6 +839,7 @@ function confirmarPronta(){
   if(faltam > 0){
     // Marca alerta — sem modal, aviso imediato
     updateRotaState(curRota, { status:'alerta', alerta:true });
+    if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'alerta', p_alerta: true });
     renderUrnas();
     vib([100,50,100,50,100]);
     showToast(`🚨 ${faltam} urna${faltam>1?'s':''} faltando!`);
@@ -752,6 +858,7 @@ function confirmarPronta(){
     okBg:'#2e7d52',
     action:() => {
       updateRotaState(curRota, { status:'pronta', ts_pronta:Date.now(), alerta:false });
+      if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
       renderUrnas();
       showToast('✅ Rota pronta!');
       vib([60,30,60]);
@@ -762,6 +869,7 @@ function confirmarPronta(){
 function desfazerPronta(){
   // Sem modal — desfaz direto
   updateRotaState(curRota, { status:'embarcando', ts_pronta:null });
+  if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'embarcando' });
   renderUrnas();
   showToast('↩ Voltou para embarque');
   vib(40);
@@ -776,6 +884,7 @@ function confirmarSaiu(){
     okClass: 'sbtn danger',
     action: () => {
       updateRotaState(curRota, { status:'saiu', ts_saiu: Date.now() });
+      if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'saiu', p_ts_saiu: true });
       renderUrnas();
       showToast('🚗 Saída registrada!');
       // Recalcular próximas saídas
@@ -895,6 +1004,10 @@ function applyToken(token){
   }
   currentUser = { id:token.id, nome:token.nome, rotas:token.rotas, turno:token.turno, zona:token.zona };
   enterApp();
+  // Login local (PIN) já validou e a UI já está de pé — tenta a sessão real
+  // do Supabase em paralelo, sem bloquear (continua 100% funcional offline
+  // se falhar: só não sincroniza com o cartório).
+  if (window.tentarLoginCampo && token.pin) window.tentarLoginCampo(token.id, token.pin);
 }
 
 function enterApp(){

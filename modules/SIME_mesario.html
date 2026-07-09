@@ -234,6 +234,22 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 </style>
 </head>
 <body>
+
+<!-- LOGIN — token+PIN da seção (Fase 4). Nunca bloqueia: se falhar (rede
+     indisponível ou sem token cadastrado ainda), "continuar offline" segue
+     com a seção padrão local, só sem sincronizar com o Supabase. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:#0b0b0e;display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#1e1e28;border:1px solid #2a2a3a;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#e8e8f2;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Mesário</div>
+    <div style="font-size:.72rem;color:#8080a8;">Digite o token e o PIN da sua seção (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#4f7dff;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#ef4444;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #2a2a3a;border-radius:8px;background:transparent;color:#8080a8;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <div class="remote">
 
   <!-- ── DISPLAY ── -->
@@ -391,6 +407,90 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let secaoId = null, eleicaoId = null;
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+// Resolve a seção real do token (secoes[0]) e a eleição ativa da zona — só
+// depois disso a UI passa a sincronizar de verdade com o Supabase.
+async function resolverEscopo(secoesToken) {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+
+  const numeroToken = secoesToken?.[0] ? parseInt(secoesToken[0], 10) : null;
+  if (!numeroToken) return;
+  const secoes = await getSecoes({ fallback: null });
+  const s = secoes?.find((x) => x.numero === numeroToken);
+  if (s) {
+    secaoId = s.id;
+    if (window.aplicarSecaoAtiva) window.aplicarSecaoAtiva(s.numero, s.local_nome, s.municipio);
+  }
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const rpc = acao === 'midia' ? 'sime_acao_midia' : 'sime_acao_mesa';
+  const { error } = await campoClient.rpc(rpc, dados);
+  if (error) throw error;
+}
+
+async function sincronizarOuEnfileirar(acao, dados) {
+  try {
+    await syncQueueFn(acao, dados);
+  } catch (e) {
+    await enqueue(acao, dados);
+  }
+}
+
+// Exposto pro <script> clássico (saveState/marcarMidiaPronta) chamar sem
+// precisar saber se a sessão de campo foi estabelecida. Sem secaoId/eleicaoId
+// (login nunca aconteceu, ou "continuar offline") a ação fica só no
+// localStorage — não há FK válida pra enfileirar no IndexedDB ainda.
+window.simeCampo = {
+  syncMesa(partial) {
+    if (!campoClient || !secaoId || !eleicaoId) return;
+    sincronizarOuEnfileirar('mesa_estado', { p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'mesario', ...partial });
+  },
+  syncMidia(partial) {
+    if (!campoClient || !secaoId || !eleicaoId) return;
+    sincronizarOuEnfileirar('midia', { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial });
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client, secoes, erro } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo(secoes);
+  esconderLogin();
+  iniciarRetryPeriodico(syncQueueFn);
+});
+
+// Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
+// pré-configurado"): login nunca é um bloqueio absoluto.
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
 <script>
 // ─── ESTADO ────────────────────────────────────────────────
 const S = {
@@ -494,9 +594,14 @@ function doAction(key) {
   if(c.toast) showToast(c.toast);
 
   // ações específicas de estado
+  // BUG real encontrado na Fase 4: 'bu' e 'urna' caíam no else genérico sem
+  // nunca marcar S.bu/S.urna=true — a UI mostrava concluído, mas o dado salvo
+  // (e o que seria escrito no Supabase) ficava sempre false.
   if(key==='vot')  { S.vot=true;  saveState(); vib([60,30,60,30,60]); }
   else if(key==='mat') { S.mat=true; saveState(); vib([60,30,60]); }
   else if(key==='zero'){ S.zero=true; saveState(); vib([30,15,30]); }
+  else if(key==='bu')  { S.bu=true;   saveState(); vib([60,30,60]); }
+  else if(key==='urna'){ S.urna=true; saveState(); vib([60,30,60]); }
   else { saveState(); vib([60,30,60]); }
 }
 
@@ -624,8 +729,37 @@ function applyPanico(id, state) {
 
 // ─── PERSISTÊNCIA ──────────────────────────────────────────
 // Chave: sime_mesa_{secao} — lida pelo dashboard operacional
-const SECAO_ID = '0063'; // TODO: virá do QR Code no futuro
+let SECAO_ID = '0063'; // substituída pelo token real (secoes[0]) no login — Fase 4
 const MESA_KEY = 'sime_mesa_v1';
+
+// Chamado pelo <script type="module"> assim que o login resolve a seção real
+// do token. O login sempre acontece antes de qualquer interação possível
+// (overlay bloqueia a tela), então recarregar o estado aqui é seguro.
+window.aplicarSecaoAtiva = function(numero, localNome, municipio) {
+  SECAO_ID = String(numero).padStart(4, '0');
+  const secEl = document.querySelector('.d-sec');
+  if (secEl) secEl.textContent = `Seção ${SECAO_ID}`;
+  const locEl = document.querySelector('.d-local');
+  if (locEl && localNome) locEl.textContent = municipio ? `${localNome} — ${municipio}` : localNome;
+  loadState();
+  restoreUI();
+  renderMidiaBtn();
+};
+
+// Payload pra sime_acao_mesa — mesário é o único ator que grava estas colunas
+// (mesa_pres/m1/m2/sec, zeresima, votacao, encerrada, bu_impresso,
+// material_recolhido, fila, pânico, urna_recolhida), então mandar o snapshot
+// inteiro a cada toque é seguro (nenhum outro papel escreve nelas).
+function buildMesaPayload() {
+  return {
+    p_mesa_pres: S.mesa.pres, p_mesa_m1: S.mesa.m1, p_mesa_m2: S.mesa.m2, p_mesa_sec: S.mesa.sec,
+    p_zeresima: S.zero, p_votacao: S.vot, p_encerrada: S.enc, p_bu_impresso: S.bu,
+    p_material_recolhido: S.mat, p_fila: S.fila ?? 0,
+    p_panico_energia: S.panico.energia, p_panico_urna: S.panico.urnaprob,
+    p_panico_energia_resolvido: S.panico_resolved.energia, p_panico_urna_resolvido: S.panico_resolved.urnaprob,
+    p_urna_recolhida: S.urna,
+  };
+}
 
 function saveState() {
   try {
@@ -640,6 +774,7 @@ function saveState() {
     };
     localStorage.setItem(MESA_KEY, JSON.stringify(all));
   } catch(e) {}
+  if (window.simeCampo) window.simeCampo.syncMesa(buildMesaPayload());
 }
 
 function loadState() {
@@ -752,6 +887,7 @@ function marcarMidiaPronta(){
   const ts=Date.now();
   saveMidia(n,{status:'pronta_para_coleta',pronta_ts:ts});
   if(navigator.vibrate) navigator.vibrate([40,20,80]);
+  if (window.simeCampo) window.simeCampo.syncMidia({ p_status: 'pronta_para_coleta' });
   renderMidiaBtn();
   showToast('📦 Mídia marcada como pronta — aguardando coleta');
 }

@@ -125,6 +125,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — token+PIN (Fase 4). Nunca bloqueia: "continuar offline" segue
+     100% funcional local, só sem sincronizar com o cartório. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#faf9f6;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Mídias</div>
+    <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN recebidos do cartório (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <div class="header">
   <div class="logo">S</div>
   <div class="h-info">
@@ -157,6 +171,63 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+// Exposto pro <script> clássico — chamado de dentro de syncAction() (a fila
+// offline já existente naquele arquivo continua sendo a autoridade local;
+// isto só tenta propagar pro Supabase quando há sessão, e PODE lançar — o
+// catch do chamador já enfileira de novo pra tentar depois).
+window.simeCampoMidia = {
+  async sync(dados) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_acao_midia', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_status: dados.status, p_tipo: dados.tipo ?? null, p_obs: dados.obs ?? null,
+    });
+    if (error) throw error;
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo();
+  esconderLogin();
+});
+
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
 <script>
 // ══════════════════════════════════════
 // OFFLINE QUEUE (IndexedDB)
@@ -236,13 +307,12 @@ function updateSyncBadge(pending) {
   }
 }
 
-// Stub: em produção, chama Supabase RPC
+// Sempre aplica local primeiro (a fila offline acima já cobre o resto). Se
+// houver sessão de campo (Fase 4), tenta propagar pro Supabase — pode lançar,
+// e quem chama syncAction() já trata isso enfileirando de novo.
 async function syncAction(acao, dados) {
-  // Em produção:
-  // const { data, error } = await supabase.rpc('sime_acao_midia', dados);
-  // if (error) throw error;
-  // Por agora, salva no localStorage
   applyLocalAction(acao, dados);
+  if (window.simeCampoMidia) await window.simeCampoMidia.sync(dados);
 }
 
 // ══════════════════════════════════════

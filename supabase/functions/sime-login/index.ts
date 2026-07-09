@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
   const { data: tokenRow, error: tokenErr } = await supabase
     .from('sime_tokens')
-    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, expira_em')
+    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, secoes, expira_em')
     .eq('token', token)
     .maybeSingle();
 
@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
       tipo: tokenRow.tipo,
       rotas: tokenRow.rotas,
       local_id: tokenRow.local_id,
+      secoes: tokenRow.secoes,
       exp,
       iat: agoraSegundos,
     },
@@ -123,5 +124,8 @@ Deno.serve(async (req) => {
 
   await supabase.from('sime_tokens').update({ usado_em: agoraTs }).eq('id', tokenRow.id);
 
-  return jsonResponse(200, { jwt, exp, zona_id: zonaId, tipo: tokenRow.tipo });
+  return jsonResponse(200, {
+    jwt, exp, zona_id: zonaId, tipo: tokenRow.tipo,
+    rotas: tokenRow.rotas, local_id: tokenRow.local_id, secoes: tokenRow.secoes,
+  });
 });

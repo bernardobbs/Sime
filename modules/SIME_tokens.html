@@ -108,6 +108,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — Supabase Auth (email+senha), mesmo padrão de SIME_admin.html.
+     Nunca bloqueia: "continuar offline" segue 100% funcional local, só sem
+     gravar os tokens em sime_tokens (Supabase). -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.6);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME — Tokens de Acesso</div>
+    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de administrador para os tokens serem gravados no cartório.</div>
+    <input id="login-email" type="email" placeholder="E-mail" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pass" type="password" placeholder="Senha" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (só localStorage)</button>
+  </form>
+</div>
+
 <div class="topbar">
   <div class="logo">S</div>
   <div>
@@ -199,6 +214,71 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { initSimeDados, getEleicaoAtiva } from './sime_dados.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+let eleicaoId = null;
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo() {
+  initSimeDados(supabase);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+}
+
+// Exposto pro <script> clássico (criarToken/deletarToken) — só grava no
+// Supabase se houver sessão + eleição resolvida; senão a chamada é um no-op
+// silencioso e o token continua 100% válido via localStorage (offline-first).
+window.simeTokensRemoto = {
+  async criar(token) {
+    if (!eleicaoId) return;
+    await supabase.from('sime_tokens').insert({
+      eleicao_id: eleicaoId,
+      token: token.id,
+      pin: token.pin,
+      tipo: token.tipo,
+      rotas: token.tipo === 'coord_acessibilidade' ? null : token.rotas.map(r => (/(\d+)/.exec(r)?.[1] || '').padStart(3, '0')),
+      local_nome: token.tipo === 'coord_acessibilidade' ? token.local : null,
+      expira_em: token.expira_em ? new Date(token.expira_em).toISOString() : null,
+    });
+    // Falha de rede/RLS aqui não impede o uso do token — ele já está salvo no
+    // localStorage e os módulos de campo continuam validando por lá. Sem fila
+    // de retry: o próximo "Gerar" ou reload tenta de novo naturalmente.
+  },
+  async excluir(tokenId) {
+    if (!eleicaoId) return;
+    await supabase.from('sime_tokens').delete().eq('eleicao_id', eleicaoId).eq('token', tokenId);
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  await resolverEscopo();
+  esconderLogin();
+});
+
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { await resolverEscopo(); esconderLogin(); }
+})();
+</script>
 <script>
 // ══════════════════════════════════════════════════
 // STORAGE
@@ -317,6 +397,7 @@ function criarToken(){
   const tokens = loadTokens();
   tokens[id] = token;
   saveTokens(tokens);
+  if (window.simeTokensRemoto) window.simeTokensRemoto.criar(token);
 
   // Limpar form
   document.getElementById('f-nome').value = '';
@@ -450,12 +531,14 @@ function deletarToken(id){
   const tokens = loadTokens();
   delete tokens[id];
   saveTokens(tokens);
+  if (window.simeTokensRemoto) window.simeTokensRemoto.excluir(id);
   renderTokens();
   showToast('✓ Token excluído');
 }
 
 function resetarTodos(){
   if(!confirm('Excluir TODOS os tokens? Esta ação não pode ser desfeita.')) return;
+  if (window.simeTokensRemoto) Object.keys(loadTokens()).forEach(id => window.simeTokensRemoto.excluir(id));
   localStorage.removeItem(KEY);
   renderTokens();
   showToast('✓ Todos os tokens foram excluídos');

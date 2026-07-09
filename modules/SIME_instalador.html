@@ -189,6 +189,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — token+PIN (Fase 4). Nunca bloqueia: "continuar offline" segue
+     100% funcional local, só sem sincronizar com o cartório. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Instalador</div>
+    <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN recebidos do cartório (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#4a6fa5;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <div class="header">
   <div class="header-top">
     <div class="logo">S</div>
@@ -239,6 +253,67 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="btn-reset" onclick="resetAll()">↺ Resetar</button>
 </div>
 
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const { error } = await campoClient.rpc('sime_acao_mesa', dados);
+  if (error) throw error;
+}
+
+// Exposto pro <script> clássico (toggle/toggleProb). secaoNumero é a string
+// tipo '0017'.
+window.simeCampo = {
+  syncMesa(secaoNumero, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId) return;
+    const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'instalador', ...partial };
+    syncQueueFn('mesa_estado', dados).catch(() => enqueue('mesa_estado', dados));
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo();
+  esconderLogin();
+  iniciarRetryPeriodico(syncQueueFn);
+});
+
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
 <script>
 // ─── SEÇÕES (exemplo — em produção vem do QR/URL do técnico) ──
 // Substitua por apenas as seções atribuídas a este instalador
@@ -286,10 +361,13 @@ function load() {
 function canMark(n, field) { return true; }
 function cascade(n, field, val) {}
 
+const FIELD_TO_RPC = { s1: 'p_urna_chegou', s2: 'p_urna_posicionada', s3: 'p_urna_instalada' };
+
 // ── Toggle etapa ──
 function toggle(n, field) {
   state[n][field] = !state[n][field];
   save();
+  if (window.simeCampo) window.simeCampo.syncMesa(n, { [FIELD_TO_RPC[field]]: state[n][field] });
   refreshCard(n);
   updateStats();
   applyVisibility();
@@ -319,6 +397,7 @@ function toggleProb(n) {
     vib([80, 40, 80]);
   }
   save();
+  if (window.simeCampo) window.simeCampo.syncMesa(n, { p_problema_instalacao: state[n].prob, p_problema_instalacao_resolvido: state[n].probResolvido });
   refreshCard(n);
   updateStats();
   applyVisibility();

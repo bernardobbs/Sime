@@ -32,6 +32,7 @@ export interface SimeJwtClaims {
   tipo: string;
   rotas?: string[] | null;
   local_id?: string | null;
+  secoes?: string[] | null;
   exp: number; // unix seconds
   iat: number; // unix seconds
 }
@@ -50,6 +51,7 @@ export async function signSimeJwt(claims: SimeJwtClaims, secret: string): Promis
     tipo: claims.tipo,
     rotas: claims.rotas ?? null,
     local_id: claims.local_id ?? null,
+    secoes: claims.secoes ?? null,
   };
   const signingInput = `${jsonToBase64Url(header)}.${jsonToBase64Url(payload)}`;
   const sig = await hmacSha256(secret, signingInput);

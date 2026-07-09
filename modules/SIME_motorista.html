@@ -139,6 +139,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — token+PIN (Fase 4). Nunca bloqueia: "continuar offline" segue com
+     o acesso por ?rota= da URL exatamente como antes, só sem sincronizar. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#faf9f6;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Motorista</div>
+    <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN da sua rota (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
 <div class="header">
   <div class="logo">S</div>
   <div class="h-info">
@@ -211,6 +225,78 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+const SIME_CONFIG = { supabaseUrl: 'https://SEU_PROJETO.supabase.co', supabaseAnonKey: 'SUA_ANON_KEY' };
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo(rotasToken) {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+  if (rotasToken?.[0] && window.aplicarRotaToken) window.aplicarRotaToken(rotasToken[0]);
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const { error } = await campoClient.rpc('sime_acao_mesa', dados);
+  if (error) throw error;
+}
+
+async function sincronizarOuEnfileirar(dados) {
+  try {
+    await syncQueueFn('mesa_estado', dados);
+  } catch (e) {
+    await enqueue('mesa_estado', dados);
+  }
+}
+
+// Exposto pro <script> clássico (confirmarEntrega/Recolhimento/Cartório).
+// secaoNumero é o número da seção como string (ex.: '0135').
+window.simeCampo = {
+  syncMesa(secaoNumero, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId) return;
+    sincronizarOuEnfileirar({ p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'motorista', ...partial });
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client, rotas } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo(rotas);
+  esconderLogin();
+  iniciarRetryPeriodico(syncQueueFn);
+});
+
+// Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
+// pré-configurado"): login nunca é um bloqueio absoluto. O acesso por
+// ?rota= na URL (fluxo já existente) continua funcionando 100% offline.
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS DAS ROTAS (ordem de entrega = paradas)
@@ -489,6 +575,7 @@ function confirmarEntrega(sec, paradaN, paradaLoc){
       const rst = getRotaState(curRota);
       rst.entregue[sec] = Date.now();
       patchRotaState(curRota, {entregue:rst.entregue});
+      if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_entregue: true });
       vib([30,10,30]);
       showToast(`✓ Seção ${parseInt(sec)} entregue`);
       renderRota();
@@ -512,6 +599,7 @@ function confirmarRecolhimento(sec, paradaN, paradaLoc){
       if(!mesa[sec]) mesa[sec]={};
       mesa[sec].urna = true;
       saveMesa(mesa);
+      if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_recolhida: true });
       vib([30,10,30]);
       showToast(`✓ Seção ${parseInt(sec)} recolhida`);
       renderRota();
@@ -541,6 +629,7 @@ function confirmarChegadaCartorio(){
         if(!mesa[s]) mesa[s]={};
         mesa[s].urna = true;
         mesa[s].urna_cartorio = true;
+        if (window.simeCampo) window.simeCampo.syncMesa(s, { p_urna_recolhida: true, p_urna_cartorio: true });
       }));
       saveMesa(mesa);
       vib([80,40,80,40,80]);
@@ -636,6 +725,16 @@ function tick(){
     String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
 }
 tick(); setInterval(tick,10000);
+
+// Chamado pelo <script type="module"> assim que o login resolve o escopo de
+// rotas do token. Só aplica se a URL não já tiver uma seleção explícita
+// (?rota=) — nesse caso o link direto (fluxo já existente) tem prioridade.
+window.aplicarRotaToken = function(codigo) {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('rota')) return;
+  const c = String(codigo).padStart(3, '0');
+  if (ROTAS[c]) { curRota = c; showMain(); }
+};
 
 // ══════════════════════════════════════════════
 // INIT — detecta ?rota= na URL

@@ -36,16 +36,20 @@ async function withFallback(cacheKey, fetcher, fallback) {
   }
 }
 
-// -> [{numero, local_nome, municipio, aptos, rota_codigo, parada}]
+// -> [{id, numero, local_nome, municipio, aptos, rota_codigo, parada}]
+// `id` (UUID de sime_secoes) é necessário pra quem for GRAVAR em
+// sime_mesa_estado/sime_midias (FK secao_id) — os módulos de campo (Fase 4)
+// resolvem numero→id via este campo em vez de fazer uma consulta separada.
 export async function getSecoes({ fallback = [] } = {}) {
   return withFallback('secoes', async (c) => {
     const { data, error } = await c
       .from('sime_secoes')
-      .select('numero, local_nome, municipio, eleitores, parada, sime_rotas(codigo)')
+      .select('id, numero, local_nome, municipio, eleitores, parada, sime_rotas(codigo)')
       .eq('ativo', true)
       .order('numero');
     if (error) throw error;
     return data.map((s) => ({
+      id: s.id,
       numero: s.numero,
       local_nome: s.local_nome,
       municipio: s.municipio,
@@ -56,7 +60,9 @@ export async function getSecoes({ fallback = [] } = {}) {
   }, fallback);
 }
 
-// -> [{codigo, nome, municipios:[...], paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
+// -> [{id, codigo, nome, municipios:[...], paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
+// `id` (UUID de sime_rotas) é necessário pra quem for GRAVAR em
+// sime_rotas_estado (FK rota_id) — Conferente de Embarque (Fase 4).
 export async function getRotas({ fallback = [] } = {}) {
   return withFallback('rotas', async (c) => {
     const { data: rotas, error: errR } = await c
@@ -83,6 +89,7 @@ export async function getRotas({ fallback = [] } = {}) {
         paradasPorOrdem.get(ordem).secoes.push(s.numero);
       }
       return {
+        id: r.id,
         codigo: r.codigo,
         nome: r.nome,
         municipios: r.municipios || [],
@@ -105,6 +112,24 @@ export async function getZonaInfo({ fallback = null } = {}) {
   return withFallback('zonaInfo', async (c) => {
     const { data, error } = await c.from('sime_zonas').select('numero, municipio, lat, lon').limit(1).maybeSingle();
     if (error || !data) throw error || new Error('zona não encontrada');
+    return data;
+  }, fallback);
+}
+
+// -> {id, turno} — necessário pra todo escrita de campo (FK eleicao_id em
+// sime_mesa_estado/sime_midias/sime_rotas_estado). ORDER BY created_at DESC
+// como proteção extra contra 2 eleições ativas simultâneas na mesma zona
+// (mesmo raciocínio já usado em api/hermes-update.js).
+export async function getEleicaoAtiva({ fallback = null } = {}) {
+  return withFallback('eleicaoAtiva', async (c) => {
+    const { data, error } = await c
+      .from('sime_eleicoes')
+      .select('id, turno')
+      .eq('ativa', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) throw error || new Error('nenhuma eleição ativa');
     return data;
   }, fallback);
 }
