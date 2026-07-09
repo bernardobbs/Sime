@@ -1,6 +1,25 @@
 -- ============================================================
 -- SIME — Schema SQL Completo para Supabase (PostgreSQL)
 -- Inclui: módulos base + Mídias + Atores + Logs
+--
+-- ÍNDICE
+--   1. TABELAS BASE (zonas, seções, rotas, empresas, eleições,
+--      usuários, tokens, mesa_estado)
+--   2. EMBARQUE DE ROTA (Conferente, D-1)
+--   3. MÓDULO DE MÍDIAS
+--   4. MÓDULO DE ATORES
+--   5. LOGS DE AUDITORIA
+--   6. VIEWS ÚTEIS
+--   7. RPCs (sime_now, ações de mídia/mesa/acessibilidade/embarque,
+--      importação de atores)
+--   8. RLS (Row Level Security) — produção
+--   9. DADOS INICIAIS (seed) — 7ª Zona Piauí
+--
+-- Cada tabela também carrega, logo após o CREATE TABLE original, os
+-- ALTER TABLE incrementais das fases que vieram depois (marcados
+-- "Migração para bancos já existentes") — mantidos nessa ordem de
+-- propósito: reordenar pra "juntar tudo no CREATE" quebraria a
+-- idempotência já testada contra Postgres real em produção.
 -- ============================================================
 
 -- Extensões necessárias
@@ -8,7 +27,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- busca fuzzy
 
 -- ------------------------------------------------------------
--- TABELAS BASE (já documentadas na arquitetura)
+-- 1. TABELAS BASE (já documentadas na arquitetura)
 -- ------------------------------------------------------------
 
 -- Zonas eleitorais
@@ -205,7 +224,7 @@ ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao BOOLEA
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao_resolvido BOOLEAN DEFAULT false;
 
 -- ------------------------------------------------------------
--- NOVO: ESTADO DE EMBARQUE DE ROTA (Conferente, D-1)
+-- 2. ESTADO DE EMBARQUE DE ROTA (Conferente, D-1)
 -- ------------------------------------------------------------
 -- Antes da Fase 4 não existia NENHUMA tabela pra isso — SIME_conferente.html
 -- só gravava em localStorage (sime_dist_v1). Duas tabelas porque o objeto
@@ -240,7 +259,7 @@ CREATE INDEX IF NOT EXISTS idx_rotas_urnas_estado ON sime_rotas_urnas(rota_estad
 CREATE INDEX IF NOT EXISTS idx_rotas_urnas_secao  ON sime_rotas_urnas(secao_id);
 
 -- ------------------------------------------------------------
--- NOVO: MÓDULO DE MÍDIAS
+-- 3. MÓDULO DE MÍDIAS
 -- ------------------------------------------------------------
 
 -- CREATE TYPE não aceita IF NOT EXISTS — usa bloco DO com captura de duplicidade
@@ -302,7 +321,7 @@ CREATE OR REPLACE TRIGGER trg_midias_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_midia_updated_at();
 
 -- ------------------------------------------------------------
--- NOVO: MÓDULO DE ATORES
+-- 4. MÓDULO DE ATORES
 -- ------------------------------------------------------------
 
 DO $$ BEGIN
@@ -366,7 +385,7 @@ ALTER TABLE sime_midias ADD CONSTRAINT sime_midias_responsavel_coleta_fkey
   FOREIGN KEY (responsavel_coleta) REFERENCES sime_atores(id);
 
 -- ------------------------------------------------------------
--- NOVO: LOGS DE AUDITORIA
+-- 5. LOGS DE AUDITORIA
 -- ------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS sime_logs (
@@ -394,7 +413,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_ts        ON sime_logs(ts DESC);
 --   FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
 
 -- ------------------------------------------------------------
--- VIEWS ÚTEIS
+-- 6. VIEWS ÚTEIS
 -- ------------------------------------------------------------
 
 -- Painel de mídias por status
@@ -438,8 +457,10 @@ WHERE a.ativo = true
 ORDER BY s.numero, a.funcao;
 
 -- ------------------------------------------------------------
--- RPC: server timestamp (para nunca usar horário do device)
+-- 7. RPCs
 -- ------------------------------------------------------------
+
+-- RPC: server timestamp (para nunca usar horário do device)
 
 CREATE OR REPLACE FUNCTION sime_now()
 RETURNS TIMESTAMPTZ AS $$
@@ -716,7 +737,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ------------------------------------------------------------
--- RLS (Row Level Security) — produção
+-- 8. RLS (Row Level Security) — produção
 -- Filosofia #8: "RLS sempre ativo — usuário só lê/escreve dados da sua zona".
 --
 -- Escopo: protege o acesso AUTENTICADO (admins do cartório via Supabase Auth).
@@ -845,7 +866,7 @@ CREATE POLICY logs_select_policy ON sime_logs FOR SELECT
   USING (eleicao_id IN (SELECT id FROM sime_eleicoes WHERE sime_zona_visivel(zona_id)));
 
 -- ------------------------------------------------------------
--- DADOS INICIAIS (seed) — 7ª Zona Piauí
+-- 9. DADOS INICIAIS (seed) — 7ª Zona Piauí
 -- ------------------------------------------------------------
 
 -- Zona
