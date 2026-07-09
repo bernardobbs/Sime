@@ -133,3 +133,39 @@ export async function getEleicaoAtiva({ fallback = null } = {}) {
     return data;
   }, fallback);
 }
+
+// Converte 1 linha de sime_mesa_estado pro MESMO shape que já vive em
+// localStorage['sime_mesa_v1'] — assim as TVs trocam a fonte de dado sem
+// precisar reescrever a lógica de leitura (getSt/buildPages etc.).
+export function mapMesaEstadoRow(row) {
+  return {
+    mesa: { pres: row.mesa_pres ?? 0, m1: row.mesa_m1 ?? 0, m2: row.mesa_m2 ?? 0, sec: row.mesa_sec ?? 0 },
+    zero: !!row.zeresima, vot: !!row.votacao, enc: !!row.encerrada,
+    bu: !!row.bu_impresso, mat: !!row.material_recolhido,
+    urna: !!row.urna_recolhida, urna_cartorio: !!row.urna_cartorio,
+    fila: row.fila ?? 0,
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
+    panico_resolved: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+    ts: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+  };
+}
+
+// -> {numero: {...}} — snapshot inicial de sime_mesa_estado pra zona, no
+// mesmo shape de sime_mesa_v1. Usado pelas TVs junto com subscribeMesaEstado
+// (sime_realtime.js) pra popular a tela antes da primeira mudança chegar.
+export async function getMesaEstadoMap({ fallback = null } = {}) {
+  return withFallback('mesaEstadoMap', async (c) => {
+    const secoes = await getSecoes({ fallback: null });
+    if (!secoes) throw new Error('sem seções pra mapear secao_id -> numero');
+    const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, s.numero]));
+    const { data, error } = await c.from('sime_mesa_estado').select('*');
+    if (error) throw error;
+    const map = {};
+    for (const row of data) {
+      const numero = numeroPorSecaoId.get(row.secao_id);
+      if (numero == null) continue;
+      map[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    }
+    return map;
+  }, fallback);
+}
