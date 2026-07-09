@@ -4,16 +4,23 @@
 // ciclo de polling local. Módulo separado de sime_dados.js porque é um
 // padrão diferente (push/callback via canal, não pull com cache).
 
-// onChange(row, eventType) — row é a linha completa de sime_mesa_estado após
-// a mudança (INSERT/UPDATE); eventType é 'INSERT'|'UPDATE'|'DELETE'.
-export function subscribeMesaEstado(client, onChange) {
+// onChange(row, eventType) — row é a linha completa após a mudança
+// (INSERT/UPDATE); eventType é 'INSERT'|'UPDATE'|'DELETE'.
+function subscribeTable(client, table, onChange) {
   return client
-    .channel('sime_mesa_estado_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'sime_mesa_estado' }, (payload) => {
+    .channel(`sime_${table}_changes`)
+    .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
       onChange(payload.new, payload.eventType);
     })
     .subscribe();
 }
+
+export function subscribeMesaEstado(client, onChange) { return subscribeTable(client, 'sime_mesa_estado', onChange); }
+// Embarque de urnas (Conferente/TV Distribuição) — 2 tabelas, uma pro estado
+// da rota (status/ts) e outra por urna individual; a TV Distribuição assina
+// as duas porque um embarque completo muda ambas.
+export function subscribeRotasEstado(client, onChange) { return subscribeTable(client, 'sime_rotas_estado', onChange); }
+export function subscribeRotasUrnas(client, onChange) { return subscribeTable(client, 'sime_rotas_urnas', onChange); }
 
 export function unsubscribe(client, channel) {
   if (channel) client.removeChannel(channel);

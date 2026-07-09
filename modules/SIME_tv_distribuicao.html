@@ -136,7 +136,8 @@ body{display:flex;flex-direction:column;}
 
 <script type="module">
 import { bootstrapTvSession } from './sime_tv_auth.js';
-import { initSimeDados, getRotas } from './sime_dados.js';
+import { initSimeDados, getRotas, getRotasEstadoMap, refreshRotasEstadoMap } from './sime_dados.js';
+import { subscribeRotasEstado, subscribeRotasUrnas } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 const SIME_CONFIG = { supabaseUrl: 'https://unjhnlcmxbrlonppchux.supabase.co', supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuamhubGNteGJybG9ucHBjaHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDM1MTEsImV4cCI6MjA5ODkxOTUxMX0.3o3UhHXrLkHYz4ffBev0zb62VwcnPNP-ggbuiJG4vBs' };
@@ -160,6 +161,31 @@ function adaptarParaRotasShape(rotas) {
   initSimeDados(client);
   const rotas = await getRotas({ fallback: null });
   if (rotas) window.ROTAS_SUPABASE = adaptarParaRotasShape(rotas);
+
+  // Realtime: snapshot inicial do embarque de urnas (sime_rotas_estado +
+  // sime_rotas_urnas) + assinatura pras 2 tabelas — um embarque completo
+  // muda ambas (abrir rota / marcar urna / confirmar pronta / saída). Como
+  // envolve FK indireta (rota_estado_id -> secao_id), cada evento simplesmente
+  // busca o mapa inteiro de novo (refreshRotasEstadoMap bypassa o cache) em
+  // vez de tentar aplicar um patch incremental — mais simples e ainda rápido
+  // o bastante pro volume de eventos de um embarque manual.
+  const rotasEstadoInicial = await getRotasEstadoMap({ fallback: null });
+  if (rotasEstadoInicial) {
+    window.ROTAS_DIST_SUPABASE = rotasEstadoInicial;
+    if (window.render) window.render();
+  }
+
+  let rerenderTimer = null;
+  function agendarRefresh() {
+    clearTimeout(rerenderTimer);
+    rerenderTimer = setTimeout(async () => {
+      const fresh = await refreshRotasEstadoMap();
+      if (fresh) window.ROTAS_DIST_SUPABASE = fresh;
+      if (window.render) window.render();
+    }, 300);
+  }
+  subscribeRotasEstado(client, agendarRefresh);
+  subscribeRotasUrnas(client, agendarRefresh);
 })();
 </script>
 <script>
@@ -257,7 +283,17 @@ function calcPages(total, cols){
 // STORAGE
 // ══════════════════════════════════════════════
 const KEY = 'sime_dist_v1';
-function loadDist(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ return {}; } }
+// .config (horários/ordem de saída, sem tabela real) continua só local; .rotas
+// (estado real do embarque) é substituído pelo cache Realtime quando existe —
+// populado pelo <script type="module"> acima. Sem sessão/rede, cai 100% no
+// localStorage exatamente como antes (offline-first).
+function loadDist(){
+  try{
+    const d = JSON.parse(localStorage.getItem(KEY)||'{}');
+    if(window.ROTAS_DIST_SUPABASE) d.rotas = window.ROTAS_DIST_SUPABASE;
+    return d;
+  }catch(e){ return {}; }
+}
 
 // ══════════════════════════════════════════════
 // ÁUDIO — alarme

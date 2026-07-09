@@ -195,3 +195,55 @@ export async function getInstMap({ fallback = null } = {}) {
   for (const { numero, row } of rows) map[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
   return map;
 }
+
+// -> {'Rota 001': {status, conferente, ts_aberta, ts_pronta, ts_saiu, alerta,
+//     urnas:{numero:bool}}} — mesmo shape de localStorage['sime_dist_v1'].rotas.
+// Usado pela TV Distribuição. Não cacheado internamente por withFallback —
+// getRotasEstadoMap() cacheia (snapshot inicial); refreshRotasEstadoMap()
+// bypassa o cache pra sempre trazer o dado mais recente (usado pelo handler
+// de Realtime, onde um cache faria a tela nunca atualizar).
+async function fetchRotasEstadoMap(c) {
+  const rotas = await getRotas({ fallback: null });
+  const secoes = await getSecoes({ fallback: null });
+  if (!rotas || !secoes) throw new Error('sem rotas/seções pra mapear rota_id/secao_id');
+  const nomePorRotaId = new Map(rotas.map((r) => [r.id, 'Rota ' + r.codigo]));
+  const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, s.numero]));
+
+  const { data: estados, error: errE } = await c.from('sime_rotas_estado').select('*');
+  if (errE) throw errE;
+  const { data: urnas, error: errU } = await c.from('sime_rotas_urnas').select('*');
+  if (errU) throw errU;
+
+  const nomePorEstadoId = new Map();
+  const map = {};
+  for (const row of estados) {
+    const nome = nomePorRotaId.get(row.rota_id);
+    if (!nome) continue;
+    nomePorEstadoId.set(row.id, nome);
+    map[nome] = {
+      status: row.status, conferente: row.conferente_nome || '',
+      ts_aberta: row.ts_aberta ? new Date(row.ts_aberta).getTime() : null,
+      ts_pronta: row.ts_pronta ? new Date(row.ts_pronta).getTime() : null,
+      ts_saiu: row.ts_saiu ? new Date(row.ts_saiu).getTime() : null,
+      alerta: !!row.alerta,
+      urnas: {},
+    };
+  }
+  for (const row of urnas) {
+    const nome = nomePorEstadoId.get(row.rota_estado_id);
+    if (!nome || !map[nome]) continue;
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) continue;
+    map[nome].urnas[String(numero).padStart(4, '0')] = !!row.embarcada;
+  }
+  return map;
+}
+
+export async function getRotasEstadoMap({ fallback = null } = {}) {
+  return withFallback('rotasEstadoMap', fetchRotasEstadoMap, fallback);
+}
+
+export async function refreshRotasEstadoMap() {
+  if (!_client) return null;
+  try { return await fetchRotasEstadoMap(_client); } catch (e) { return null; }
+}
