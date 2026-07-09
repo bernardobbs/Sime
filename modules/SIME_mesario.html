@@ -407,6 +407,7 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <div class="toast" id="toast"></div>
 
+<script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { bootstrapCampoSession } from './sime_campo_auth.js';
@@ -525,7 +526,6 @@ const BTN_CFG = {
 
 let pendingKey = null;
 let filaCount  = 0;
-let toastTimer = null;
 
 // ─── MESA ──────────────────────────────────────────────────
 function toggleMesa(id) {
@@ -847,16 +847,7 @@ document.getElementById('overlay').addEventListener('click', e => {
   if(e.target === document.getElementById('overlay')) closeModal();
 });
 
-// ─── UTILS ─────────────────────────────────────────────────
-function vib(p) { try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
-}
+// vib()/showToast() vêm de sime_ui_utils.js
 
 // ─── PRESS VISUAL ──────────────────────────────────────────
 document.querySelectorAll('.rbtn').forEach(b => {

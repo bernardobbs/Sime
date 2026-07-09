@@ -225,6 +225,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { bootstrapCampoSession } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
@@ -432,7 +433,6 @@ function getFase(){
 let curRota = null;
 let fase    = 'entrega';
 let sheetAction = null;
-let toastTimer  = null;
 
 // ══════════════════════════════════════════════
 // RENDER
@@ -704,27 +704,9 @@ document.getElementById('overlay').addEventListener('click',e=>{
 });
 
 // ══════════════════════════════════════════════
-// UTILS
+// UTILS — fmtTs()/showToast()/vib()/iniciarRelogio() vêm de sime_ui_utils.js
 // ══════════════════════════════════════════════
-function fmtTs(ts){
-  if(!ts) return '—';
-  const d=new Date(ts);
-  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-}
-function showToast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
-}
-function vib(pat){
-  try{ navigator.vibrate(Array.isArray(pat)?pat:[pat]); }catch(e){}
-}
-function tick(){
-  const n=new Date();
-  document.getElementById('clock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-tick(); setInterval(tick,10000);
+iniciarRelogio('clock');
 
 // Chamado pelo <script type="module"> assim que o login resolve o escopo de
 // rotas do token. Só aplica se a URL não já tiver uma seleção explícita

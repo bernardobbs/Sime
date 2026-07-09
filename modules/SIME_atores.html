@@ -119,6 +119,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <div class="toast" id="toast"></div>
 
+<script src="./sime_ui_utils.js"></script>
 <script>
 const ATORES_KEY = 'sime_atores_v1';
 const LOG_KEY    = 'sime_logs_v1';
@@ -157,7 +158,6 @@ function log(acao,secao,payload) {
 }
 
 let curTab='lista';
-let toastTimer=null;
 let searchQ='', filterFuncao='', filterSecao='';
 let csvParsed=[];
 
@@ -415,10 +415,7 @@ function closeModal(e){
     document.getElementById('overlay').classList.remove('open');
 }
 
-function showToast(msg){
-  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
-}
+// showToast() vem de sime_ui_utils.js
 
 render();
 </script>

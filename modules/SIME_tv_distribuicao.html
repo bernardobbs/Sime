@@ -188,6 +188,7 @@ function adaptarParaRotasShape(rotas) {
   subscribeRotasUrnas(client, agendarRefresh);
 })();
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS — lê do localStorage (config do conferente)
@@ -521,12 +522,7 @@ function startCd(){
 // ══════════════════════════════════════════════
 // RELÓGIO
 // ══════════════════════════════════════════════
-function tick(){
-  const n=new Date();
-  document.getElementById('clock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
-}
-tick(); setInterval(tick,1000);
+iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
 
 // ══════════════════════════════════════════════
 // INIT

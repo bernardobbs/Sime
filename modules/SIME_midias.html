@@ -228,6 +228,7 @@ document.getElementById('login-offline').addEventListener('click', () => {
   esconderLogin();
 });
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ══════════════════════════════════════
 // OFFLINE QUEUE (IndexedDB)
@@ -438,7 +439,6 @@ function applyLocalAction(acao, dados) {
 // ══════════════════════════════════════
 let curTab = 'rota';
 let sheetAction = null;
-let toastTimer = null;
 
 function goTab(tab, btn) {
   curTab = tab;
@@ -503,11 +503,11 @@ function render() {
 
     if(st==='entregue_transmissao'){
       cls='status-entregue';iconCls='en';icon='✅';
-      statusTxt='Entregue na transmissão • '+fmtTs(m.entregue_ts);statusCls='en';
+      statusTxt='Entregue na transmissão • '+fmtTs(m.entregue_ts, '--:--');statusCls='en';
       btnHtml='<div class="sc-btn btn-done" style="font-size:.7rem">✓ OK</div>';
     } else if(st==='coletada'){
       cls='status-coletada';iconCls='co';icon='✅';
-      statusTxt='Mídia coletada • '+fmtTs(m.coletada_ts);statusCls='co';
+      statusTxt='Mídia coletada • '+fmtTs(m.coletada_ts, '--:--');statusCls='co';
       btnHtml='<div class="sc-btn btn-done">✓ Coletada</div>';
     } else if(st==='em_coleta_rota'){
       cls='status-em-coleta';iconCls='co';icon='🚗';
@@ -519,7 +519,7 @@ function render() {
       btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','dedicada')">🚗 Coletar</button>`;
     } else if(st==='pronta_para_coleta'){
       cls='status-pronta';iconCls='pr';icon='📦';
-      statusTxt='Pronta para coleta • '+fmtTs(m.pronta_ts);statusCls='pr';
+      statusTxt='Pronta para coleta • '+fmtTs(m.pronta_ts, '--:--');statusCls='pr';
       btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','rota')">📦 Coletar</button>`;
     } else {
       // aguardando_encerramento
@@ -635,17 +635,7 @@ document.getElementById('overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('overlay')) closeSheet();
 });
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
-}
-
-function fmtTs(ts) {
-  if (!ts) return '--:--';
-  const d = new Date(ts);
-  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-}
+// showToast()/fmtTs() vêm de sime_ui_utils.js
 
 // INIT
 initDB().then(() => {

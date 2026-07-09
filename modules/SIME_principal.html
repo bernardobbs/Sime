@@ -420,14 +420,14 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="./sime_ui_utils.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
 function loadEl(){ try{return JSON.parse(localStorage.getItem(ELEICAO_KEY)||'{}')}catch(e){return{}} }
 function saveEl(d){ localStorage.setItem(ELEICAO_KEY, JSON.stringify(d)); }
 
-// RELÓGIO
-function tick(){ const n=new Date(); document.getElementById('clock').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
-tick(); setInterval(tick, 10000);
+// RELÓGIO — iniciarRelogio() vem de sime_ui_utils.js
+iniciarRelogio('clock');
 
 // DATAS
 function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T12:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}); }
@@ -618,8 +618,7 @@ function closeModal(){ document.getElementById('overlay').classList.remove('show
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeModal(); });
 
 // TOAST
-let tt=null;
-function showToast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2600); }
+// showToast() vem de sime_ui_utils.js
 
 // INIT
 (function(){

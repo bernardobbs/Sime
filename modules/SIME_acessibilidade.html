@@ -179,6 +179,7 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <div class="toast" id="toast"></div>
 
+<script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { bootstrapCampoSession } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
@@ -267,7 +268,6 @@ const TOKENS_KEY = 'sime_tokens_v1';
 let state = {};
 let localFiltro = null;   // nome do local; null = todos (modo dev/admin)
 let coordNome   = null;
-let toastTimer  = null;
 
 function loadState(){
   try{ state = JSON.parse(localStorage.getItem(STORE_KEY)||'{}'); }catch(e){ state = {}; }
@@ -537,13 +537,7 @@ function loginWithPIN(){
 // ══════════════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════════════
-function vib(p){ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
-function showToast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
-}
+// vib()/showToast() vêm de sime_ui_utils.js
 function syncOK(ok){
   const b = document.getElementById('sync-badge');
   if(!b) return;

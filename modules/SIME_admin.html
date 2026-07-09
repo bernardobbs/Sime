@@ -435,6 +435,7 @@ document.getElementById('login-offline').addEventListener('click', () => {
   if (session) { esconderLogin(); await carregarDadosReais(); }
 })();
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS E CONSTANTES
@@ -546,7 +547,7 @@ function estadoSecao(n, st, ac){
   };
 }
 
-function fmtNow(){ const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
+// fmtNow() vem de sime_ui_utils.js
 
 function getStatus(st,uni){
   if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
@@ -1213,11 +1214,8 @@ function closeModal(e){
     document.getElementById('overlay').classList.remove('open');
 }
 
-let toastT=null;
-function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600);}
-
-function tick(){const n=new Date();document.getElementById('clock').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
-tick(); setInterval(tick,10000);
+// showToast()/iniciarRelogio() vêm de sime_ui_utils.js
+iniciarRelogio('clock');
 
 // ══════════════════════════════════════════════
 // INIT

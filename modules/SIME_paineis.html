@@ -339,6 +339,7 @@ const SIME_CONFIG = { supabaseUrl: 'https://unjhnlcmxbrlonppchux.supabase.co', s
   }
 })();
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ══════════════════════════════════════════════════════
 // DADOS — seções agrupadas por cidade e local
@@ -922,18 +923,11 @@ function vBeep(){
 // ══════════════════════════════════════════════════════
 // RELÓGIO
 // ══════════════════════════════════════════════════════
-function tick(){
-  const n=new Date();
-  document.getElementById('v-clock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
-}
-tick(); setInterval(tick,1000);
+iniciarRelogio('v-clock', { comSegundos: true, intervaloMs: 1000 });
 
 // ══════════════════════════════════════════════════════
-// TOAST
+// TOAST — showToast() vem de sime_ui_utils.js
 // ══════════════════════════════════════════════════════
-let toastT=null;
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2400); }
 
 // ══════════════════════════════════════════════════════
 // INIT — detecta modo via URL

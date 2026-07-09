@@ -257,6 +257,7 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   });
 })();
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ══════════════════════════════════════════════════
 // DADOS
@@ -668,12 +669,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // ══════════════════════════════════════════════════
 // RELÓGIO
 // ══════════════════════════════════════════════════
-function tick(){
-  const n=new Date();
-  document.getElementById('clock').textContent=
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
-}
-tick(); setInterval(tick, 1000);
+iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
 
 // ══════════════════════════════════════════════════
 // INIT

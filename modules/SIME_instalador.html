@@ -314,6 +314,7 @@ document.getElementById('login-offline').addEventListener('click', () => {
   esconderLogin();
 });
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // ─── SEÇÕES (exemplo — em produção vem do QR/URL do técnico) ──
 // Substitua por apenas as seções atribuídas a este instalador
@@ -345,7 +346,6 @@ SECOES.forEach(s => {
 
 let currentFilter = 'all';
 let searchVal = '';
-let toastTimer = null;
 
 // ── Persistência ──
 const STORE_KEY = 'sime_inst_v1';
@@ -543,21 +543,8 @@ function resetAll() {
   save(); buildList(); updateStats();
 }
 
-// ── Relógio ──
-function tickH() {
-  const n = new Date();
-  document.getElementById('h-time').textContent = String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-tickH(); setInterval(tickH, 10000);
-
-// ── Utils ──
-function vib(p) { try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
-}
+// ── Relógio/vib/showToast vêm de sime_ui_utils.js ──
+iniciarRelogio('h-time');
 
 load(); buildList(); updateStats();
 </script>

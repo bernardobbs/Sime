@@ -215,6 +215,7 @@ document.getElementById('login-offline').addEventListener('click', () => { escon
   if (session) { esconderLogin(); await carregarDadosReais(); }
 })();
 </script>
+<script src="./sime_ui_utils.js"></script>
 <script>
 // Ordenado por município (Campo Maior → Jatobá do Piauí → Sigefredo Pacheco)
 // e por número de seção crescente dentro de cada município
@@ -407,8 +408,7 @@ let currentFilter = 'all', searchVal = '';
 function save(){ try{localStorage.setItem('sime_lacre_v3', JSON.stringify(state));}catch(e){} }
 function load(){ try{const d=localStorage.getItem('sime_lacre_v3');if(d){const p=JSON.parse(d);Object.keys(state).forEach(k=>{if(p[k])state[k]={...state[k],...p[k]};});}}catch(e){} }
 
-let toastTimer;
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200); }
+// showToast() vem de sime_ui_utils.js
 
 function canMark(sec,field){ const s=state[sec]; if(field==='prep'&&!s.carga)return false; if(field==='lacre'&&!s.prep)return false; return true; }
 function cascade(sec,field,val){ if(!val){ if(field==='carga'){state[sec].prep=false;state[sec].lacre=false;} if(field==='prep'){state[sec].lacre=false;} } }
@@ -539,8 +539,8 @@ function applyVisibility(){
 
 function resetAll(){ if(!confirm('Resetar todas as marcações?'))return; SECOES.forEach(s=>{state[s.n]={carga:false,prep:false,lacre:false};}); save(); buildList(); updateStats(); }
 
-function tickH(){ const n=new Date(); document.getElementById('h-time').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
-tickH(); setInterval(tickH,10000);
+// iniciarRelogio() vem de sime_ui_utils.js
+iniciarRelogio('h-time');
 
 // Chamado pelo <script type="module"> do topo assim que SECOES/cities viram
 // dado real do Supabase — reconstrói o `state` (preservando o progresso já
@@ -558,7 +558,7 @@ function recarregarAppComSecoesNovas(zona){
   const subEl = document.querySelector('.h-sub');
   if (subEl) {
     subEl.innerHTML = `${zonaTxt} · ${SECOES.length} seções · ${totalLocais} locais · ${totalEleitores.toLocaleString('pt-BR')} eleitores · <span id="h-time">—</span>`;
-    tickH();
+    document.getElementById('h-time').textContent = fmtNow();
   }
   const footTotalEl = document.querySelector('.f-count.total .f-val');
   if (footTotalEl) footTotalEl.textContent = SECOES.length;
