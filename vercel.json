@@ -6,6 +6,6 @@
     }
   },
   "rewrites": [
-    { "source": "/", "destination": "/modules/SIME_principal.html" }
+    { "source": "/", "destination": "/modules/SIME_admin.html" }
   ]
 }
