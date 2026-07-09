@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html><body>
+<script type="module">
+import { bootstrapCampoSession, limparSessaoCampo } from './sime_campo_auth.js';
+import { enqueue, countPending, processQueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+window.__testApi = { bootstrapCampoSession, limparSessaoCampo, enqueue, countPending, processQueue, iniciarRetryPeriodico };
+window.__testReady = true;
+</script>
+</body></html>
