@@ -127,7 +127,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="logo">S</div>
   <div>
     <div class="brand">SIME — Tokens de Acesso</div>
-    <div class="brand-sub">Gere QR Codes e PINs para conferentes</div>
+    <div class="brand-sub">Gere QR Codes e PINs para os operadores de campo</div>
   </div>
   <div class="topbar-right">
     <button class="btn btn-out btn-sm" onclick="window.print()">🖨️ Imprimir todos</button>
@@ -142,7 +142,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="form-title">➕ Novo token de acesso</div>
 
     <div class="info-box">
-      O operador escaneia o QR Code com o celular e já entra direto no seu escopo (rotas do conferente ou local da acessibilidade). O PIN de 4 dígitos serve como backup caso o QR não funcione.
+      O operador escaneia o QR Code com o celular e já entra direto no seu escopo (seção do mesário, rotas de conferente/motorista/instalador ou local da acessibilidade). O PIN de 4 dígitos serve como backup caso o QR não funcione.
     </div>
 
     <div class="form-group">
@@ -153,8 +153,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="form-group">
       <label>Tipo de acesso</label>
       <select id="f-tipo" onchange="onTipoChange()">
+        <option value="mesario">🗳️ Mesário (por seção)</option>
         <option value="conferente">🚚 Conferente (por rotas)</option>
+        <option value="motorista">🚗 Motorista (por rotas)</option>
+        <option value="instalador">🔧 Instalador (por rotas)</option>
         <option value="coord_acessibilidade">♿ Coord. de Acessibilidade (por local)</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="grp-secao-unica" style="display:none">
+      <label>Seção eleitoral</label>
+      <select id="f-secao">
+        <option value="">— selecionar seção —</option>
       </select>
     </div>
 
@@ -192,6 +202,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <button class="btn btn-dark" style="width:100%;justify-content:center;" onclick="criarToken()">
       🔑 Gerar QR Code + PIN
     </button>
+    <button class="btn btn-out" style="width:100%;justify-content:center;margin-top:8px;" onclick="gerarEmMassa()">
+      🎫 Gerar em massa (seções + rotas + locais)
+    </button>
   </div>
 
   <!-- LISTA DE TOKENS -->
@@ -216,7 +229,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { initSimeDados, getEleicaoAtiva } from './sime_dados.js';
+import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas } from './sime_dados.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -231,26 +244,48 @@ async function resolverEscopo() {
   initSimeDados(supabase);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  // Dados reais pra popular os seletores do form (seções/rotas/locais) e a
+  // geração em massa — sem isso os seletores caem no fallback hardcoded.
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) window.SECOES_REAIS = secoes;
+  const rotas = await getRotas({ fallback: null });
+  if (rotas) window.ROTAS_REAIS = rotas;
+  if (window.atualizarDadosReaisTokens) window.atualizarDadosReaisTokens();
 }
 
-// Exposto pro <script> clássico (criarToken/deletarToken) — só grava no
-// Supabase se houver sessão + eleição resolvida; senão a chamada é um no-op
-// silencioso e o token continua 100% válido via localStorage (offline-first).
+// Converte um token local (shape de sime_tokens_v1) pra linha de sime_tokens
+// (Supabase) — genérico o bastante pros 5 tipos com escopo (rotas OU secoes
+// OU local, nunca mais de um por tipo).
+function tokenParaLinha(token) {
+  return {
+    eleicao_id: eleicaoId,
+    token: token.id,
+    pin: token.pin,
+    tipo: token.tipo,
+    rotas: (token.rotas && token.rotas.length) ? token.rotas.map(r => (/(\d+)/.exec(r)?.[1] || '').padStart(3, '0')) : null,
+    local_nome: token.local || null,
+    secoes: (token.secoes && token.secoes.length) ? token.secoes : null,
+    expira_em: token.expira_em ? new Date(token.expira_em).toISOString() : null,
+  };
+}
+
+// Exposto pro <script> clássico (criarToken/gerarEmMassa/deletarToken) — só
+// grava no Supabase se houver sessão + eleição resolvida; senão a chamada é
+// um no-op silencioso e o token continua 100% válido via localStorage
+// (offline-first).
 window.simeTokensRemoto = {
   async criar(token) {
     if (!eleicaoId) return;
-    await supabase.from('sime_tokens').insert({
-      eleicao_id: eleicaoId,
-      token: token.id,
-      pin: token.pin,
-      tipo: token.tipo,
-      rotas: token.tipo === 'coord_acessibilidade' ? null : token.rotas.map(r => (/(\d+)/.exec(r)?.[1] || '').padStart(3, '0')),
-      local_nome: token.tipo === 'coord_acessibilidade' ? token.local : null,
-      expira_em: token.expira_em ? new Date(token.expira_em).toISOString() : null,
-    });
+    await supabase.from('sime_tokens').insert(tokenParaLinha(token));
     // Falha de rede/RLS aqui não impede o uso do token — ele já está salvo no
     // localStorage e os módulos de campo continuam validando por lá. Sem fila
     // de retry: o próximo "Gerar" ou reload tenta de novo naturalmente.
+  },
+  // Geração em massa (até ~270 tokens de uma vez) — 1 insert com N linhas em
+  // vez de N chamadas sequenciais.
+  async criarEmLote(tokens) {
+    if (!eleicaoId || !tokens.length) return;
+    await supabase.from('sime_tokens').insert(tokens.map(tokenParaLinha));
   },
   async excluir(tokenId) {
     if (!eleicaoId) return;
@@ -288,17 +323,32 @@ function loadTokens(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}'); 
 function saveTokens(d){ localStorage.setItem(KEY, JSON.stringify(d)); }
 
 // ══════════════════════════════════════════════════
-// ROTAS
+// ROTAS / SEÇÕES / LOCAIS — preferem dado real do Supabase
+// (window.ROTAS_REAIS/SECOES_REAIS, populados após login) e caem no
+// hardcoded da 7ª Zona quando offline/sem sessão ainda.
 // ══════════════════════════════════════════════════
 const ROTAS_DISPONIVEIS = [
   'Rota 001','Rota 002','Rota 003','Rota 004',
   'Rota 005','Rota 006','Rota 007','Rota 008',
   'Rota 009','Rota 010','Rota 011','Rota 012',
 ];
+const LOCAIS_DISPONIVEIS = [
+  'G.E. Treze de Março',
+  'Col. Est. Profª Raimundinho Andrade',
+  'G.E. Valdivino Tito',
+  'Esc. Mun. N.S. de Fátima',
+];
+
+function rotasDisponiveis(){
+  return window.ROTAS_REAIS?.length ? window.ROTAS_REAIS.map(r => 'Rota ' + r.codigo) : ROTAS_DISPONIVEIS;
+}
+function locaisDisponiveis(){
+  return window.SECOES_REAIS?.length ? [...new Set(window.SECOES_REAIS.map(s=>s.local_nome))].sort() : LOCAIS_DISPONIVEIS;
+}
 
 function buildRotasCheck(){
   const el = document.getElementById('rotas-check');
-  el.innerHTML = ROTAS_DISPONIVEIS.map(r=>`
+  el.innerHTML = rotasDisponiveis().map(r=>`
     <label class="rota-ck" id="ck-${r.replace(' ','')}">
       <input type="checkbox" value="${r}" onchange="onRotaChange(this)">
       ${r}
@@ -306,29 +356,44 @@ function buildRotasCheck(){
 }
 buildRotasCheck();
 
-// ══════════════════════════════════════════════════
-// LOCAIS (Coord. de Acessibilidade) — em produção vem de sime_secoes.
-// Os nomes precisam casar com os locais de SIME_acessibilidade.html.
-// ══════════════════════════════════════════════════
-const LOCAIS_DISPONIVEIS = [
-  'G.E. Treze de Março',
-  'Col. Est. Profª Raimundinho Andrade',
-  'G.E. Valdivino Tito',
-  'Esc. Mun. N.S. de Fátima',
-];
 function buildLocalSelect(){
   const el = document.getElementById('f-local');
   el.innerHTML = '<option value="">— selecionar local —</option>' +
-    LOCAIS_DISPONIVEIS.map(l=>`<option value="${l}">${l}</option>`).join('');
+    locaisDisponiveis().map(l=>`<option value="${l}">${l}</option>`).join('');
 }
 buildLocalSelect();
+
+// Seção única (Mesário) — só faz sentido com dado real (sem fallback
+// hardcoded: gerar um token de mesário pra uma seção que talvez não exista
+// seria pior que bloquear a criação até haver sessão).
+function buildSecaoSelect(){
+  const el = document.getElementById('f-secao');
+  if(!el) return;
+  const secoes = window.SECOES_REAIS || [];
+  el.innerHTML = '<option value="">— selecionar seção —</option>' +
+    secoes.map(s=>`<option value="${String(s.numero).padStart(4,'0')}">Seção ${s.numero} — ${s.local_nome}</option>`).join('');
+}
+buildSecaoSelect();
+
+// Chamado pelo <script type="module"> assim que os dados reais chegam —
+// reconstrói os seletores (antes populados só com o fallback hardcoded) e
+// reaplica a visibilidade de grupo conforme o tipo já selecionado.
+window.atualizarDadosReaisTokens = function(){
+  buildRotasCheck();
+  buildLocalSelect();
+  buildSecaoSelect();
+  onTipoChange();
+};
 
 // Alterna os campos conforme o tipo de acesso escolhido
 function onTipoChange(){
   const tipo = document.getElementById('f-tipo').value;
-  const acess = tipo === 'coord_acessibilidade';
-  document.getElementById('grp-rotas').style.display = acess ? 'none' : '';
-  document.getElementById('grp-local').style.display = acess ? '' : 'none';
+  const usaRotas = ['conferente','motorista','instalador'].includes(tipo);
+  const usaLocal = tipo === 'coord_acessibilidade';
+  const usaSecao = tipo === 'mesario';
+  document.getElementById('grp-rotas').style.display = usaRotas ? '' : 'none';
+  document.getElementById('grp-local').style.display = usaLocal ? '' : 'none';
+  document.getElementById('grp-secao-unica').style.display = usaSecao ? '' : 'none';
 }
 
 function onRotaChange(inp){
@@ -356,52 +421,59 @@ function genId(){
 }
 function genPIN(){ return String(Math.floor(1000+Math.random()*9000)); }
 
+// Fim do Dia D (23:59) com base na config de eleição — mesma expiração pra
+// qualquer token criado no mesmo turno, manual ou em massa.
+function calcularExpiracao(turno){
+  try{
+    const el = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
+    const t  = el['turno'+turno];
+    if(t?.d) return new Date(t.d+'T23:59:59').getTime();
+  }catch(e){}
+  return null;
+}
+
+function criarTokenObj({nome, tipo, rotas=[], local=null, secoes=[], turno, zona, expira_em}){
+  return {
+    id: genId(), pin: genPIN(), nome, tipo, rotas, local, secoes,
+    turno:+turno, zona, criado_em: Date.now(), expira_em, usado_em: null,
+  };
+}
+
 function criarToken(){
   const nome  = document.getElementById('f-nome').value.trim();
   const tipo  = document.getElementById('f-tipo').value;
   const rotas = getRotasSelecionadas();
   const local = document.getElementById('f-local').value;
+  const secaoUnica = document.getElementById('f-secao')?.value || '';
   const turno = document.getElementById('f-turno').value;
   const zona  = document.getElementById('f-zona').value;
 
   if(!nome){ showToast('⚠ Informe o nome do operador'); return; }
   if(tipo === 'coord_acessibilidade'){
     if(!local){ showToast('⚠ Selecione o local de votação'); return; }
+  } else if(tipo === 'mesario'){
+    if(!secaoUnica){ showToast('⚠ Selecione a seção'); return; }
   } else {
     if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
   }
 
-  // Calcular expiração: fim do Dia D (23:59) com base na config de eleição
-  let expira_em = null;
-  try{
-    const el = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
-    const t  = el['turno'+turno];
-    if(t?.d){
-      const fim = new Date(t.d+'T23:59:59');
-      expira_em = fim.getTime();
-    }
-  }catch(e){}
-
-  const id  = genId();
-  const pin = genPIN();
-  const token = {
-    id, pin, nome, tipo,
-    rotas: tipo === 'coord_acessibilidade' ? [] : rotas,
+  const token = criarTokenObj({
+    nome, tipo,
+    rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario') ? [] : rotas,
     local: tipo === 'coord_acessibilidade' ? local : null,
-    turno:+turno, zona,
-    criado_em: Date.now(),
-    expira_em,
-    usado_em: null,
-  };
+    secoes: tipo === 'mesario' ? [secaoUnica] : [],
+    turno, zona, expira_em: calcularExpiracao(turno),
+  });
 
   const tokens = loadTokens();
-  tokens[id] = token;
+  tokens[token.id] = token;
   saveTokens(tokens);
   if (window.simeTokensRemoto) window.simeTokensRemoto.criar(token);
 
   // Limpar form
   document.getElementById('f-nome').value = '';
   document.getElementById('f-local').value = '';
+  if(document.getElementById('f-secao')) document.getElementById('f-secao').value = '';
   document.querySelectorAll('#rotas-check input').forEach(c=>{ c.checked=false; c.closest('label').classList.remove('checked'); });
   document.getElementById('todas-lbl').textContent = '☐ Selecionar todas as rotas';
 
@@ -410,14 +482,88 @@ function criarToken(){
 
   // Scroll para o novo token
   setTimeout(()=>{
-    const el = document.getElementById('tc-'+id);
+    const el = document.getElementById('tc-'+token.id);
     if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
   }, 300);
+}
+
+// Chave de comparação por tipo — usada pra não duplicar token de um mesmo
+// escopo que já tem token válido (idempotente: pode clicar de novo com
+// segurança depois que novas seções/rotas forem cadastradas).
+function chaveEscopo(t){
+  if(t.tipo==='mesario') return t.secoes?.[0];
+  if(t.tipo==='coord_acessibilidade') return t.local;
+  return t.rotas?.[0];
+}
+
+// Gera 1 token por seção (mesário), por rota (conferente/motorista/
+// instalador) e por local de votação (acessibilidade) — pulando qualquer
+// escopo que já tenha um token. Coletor de Mídias fica de fora (papel fixo,
+// sem agrupamento real do qual derivar — ver comentário em
+// SIME_admin.html/secoesDoUsuario()).
+async function gerarEmMassa(){
+  if(!window.SECOES_REAIS?.length || !window.ROTAS_REAIS?.length){
+    showToast('⚠ Sem dados reais carregados — faça login primeiro');
+    return;
+  }
+  if(!confirm('Gerar 1 token por seção (mesário), por rota (conferente/motorista/instalador) e por local (acessibilidade) — pulando quem já tem token válido. Continuar?')) return;
+
+  const turno = document.getElementById('f-turno').value;
+  const zona  = document.getElementById('f-zona').value;
+  const expira_em = calcularExpiracao(turno);
+  const tokens = loadTokens();
+  const jaExiste = (tipo, chave) => Object.values(tokens).some(t => t.tipo===tipo && chaveEscopo(t)===chave);
+  const novos = [];
+
+  window.SECOES_REAIS.forEach(s=>{
+    const numero = String(s.numero).padStart(4,'0');
+    if(jaExiste('mesario', numero)) return;
+    novos.push(criarTokenObj({ nome:`Mesário — Seção ${s.numero}`, tipo:'mesario', secoes:[numero], turno, zona, expira_em }));
+  });
+
+  window.ROTAS_REAIS.forEach(r=>{
+    const rotaLabel = 'Rota ' + r.codigo;
+    [['conferente','Conferente'],['motorista','Motorista'],['instalador','Instalador']].forEach(([tipo,label])=>{
+      if(jaExiste(tipo, rotaLabel)) return;
+      novos.push(criarTokenObj({ nome:`${label} — ${rotaLabel}`, tipo, rotas:[rotaLabel], turno, zona, expira_em }));
+    });
+  });
+
+  [...new Set(window.SECOES_REAIS.map(s=>s.local_nome))].forEach(local=>{
+    if(jaExiste('coord_acessibilidade', local)) return;
+    novos.push(criarTokenObj({ nome:`Acessibilidade — ${local}`, tipo:'coord_acessibilidade', local, turno, zona, expira_em }));
+  });
+
+  if(!novos.length){ showToast('✓ Todos os tokens já existem — nada pra gerar'); return; }
+
+  novos.forEach(t => { tokens[t.id] = t; });
+  saveTokens(tokens);
+  if(window.simeTokensRemoto) await window.simeTokensRemoto.criarEmLote(novos);
+  renderTokens();
+  showToast(`✓ ${novos.length} tokens gerados em massa`);
 }
 
 // ══════════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════════
+const TIPO_LABEL = {
+  mesario: { icon:'🗳️', nome:'Mesário' },
+  conferente: { icon:'🚚', nome:'Conferente' },
+  motorista: { icon:'🚗', nome:'Motorista' },
+  instalador: { icon:'🔧', nome:'Instalador' },
+  coord_acessibilidade: { icon:'♿', nome:'Acessibilidade' },
+};
+function scopeBadgeHtml(t){
+  if(t.tipo==='coord_acessibilidade') return '<span class="tc-badge tcb-blue">♿ Acessibilidade</span>';
+  if(t.tipo==='mesario') return `<span class="tc-badge tcb-blue">🗳️ Seção ${t.secoes?.[0]?parseInt(t.secoes[0]):'—'}</span>`;
+  const n = (t.rotas||[]).length;
+  return `<span class="tc-badge tcb-blue">${n} rota${n>1?'s':''}</span>`;
+}
+function scopeDetailHtml(t){
+  if(t.tipo==='coord_acessibilidade') return 'Local: <span>'+(t.local||'—')+'</span>';
+  if(t.tipo==='mesario') return 'Seção: <span>'+(t.secoes?.[0]?parseInt(t.secoes[0]):'—')+'</span>';
+  return 'Rotas: <span>'+(t.rotas||[]).join(' · ')+'</span>';
+}
 function renderTokens(){
   const tokens = loadTokens();
   const list   = document.getElementById('tokens-list');
@@ -441,21 +587,17 @@ function renderTokens(){
       const agora = Date.now();
       const expirado = t.expira_em && agora > t.expira_em;
       const iniciais = t.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-      const isAcess = t.tipo === 'coord_acessibilidade';
       const url = buildUrl(t.id, t.tipo);
-      const rotas_txt = t.rotas.join(' · ');
 
       card.innerHTML = `
         <div class="tc-header">
           <div class="tc-avatar">${iniciais}</div>
           <div class="tc-info">
-            <div class="tc-nome">${t.nome}</div>
+            <div class="tc-nome">${TIPO_LABEL[t.tipo]?.icon||''} ${t.nome}</div>
             <div class="tc-meta">${t.turno}º Turno · Zona ${t.zona} · ${fmtDate(t.criado_em)}</div>
             <div class="tc-badges">
               <span class="tc-badge ${expirado?'tcb-warn':'tcb-ok'}">${expirado?'⚠ Expirado':'✓ Válido'}</span>
-              ${isAcess
-                ? '<span class="tc-badge tcb-blue">♿ Acessibilidade</span>'
-                : `<span class="tc-badge tcb-blue">${t.rotas.length} rota${t.rotas.length>1?'s':''}</span>`}
+              ${scopeBadgeHtml(t)}
               <span class="tc-badge tcb-off">PIN: ${t.pin}</span>
               ${t.usado_em ? '<span class="tc-badge tcb-off">Usado '+fmtDate(t.usado_em)+'</span>' : ''}
             </div>
@@ -476,7 +618,7 @@ function renderTokens(){
               <div class="pin-label">PIN backup:</div>
               <div class="pin-digits">${t.pin.split('').map(d=>`<div class="pin-digit">${d}</div>`).join('')}</div>
             </div>
-            <div class="tc-rotas">${isAcess ? 'Local: <span>'+(t.local||'—')+'</span>' : 'Rotas: <span>'+rotas_txt+'</span>'}</div>
+            <div class="tc-rotas">${scopeDetailHtml(t)}</div>
             ${t.expira_em ? `<div style="font-size:.68rem;color:var(--text2);margin-top:5px;">Expira: ${fmtDateTime(t.expira_em)}</div>` : ''}
           </div>
         </div>`;
@@ -505,10 +647,17 @@ function renderTokens(){
 // ══════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════
+const MODULOS_POR_TIPO = {
+  mesario: 'SIME_mesario.html',
+  conferente: 'SIME_conferente.html',
+  motorista: 'SIME_motorista.html',
+  instalador: 'SIME_instalador.html',
+  coord_acessibilidade: 'SIME_acessibilidade.html',
+};
 function buildUrl(tokenId, tipo){
   // URL relativa ao mesmo diretório — módulo destino conforme o tipo
   const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
-  const modulo = tipo === 'coord_acessibilidade' ? 'SIME_acessibilidade.html' : 'SIME_conferente.html';
+  const modulo = MODULOS_POR_TIPO[tipo] || 'SIME_conferente.html';
   return base + modulo + '?token=' + tokenId;
 }
 
