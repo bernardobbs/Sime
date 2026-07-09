@@ -150,22 +150,48 @@ export function mapMesaEstadoRow(row) {
   };
 }
 
-// -> {numero: {...}} — snapshot inicial de sime_mesa_estado pra zona, no
-// mesmo shape de sime_mesa_v1. Usado pelas TVs junto com subscribeMesaEstado
-// (sime_realtime.js) pra popular a tela antes da primeira mudança chegar.
-export async function getMesaEstadoMap({ fallback = null } = {}) {
-  return withFallback('mesaEstadoMap', async (c) => {
+// Converte 1 linha de sime_mesa_estado pro shape de localStorage['sime_inst_v1']
+// (SIME_instalador.html/SIME_tv_vespera.html) — chegou/posicionada/instalada
+// do instalador, D-1.
+export function mapMesaEstadoRowToInst(row) {
+  return {
+    s1: !!row.urna_chegou, s2: !!row.urna_posicionada, s3: !!row.urna_instalada,
+    prob: !!row.problema_instalacao, probResolvido: !!row.problema_instalacao_resolvido,
+  };
+}
+
+// Bruto (numero + linha), cache único — evita 2 consultas iguais quando uma
+// TV precisa de mais de um shape derivado dos mesmos dados.
+async function getMesaEstadoRowsPorNumero({ fallback = null } = {}) {
+  return withFallback('mesaEstadoRows', async (c) => {
     const secoes = await getSecoes({ fallback: null });
     if (!secoes) throw new Error('sem seções pra mapear secao_id -> numero');
     const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, s.numero]));
     const { data, error } = await c.from('sime_mesa_estado').select('*');
     if (error) throw error;
-    const map = {};
-    for (const row of data) {
-      const numero = numeroPorSecaoId.get(row.secao_id);
-      if (numero == null) continue;
-      map[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
-    }
-    return map;
+    return data
+      .map((row) => ({ numero: numeroPorSecaoId.get(row.secao_id), row }))
+      .filter((x) => x.numero != null);
   }, fallback);
+}
+
+// -> {numero: {...}} — snapshot inicial de sime_mesa_estado pra zona, no
+// mesmo shape de sime_mesa_v1. Usado pelas TVs junto com subscribeMesaEstado
+// (sime_realtime.js) pra popular a tela antes da primeira mudança chegar.
+export async function getMesaEstadoMap({ fallback = null } = {}) {
+  const rows = await getMesaEstadoRowsPorNumero({ fallback: null });
+  if (!rows) return fallback;
+  const map = {};
+  for (const { numero, row } of rows) map[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+  return map;
+}
+
+// -> {numero: {s1,s2,s3,prob,probResolvido}} — mesmo shape de
+// localStorage['sime_inst_v1']. Usado pela TV Véspera.
+export async function getInstMap({ fallback = null } = {}) {
+  const rows = await getMesaEstadoRowsPorNumero({ fallback: null });
+  if (!rows) return fallback;
+  const map = {};
+  for (const { numero, row } of rows) map[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
+  return map;
 }
