@@ -99,6 +99,35 @@ export async function getRotas({ fallback = [] } = {}) {
   }, fallback);
 }
 
+// -> [{id, nome, rotas:[rotaId,...]}] — empresas de transporte de urnas.
+// Usado por SIME_admin.html pra resolver o escopo real do Coord. de
+// Motoristas (perfil='coord_motoristas') a partir de sime_empresas.rotas,
+// em vez da lista de seções digitada à mão (dívida técnica da Fase 3).
+export async function getEmpresas({ fallback = [] } = {}) {
+  return withFallback('empresas', async (c) => {
+    const { data, error } = await c
+      .from('sime_empresas')
+      .select('id, nome, rotas')
+      .eq('ativo', true)
+      .order('nome');
+    if (error) throw error;
+    return data.map((e) => ({ id: e.id, nome: e.nome, rotas: e.rotas || [] }));
+  }, fallback);
+}
+
+// -> [numero,...] (4 dígitos, ex.: '0063') — todas as seções cobertas pelas
+// rotas de uma empresa. `rotas` já vem de getRotas() (paradas[].secoes já é
+// numero, não UUID) — junta pelos rotaIds da empresa.
+export function secoesDaEmpresa(empresaRotaIds, rotasReais) {
+  const alvo = new Set(empresaRotaIds || []);
+  const secoes = [];
+  for (const r of rotasReais || []) {
+    if (!alvo.has(r.id)) continue;
+    for (const p of r.paradas) for (const numero of p.secoes) secoes.push(String(numero).padStart(4, '0'));
+  }
+  return secoes;
+}
+
 // -> [{nome, secoes}] — derivado de getSecoes, sem tabela própria
 export async function getMunicipios({ fallback = [] } = {}) {
   const secoes = await getSecoes({ fallback: null });

@@ -376,7 +376,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { initSimeDados, getSecoes, getMunicipios } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, secoesDaEmpresa } from './sime_dados.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -395,8 +395,20 @@ async function carregarDadosReais(){
     window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
-    if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
   }
+  // Coord. de Motoristas: escopo real via sime_empresas.rotas, em vez da
+  // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
+  // sem empresas cadastradas, o formulário cai no campo de texto manual como
+  // antes (offline-first — nunca bloqueia a criação do membro da equipe).
+  const rotasReais = await getRotas({ fallback: null });
+  const empresasReais = await getEmpresas({ fallback: null });
+  if (rotasReais) window.ROTAS_REAIS = rotasReais;
+  if (empresasReais) window.EMPRESAS = empresasReais;
+  window.resolverSecoesDaEmpresa = (empresaId) => {
+    const emp = (window.EMPRESAS || []).find(e => e.id === empresaId);
+    return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
+  };
+  if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
 }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -453,11 +465,12 @@ const PERFIS = {
 // ── ESCOPO DO USUÁRIO ──────────────────────────────────────
 // Retorna apenas as seções que o perfil atual pode ver.
 function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
-// DÍVIDA TÉCNICA (Fase 3 do plano multi-zona): 'empresa' ainda escopa por uma
-// lista de seções digitada à mão (curUser.secoes), sem nenhuma relação real
-// com sime_empresas.rotas (que já existe no schema, mas não é lida por este
-// arquivo ainda). Fechar esse gap é a próxima passada natural, mas fica fora
-// do escopo desta migração para não aumentar o raio de mudança agora.
+// 'empresa' (Coord. de Motoristas) resolve secoes/empresa a partir de
+// sime_empresas.rotas de verdade quando há sessão (ver showMemberModal/
+// saveMember) — curUser.secoes só continua "digitado à mão" no fallback
+// offline (sem empresas cadastradas ainda). 'midias' (Coletor de Mídias)
+// permanece sempre manual por design: não existe agrupamento real (rota/
+// local) do qual derivar as seções designadas a um coletor específico.
 function secoesDoUsuario(){
   const esc = userEscopo();
   if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
@@ -1030,10 +1043,19 @@ function showMemberModal(m){
         </select>
       </div>
 
-      <!-- Escopo: Empresa (Coord. de Motoristas) -->
+      <!-- Escopo: Empresa (Coord. de Motoristas) — dropdown real (sime_empresas)
+           quando disponível; cai no texto livre se offline/sem empresas cadastradas -->
       <div class="form-group" id="grp-empresa" style="display:none">
         <label>Empresa contratada</label>
-        <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+        ${window.EMPRESAS?.length ? `
+          <select id="m-empresa-sel" onchange="onEmpresaChange()">
+            <option value="">— selecionar empresa —</option>
+            ${window.EMPRESAS.map(e=>`<option value="${e.id}" ${m?.empresa_id===e.id?'selected':''}>${e.nome}</option>`).join('')}
+          </select>
+          <div id="m-empresa-secoes-preview" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
+        ` : `
+          <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+        `}
       </div>
 
       <!-- Escopo: Seções designadas (Motoristas / Coletor de Mídias) -->
@@ -1068,11 +1090,27 @@ function showMemberModal(m){
 function onPerfilChange(){
   const p = document.getElementById('m-perfil')?.value;
   const esc = PERFIS[p]?.escopo || 'tudo';
+  const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
   show('grp-local',      esc==='local');
   show('grp-empresa',    esc==='empresa');
-  show('grp-secoes',     esc==='empresa' || esc==='midias');
+  // Com empresa real, as seções são derivadas automaticamente das rotas da
+  // empresa (sime_empresas.rotas) — não precisa mais digitar à mão. Sem
+  // empresas cadastradas (offline/dado ainda não sincronizado), cai no campo
+  // manual como antes. Coletor de Mídias continua sempre manual — não tem
+  // agrupamento real (rota/local) do qual derivar suas seções designadas.
+  show('grp-secoes',     esc==='midias' || (esc==='empresa' && !usaEmpresaReal));
   show('grp-substituto', p==='coletor_midias');
+  if(usaEmpresaReal) onEmpresaChange();
+}
+
+// Preview de quantas seções a empresa selecionada cobre (rotas → seções)
+function onEmpresaChange(){
+  const sel = document.getElementById('m-empresa-sel');
+  const preview = document.getElementById('m-empresa-secoes-preview');
+  if(!sel || !preview) return;
+  const secoes = window.resolverSecoesDaEmpresa ? window.resolverSecoesDaEmpresa(sel.value) : [];
+  preview.textContent = sel.value ? `${secoes.length} seção${secoes.length!==1?'ões':''} nas rotas desta empresa` : '';
 }
 
 // "63, 64" → ['0063','0064']
@@ -1086,6 +1124,9 @@ function saveMember(id){
   const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
   const perfil=document.getElementById('m-perfil').value;
   const esc=PERFIS[perfil]?.escopo||'tudo';
+  const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
+  if(usaEmpresaReal && !document.getElementById('m-empresa-sel')?.value){ showToast('⚠ Selecione a empresa'); return; }
+  const empresaSelecionada = usaEmpresaReal ? window.EMPRESAS.find(e=>e.id===document.getElementById('m-empresa-sel').value) : null;
   const base={
     nome,
     iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),
@@ -1093,8 +1134,12 @@ function saveMember(id){
     cor:document.getElementById('m-cor').value,
     // campos de escopo — só os relevantes ao perfil
     local:      esc==='local'   ? (document.getElementById('m-local')?.value||'') : '',
-    empresa:    esc==='empresa' ? (document.getElementById('m-empresa')?.value.trim()||'') : '',
-    secoes:     (esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : [],
+    // Empresa: escopo real (sime_empresas.rotas) quando disponível — nome e
+    // seções vêm da empresa, não digitados à mão. Offline, cai no texto livre.
+    empresa_id: usaEmpresaReal ? empresaSelecionada.id : '',
+    empresa:    usaEmpresaReal ? empresaSelecionada.nome : (esc==='empresa' ? (document.getElementById('m-empresa')?.value.trim()||'') : ''),
+    secoes:     usaEmpresaReal ? (window.resolverSecoesDaEmpresa?.(empresaSelecionada.id) || [])
+              : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
     substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
   };
