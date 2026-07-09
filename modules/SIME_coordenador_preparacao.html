@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>SIME Coordenador de Preparação</title>
+<link rel="stylesheet" href="./sime_components.css">
 <style>
 :root {
   --bg:#f4f1ec; --bg2:#edeae3; --bg3:#e5e1d8; --card:#faf9f6;
@@ -91,8 +92,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ck.lacre.on{background:var(--lacre-bg);border-color:var(--lacre-bd);} .ck.lacre.on .ck-box{background:var(--lacre);border-color:var(--lacre);color:#fff;} .ck.lacre.on .ck-lbl{color:var(--lacre);}
 
 /* ── TOAST ── */
+/* .toast.show vem de sime_components.css */
 .toast{position:fixed;bottom:68px;left:50%;transform:translateX(-50%) translateY(10px);background:#2c2c2c;color:#fff;padding:8px 16px;border-radius:7px;font-size:0.75rem;font-weight:600;opacity:0;transition:all 0.2s;pointer-events:none;z-index:999;white-space:nowrap;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 /* ── FOOTER ── */
 .footer-bar{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;}

@@ -5,15 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Mídias</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
 <style>
 :root{
-  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
-  --card:#faf9f6;--border:#d8d3c8;--border2:#cac5b8;
-  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
-  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
-  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
-  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
-  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
   --purple:#6040a0;--purple-bg:#ece8f8;--purple-bd:#b0a0d8;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -90,10 +85,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-transmissao:disabled{background:var(--bg3);color:var(--text3);cursor:not-allowed;}
 .btn-transmissao.ready{background:var(--green);}
 
-/* MODAL */
-.overlay{position:fixed;inset:0;background:rgba(42,40,56,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
-.overlay.show{opacity:1;pointer-events:all;}
-.sheet{background:var(--card);border-radius:18px 18px 0 0;padding:20px 18px 36px;width:100%;max-width:480px;border-top:1px solid var(--border);}
+/* MODAL — overlay/sheet vêm de sime_components.css */
 .sh-title{font-size:.95rem;font-weight:800;margin-bottom:6px;}
 .sh-sub{font-size:.78rem;color:var(--text2);margin-bottom:16px;line-height:1.5;}
 .sh-input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);font-size:.9rem;margin-bottom:12px;color:var(--text);}
@@ -107,8 +99,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sbtn.purple{background:var(--purple);color:#fff;}
 
 /* TOAST */
+/* .toast.show vem de sime_components.css */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 /* WHATSAPP */
 .notif-badge{display:flex;align-items:center;gap:4px;font-size:.62rem;font-weight:700;padding:3px 9px;border-radius:99px;background:#d4f0e0;color:#2e7d52;border:1px solid #80c8a0;}

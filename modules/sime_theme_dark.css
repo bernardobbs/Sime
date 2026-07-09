@@ -1,0 +1,17 @@
+/* Tema "dark remote control" compartilhado — mesario, acessibilidade.
+   mesario mantém localmente as cores extras (teal/orange/purple, as
+   variantes -d de tom médio, e --btn-dark/--btn-darker) que
+   acessibilidade não usa. */
+:root{
+  --body-bg:#16161e;
+  --remote-bg:#1e1e28;
+  --display-bg:#0b0b0e;
+  --text:#e8e8f2;
+  --text2:#8080a8;
+  --text3:#3a3a55;
+  --btn-shadow:rgba(0,0,0,.7);
+  --green:#22c55e; --green-s:#061510;
+  --yellow:#f59e0b; --yellow-s:#221400;
+  --blue:#4f7dff;  --blue-s:#070e28;
+  --red:#ef4444;   --red-s:#200606;
+}

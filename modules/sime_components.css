@@ -1,0 +1,12 @@
+/* Componentes reaproveitados letra-por-letra em vários módulos.
+   .toast.show é idêntico nos 11 arquivos que têm toast (a base .toast
+   continua local a cada arquivo — cada tela usa um "bottom" diferente
+   de propósito, pra não colidir com sua própria barra/rodapé).
+   .overlay/.sheet (variante "bottom sheet") é usado por conferente,
+   midias e motorista — mesario tem sua própria variante escura, mais
+   diferente que só a cor, e continua local. */
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+.overlay{position:fixed;inset:0;background:rgba(42,40,56,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.show{opacity:1;pointer-events:all;}
+.sheet{background:var(--card);border-radius:18px 18px 0 0;padding:20px 18px 36px;width:100%;max-width:460px;border-top:1px solid var(--border);}

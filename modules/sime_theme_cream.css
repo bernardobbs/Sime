@@ -1,0 +1,13 @@
+/* Tema "cream" compartilhado — admin, atores, conferente, midias,
+   motorista, principal, tokens. Cada arquivo mantém localmente só as
+   cores que não são comuns aos 7 (ex.: --purple em admin/midias/principal,
+   --orange em conferente, --teal/--indigo em principal). */
+:root{
+  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
+  --card:#faf9f6;--border:#d8d3c8;--border2:#cac5b8;
+  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
+  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
+  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
+  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
+  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
+}

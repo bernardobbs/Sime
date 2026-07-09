@@ -4,17 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME — Painel Principal</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
 <style>
 :root{
-  --bg:#f2efe9;--bg2:#ebe8e0;--bg3:#e3dfd5;
-  --card:#f9f7f4;--border:#d8d3c8;--border2:#cac5b8;
-  --text:#2a2a2a;--text2:#6a6560;--text3:#a09a92;
-  --blue:#3a5fa0;--blue-bg:#dde7f5;--blue-bd:#adc4e0;
-  --green:#2e7d52;--green-bg:#d4f0e0;--green-bd:#80c8a0;
-  --yellow:#8a5c20;--yellow-bg:#f5e8d0;--yellow-bd:#d4a870;
   --teal:#1a7a6e;--teal-bg:#d0f0ec;--teal-bd:#70c0b8;
   --purple:#6040a0;--purple-bg:#ece8f8;--purple-bd:#b0a0d8;
-  --red:#c0392b;--red-bg:#fae8e6;--red-bd:#e0a09a;
   --indigo:#3730a3;--indigo-bg:#e0e7ff;--indigo-bd:#a5b4fc;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -141,8 +136,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .modal-sub{font-size:.74rem;color:var(--text2);margin-top:3px;}
 .modal-body{padding:18px 20px;}
 .modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+/* .toast.show vem de sime_components.css */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 </style>
 </head>
 <body>

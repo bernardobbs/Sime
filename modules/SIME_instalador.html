@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Instalador</title>
+<link rel="stylesheet" href="./sime_components.css">
 <style>
 :root {
   /* paleta suave — mesma base do coordenador */
@@ -158,7 +159,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .prob-btn.resolvido{background:#edf7ef;border-color:#80c8a0;color:var(--c3);}
 .prob-note{flex:1;font-size:.68rem;color:var(--prob);font-weight:600;}
 
-/* ── TOAST ── */
+/* ── TOAST — .toast.show vem de sime_components.css ── */
 .toast{
   position:fixed;bottom:80px;left:50%;
   transform:translateX(-50%) translateY(12px);
@@ -166,7 +167,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   font-size:.77rem;font-weight:600;opacity:0;transition:all .22s;
   pointer-events:none;z-index:200;white-space:nowrap;
 }
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 /* ── FOOTER ── */
 .footer-bar{
