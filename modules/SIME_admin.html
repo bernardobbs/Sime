@@ -406,6 +406,10 @@ import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, secoesD
 // — a anon key não é segredo, só a service_role é).
 const SIME_CONFIG = { supabaseUrl: 'https://unjhnlcmxbrlonppchux.supabase.co', supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuamhubGNteGJybG9ucHBjaHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDM1MTEsImV4cCI6MjA5ODkxOTUxMX0.3o3UhHXrLkHYz4ffBev0zb62VwcnPNP-ggbuiJG4vBs' };
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+// Exposto para o script clássico abaixo (troca de senha, criação de acesso da
+// equipe) — os const acima são module-scoped e invisíveis fora deste <script type=module>.
+window.supabase = supabase;
+window.SIME_CONFIG = SIME_CONFIG;
 
 function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
 
@@ -475,7 +479,19 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   esconderLogin();
   await carregarDadosReais();
   await carregarIdentidade();
+  await checarSenhaProvisoria();
 });
+
+// Se a conta foi criada pelo Admin (flag must_change_password), força a troca
+// da senha temporária no primeiro acesso antes de liberar o painel.
+async function checarSenhaProvisoria(){
+  try{
+    const { data:{ user } } = await supabase.auth.getUser();
+    if (user?.user_metadata?.must_change_password && window.exigirTrocaSenha) {
+      window.exigirTrocaSenha();
+    }
+  }catch(e){}
+}
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
 // pré-configurado"): login nunca é um bloqueio absoluto. Segue com os dados
@@ -486,7 +502,7 @@ document.getElementById('login-offline').addEventListener('click', () => {
 
 (async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) { esconderLogin(); await carregarDadosReais(); await carregarIdentidade(); }
+  if (session) { esconderLogin(); await carregarDadosReais(); await carregarIdentidade(); await checarSenhaProvisoria(); }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -1126,6 +1142,11 @@ function showMemberModal(m){
         <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
         <div class="form-group"><label>Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
       </div>
+      <div class="form-group">
+        <label>E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
+        <input type="email" id="m-email" value="${m?.email||''}" placeholder="pessoa@tre-pi.jus.br" ${m?.email?'disabled style="opacity:.6"':''}>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
+      </div>
       <div class="form-group"><label>Perfil de acesso</label>
         <select id="m-perfil" onchange="onPerfilChange()">
           ${Object.entries(PERFIS).map(([k,v])=>`<option value="${k}" ${m?.perfil===k?'selected':''} >${v.label}</option>`).join('')}
@@ -1218,8 +1239,9 @@ function parseSecoes(str){
     .filter(x=>SECTIONS.some(s=>s.n===x));
 }
 
-function saveMember(id){
+async function saveMember(id){
   const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
+  const email=(document.getElementById('m-email')?.value||'').trim().toLowerCase();
   const perfil=document.getElementById('m-perfil').value;
   const esc=PERFIS[perfil]?.escopo||'tudo';
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
@@ -1227,6 +1249,7 @@ function saveMember(id){
   const empresaSelecionada = usaEmpresaReal ? window.EMPRESAS.find(e=>e.id===document.getElementById('m-empresa-sel').value) : null;
   const base={
     nome,
+    email,
     iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),
     perfil,
     cor:document.getElementById('m-cor').value,
@@ -1242,6 +1265,36 @@ function saveMember(id){
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
   };
   const team=loadTeam();
+  const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
+
+  // ── Cria o login (Supabase Auth) quando há e-mail novo ──
+  // Só na criação do acesso (e-mail ainda não vinculado): chama a Edge Function
+  // sime-admin-user, que exige a sessão do admin logado e cria a conta com senha
+  // temporária. Sem sessão/rede, o membro ainda é salvo localmente, mas sem login.
+  if(email && !jaTinhaEmail){
+    let sessao=null;
+    try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+    if(!sessao){
+      showToast('⚠ Faça login como admin para criar acessos');
+      return;
+    }
+    try{
+      const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+        body:JSON.stringify({ nome, email, perfil }),
+      });
+      const out=await resp.json().catch(()=>({}));
+      if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      base.auth_user_id=out.auth_user_id;
+      base.usuario_id=out.usuario_id;
+      mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
+    }catch(e){
+      showToast('⚠ Sem conexão — acesso não criado');
+      return;
+    }
+  }
+
   if(id){
     const idx=team.findIndex(m=>m.id===id);
     if(idx>-1) team[idx]={...team[idx],...base};
@@ -1251,7 +1304,65 @@ function saveMember(id){
   saveTeam(team); closeModal(); renderTeam();
   // Se o usuário atual foi editado, reaplica o escopo
   if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
-  showToast('✓ Membro salvo');
+  if(!(email && !jaTinhaEmail)) showToast('✓ Membro salvo');
+}
+
+// Modal que exibe a senha temporária UMA vez (não fica salva em lugar nenhum).
+function mostrarSenhaTemporaria(nome, email, senha){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">✓ Acesso criado</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
+      <div class="form-group"><label>E-mail</label>
+        <input type="text" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
+      </div>
+      <div class="form-group"><label>Senha temporária</label>
+        <input type="text" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-dark" onclick="copiarCredenciais('${email}','${senha}')">📋 Copiar</button>
+      <button class="btn btn-out" onclick="closeModal()">Fechar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function copiarCredenciais(email, senha){
+  const txt=`SIME — acesso\nE-mail: ${email}\nSenha temporária: ${senha}\n(troque a senha no primeiro login)`;
+  navigator.clipboard?.writeText(txt).then(()=>showToast('✓ Copiado'),()=>showToast('⚠ Copie manualmente'));
+}
+
+// Troca obrigatória da senha temporária no 1º login (must_change_password).
+// Modal sem botão de fechar: o membro só entra depois de definir a senha nova.
+window.exigirTrocaSenha = function(){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr"><div><div class="modal-title">🔑 Defina sua senha</div></div></div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;font-size:.85rem">Este é seu primeiro acesso. Crie uma senha pessoal para continuar.</p>
+      <div class="form-group"><label>Nova senha (mín. 6 caracteres)</label>
+        <input type="password" id="ts-senha1" placeholder="nova senha"></div>
+      <div class="form-group"><label>Repita a senha</label>
+        <input type="password" id="ts-senha2" placeholder="repita"></div>
+      <div id="ts-erro" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-dark" onclick="confirmarTrocaSenha()">Salvar senha</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+};
+async function confirmarTrocaSenha(){
+  const s1=document.getElementById('ts-senha1').value;
+  const s2=document.getElementById('ts-senha2').value;
+  const erro=document.getElementById('ts-erro');
+  if(s1.length<6){ erro.textContent='A senha precisa ter ao menos 6 caracteres.'; return; }
+  if(s1!==s2){ erro.textContent='As senhas não conferem.'; return; }
+  try{
+    const { error } = await supabase.auth.updateUser({ password:s1, data:{ must_change_password:false } });
+    if(error){ erro.textContent='Não foi possível salvar: '+error.message; return; }
+    closeModal(); showToast('✓ Senha definida');
+  }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
 }
 function deleteMember(id){
   if(!confirm('Remover este membro?')) return;
