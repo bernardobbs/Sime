@@ -77,8 +77,10 @@ async function fazerLogin(p) {
   check('admin comum: zero erros JS', erros.length === 0, erros.join('; '));
   const zonasVisivel = await p.evaluate(() => getComputedStyle(document.getElementById('tab-zonas-btn')).display !== 'none');
   check('admin comum: aba Zonas continua escondida', !zonasVisivel);
-  const roleTxt = await p.locator('#u-role').textContent();
-  check('admin comum: identidade continua vindo da equipe local (não sobrescrita)', roleTxt.trim() === 'Coordenador Geral', 'got=' + roleTxt);
+  const nameTxt = await p.locator('#u-name').textContent();
+  check('admin comum: nome vem do sime_usuarios real', nameTxt.trim() === 'Maria S.', 'got=' + nameTxt);
+  const logoutVisivel = await p.evaluate(() => getComputedStyle(document.getElementById('btn-logout')).display !== 'none');
+  check('admin comum: botão de logout aparece', logoutVisivel);
   await ctx.close();
 }
 

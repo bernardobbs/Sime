@@ -208,6 +208,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       </div>
     </div>
     <div class="clock" id="clock">--:--</div>
+    <button id="btn-logout" onclick="window.simeLogout && window.simeLogout()" title="Sair do sistema"
+      style="display:none;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
   </div>
 </div>
 
@@ -433,30 +435,34 @@ async function carregarDadosReais(){
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
 }
 
-// Resolve se o admin logado é super_admin (RLS já libera ver todas as zonas
-// pra esse perfil — aqui só descobrimos QUEM é, pra UI mostrar a aba certa).
-// A equipe local (sime_equipe_v1, ver <script> clássico) continua sendo a
-// fonte de "quem eu sou agora" pros demais perfis — isso só ativa quando a
-// própria linha em sime_usuarios diz perfil='super_admin'.
-async function carregarIdentidadeSuperAdmin(){
+// Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
+// e passa pro <script> clássico aplicar no cabeçalho — substitui a identidade
+// da equipe-demo (sime_equipe_v1) pela real de quem logou. super_admin ganha
+// de quebra os dados da aba Zonas.
+async function carregarIdentidade(){
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   const { data: meuUsuario } = await supabase.from('sime_usuarios').select('nome,perfil').eq('auth_user_id', user.id).maybeSingle();
-  if (meuUsuario?.perfil !== 'super_admin') return;
-  window.SIME_SUPER_ADMIN = { nome: meuUsuario.nome || 'Super Admin' };
-  const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
-    supabase.from('sime_zonas').select('*').order('numero'),
-    supabase.from('sime_secoes').select('zona_id'),
-    supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
-  ]);
-  if (zonas) {
-    const countBy = (rows, key) => (rows || []).reduce((m, r) => { m[r[key]] = (m[r[key]] || 0) + 1; return m; }, {});
-    const secCounts = countBy(secoes, 'zona_id');
-    const userCounts = countBy(usuarios, 'zona_id');
-    window.ZONAS_REAIS = zonas.map(z => ({ ...z, secoes_count: secCounts[z.id] || 0, usuarios_count: userCounts[z.id] || 0 }));
+  if (!meuUsuario) return;
+  window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
+  if (meuUsuario.perfil === 'super_admin') {
+    const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
+      supabase.from('sime_zonas').select('*').order('numero'),
+      supabase.from('sime_secoes').select('zona_id'),
+      supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+    ]);
+    if (zonas) {
+      const countBy = (rows, key) => (rows || []).reduce((m, r) => { m[r[key]] = (m[r[key]] || 0) + 1; return m; }, {});
+      const secCounts = countBy(secoes, 'zona_id');
+      const userCounts = countBy(usuarios, 'zona_id');
+      window.ZONAS_REAIS = zonas.map(z => ({ ...z, secoes_count: secCounts[z.id] || 0, usuarios_count: userCounts[z.id] || 0 }));
+    }
   }
-  if (window.aplicarIdentidadeSuperAdmin) window.aplicarIdentidadeSuperAdmin();
+  if (window.aplicarIdentidade) window.aplicarIdentidade();
 }
+
+// Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
+window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch (e) {} location.reload(); };
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -468,7 +474,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
   esconderLogin();
   await carregarDadosReais();
-  await carregarIdentidadeSuperAdmin();
+  await carregarIdentidade();
 });
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
@@ -480,7 +486,7 @@ document.getElementById('login-offline').addEventListener('click', () => {
 
 (async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) { esconderLogin(); await carregarDadosReais(); await carregarIdentidadeSuperAdmin(); }
+  if (session) { esconderLogin(); await carregarDadosReais(); await carregarIdentidade(); }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -569,15 +575,21 @@ function applyUser(){
   if (zonasBtn) zonasBtn.style.display = curUser.perfil==='super_admin' ? '' : 'none';
 }
 
-// Chamado pelo <script type="module"> assim que descobre que o admin logado
-// é super_admin de verdade (sime_usuarios.perfil='super_admin') — troca a
-// identidade local (que por padrão vem da equipe demo, ver initTeam()) e
-// revela a aba Zonas.
-window.aplicarIdentidadeSuperAdmin = function(){
-  if (!window.SIME_SUPER_ADMIN) return;
-  curUser = { id:'super', nome: window.SIME_SUPER_ADMIN.nome, iniciais:'SA', perfil:'super_admin', cor:'#1a1a22' };
+// Chamado pelo <script type="module"> assim que resolve a identidade real do
+// usuário autenticado (sime_usuarios.nome/perfil) — troca a identidade local
+// (que por padrão vem da equipe demo, ver initTeam()) pela real, revela o botão
+// Sair e, se for super_admin, a aba Zonas. Com isso as permissões (hasPerm)
+// passam a valer pelo perfil REAL de quem logou, não pelo demo.
+window.aplicarIdentidade = function(){
+  const id = window.SIME_IDENTIDADE;
+  if (!id) return;
+  const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
   applyUser();
-  renderZonas();
+  renderDash(); renderTable(); renderProblemas();
+  const btnSair = document.getElementById('btn-logout');
+  if (btnSair) btnSair.style.display = '';
+  if (id.perfil === 'super_admin') renderZonas();
 };
 
 function renderZonas(){
