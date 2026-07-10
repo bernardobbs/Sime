@@ -5,7 +5,7 @@
       "maxDuration": 30
     }
   },
-  "rewrites": [
-    { "source": "/", "destination": "/modules/SIME_admin.html" }
+  "redirects": [
+    { "source": "/", "destination": "/modules/SIME_admin.html", "permanent": false }
   ]
 }
