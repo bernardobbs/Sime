@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Relatórios</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:34px;height:34px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;}
+.brand{font-weight:800;font-size:.9rem;}
+.wrap{max-width:1100px;width:100%;margin:0 auto;padding:16px;flex:1;}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.tab{padding:8px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);cursor:pointer;font-weight:700;font-size:.8rem;color:var(--text2);}
+.tab.on{background:#2a2a2a;color:#fff;border-color:#2a2a2a;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+.toolbar .spacer{flex:1;}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.stat .n{font-size:1.5rem;font-weight:900;}
+.stat .l{font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-top:2px;}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.8rem;}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);}
+th{background:var(--bg2);font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text3);position:sticky;top:0;}
+tr:last-child td{border-bottom:none;}
+.pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:.68rem;font-weight:700;}
+.pill.ok{background:#d0f0d8;color:#176c2c;}
+.pill.go{background:#d6e6ff;color:#1c4f9c;}
+.pill.wait{background:var(--bg2);color:var(--text3);}
+.pill.bad{background:#f8d6d0;color:#a3271a;}
+.empty{padding:30px;text-align:center;color:var(--text3);}
+.tablewrap{overflow-x:auto;}
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(360px,92vw);}
+.login-card input{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:8px;font-size:.9rem;}
+@media print{
+  .topbar,.tabs,.toolbar,#login-overlay{display:none!important;}
+  body{background:#fff;} .wrap{max-width:100%;padding:0;}
+  table{border:1px solid #999;} th{background:#eee!important;}
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">SI</div>
+  <div class="brand">SIME · Relatórios</div>
+  <div class="spacer" style="flex:1"></div>
+  <span id="zona-info" style="font-size:.74rem;color:var(--text3)"></span>
+  <button id="btn-logout" onclick="simeLogout()" style="display:none;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
+</div>
+
+<div class="wrap">
+  <div class="tabs">
+    <div class="tab on" data-rel="secoes" onclick="trocarRel('secoes',this)">🗳️ Situação das seções</div>
+    <div class="tab" data-rel="distribuicao" onclick="trocarRel('distribuicao',this)">🚚 Distribuição de urnas</div>
+    <div class="tab" data-rel="panicos" onclick="trocarRel('panicos',this)">🚨 Pânicos e ocorrências</div>
+  </div>
+
+  <div class="toolbar">
+    <span id="rel-titulo" style="font-weight:800;"></span>
+    <span class="spacer"></span>
+    <button class="btn btn-out btn-sm" onclick="recarregar()">↻ Atualizar</button>
+    <button class="btn btn-out btn-sm" onclick="exportarCSV()">⬇️ CSV</button>
+    <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
+  </div>
+
+  <div id="cards" class="cards"></div>
+  <div id="conteudo" class="tablewrap"></div>
+</div>
+
+<!-- Login -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+    <div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;">Relatórios exigem login da equipe.</div>
+    <form id="login-form">
+      <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+      <div id="login-erro" style="color:#c0392b;font-size:.75rem;min-height:1em;margin-top:6px;"></div>
+      <button class="btn btn-dark" type="submit" style="width:100%;margin-top:10px;">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const SIME_CONFIG = { supabaseUrl: 'https://unjhnlcmxbrlonppchux.supabase.co', supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuamhubGNteGJybG9ucHBjaHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDM1MTEsImV4cCI6MjA5ODkxOTUxMX0.3o3UhHXrLkHYz4ffBev0zb62VwcnPNP-ggbuiJG4vBs' };
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+window.supabase = supabase;
+
+window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch(e){} location.reload(); };
+
+function mostrarApp(){ document.getElementById('login-overlay').style.display='none'; document.getElementById('btn-logout').style.display=''; }
+
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email=document.getElementById('login-email').value;
+  const password=document.getElementById('login-pass').value;
+  const erro=document.getElementById('login-erro'); erro.textContent='';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if(error){ erro.textContent='E-mail ou senha inválidos.'; return; }
+  mostrarApp(); await window.iniciarRelatorios();
+});
+
+(async ()=>{
+  const { data:{ session } } = await supabase.auth.getSession();
+  if(session){ mostrarApp(); await window.iniciarRelatorios(); }
+})();
+</script>
+
+<script>
+// ── Estado ──
+let ELEICAO=null, ZONA=null, REL='secoes', dadosAtuais=[];
+
+async function iniciarRelatorios(){
+  // eleição ativa (RLS já limita à zona do usuário)
+  const { data:eleicoes } = await supabase.from('sime_eleicoes').select('id,zona_id,turno,data_d,ativa').eq('ativa',true).order('data_d',{ascending:false}).limit(1);
+  ELEICAO = eleicoes?.[0] || null;
+  if(ELEICAO?.zona_id){
+    const { data:z } = await supabase.from('sime_zonas').select('numero,nome,estado').eq('id',ELEICAO.zona_id).maybeSingle();
+    ZONA=z;
+    document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona · ${z.nome||''}` : '';
+  }
+  await recarregar();
+}
+window.iniciarRelatorios = iniciarRelatorios;
+
+function trocarRel(rel, el){
+  REL=rel;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t===el));
+  recarregar();
+}
+
+async function recarregar(){
+  const cont=document.getElementById('conteudo');
+  cont.innerHTML='<div class="empty">Carregando…</div>';
+  document.getElementById('cards').innerHTML='';
+  try{
+    if(REL==='secoes') await relSecoes();
+    else if(REL==='distribuicao') await relDistribuicao();
+    else if(REL==='panicos') await relPanicos();
+  }catch(e){
+    cont.innerHTML='<div class="empty">Não foi possível carregar. '+(e.message||'')+'</div>';
+  }
+}
+
+// helpers de render
+function stat(n,l){ return `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
+function tabela(headers, linhas){
+  if(!linhas.length) return '<div class="empty">Sem dados para este relatório.</div>';
+  return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${linhas.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+// ── 1. Situação das seções ──
+async function relSecoes(){
+  document.getElementById('rel-titulo').textContent='Situação das seções (Dia D)';
+  const { data:secoes } = await supabase.from('sime_secoes')
+    .select('id,numero,municipio,local_nome,eleitores,rota_id').eq('ativo',true).order('numero');
+  const rotasMap={}; const { data:rotas } = await supabase.from('sime_rotas').select('id,codigo');
+  (rotas||[]).forEach(r=>rotasMap[r.id]=r.codigo);
+  let estadoMap={};
+  if(ELEICAO){
+    const { data:est } = await supabase.from('sime_mesa_estado')
+      .select('secao_id,encerrada,votacao,zeresima,fila,panico_energia,panico_urna').eq('eleicao_id',ELEICAO.id);
+    (est||[]).forEach(e=>estadoMap[e.secao_id]=e);
+  }
+  const rows=(secoes||[]).map(s=>{
+    const e=estadoMap[s.id]||{};
+    let status, cls;
+    if(e.panico_energia||e.panico_urna){ status='⚠ Pânico'; cls='bad'; }
+    else if(e.encerrada){ status='Encerrada'; cls='ok'; }
+    else if(e.votacao){ status='Votando'; cls='go'; }
+    else if(e.zeresima){ status='Zerésima'; cls='go'; }
+    else { status='Pendente'; cls='wait'; }
+    return { s, e, status, cls };
+  });
+  const tot=rows.length;
+  const enc=rows.filter(r=>r.status==='Encerrada').length;
+  const vot=rows.filter(r=>r.status==='Votando'||r.status==='Zerésima').length;
+  const pan=rows.filter(r=>r.cls==='bad').length;
+  const eleitores=(secoes||[]).reduce((a,s)=>a+(s.eleitores||0),0);
+  document.getElementById('cards').innerHTML =
+    stat(tot,'Seções')+stat(enc+' ('+(tot?Math.round(enc/tot*100):0)+'%)','Encerradas')+
+    stat(vot,'Em votação')+stat(pan,'Pânicos ativos')+stat(eleitores.toLocaleString('pt-BR'),'Eleitores aptos');
+  dadosAtuais={
+    headers:['Seção','Município','Local','Rota','Eleitores','Fila','Status'],
+    linhas:rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', r.s.eleitores||'—', r.e.fila||'—', r.status]),
+  };
+  document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
+    rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', (r.s.eleitores||'—'), (r.e.fila??'—'), `<span class="pill ${r.cls}">${r.status}</span>`]));
+}
+
+// ── 2. Distribuição de urnas ──
+async function relDistribuicao(){
+  document.getElementById('rel-titulo').textContent='Distribuição de urnas por rota';
+  const { data:rotas } = await supabase.from('sime_rotas')
+    .select('id,codigo,nome,municipios,itinerario,urnas_estimadas').eq('ativo',true).order('codigo');
+  let estMap={};
+  if(ELEICAO){
+    const { data:est } = await supabase.from('sime_rotas_estado').select('rota_id,status,conferente_nome,ts_saiu').eq('eleicao_id',ELEICAO.id);
+    (est||[]).forEach(e=>estMap[e.rota_id]=e);
+  }
+  const statusLabel={aberta:['Aberta','wait'],pronta:['Pronta','go'],saiu:['Saiu','ok']};
+  const rows=(rotas||[]).map(r=>{
+    const e=estMap[r.id]||{};
+    const [lab,cls]=statusLabel[e.status]||['Não iniciada','wait'];
+    return { r, e, lab, cls };
+  });
+  const totUrnas=(rotas||[]).reduce((a,r)=>a+(r.urnas_estimadas||0),0);
+  const sairam=rows.filter(r=>r.e.status==='saiu').length;
+  const prontas=rows.filter(r=>r.e.status==='pronta').length;
+  document.getElementById('cards').innerHTML =
+    stat(rotas?.length||0,'Rotas')+stat(totUrnas,'Urnas estimadas')+stat(prontas,'Prontas')+stat(sairam,'Já saíram');
+  dadosAtuais={
+    headers:['Rota','Municípios','Urnas','Itinerário','Conferente','Status'],
+    linhas:rows.map(r=>[r.r.codigo,(r.r.municipios||[]).join(' / '),r.r.urnas_estimadas||'—',(r.r.itinerario||'—'),r.e.conferente_nome||'—',r.lab]),
+  };
+  document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
+    rows.map(r=>[r.r.codigo,(r.r.municipios||[]).join(' / '),(r.r.urnas_estimadas||'—'),
+      `<span style="font-size:.72rem">${r.r.itinerario||'—'}</span>`,r.e.conferente_nome||'—',`<span class="pill ${r.cls}">${r.lab}</span>`]));
+}
+
+// ── 3. Pânicos e ocorrências ──
+async function relPanicos(){
+  document.getElementById('rel-titulo').textContent='Pânicos e ocorrências (auditoria)';
+  // logs de pânico/ocorrência (append-only). RLS limita à zona.
+  let q = supabase.from('sime_logs').select('acao,modulo,secao_id,payload,ts').order('ts',{ascending:false}).limit(500);
+  const { data:logs } = await q;
+  const panicos=(logs||[]).filter(l=>/panico|problema|alerta/i.test(l.acao||''));
+  // mapa secao_id → numero
+  const { data:secoes } = await supabase.from('sime_secoes').select('id,numero');
+  const secMap={}; (secoes||[]).forEach(s=>secMap[s.id]=s.numero);
+  const fmt=ts=>{ try{ return new Date(ts).toLocaleString('pt-BR'); }catch(e){ return ts||'—'; } };
+  const resolvidos=panicos.filter(l=>/resolv/i.test(l.acao||'')).length;
+  const abertos=panicos.filter(l=>!/resolv/i.test(l.acao||'')).length;
+  document.getElementById('cards').innerHTML =
+    stat(panicos.length,'Eventos')+stat(abertos,'Aberturas')+stat(resolvidos,'Resoluções');
+  dadosAtuais={
+    headers:['Data/hora','Seção','Ação','Módulo','Detalhe'],
+    linhas:panicos.map(l=>[fmt(l.ts),secMap[l.secao_id]||'—',l.acao||'—',l.modulo||'—',(l.payload?JSON.stringify(l.payload):'')]),
+  };
+  document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
+    panicos.map(l=>{
+      const cls=/resolv/i.test(l.acao||'')?'ok':'bad';
+      return [fmt(l.ts),secMap[l.secao_id]||'—',`<span class="pill ${cls}">${l.acao||'—'}</span>`,l.modulo||'—',`<span style="font-size:.7rem;color:var(--text3)">${l.payload?JSON.stringify(l.payload):''}</span>`];
+    }));
+}
+
+// ── Exportar CSV ──
+function exportarCSV(){
+  if(!dadosAtuais.linhas?.length){ return; }
+  const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const csv=[dadosAtuais.headers.map(esc).join(','),
+    ...dadosAtuais.linhas.map(r=>r.map(esc).join(','))].join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`sime_relatorio_${REL}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+window.trocarRel=trocarRel;
+window.recarregar=recarregar;
+window.exportarCSV=exportarCSV;
+</script>
+</body>
+</html>
