@@ -9,6 +9,12 @@
 // bater com sime_usuarios.auth_user_id para a RLS resolver a zona — auth.uid()
 // apenas decodifica o claim, não valida contra a tabela auth.users. Isso evita
 // depender da API admin do GoTrue só para emitir uma sessão de leitura.
+//
+// verify_jwt=false (ver deploy): esta função É o próprio mecanismo de login —
+// quem chama ainda não tem sessão nenhuma. Ela faz sua própria autenticação
+// customizada validando token+pin contra sime_tokens, então exigir um JWT
+// prévio no gateway (que os clients de TV/campo nunca enviam) só bloquearia
+// toda chamada com 401 antes do código abaixo sequer rodar.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { signSimeJwt, expiracaoParaTipo } from './jwt.ts';
