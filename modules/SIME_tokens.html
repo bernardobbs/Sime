@@ -244,6 +244,62 @@ async function resolverEscopo() {
   const rotas = await getRotas({ fallback: null });
   if (rotas) window.ROTAS_REAIS = rotas;
   if (window.atualizarDadosReaisTokens) window.atualizarDadosReaisTokens();
+  await mesclarTokensRemotos();
+}
+
+// Mapeamento inverso de tokenParaLinha(): linha de sime_tokens (Supabase) → shape
+// local (sime_tokens_v1). O banco não guarda nome/turno/zona/criado_em — nome é
+// reconstruído do tipo+escopo (mesmos rótulos da geração em massa), turno/zona
+// vêm dos filtros atuais do form, e criado_em usa o created_at real da linha.
+function nomeDerivadoToken(row) {
+  const rota = (row.rotas && row.rotas[0]) ? 'Rota ' + row.rotas[0] : '';
+  switch (row.tipo) {
+    case 'mesario':              return `Mesário — Seção ${(row.secoes && row.secoes[0]) || '?'}`;
+    case 'conferente':           return `Conferente — ${rota}`;
+    case 'motorista':            return `Motorista — ${rota}`;
+    case 'instalador':           return `Instalador — ${rota}`;
+    case 'coord_acessibilidade': return `Acessibilidade — ${row.local_nome || '?'}`;
+    default:                     return `${row.tipo} — ${rota || row.local_nome || ''}`.trim();
+  }
+}
+function linhaParaToken(row) {
+  const turnoSel = +(document.getElementById('f-turno')?.value || 1);
+  const zonaSel  = document.getElementById('f-zona')?.value || '7';
+  return {
+    id: row.token, pin: row.pin, nome: nomeDerivadoToken(row), tipo: row.tipo,
+    rotas: (row.rotas && row.rotas.length) ? row.rotas.map(c => 'Rota ' + c) : [],
+    local: row.local_nome || null,
+    secoes: (row.secoes && row.secoes.length) ? row.secoes : [],
+    turno: turnoSel, zona: zonaSel,
+    criado_em: row.created_at ? Date.parse(row.created_at) : Date.now(),
+    expira_em: row.expira_em ? Date.parse(row.expira_em) : null,
+    usado_em: row.usado_em ? Date.parse(row.usado_em) : null,
+  };
+}
+
+// Puxa os tokens já gravados no Supabase (ex.: criados por script/SQL) pra que
+// apareçam na tela de impressão. Merge por id: NÃO sobrescreve o que já está no
+// localStorage (offline-first) — só adiciona os que faltam. Ignora tipo='tv'
+// (token de painel, provisionado à parte — não é um cartão QR de campo).
+async function mesclarTokensRemotos() {
+  if (!eleicaoId) return;
+  const { data, error } = await supabase.from('sime_tokens')
+    .select('token,pin,tipo,rotas,local_nome,secoes,expira_em,usado_em,created_at')
+    .eq('eleicao_id', eleicaoId);
+  if (error || !data) return;
+  const locais = window.loadTokens ? window.loadTokens() : {};
+  let novos = 0;
+  for (const row of data) {
+    if (row.tipo === 'tv') continue;
+    if (locais[row.token]) continue;
+    locais[row.token] = linhaParaToken(row);
+    novos++;
+  }
+  if (novos && window.saveTokens) {
+    window.saveTokens(locais);
+    if (window.renderTokens) window.renderTokens();
+    if (window.showToast) window.showToast(`↓ ${novos} token${novos>1?'s':''} carregado${novos>1?'s':''} do servidor`);
+  }
 }
 
 // Converte um token local (shape de sime_tokens_v1) pra linha de sime_tokens

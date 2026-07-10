@@ -195,6 +195,34 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 6. Merge de tokens remotos: os já gravados em sime_tokens (ex.: via SQL)
+//      aparecem na tela de impressão após login; tipo='tv' é ignorado ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_tokens = [
+    { token: 'ABCD1234', pin: '4321', tipo: 'mesario', rotas: null, local_nome: null, secoes: ['0063'], expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
+    { token: 'EFGH5678', pin: '8765', tipo: 'conferente', rotas: ['004'], local_nome: null, secoes: null, expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
+    { token: 'TVAA0000', pin: '0000', tipo: 'tv', rotas: null, local_nome: null, secoes: null, expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
+  ];
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+  await p.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).length >= 2);
+
+  const local = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}'));
+  check('merge remoto: 2 tokens de campo carregados (tv ignorado)', Object.keys(local).length === 2, 'n=' + Object.keys(local).length);
+  check('merge remoto: token tv NÃO entra', !local['TVAA0000']);
+  check('merge remoto: nome do mesário reconstruído do escopo', local['ABCD1234']?.nome === 'Mesário — Seção 0063', local['ABCD1234']?.nome);
+  check('merge remoto: rota convertida de "004" para "Rota 004"', JSON.stringify(local['EFGH5678']?.rotas) === JSON.stringify(['Rota 004']));
+  const cards = await p.locator('.token-card').count();
+  check('merge remoto: 2 cartões renderizados na tela', cards === 2, 'cards=' + cards);
+  check('merge remoto: zero erros JS', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;
