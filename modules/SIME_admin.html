@@ -188,6 +188,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
     <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:#3a5fa0;font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
     <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
   </form>
 </div>
@@ -498,6 +499,30 @@ async function checarSenhaProvisoria(){
 // locais/fallback, sem sincronizar, se o coordenador escolher isso.
 document.getElementById('login-offline').addEventListener('click', () => {
   esconderLogin();
+});
+
+// "Esqueci minha senha" — autoatendimento por e-mail (magic link do Supabase).
+// Só entrega o e-mail quando houver SMTP configurado no projeto; sem isso a
+// chamada não falha, mas o e-mail não chega — nesse caso o caminho é o admin
+// redefinir a senha pela aba Equipe (botão 🔑).
+document.getElementById('login-esqueci').addEventListener('click', async () => {
+  const erroEl = document.getElementById('login-erro');
+  const email = (document.getElementById('login-email').value || '').trim();
+  if (!email) { erroEl.style.color = '#c0392b'; erroEl.textContent = 'Digite seu e-mail acima primeiro.'; return; }
+  try {
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+    erroEl.style.color = '#176c2c';
+    erroEl.textContent = 'Se este e-mail tiver acesso, um link de redefinição foi enviado.';
+  } catch (e) {
+    erroEl.style.color = '#c0392b';
+    erroEl.textContent = 'Não foi possível enviar agora. Peça ao coordenador para redefinir.';
+  }
+});
+
+// Retorno do link "Esqueci minha senha": o Supabase abre uma sessão de
+// recuperação e emite PASSWORD_RECOVERY — aí forçamos a tela de nova senha.
+supabase.auth.onAuthStateChange?.((event) => {
+  if (event === 'PASSWORD_RECOVERY') { esconderLogin(); if (window.exigirTrocaSenha) window.exigirTrocaSenha(); }
 });
 
 (async () => {
@@ -1106,8 +1131,12 @@ function renderTeam(){
           ${m.empresa?`<div class="tc-scope">🏢 ${m.empresa}${m.secoes?.length?` · ${m.secoes.length} seç.`:''}</div>`:''}
           ${(perfil.escopo==='midias'&&m.secoes?.length)?`<div class="tc-scope">📦 ${m.secoes.length} seç. de coleta</div>`:''}
           ${m.substituto?`<div class="tc-scope">🔄 Substituto: ${m.substituto}</div>`:''}
+          ${m.email?`<div class="tc-scope">✉️ ${m.email}</div>`:''}
         </div>
-        ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" style="margin-left:auto" onclick="editMember('${m.id}')">✏️</button>`:''}
+        <div style="margin-left:auto;display:flex;gap:4px;">
+          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
+          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" onclick="editMember('${m.id}')">✏️</button>`:''}
+        </div>
       </div>
       <div class="perm-grid">
         ${PERMS_ALL.map(p=>`<div class="perm-item ${perms.includes(p)?'on':'off'}">${perms.includes(p)?'✓':'✕'} ${PERMS_LABELS[p]}</div>`).join('')}
@@ -1332,6 +1361,27 @@ function mostrarSenhaTemporaria(nome, email, senha){
 function copiarCredenciais(email, senha){
   const txt=`SIME — acesso\nE-mail: ${email}\nSenha temporária: ${senha}\n(troque a senha no primeiro login)`;
   navigator.clipboard?.writeText(txt).then(()=>showToast('✓ Copiado'),()=>showToast('⚠ Copie manualmente'));
+}
+
+// Redefine a senha de um membro (ação 'reset' da Edge Function): gera nova senha
+// temporária e força a troca no próximo login. Para quando a pessoa perde a senha.
+async function resetarSenhaMembro(id){
+  const m=loadTeam().find(x=>x.id===id);
+  if(!m?.email){ showToast('⚠ Membro sem login'); return; }
+  if(!confirm(`Gerar nova senha temporária para ${m.nome}?`)) return;
+  let sessao=null;
+  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+  if(!sessao){ showToast('⚠ Faça login como admin'); return; }
+  try{
+    const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+      body:JSON.stringify({ acao:'reset', email:m.email }),
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
+    mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
+  }catch(e){ showToast('⚠ Sem conexão'); }
 }
 
 // Troca obrigatória da senha temporária no 1º login (must_change_password).

@@ -75,8 +75,38 @@ Deno.serve(async (req) => {
 
   // ── 3. valida o corpo ──
   const body = await req.json().catch(() => ({}));
-  const nome = (body.nome || '').trim();
+  const acao = (body.acao || 'criar').trim();
   const email = (body.email || '').trim().toLowerCase();
+
+  // ── AÇÃO: reset de senha ──
+  // Gera uma nova senha temporária para um membro existente e reativa a troca
+  // obrigatória no próximo login. Não depende de e-mail/SMTP — o admin repassa
+  // a senha nova à pessoa. Autorização: mesma regra de config_equipe acima; um
+  // admin de zona só reseta membros da própria zona.
+  if (acao === 'reset') {
+    if (!email) return jsonResponse(400, { error: 'email é obrigatório' });
+    let q = admin.from('sime_usuarios').select('id, auth_user_id, zona_id, perfil').eq('email', email);
+    if (chamador.perfil !== 'super_admin') q = q.eq('zona_id', chamador.zona_id);
+    const { data: alvo } = await q.maybeSingle();
+    if (!alvo || !alvo.auth_user_id) {
+      return jsonResponse(404, { error: 'Membro não encontrado nesta zona' });
+    }
+    if (alvo.perfil === 'super_admin' && chamador.perfil !== 'super_admin') {
+      return jsonResponse(403, { error: 'Apenas super_admin reseta outro super_admin' });
+    }
+    const novaSenha = gerarSenhaTemporaria();
+    const { error: updErr } = await admin.auth.admin.updateUserById(alvo.auth_user_id, {
+      password: novaSenha,
+      user_metadata: { must_change_password: true },
+    });
+    if (updErr) {
+      return jsonResponse(500, { error: 'Falha ao redefinir senha', detalhe: updErr.message });
+    }
+    return jsonResponse(200, { ok: true, acao: 'reset', email, senha_temporaria: novaSenha });
+  }
+
+  // ── AÇÃO: criar (padrão) ──
+  const nome = (body.nome || '').trim();
   const perfil = (body.perfil || '').trim();
   if (!nome || !email || !perfil) {
     return jsonResponse(400, { error: 'nome, email e perfil são obrigatórios' });
