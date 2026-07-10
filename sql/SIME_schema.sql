@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS sime_secoes (
   local_nome  TEXT NOT NULL,
   municipio   TEXT NOT NULL,
   eleitores   INTEGER,
-  ativo       BOOLEAN NOT NULL DEFAULT true
+  ativo       BOOLEAN NOT NULL DEFAULT true,
+  CONSTRAINT sime_secoes_zona_numero_key UNIQUE (zona_id, numero)
 );
 CREATE INDEX IF NOT EXISTS idx_secoes_zona ON sime_secoes(zona_id);
 CREATE INDEX IF NOT EXISTS idx_secoes_numero ON sime_secoes(numero);
