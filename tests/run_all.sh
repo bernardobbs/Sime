@@ -9,32 +9,22 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/.." && pwd)"
 PORT="${SIME_TEST_PORT:-8917}"
 
-# ── Dependências: playwright + @supabase/supabase-js ──
-# Em CI: `npm ci`/`npm install` popula tests/node_modules — se já existir, é o
-# que vale. Localmente, se os pacotes estiverem espalhados em globals/caches,
-# monta um node_modules real symlinkando cada pacote encontrado (evita
-# reinstalar quando já há Playwright global, etc.).
-need_pkg() { [ ! -e "$TESTS_DIR/node_modules/$1" ]; }
-localizar() {
-  # imprime o diretório do pacote $1 procurando em roots conhecidos + find raso
+# ── Dependência: playwright ──
+# (os testes de browser stubam o supabase-js no navegador via page.route; o
+# test_hermes usa a fixture mockada em fixtures/ — nenhum precisa do supabase-js
+# real, então só o Playwright é obrigatório aqui.) Em CI: `npm install` popula
+# tests/node_modules. Localmente, se o Playwright estiver num global/cache,
+# symlinka pra cá em vez de reinstalar.
+if [ ! -e "$TESTS_DIR/node_modules/playwright" ]; then
+  src=""
   for cand in /opt/node22/lib/node_modules /usr/lib/node_modules /usr/local/lib/node_modules; do
-    [ -e "$cand/$1" ] && { echo "$cand/$1"; return; }
+    [ -e "$cand/playwright" ] && { src="$cand/playwright"; break; }
   done
-  find /tmp /home -maxdepth 7 -type d -path "*/node_modules/$1" 2>/dev/null | head -1
-}
-link_pkg() {
-  local pkg="$1" src; src="$(localizar "$pkg")"
-  [ -z "$src" ] && return 1
-  mkdir -p "$TESTS_DIR/node_modules/$(dirname "$pkg")"
-  ln -sfn "$src" "$TESTS_DIR/node_modules/$pkg"
-}
-if need_pkg playwright || need_pkg @supabase/supabase-js; then
-  faltou=""
-  for pkg in playwright @supabase/supabase-js; do
-    need_pkg "$pkg" && { link_pkg "$pkg" || faltou="$faltou $pkg"; }
-  done
-  if [ -n "$faltou" ]; then
-    echo "⚠ pacotes não encontrados:$faltou — rode: (cd tests && npm install)"; exit 2
+  [ -z "$src" ] && src="$(find /tmp /home -maxdepth 7 -type d -path '*/node_modules/playwright' 2>/dev/null | head -1)"
+  if [ -n "$src" ]; then
+    mkdir -p "$TESTS_DIR/node_modules"; ln -sfn "$src" "$TESTS_DIR/node_modules/playwright"
+  else
+    echo "⚠ playwright não encontrado — rode: (cd tests && npm install)"; exit 2
   fi
 fi
 

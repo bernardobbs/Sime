@@ -1,15 +1,18 @@
 // Testa a lógica multi-zona do handler api/hermes-update.js com Supabase e fetch mockados.
-import { execSync } from 'node:child_process';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(TESTS_DIR, '..');
-// Copiado para dentro de tests/ (não /tmp) porque hermes-update.js importa
-// '@supabase/supabase-js' (bare) — precisa resolver via tests/node_modules.
+// Copia o handler pra dentro de tests/ reescrevendo o import de
+// '@supabase/supabase-js' pra fixture mockada (fixtures/supabase-mock.mjs), que
+// lê/escreve globalThis.__SUPA. Assim o teste é determinístico e independente da
+// versão real do supabase-js — a versão real ignora __SUPA e quebrava o teste.
 const _HERMES = join(TESTS_DIR, '_sime_hermes.mjs');
-execSync(`cp ${ROOT}/api/hermes-update.js ${_HERMES}`);
-process.on('exit', () => { try { execSync(`rm -f ${_HERMES}`); } catch (e) {} });
+const handlerSrc = readFileSync(join(ROOT, 'api', 'hermes-update.js'), 'utf8')
+  .replace(/from\s+['"]@supabase\/supabase-js['"]/, "from './fixtures/supabase-mock.mjs'");
+writeFileSync(_HERMES, handlerSrc);
+process.on('exit', () => { try { rmSync(_HERMES, { force: true }); } catch (e) {} });
 
 process.env.SUPABASE_URL='http://x';
 process.env.SUPABASE_SERVICE_ROLE_KEY='k';
