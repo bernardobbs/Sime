@@ -322,10 +322,15 @@ Eventos suportados:
 
 ## PLANO DE CONTINGÊNCIA
 
+O SIME é **auxiliar/informativo** — nenhum processo oficial da Justiça
+Eleitoral depende dele. Não há "modo pendrive" nem fallback de sistema: ou ele
+está no ar, ou não está. A única contingência real é a fila offline, que
+garante que a **ação de um operador** não se perde enquanto a rede volta.
+
 | Falha | Resposta |
 |---|---|
-| Supabase fora do ar | Fila offline (IndexedDB) assume automaticamente |
-| Vercel indisponível | HTMLs do pendrive pré-configurado |
+| Supabase fora do ar | Fila offline (IndexedDB) assume automaticamente; a ação sincroniza quando a rede voltar |
+| Vercel/Supabase indisponíveis juntos | O painel consolidado simplesmente para — sem impacto na eleição oficial. A operação segue por WhatsApp/telefone, como era antes do SIME |
 | Hermes cai | Operação continua, perde só notificações automáticas |
 | Celular do mesário sem bateria | Qualquer agente confirma pelo Admin |
 | QR Code ilegível | PIN de 4 dígitos no verso do cartão |
