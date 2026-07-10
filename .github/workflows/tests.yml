@@ -1,0 +1,23 @@
+name: testes
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências dos testes
+        working-directory: tests
+        run: npm install
+      - name: Baixar Chromium do Playwright
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+      - name: Rodar suíte completa
+        run: bash tests/run_all.sh
