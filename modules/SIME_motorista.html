@@ -17,6 +17,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .h-info{flex:1;}
 .h-title{font-weight:800;font-size:.9rem;}
 .h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.itin-box{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;}
+.itin-lbl{font-size:.68rem;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;}
+.itin-txt{font-size:.78rem;color:var(--text);line-height:1.4;}
 .h-right{display:flex;align-items:center;gap:6px;}
 .h-clock{font-size:.76rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
 .fase-pill{font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid;}
@@ -217,7 +220,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { bootstrapCampoSession } from './sime_campo_auth.js';
-import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getRotas } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
@@ -236,6 +239,14 @@ async function resolverEscopo(rotasToken) {
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+  // Itinerário oficial + total de urnas por rota (planilha de distribuição) —
+  // enriquece o cabeçalho da rota quando online; offline segue sem o resumo.
+  const rotas = await getRotas({ fallback: null });
+  if (rotas) {
+    window.ROTA_META = {};
+    for (const r of rotas) window.ROTA_META[r.codigo] = { itinerario: r.itinerario, urnas: r.urnas_estimadas };
+    if (window.aplicarMetaRota) window.aplicarMetaRota();
+  }
   if (rotasToken?.[0] && window.aplicarRotaToken) window.aplicarRotaToken(rotasToken[0]);
 }
 
@@ -426,6 +437,10 @@ let sheetAction = null;
 // ══════════════════════════════════════════════
 // RENDER
 // ══════════════════════════════════════════════
+// Re-renderiza quando os metadados de rota (itinerário/urnas) chegam do banco
+// após a primeira pintura da tela.
+window.aplicarMetaRota = function(){ if(curRota && ROTAS[curRota]) renderRota(); };
+
 function renderRota(){
   if(!curRota || !ROTAS[curRota]){ showEmpty('Rota não encontrada','Verifique o QR Code ou o link de acesso.'); return; }
   const rdata = ROTAS[curRota];
@@ -433,7 +448,9 @@ function renderRota(){
   const mesa  = loadMesa();
 
   document.getElementById('h-title').textContent = rdata.nome;
-  document.getElementById('h-sub').textContent   = rdata.mun;
+  const meta = window.ROTA_META?.[curRota];
+  document.getElementById('h-sub').textContent =
+    rdata.mun + (meta?.urnas != null ? ` · ${meta.urnas} urnas` : '');
 
   const pill = document.getElementById('fase-pill');
   if(fase==='entrega'){
@@ -475,6 +492,15 @@ function renderRota(){
   // Paradas
   const list = document.getElementById('paradas-list');
   list.innerHTML = '';
+
+  // Itinerário oficial da planilha (texto livre), quando disponível — resumo da
+  // rota acima das paradas operacionais.
+  if(meta?.itinerario){
+    const info = document.createElement('div');
+    info.className = 'itin-box';
+    info.innerHTML = `<div class="itin-lbl">📋 Itinerário oficial${meta.urnas!=null?` · ${meta.urnas} urnas`:''}</div><div class="itin-txt">${meta.itinerario}</div>`;
+    list.appendChild(info);
+  }
 
   rdata.paradas.forEach(parada=>{
     const block = document.createElement('div');

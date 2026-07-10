@@ -60,14 +60,14 @@ export async function getSecoes({ fallback = [] } = {}) {
   }, fallback);
 }
 
-// -> [{id, codigo, nome, municipios:[...], paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
+// -> [{id, codigo, nome, municipios:[...], itinerario, urnas_estimadas, paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
 // `id` (UUID de sime_rotas) é necessário pra quem for GRAVAR em
 // sime_rotas_estado (FK rota_id) — Conferente de Embarque (Fase 4).
 export async function getRotas({ fallback = [] } = {}) {
   return withFallback('rotas', async (c) => {
     const { data: rotas, error: errR } = await c
       .from('sime_rotas')
-      .select('id, codigo, nome, municipios')
+      .select('id, codigo, nome, municipios, itinerario, urnas_estimadas')
       .eq('ativo', true)
       .order('codigo');
     if (errR) throw errR;
@@ -93,6 +93,8 @@ export async function getRotas({ fallback = [] } = {}) {
         codigo: r.codigo,
         nome: r.nome,
         municipios: r.municipios || [],
+        itinerario: r.itinerario || null,
+        urnas_estimadas: r.urnas_estimadas ?? null,
         paradas: [...paradasPorOrdem.values()].sort((a, b) => a.ordem - b.ordem),
       };
     });
