@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS sime_rotas (
   codigo      VARCHAR(3) NOT NULL, -- '001' a '012'
   nome        TEXT NOT NULL,
   municipios  TEXT[],
+  itinerario      TEXT,     -- descrição livre das paradas/localidades (planilha de distribuição)
+  urnas_estimadas INTEGER,  -- qtde de urnas a recolher na rota (planilha de pesquisa de preços)
   ativo       BOOLEAN NOT NULL DEFAULT true
 );
 
