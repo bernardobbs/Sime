@@ -41,7 +41,7 @@ async function newPage(ctx, mockConfig) {
   await p.addInitScript((hoje) => {
     localStorage.setItem('sime_eleicao_v1', JSON.stringify({ turno_ativo: 1, turno1: { d1: hoje } }));
   }, new Date().toISOString().slice(0, 10));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
   return p;

@@ -221,7 +221,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from './vendor/supabase-js.esm.js';
 import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas } from './sime_dados.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase

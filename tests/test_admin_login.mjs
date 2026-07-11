@@ -43,7 +43,7 @@ export function createClient(url, key) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ signInOk: true }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -58,7 +58,7 @@ export function createClient(url, key) {
 {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ signInOk: false }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -80,7 +80,7 @@ export function createClient(url, key) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ signInOk: true }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -107,7 +107,7 @@ export function createClient(url, key) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ signInOk: true }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');

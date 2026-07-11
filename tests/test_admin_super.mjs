@@ -68,7 +68,7 @@ async function fazerLogin(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Maria S.', perfil: 'coordenador' } }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -90,7 +90,7 @@ async function fazerLogin(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Rafael Super', perfil: 'super_admin' } }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -123,7 +123,7 @@ async function fazerLogin(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: null }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');

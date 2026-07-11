@@ -59,7 +59,7 @@ export function createClient(url, key, opts) {
     check('sime-login recebeu o token certo', body.token === 'TVTOKEN96');
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'fake.jwt.aqui', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-96' }) });
   });
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
 
@@ -89,7 +89,7 @@ export function createClient(url, key, opts) {
     chamadasLogin++;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'fake.jwt.aqui', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-96' }) });
   });
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
 

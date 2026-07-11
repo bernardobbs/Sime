@@ -62,7 +62,7 @@ export function createClient(url, key, opts) {
   await p.route('**/functions/v1/sime-login', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'x.y.z', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-x' }) });
   });
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
 

@@ -53,7 +53,7 @@ export async function bootstrapCampoSession({ supabaseUrl, supabaseAnonKey, toke
     }
   }
 
-  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+  const { createClient } = await import('./vendor/supabase-js.esm.js');
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: `Bearer ${sessao.jwt}` } },
   });

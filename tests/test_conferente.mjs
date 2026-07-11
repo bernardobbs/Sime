@@ -47,7 +47,7 @@ async function newPage(ctx, mockConfig, tokens) {
   const p = await ctx.newPage();
   await p.addInitScript((cfg) => { window.__mockConfig = cfg; }, mockConfig);
   await p.addInitScript((toks) => { localStorage.setItem('sime_tokens_v1', JSON.stringify(toks)); }, tokens);
-  await p.route('**esm.sh/@supabase/supabase-js@2**', async (route) => {
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
   return p;
