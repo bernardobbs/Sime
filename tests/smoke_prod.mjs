@@ -26,8 +26,6 @@
 //
 // Dependência: @supabase/supabase-js (mesma do tests/package.json).
 
-import { createClient } from '@supabase/supabase-js';
-
 const {
   SMOKE_SUPABASE_URL: URL,
   SMOKE_ANON_KEY: ANON,
@@ -37,13 +35,25 @@ const {
   SMOKE_CAMPO_PIN: CAMPO_PIN,
 } = process.env;
 
-const faltando = Object.entries({ SMOKE_SUPABASE_URL: URL, SMOKE_ANON_KEY: ANON, SMOKE_ADMIN_EMAIL: ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD: ADMIN_PASS })
-  .filter(([, v]) => !v).map(([k]) => k);
+const obrigatorias = { SMOKE_SUPABASE_URL: URL, SMOKE_ANON_KEY: ANON, SMOKE_ADMIN_EMAIL: ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD: ADMIN_PASS };
+const faltando = Object.entries(obrigatorias).filter(([, v]) => !v).map(([k]) => k);
+// Produção ainda não configurada (nenhum secret definido): PULA em vez de falhar,
+// para o cron diário não ficar vermelho por algo que ainda não foi ligado. Só é
+// uma falha de verdade quando alguns secrets existem e outros não (config pela
+// metade) — aí sinaliza o erro.
+if (faltando.length === Object.keys(obrigatorias).length) {
+  console.log('SKIP  smoke-prod — secrets de produção não configurados (SMOKE_*). Nada a testar ainda.');
+  process.exit(0);
+}
 if (faltando.length) {
-  console.error('Faltam variáveis de ambiente obrigatórias:', faltando.join(', '));
-  console.error('Ver o cabeçalho deste arquivo para o uso.');
+  console.error('Configuração pela metade — faltam variáveis:', faltando.join(', '));
+  console.error('Defina TODAS ou NENHUMA. Ver o cabeçalho deste arquivo.');
   process.exit(2);
 }
+
+// Import só depois de confirmar que há o que testar — o caminho de SKIP acima
+// nem precisa da dependência instalada.
+const { createClient } = await import('@supabase/supabase-js');
 
 const results = [];
 const check = (n, ok, extra = '') => { results.push({ n, ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${extra ? '  [' + extra + ']' : ''}`); };
