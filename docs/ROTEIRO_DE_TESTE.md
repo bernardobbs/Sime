@@ -12,6 +12,26 @@ Cada passo tem **ação**, **resultado esperado** e caixa de marcação. Marque
 
 ---
 
+## ⚡ Smoke manual (5 minutos) — checagem rápida do dia a dia
+
+Use este bloco curto para confirmar, em ~5 min, que o sistema está no ar e o
+caminho crítico funciona. Se algum falhar, rode o roteiro completo abaixo.
+
+| # | Ação | Resultado esperado | OK |
+|---|---|---|---|
+| S1 | Abrir o app e **logar como admin** | Entra no dashboard; topo mostra seu nome | [ ] |
+| S2 | Abrir `SIME_tv_dia.html?tv_token=…` numa aba | Painel carrega dados reais (não fica no fallback) | [ ] |
+| S3 | Num celular, **logar no mesário** (QR+PIN) de uma seção | Entra direto na seção | [ ] |
+| S4 | Lançar 1 ação (ex.: **fila**) no mesário | Confirma com toque; badge 🟢 | [ ] |
+| S5 | Olhar a **TV Dia** e o **Admin** | A ação aparece em segundos (Realtime) | [ ] |
+| S6 | Abrir **Relatórios → Situação das seções** | A seção reflete o que foi lançado | [ ] |
+
+Se S1–S6 passam, o núcleo está saudável (auth admin + auth campo + Realtime +
+relatórios). Falhou S2/S3? Quase sempre é o `SIME_JWT_SECRET` (ver
+`docs/CONFIGURACAO_GO_LIVE.md`).
+
+---
+
 ## 0. Pré-requisitos (antes de começar)
 
 | # | Item | OK |
