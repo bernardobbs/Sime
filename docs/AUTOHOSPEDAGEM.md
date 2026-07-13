@@ -13,7 +13,7 @@ independente da instância da 7ª Zona. Tudo no plano **gratuito** (custo R$ 0).
 1. Fork do repositório
 2. Criar projeto Supabase e aplicar o schema (SQL)
 3. Deploy das 2 Edge Functions + o segredo `SIME_JWT_SECRET`
-4. Trocar a config do Supabase nos arquivos do front (15 arquivos)
+4. Trocar a config do Supabase no front (1 arquivo: `modules/sime_config.js`)
 5. Deploy no Vercel
 6. Semear os dados da sua zona + criar o admin
 7. Gerar tokens/QR
@@ -50,26 +50,21 @@ Depois, o segredo **crítico**:
   **Nome:** `SIME_JWT_SECRET` (não use prefixo `SUPABASE_`) · **Valor:** o segredo copiado.
 - Sem isso, campo/TV autenticam mas a RLS rejeita o JWT.
 
-## 4. Trocar a config do Supabase no front (15 arquivos)
-Os módulos trazem a URL e a **anon key** embutidas (a anon key é pública por design).
-Pegue os valores em `Project Settings → API`:
+## 4. Trocar a config do Supabase no front (1 arquivo)
+A config fica **centralizada** em `modules/sime_config.js` — todos os 15 módulos
+importam dele. Pegue os valores em `Project Settings → API`:
 - **Project URL** (`https://SEU_REF.supabase.co`)
 - **anon public key** (`eyJ...`)
 
-Troque em **todos os 15 arquivos** de `modules/*.html` que têm `SIME_CONFIG`.
-Um jeito rápido (na raiz do repo, ajuste os valores):
-```bash
-grep -rl "supabaseUrl:" modules/*.html | xargs sed -i \
-  -e "s#https://unjhnlcmxbrlonppchux.supabase.co#https://SEU_REF.supabase.co#g" \
-  -e "s#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9._-]*#SUA_ANON_KEY#g"
+Edite só esse arquivo:
+```js
+// modules/sime_config.js
+export const SIME_CONFIG = {
+  supabaseUrl: 'https://SEU_REF.supabase.co',
+  supabaseAnonKey: 'SUA_ANON_KEY',
+};
 ```
-(arquivos: SIME_admin, SIME_relatorios, SIME_tokens, SIME_mesario, SIME_motorista,
-SIME_conferente, SIME_instalador, SIME_midias, SIME_acessibilidade,
-SIME_coordenador_preparacao, e as 5 TVs.)
-Commit e push.
-
-> Nota: hoje a config é duplicada nos 15 arquivos. Se preferir centralizar num único
-> `modules/sime_config.js` importado por todos, dá para refatorar — reduz esse passo a 1 arquivo.
+Commit e push. (A anon key é pública por design; a `service_role` NUNCA entra aqui.)
 
 ## 5. Deploy no Vercel
 1. Em https://vercel.com → **Add New → Project** → importe seu fork.

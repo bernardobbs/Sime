@@ -136,7 +136,7 @@ import { initSimeDados, getRotas, getRotasEstadoMap, refreshRotasEstadoMap } fro
 import { subscribeRotasEstado, subscribeRotasUrnas } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
-const SIME_CONFIG = { supabaseUrl: 'https://unjhnlcmxbrlonppchux.supabase.co', supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuamhubGNteGJybG9ucHBjaHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDM1MTEsImV4cCI6MjA5ODkxOTUxMX0.3o3UhHXrLkHYz4ffBev0zb62VwcnPNP-ggbuiJG4vBs' };
+import { SIME_CONFIG } from './sime_config.js';
 
 // Converte pro mesmo shape de ROTAS_FALLBACK ({'Rota 001': {mun, total}}) —
 // getRotasInfo() já roda a cada 3s, então não precisa de cache+reload como as
