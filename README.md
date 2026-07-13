@@ -120,3 +120,6 @@ conferente, instalador, acessibilidade) e mídias — ainda sem sessão Supabase
 
 ## Documentação completa
 Arquitetura, papéis, chaves de dados, RPCs e cronograma: veja **`CLAUDE.md`** na raiz.
+
+## Licença
+Distribuído sob a **licença MIT** — veja o arquivo [`LICENSE`](LICENSE).

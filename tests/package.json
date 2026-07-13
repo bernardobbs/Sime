@@ -2,6 +2,7 @@
   "name": "sime-tests",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "Suíte Playwright do SIME — ver run_all.sh",
   "scripts": {
     "test": "bash run_all.sh"
