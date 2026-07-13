@@ -25,7 +25,7 @@ Content-Type: application/json
   "secao": "0063",
   "evento": "enc",
   "valor": true,
-  "remetente": "86999991234",
+  "remetente": "86900000000",
   "remetente_nome": "João Silva",
   "origem": "whatsapp_grupo",
   "grupo": "Mesários Campo Maior"

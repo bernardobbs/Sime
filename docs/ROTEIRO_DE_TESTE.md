@@ -37,7 +37,7 @@ relatórios). Falhou S2/S3? Quase sempre é o `SIME_JWT_SECRET` (ver
 | # | Item | OK |
 |---|---|---|
 | 0.1 | `SIME_JWT_SECRET` configurado na Edge Function (ver `docs/CONFIGURACAO_GO_LIVE.md`) — sem isso o campo/TV não gravam | [ ] |
-| 0.2 | Pelo menos 1 conta de admin funciona (ex.: `bernardobs@gmail.com`) | [ ] |
+| 0.2 | Pelo menos 1 conta de admin funciona (ex.: `admin@exemplo.gov.br`) | [ ] |
 | 0.3 | Tokens de campo impressos/à mão: 1 mesário (ex.: seção **0063**), 1 motorista (**rota 007**), 1 conferente | [ ] |
 | 0.4 | 1 token de TV para abrir os painéis | [ ] |
 | 0.5 | Dispositivos: 1 celular (mesário), 1 celular (motorista), 1 tela/box para TV, 1 PC para o Admin | [ ] |

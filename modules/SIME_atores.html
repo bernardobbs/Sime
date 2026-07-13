@@ -264,7 +264,7 @@ function renderImport(){
       <div class="ic-title">📥 Importar Atores via CSV</div>
       <div class="ic-sub">Faça upload de um arquivo .csv com os campos:<br><code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.78rem">nome,telefone,secao,funcao</code><br><br>
       Funções válidas: <b>mesario</b> · motorista · tecnico · auxiliar_eleicao · coord_acessibilidade · coord_motoristas · coletor_midias · preposto · cartorio<br>
-      Telefone: com DDD, somente números. Ex: 86999991234</div>
+      Telefone: com DDD, somente números. Ex: 86900000000</div>
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()" 
            ondragover="event.preventDefault();this.classList.add('drag')" 
            ondragleave="this.classList.remove('drag')"
@@ -346,7 +346,7 @@ function importarCSV(){
 }
 
 function downloadTemplate(){
-  const csv='nome,telefone,secao,funcao\nMaria Silva,86999991234,0063,mesario\nJoão Souza,86988887654,0063,tecnico\n';
+  const csv='nome,telefone,secao,funcao\nMaria Silva,86900000000,0063,mesario\nJoão Souza,86900000001,0063,tecnico\n';
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download='sime_atores_modelo.csv'; a.click();
 }
@@ -362,7 +362,7 @@ function abrirModal(id){
     </div>
     <div class="m-body">
       <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
-      <div class="form-group"><label>Telefone / WhatsApp (com DDD)</label><input type="tel" id="m-tel" value="${a?.telefone||''}" placeholder="86999991234"></div>
+      <div class="form-group"><label>Telefone / WhatsApp (com DDD)</label><input type="tel" id="m-tel" value="${a?.telefone||''}" placeholder="86900000000"></div>
       <div class="form-group"><label>Número da seção</label><input type="number" id="m-sec" value="${a?parseInt(a.secao):''}" placeholder="63"></div>
       <div class="form-group"><label>Função</label>
         <select id="m-func">

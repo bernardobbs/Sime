@@ -26,8 +26,8 @@ Content-Type: application/json
   "cidade": "Campo Maior",
   "ts": "08:47",
   "destinatarios": [
-    { "nome": "Rafael A.", "telefone": "86999991234" },
-    { "nome": "Carlos M.", "telefone": "86988887654" }
+    { "nome": "Rafael A.", "telefone": "86900000000" },
+    { "nome": "Carlos M.", "telefone": "86900000001" }
   ]
 }
 ```
@@ -178,7 +178,7 @@ Registrar cada envio em sime_logs:
   "modulo": "hermes_notificar",
   "secao": "0063",
   "evento": "panico_energia",
-  "destinatario": "86999991234",
+  "destinatario": "86900000000",
   "status": "entregue",
   "ts": "2026-10-04T08:47:23Z"
 }
