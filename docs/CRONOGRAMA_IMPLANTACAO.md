@@ -85,7 +85,7 @@ não desenvolvimento. Cada etapa tem um **portão** (gate): não avança sem cum
 ## Riscos e mitigações (resumo)
 | Risco | Mitigação |
 |---|---|
-| Supabase pausar (plano grátis, 7 dias) | Pro OU garantir tráfego; checar na Semana 11 |
+| Supabase pausar (plano grátis, 7 dias) | Keep-alive automático (`.github/workflows/keep-alive.yml`, a cada 3 dias) já cobre; para o Dia D, avaliar Pro na janela crítica. Checar na Semana 11 |
 | WebView antigo do TV Box (tela branca) | Box Android TV certificado + supabase-js já vendorizado |
 | `SIME_JWT_SECRET` não configurado | Portão da Semana 1 — bloqueia tudo até resolver |
 | Rede do cartório instável | Fila offline (🟡→🟢) + supabase-js local + kiosk auto-reload |

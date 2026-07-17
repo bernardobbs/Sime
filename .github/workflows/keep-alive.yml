@@ -1,0 +1,41 @@
+name: keep-alive supabase
+
+# Mantém o projeto Supabase (plano grátis) ATIVO. O free pausa após ~7 dias sem
+# atividade; este job faz uma consulta leve na REST a cada ~3 dias (folga sob os
+# 7 dias) usando a anon key PÚBLICA — nenhum segredo necessário.
+#
+# Observações:
+# - Cron do GitHub Actions só roda na branch DEFAULT (após o merge do PR).
+# - Também dá para disparar à mão em Actions → keep-alive → Run workflow.
+# - O GitHub desativa cron após 60 dias sem commits no repo; perto do Dia D
+#   haverá atividade, então não é problema — mas se o repo ficar parado, reative
+#   o workflow na aba Actions.
+
+on:
+  schedule:
+    - cron: '17 6 */3 * *'   # a cada ~3 dias, 06:17 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consulta leve no Supabase (mantém o projeto ativo)
+        env:
+          SUPABASE_URL: https://unjhnlcmxbrlonppchux.supabase.co
+          # anon key é pública por design (mesma embutida no front); não é segredo.
+          ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuamhubGNteGJybG9ucHBjaHV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNDM1MTEsImV4cCI6MjA5ODkxOTUxMX0.3o3UhHXrLkHYz4ffBev0zb62VwcnPNP-ggbuiJG4vBs
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/sime_zonas?select=numero&limit=1" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $ANON")
+          echo "Supabase respondeu HTTP $code"
+          # 2xx = ok; 4xx (ex.: RLS/401/403/406) também tocam o banco = atividade.
+          # 5xx ou 000 (sem resposta / projeto pausado) = falha, para alertar.
+          if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+            echo "Projeto ativo — keep-alive ok."
+          else
+            echo "::error::Supabase inacessível (HTTP $code) — pode estar pausado/fora do ar."
+            exit 1
+          fi
