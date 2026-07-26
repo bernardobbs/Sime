@@ -361,10 +361,22 @@ CREATE TABLE IF NOT EXISTS sime_atores (
   local_id          UUID,
   funcao            sime_ator_funcao NOT NULL,
   ativo             BOOLEAN NOT NULL DEFAULT true,
+  -- Rastreio de permanência na função (verificação pré-eleição):
+  -- pendente (default) | confirmado | recusou | substituido
+  confirmacao       TEXT NOT NULL DEFAULT 'pendente'
+                    CHECK (confirmacao IN ('pendente','confirmado','recusou','substituido')),
   observacao        TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by        UUID REFERENCES sime_usuarios(id)
 );
+
+-- Idempotente para instalações que já criaram sime_atores antes desta coluna.
+ALTER TABLE sime_atores
+  ADD COLUMN IF NOT EXISTS confirmacao TEXT NOT NULL DEFAULT 'pendente';
+DO $$ BEGIN
+  ALTER TABLE sime_atores ADD CONSTRAINT sime_atores_confirmacao_chk
+    CHECK (confirmacao IN ('pendente','confirmado','recusou','substituido'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE INDEX IF NOT EXISTS idx_atores_zona     ON sime_atores(zona_id);
 CREATE INDEX IF NOT EXISTS idx_atores_eleicao  ON sime_atores(eleicao_id);
