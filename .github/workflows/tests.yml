@@ -1,0 +1,52 @@
+name: testes
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:      # permite rodar o smoke-prod à mão
+  schedule:
+    - cron: '0 9 * * *'  # smoke contra produção 1x/dia (06h BRT)
+
+jobs:
+  playwright:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências dos testes
+        working-directory: tests
+        run: npm install
+      - name: Baixar Chromium do Playwright
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+      - name: Rodar suíte completa
+        run: bash tests/run_all.sh
+
+  # Smoke contra o Supabase de produção. Roda no schedule diário (e é acionável
+  # à mão via workflow_dispatch). Só executa se os secrets estiverem definidos —
+  # configure em Settings → Secrets → Actions.
+  smoke-prod:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências dos testes
+        working-directory: tests
+        run: npm install
+      - name: Smoke contra produção
+        working-directory: tests
+        env:
+          SMOKE_SUPABASE_URL: ${{ secrets.SMOKE_SUPABASE_URL }}
+          SMOKE_ANON_KEY: ${{ secrets.SMOKE_ANON_KEY }}
+          SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}
+          SMOKE_CAMPO_TOKEN: ${{ secrets.SMOKE_CAMPO_TOKEN }}
+          SMOKE_CAMPO_PIN: ${{ secrets.SMOKE_CAMPO_PIN }}
+        run: node smoke_prod.mjs

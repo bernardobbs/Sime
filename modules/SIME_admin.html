@@ -1,0 +1,1853 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Administração</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+:root{
+  --purple:#6040a0;--purple-bg:#ece8f8;--purple-bd:#b0a0d8;
+  --teal:#1a7a6e;--teal-bg:#d0f0ec;--teal-bd:#70c0b8;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* TOP BAR */
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;flex-shrink:0;}
+.logo{width:34px;height:34px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;flex-shrink:0;}
+.brand{font-weight:800;font-size:.9rem;}
+.brand-sub{font-size:.68rem;color:var(--text2);}
+.t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.user-chip{display:flex;align-items:center;gap:6px;background:var(--bg2);padding:4px 10px;border-radius:8px;border:1px solid var(--border);}
+.user-av{width:24px;height:24px;border-radius:50%;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;}
+.user-name{font-size:.72rem;font-weight:700;}
+.user-role{font-size:.6rem;color:var(--text2);}
+.clock{font-size:.75rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+
+/* NAV TABS */
+.nav-tabs{background:var(--card);border-bottom:1px solid var(--border);padding:0 20px;display:flex;overflow-x:auto;flex-shrink:0;}
+.nav-tab{padding:10px 14px;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;border:none;background:none;transition:all .15s;}
+.nav-tab.active{color:var(--text);border-bottom-color:var(--text);}
+.nav-tab.alert-tab{color:var(--red);}
+.nav-tab:hover:not(.active){background:var(--bg2);}
+
+/* LAYOUT */
+.page{flex:1;overflow-y:auto;padding:20px 20px 60px;max-width:1200px;margin:0 auto;width:100%;}
+.tab-panel{display:none;} .tab-panel.active{display:block;}
+
+/* UTILS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px 18px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+@media(max-width:700px){.grid2,.grid3,.grid4{grid-template-columns:1fr;}}
+
+/* ZONAS (só super_admin) */
+.zonas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+.zona-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.zona-header{padding:14px 18px;display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--border);}
+.zona-num{width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;color:#fff;}
+.zona-nome{font-weight:800;font-size:.92rem;}
+.zona-sede{font-size:.73rem;color:var(--text2);margin-top:1px;}
+.zona-body{padding:14px 18px;}
+.zona-stats{display:flex;gap:14px;}
+.zstat{text-align:center;}
+.zstat-val{font-size:1.1rem;font-weight:800;color:var(--text);line-height:1;}
+.zstat-lbl{font-size:.62rem;color:var(--text2);margin-top:2px;}
+.hint{font-size:.78rem;color:var(--text2);}
+.sec-title{font-size:.65rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.sec-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* BUTTONS */
+.btn{padding:6px 13px;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;} .btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);} .btn-out:hover{background:var(--bg3);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.btn-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.btn-sm{padding:4px 9px;font-size:.7rem;}
+.btn-xs{padding:3px 7px;font-size:.66rem;}
+
+/* FORM */
+.form-group{margin-bottom:11px;}
+.form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.8rem;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+/* BADGES */
+.badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;display:inline-block;}
+.b-ok    {background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.b-warn  {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.b-err   {background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.b-off   {background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.b-blue  {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.b-purple{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd);}
+
+/* STAT CARDS */
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.stat-val{font-size:1.8rem;font-weight:900;line-height:1;}
+.stat-lbl{font-size:.7rem;color:var(--text2);margin-top:4px;}
+.stat-sub{font-size:.65rem;color:var(--text3);margin-top:2px;}
+
+/* EVENTS FEED */
+.feed{display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;}
+.feed-item{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg2);font-size:.75rem;}
+.fi-icon{flex-shrink:0;font-size:1rem;}
+.fi-info{flex:1;}
+.fi-msg{font-weight:600;color:var(--text);}
+.fi-ts{font-size:.65rem;color:var(--text3);margin-top:1px;}
+.feed-item.ev-prob{background:var(--red-bg);}
+.feed-item.ev-enc {background:var(--blue-bg);}
+.feed-item.ev-urna{background:var(--green-bg);}
+.feed-item.ev-atr {background:var(--yellow-bg);}
+
+/* TABELA DE SEÇÕES */
+.filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.filter-bar input,.filter-bar select{padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);font-size:.78rem;color:var(--text);outline:none;}
+.filter-bar input{flex:1;min-width:180px;}
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);}
+.data-table{width:100%;border-collapse:collapse;font-size:.78rem;}
+.data-table th{text-align:left;padding:9px 12px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:.68rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+.data-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
+.data-table td strong{color:var(--text);}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tr:hover td{background:var(--bg2);cursor:pointer;}
+.data-table tr.has-prob td{background:var(--red-bg);}
+.data-table tr.has-prob:hover td{background:#fde8e6;}
+
+/* PROBLEMAS */
+.prob-card{background:var(--card);border:1.5px solid var(--red-bd);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
+.prob-card.resolved{border-color:var(--green-bd);background:var(--green-bg);opacity:.7;}
+.pc-icon{font-size:1.6rem;flex-shrink:0;}
+.pc-info{flex:1;}
+.pc-sec{font-weight:800;font-size:.9rem;}
+.pc-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.pc-tipo{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:99px;display:inline-block;margin-top:4px;}
+.pt-energia{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.pt-urna   {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.pt-mesa   {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.pt-atraso {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.pc-ts{font-size:.68rem;color:var(--text3);margin-top:4px;}
+.pc-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
+
+/* EQUIPE */
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+.team-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.tc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.tc-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;color:#fff;flex-shrink:0;}
+.tc-name{font-weight:800;font-size:.88rem;}
+.tc-role{font-size:.68rem;color:var(--text2);margin-top:2px;}
+.tc-scope{font-size:.66rem;color:var(--text3);margin-top:2px;}
+.perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.perm-item{display:flex;align-items:center;gap:5px;font-size:.68rem;padding:3px 6px;border-radius:5px;background:var(--bg2);}
+.perm-item.on{background:var(--green-bg);color:var(--green);}
+.perm-item.off{background:var(--bg3);color:var(--text3);}
+
+/* MODAL EDITAR SEÇÃO */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:13px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.18);}
+.modal-hdr{padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;position:sticky;top:0;background:var(--card);z-index:1;}
+.modal-title{font-size:.95rem;font-weight:800;}
+.modal-sub{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.modal-body{padding:16px 18px;}
+.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+
+/* TOGGLE SWITCH */
+.toggle-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.toggle-row:last-child{border-bottom:none;}
+.toggle-info{flex:1;}
+.toggle-lbl{font-size:.8rem;font-weight:700;}
+.toggle-sub{font-size:.68rem;color:var(--text2);}
+.toggle{position:relative;width:38px;height:22px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:var(--bg3);border-radius:99px;cursor:pointer;transition:.2s;}
+.toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;}
+.toggle input:checked+.toggle-slider{background:var(--green);}
+.toggle input:checked+.toggle-slider::before{transform:translateX(16px);}
+
+/* TOAST */
+/* .toast.show vem de sime_components.css */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 18px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN — bloqueia o acesso até validar sessão do Supabase, mas nunca sem
+     saída: se o Supabase estiver fora do ar (plano de contingência), o botão
+     "continuar offline" segue liberando a UI com os dados locais/fallback. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
+    <div style="font-weight:800;font-size:1rem;">SIME — Administração</div>
+    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de coordenador.</div>
+    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:#3a5fa0;font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">S</div>
+  <div>
+    <div class="brand">SIME — Administração</div>
+    <div class="brand-sub" id="cur-fase">Dia da Eleição</div>
+  </div>
+  <div class="t-right">
+    <div class="user-chip">
+      <div class="user-av" id="u-av">RA</div>
+      <div>
+        <div class="user-name" id="u-name">Coordenador</div>
+        <div class="user-role" id="u-role">Coordenador Geral</div>
+      </div>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+    <button id="btn-logout" onclick="window.simeLogout && window.simeLogout()" title="Sair do sistema"
+      style="display:none;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
+  </div>
+</div>
+
+<!-- NAV -->
+<div class="nav-tabs">
+  <button class="nav-tab active" onclick="goTab('dash',this)">📊 Dashboard</button>
+  <button class="nav-tab"        onclick="goTab('secoes',this)">📋 Seções</button>
+  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="goTab('problemas',this)">🚨 Problemas <span id="prob-count-badge"></span></button>
+  <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
+  <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
+  <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
+  <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
+  <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
+</div>
+
+<div class="page">
+
+<!-- ══════ DASHBOARD ══════ -->
+<div id="tab-dash" class="tab-panel active">
+  <div class="grid4" style="margin-bottom:18px;" id="stat-cards"></div>
+
+  <div class="grid2" style="gap:16px;">
+    <div class="card">
+      <div class="sec-title">Últimos eventos</div>
+      <div class="feed" id="events-feed">
+        <div style="text-align:center;padding:24px;color:var(--text3);font-size:.78rem">Aguardando eventos...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec-title">Progresso por cidade</div>
+      <div id="city-progress" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ SEÇÕES ══════ -->
+<div id="tab-secoes" class="tab-panel">
+  <div class="filter-bar">
+    <input type="text" id="sec-search" placeholder="Buscar seção ou local..." oninput="filterTable()">
+    <select id="sec-filter-status" onchange="filterTable()">
+      <option value="">Todos os status</option>
+      <option value="votando">Votando</option>
+      <option value="encerrada">Encerrada</option>
+      <option value="urna_saiu">Urna saiu</option>
+      <option value="cartorio">No cartório</option>
+      <option value="problema">Com problema</option>
+      <option value="sem_dados">Sem dados</option>
+    </select>
+    <select id="sec-filter-cidade" onchange="filterTable()">
+      <option value="">Todas as cidades</option>
+      <option value="Campo Maior">Campo Maior</option>
+      <option value="Jatobá do Piauí">Jatobá do Piauí</option>
+      <option value="Sigefredo Pacheco">Sigefredo Pacheco</option>
+    </select>
+    <button class="btn btn-dark" onclick="openNewEvent()">+ Lançar ocorrência</button>
+    <button class="btn btn-out" onclick="openSecoesManager()">⚙️ Gerenciar seções</button>
+    <button class="btn btn-out" onclick="openMesariosManager()">🧑‍⚖️ Confirmação de mesários</button>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Seção</th><th>Local</th><th>Cidade</th>
+        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th></th>
+      </tr></thead>
+      <tbody id="sec-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════ PROBLEMAS ══════ -->
+<div id="tab-problemas" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Alertas ativos</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="prob-subtitle">Carregando...</div>
+    </div>
+    <button class="btn btn-out" onclick="renderProblemas()">↺ Atualizar</button>
+  </div>
+  <div id="prob-list"></div>
+</div>
+
+<!-- ══════ EQUIPE ══════ -->
+<div id="tab-equipe" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div style="font-weight:800;font-size:.95rem;">Membros da equipe</div>
+    <button class="btn btn-dark" onclick="openNewMember()">+ Novo membro</button>
+  </div>
+  <div class="team-grid" id="team-grid"></div>
+</div>
+
+<!-- ══════ CONFIG ══════ -->
+<div id="tab-config" class="tab-panel">
+  <div class="grid2" style="gap:16px;">
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Sessão atual</div>
+      <div class="form-group"><label>Usuário atual</label>
+        <select id="cfg-user" onchange="switchUser(this.value)">
+          <option value="">— selecionar —</option>
+        </select>
+      </div>
+      <div style="font-size:.74rem;color:var(--text2);">Selecione seu perfil para ver apenas as ações permitidas ao seu papel.</div>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Eleição configurada</div>
+      <div id="eleicao-info" style="font-size:.8rem;color:var(--text2);line-height:1.8;"></div>
+      <a href="SIME_principal.html" target="_blank" class="btn btn-out" style="margin-top:10px;display:inline-flex">⚙️ Painel Principal</a>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Acesso rápido aos módulos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;" id="quick-links"></div>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Dados operacionais</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-out" onclick="exportarDados()">📥 Exportar snapshot (JSON)</button>
+        <button class="btn btn-red" onclick="if(confirm('Resetar dados de teste?')){resetarDados();}">🗑 Resetar dados de teste</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MÍDIAS ══════ -->
+<div id="tab-midias" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Mídias eleitorais</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="midias-sub">Carregando...</div>
+    </div>
+    <button class="btn btn-out" onclick="renderMidias()">↺ Atualizar</button>
+  </div>
+  <div class="grid4" style="margin-bottom:16px;" id="midias-stats"></div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">Coletores de mídia</div>
+    <div id="midias-coletores"></div>
+  </div>
+  <div id="midias-list"></div>
+</div>
+
+<!-- ══════ ATORES ══════ -->
+<div id="tab-atores" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Atores operacionais</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="atores-sub">Carregando...</div>
+    </div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" id="atores-search" placeholder="Buscar nome, seção ou telefone..." oninput="renderAtores()">
+    <select id="atores-funcao" onchange="renderAtores()">
+      <option value="">Todas as funções</option>
+      <option value="mesario">Mesário</option>
+      <option value="motorista">Motorista</option>
+      <option value="tecnico">Técnico</option>
+      <option value="auxiliar_eleicao">Auxiliar de Eleição</option>
+      <option value="coord_acessibilidade">Coord. Acessibilidade</option>
+      <option value="coord_motoristas">Coord. de Motoristas</option>
+      <option value="coletor_midias">Coletor de Mídias</option>
+      <option value="preposto">Preposto</option>
+      <option value="cartorio">Cartório</option>
+    </select>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Nome</th><th>Seção</th><th>Função</th><th>Telefone</th><th>WA</th></tr></thead>
+      <tbody id="atores-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════ ZONAS (só super_admin) ══════ -->
+<div id="tab-zonas" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Zonas eleitorais</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Visão geral de todas as zonas — cada uma opera de forma independente.</div>
+    </div>
+    <button class="btn btn-out" onclick="renderZonas()">↺ Atualizar</button>
+  </div>
+  <div class="zonas-grid" id="zonas-grid"><div class="hint">Carregando…</div></div>
+</div>
+
+</div><!-- /page -->
+
+<!-- MODAL EDITAR/LANÇAR SEÇÃO -->
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { createClient } from './vendor/supabase-js.esm.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, secoesDaEmpresa } from './sime_dados.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+import { SIME_CONFIG } from './sime_config.js';
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+// Exposto para o script clássico abaixo (troca de senha, criação de acesso da
+// equipe) — os const acima são module-scoped e invisíveis fora deste <script type=module>.
+window.supabase = supabase;
+window.SIME_CONFIG = SIME_CONFIG;
+
+function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+// Depois de autenticado (ou explicitamente offline): busca SECTIONS/cities
+// reais e reconstrói a UI que já estava de pé com o fallback hardcoded — não
+// há corrida de dados porque o overlay bloqueia a interação até aqui.
+async function carregarDadosReais(){
+  initSimeDados(supabase);
+  const secoesReais = await getSecoes({ fallback: null });
+  if (secoesReais) {
+    window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
+    const municipios = await getMunicipios({ fallback: null });
+    if (municipios) window.cities = municipios.map(m => m.nome);
+  }
+  // Coord. de Motoristas: escopo real via sime_empresas.rotas, em vez da
+  // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
+  // sem empresas cadastradas, o formulário cai no campo de texto manual como
+  // antes (offline-first — nunca bloqueia a criação do membro da equipe).
+  const rotasReais = await getRotas({ fallback: null });
+  const empresasReais = await getEmpresas({ fallback: null });
+  if (rotasReais) window.ROTAS_REAIS = rotasReais;
+  if (empresasReais) window.EMPRESAS = empresasReais;
+  window.resolverSecoesDaEmpresa = (empresaId) => {
+    const emp = (window.EMPRESAS || []).find(e => e.id === empresaId);
+    return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
+  };
+  if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
+}
+
+// Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
+// e passa pro <script> clássico aplicar no cabeçalho — substitui a identidade
+// da equipe-demo (sime_equipe_v1) pela real de quem logou. super_admin ganha
+// de quebra os dados da aba Zonas.
+async function carregarIdentidade(){
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
+  if (!meuUsuario) return;
+  window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
+  window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
+  if (meuUsuario.perfil === 'super_admin') {
+    const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
+      supabase.from('sime_zonas').select('*').order('numero'),
+      supabase.from('sime_secoes').select('zona_id'),
+      supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+    ]);
+    if (zonas) {
+      const countBy = (rows, key) => (rows || []).reduce((m, r) => { m[r[key]] = (m[r[key]] || 0) + 1; return m; }, {});
+      const secCounts = countBy(secoes, 'zona_id');
+      const userCounts = countBy(usuarios, 'zona_id');
+      window.ZONAS_REAIS = zonas.map(z => ({ ...z, secoes_count: secCounts[z.id] || 0, usuarios_count: userCounts[z.id] || 0 }));
+    }
+  }
+  if (window.aplicarIdentidade) window.aplicarIdentidade();
+}
+
+// Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
+window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch (e) {} location.reload(); };
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  esconderLogin();
+  await carregarDadosReais();
+  await carregarIdentidade();
+  await checarSenhaProvisoria();
+});
+
+// Se a conta foi criada pelo Admin (flag must_change_password), força a troca
+// da senha temporária no primeiro acesso antes de liberar o painel.
+async function checarSenhaProvisoria(){
+  try{
+    const { data:{ user } } = await supabase.auth.getUser();
+    if (user?.user_metadata?.must_change_password && window.exigirTrocaSenha) {
+      window.exigirTrocaSenha();
+    }
+  }catch(e){}
+}
+
+// Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
+// pré-configurado"): login nunca é um bloqueio absoluto. Segue com os dados
+// locais/fallback, sem sincronizar, se o coordenador escolher isso.
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+
+// "Esqueci minha senha" — autoatendimento por e-mail (magic link do Supabase).
+// Só entrega o e-mail quando houver SMTP configurado no projeto; sem isso a
+// chamada não falha, mas o e-mail não chega — nesse caso o caminho é o admin
+// redefinir a senha pela aba Equipe (botão 🔑).
+document.getElementById('login-esqueci').addEventListener('click', async () => {
+  const erroEl = document.getElementById('login-erro');
+  const email = (document.getElementById('login-email').value || '').trim();
+  if (!email) { erroEl.style.color = '#c0392b'; erroEl.textContent = 'Digite seu e-mail acima primeiro.'; return; }
+  try {
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
+    erroEl.style.color = '#176c2c';
+    erroEl.textContent = 'Se este e-mail tiver acesso, um link de redefinição foi enviado.';
+  } catch (e) {
+    erroEl.style.color = '#c0392b';
+    erroEl.textContent = 'Não foi possível enviar agora. Peça ao coordenador para redefinir.';
+  }
+});
+
+// Retorno do link "Esqueci minha senha": o Supabase abre uma sessão de
+// recuperação e emite PASSWORD_RECOVERY — aí forçamos a tela de nova senha.
+supabase.auth.onAuthStateChange?.((event) => {
+  if (event === 'PASSWORD_RECOVERY') { esconderLogin(); if (window.exigirTrocaSenha) window.exigirTrocaSenha(); }
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { esconderLogin(); await carregarDadosReais(); await carregarIdentidade(); await checarSenhaProvisoria(); }
+})();
+</script>
+<script src="./sime_ui_utils.js"></script>
+<script>
+// ══════════════════════════════════════════════
+// DADOS E CONSTANTES
+// ══════════════════════════════════════════════
+const SECTIONS_FALLBACK = [
+  {n:'0001',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0002',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0003',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0004',loc:'EMATER',city:'Campo Maior'},{n:'0005',loc:'SAAE',city:'Campo Maior'},{n:'0006',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0012',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0014',loc:'EMATER',city:'Campo Maior'},{n:'0015',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0016',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0017',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0018',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0019',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0020',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0029',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0030',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0031',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0033',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0034',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0035',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0036',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0037',loc:'EMATER',city:'Campo Maior'},{n:'0038',loc:'EMATER',city:'Campo Maior'},{n:'0044',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0045',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0046',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0047',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0049',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0050',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0062',loc:'FSESP',city:'Campo Maior'},{n:'0063',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0064',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0065',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0066',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0071',loc:'CAIC',city:'Campo Maior'},{n:'0074',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0079',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0080',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0081',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0085',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0086',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0087',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0088',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0089',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0090',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0101',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0102',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0103',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0112',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0115',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0116',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0117',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0122',loc:'FSESP',city:'Campo Maior'},{n:'0123',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0124',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0125',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0126',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0128',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0132',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0133',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0135',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0136',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0137',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0138',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0139',loc:'Grupo Escolar',city:'Jatobá do Piauí'},{n:'0140',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0141',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0144',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0145',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0147',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0148',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0149',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0151',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0152',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0155',loc:'CAIC',city:'Campo Maior'},{n:'0156',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0157',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0158',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0159',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0160',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0162',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0163',loc:"Salão Com. 'Mario Cazuza'",city:'Campo Maior'},{n:'0164',loc:'Salão Com. Santo Antônio',city:'Campo Maior'},{n:'0165',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0166',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0167',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0168',loc:'G.E. Prof. Francisco Luis',city:'Jatobá do Piauí'},{n:'0171',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0172',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0173',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0174',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0175',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0176',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0177',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0178',loc:'U.E. José Cândido Gaioso',city:'Jatobá do Piauí'},{n:'0179',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0180',loc:'U.E. José Gomes de Oliveira',city:'Campo Maior'},{n:'0181',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0185',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0186',loc:'Esc. Reassentamento Corredores',city:'Campo Maior'},{n:'0187',loc:'Esc. Mun. R.A. Maximino',city:'Campo Maior'},{n:'0188',loc:'Escola Mun. da Montanha',city:'Jatobá do Piauí'},{n:'0189',loc:'G.E. Manoel Pereira dos Reis',city:'Sigefredo Pacheco'},{n:'0191',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0192',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0193',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0194',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0195',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0196',loc:'U.E. José Gonçalves Oliveira',city:'Campo Maior'},{n:'0197',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0198',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0199',loc:'U.E. Rafael Nogueira Passos',city:'Jatobá do Piauí'},{n:'0200',loc:'Salão Comunitário',city:'Jatobá do Piauí'},{n:'0201',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0202',loc:'CAIC',city:'Campo Maior'},{n:'0203',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0204',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0205',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0206',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0207',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0208',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0209',loc:'Assoc. Moradores Tangará',city:'Campo Maior'},{n:'0210',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0211',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0212',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0213',loc:'U.E. Manoel Rodrigues Melo',city:'Sigefredo Pacheco'},{n:'0214',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0215',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0216',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0217',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0218',loc:'Posto Saúde da Varjota',city:'Campo Maior'},{n:'0219',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0220',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0221',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0222',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0223',loc:'CAIC',city:'Campo Maior'},{n:'0224',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0225',loc:'Esc. Mun. A.F. Ribeiro Paz',city:'Jatobá do Piauí'},{n:'0226',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0227',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0228',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0229',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0230',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0231',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0232',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0233',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0234',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0235',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0236',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0237',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0238',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0239',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0240',loc:'IFPI',city:'Campo Maior'},{n:'0241',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0242',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0243',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0244',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0245',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0246',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0247',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0248',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0249',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0250',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0251',loc:'IFPI',city:'Campo Maior'},{n:'0252',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0253',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0254',loc:'Creche Vovô José',city:'Campo Maior'},{n:'0255',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0256',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0257',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0258',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0259',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0260',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0261',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0146',loc:'U.E. Antônio Rodrigues',city:'Campo Maior'}
+];
+var SECTIONS = SECTIONS_FALLBACK;
+
+// ── MEMBROS DA EQUIPE ──────────────────────────────────────
+const TEAM_KEY = 'sime_equipe_v1';
+const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
+const PERMS_LABELS = {ver_secoes:'Ver seções',editar_secoes:'Editar seções',resolver_panico:'Resolver pânico',lancar_telefone:'Lançar por telefone',gestao_dist:'Distribuição',config_equipe:'Config equipe'};
+// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'empresa' (seções das
+//         rotas da empresa) | 'midias' (seções designadas de coleta)
+const PERFIS = {
+  super_admin: {label:'Super Admin',color:'#1a1a22',perms:PERMS_ALL,escopo:'tudo'},
+  coordenador: {label:'Coordenador Geral',color:'#2a2a2a',perms:PERMS_ALL,escopo:'tudo'},
+  monitor:     {label:'Monitor de Campo', color:'#3a5fa0',perms:['ver_secoes','editar_secoes','lancar_telefone'],escopo:'tudo'},
+  gestor_prob: {label:'Gestor de Problemas',color:'#c0392b',perms:['ver_secoes','resolver_panico','lancar_telefone'],escopo:'tudo'},
+  gestor_dist: {label:'Gestor de Distribuição',color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'tudo'},
+  observador:  {label:'Observador',color:'#6a6560',perms:['ver_secoes'],escopo:'tudo'},
+  // ── Novos perfis (item #2) ──
+  coord_motoristas:     {label:'Coord. de Motoristas',    color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'empresa'},
+  coord_acessibilidade: {label:'Coord. de Acessibilidade',color:'#6040a0',perms:['ver_secoes','resolver_panico'],escopo:'local'},
+  coletor_midias:       {label:'Coletor de Mídias',       color:'#15803d',perms:['ver_secoes'],escopo:'midias'},
+};
+
+// ── ESCOPO DO USUÁRIO ──────────────────────────────────────
+// Retorna apenas as seções que o perfil atual pode ver.
+function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
+// 'empresa' (Coord. de Motoristas) resolve secoes/empresa a partir de
+// sime_empresas.rotas de verdade quando há sessão (ver showMemberModal/
+// saveMember) — curUser.secoes só continua "digitado à mão" no fallback
+// offline (sem empresas cadastradas ainda). 'midias' (Coletor de Mídias)
+// permanece sempre manual por design: não existe agrupamento real (rota/
+// local) do qual derivar as seções designadas a um coletor específico.
+function secoesDoUsuario(){
+  const esc = userEscopo();
+  if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
+  if(esc==='empresa'&& curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
+  if(esc==='midias' && curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
+  return SECTIONS;
+}
+function escopoLabel(){
+  const esc = userEscopo();
+  if(esc==='local'   && curUser.local)  return `Local: ${curUser.local}`;
+  if(esc==='empresa' && curUser.empresa)return `Empresa: ${curUser.empresa}`;
+  if(esc==='midias')                    return `Coleta de mídias designada`;
+  return null;
+}
+
+function loadTeam(){ try{return JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');}catch(e){return[];} }
+function saveTeam(d){ localStorage.setItem(TEAM_KEY,JSON.stringify(d)); }
+
+// Equipe padrão
+(function initTeam(){
+  if(!loadTeam().length){
+    saveTeam([
+      {id:'u1',nome:'Rafael A.',iniciais:'RA',perfil:'coordenador',cor:'#2a2a2a'},
+      {id:'u2',nome:'Maria S.',iniciais:'MS',perfil:'monitor',cor:'#3a5fa0'},
+      {id:'u3',nome:'Carlos M.',iniciais:'CM',perfil:'gestor_prob',cor:'#c0392b'},
+      {id:'u4',nome:'Ana P.',iniciais:'AP',perfil:'gestor_dist',cor:'#8a5c20'},
+    ]);
+  }
+})();
+
+// ── USUÁRIO ATUAL ──────────────────────────────────────────
+let curUser = loadTeam()[0] || {id:'u0',nome:'Admin',iniciais:'A',perfil:'coordenador',cor:'#2a2a2a'};
+function hasPerm(p){ return PERFIS[curUser.perfil]?.perms.includes(p); }
+
+function switchUser(uid){
+  const team = loadTeam();
+  const u = team.find(m=>m.id===uid);
+  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); renderProblemas(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
+}
+function applyUser(){
+  document.getElementById('u-av').textContent   = curUser.iniciais;
+  document.getElementById('u-av').style.background = curUser.cor||'#2a2a2a';
+  document.getElementById('u-name').textContent  = curUser.nome;
+  document.getElementById('u-role').textContent  = PERFIS[curUser.perfil]?.label||'—';
+  const zonasBtn = document.getElementById('tab-zonas-btn');
+  if (zonasBtn) zonasBtn.style.display = curUser.perfil==='super_admin' ? '' : 'none';
+}
+
+// Chamado pelo <script type="module"> assim que resolve a identidade real do
+// usuário autenticado (sime_usuarios.nome/perfil) — troca a identidade local
+// (que por padrão vem da equipe demo, ver initTeam()) pela real, revela o botão
+// Sair e, se for super_admin, a aba Zonas. Com isso as permissões (hasPerm)
+// passam a valer pelo perfil REAL de quem logou, não pelo demo.
+window.aplicarIdentidade = function(){
+  const id = window.SIME_IDENTIDADE;
+  if (!id) return;
+  const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
+  applyUser();
+  renderDash(); renderTable(); renderProblemas();
+  const btnSair = document.getElementById('btn-logout');
+  if (btnSair) btnSair.style.display = '';
+  if (id.perfil === 'super_admin') renderZonas();
+};
+
+function renderZonas(){
+  const el = document.getElementById('zonas-grid');
+  if (!el) return;
+  const zonas = window.ZONAS_REAIS || [];
+  if (!zonas.length) { el.innerHTML = '<div class="hint">Nenhuma zona encontrada, ou ainda sem sessão online.</div>'; return; }
+  el.innerHTML = zonas.map(z => `
+    <div class="zona-card">
+      <div class="zona-header">
+        <div class="zona-num" style="background:#3a5fa0">${z.numero}ª</div>
+        <div>
+          <div class="zona-nome">${z.numero}ª Zona Eleitoral</div>
+          <div class="zona-sede">${z.municipio || '— sem município definido —'}</div>
+        </div>
+      </div>
+      <div class="zona-body">
+        <div class="zona-stats">
+          <div class="zstat"><div class="zstat-val">${z.secoes_count}</div><div class="zstat-lbl">Seções</div></div>
+          <div class="zstat"><div class="zstat-val">${z.usuarios_count}</div><div class="zstat-lbl">Admins</div></div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── DADOS DA ELEIÇÃO ──────────────────────────────────────
+function loadMesa(){ try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
+function saveMesaSec(n,st){ const d=loadMesa(); d[n]={...d[n],...st}; localStorage.setItem('sime_mesa_v1',JSON.stringify(d)); }
+
+// Dados reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade).
+// Usa panico.urna (o Mesário usa panico.urnaprob) — normalizado aqui.
+function loadAcess(){ try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}} }
+
+// Estado unificado de pânico/fila de uma seção, combinando Mesário
+// (sime_mesa_v1) e Coordenador de Acessibilidade (sime_acess_v1).
+// origem: de onde veio cada pânico ativo (para exibição no painel).
+function estadoSecao(n, st, ac){
+  st = st || loadMesa()[n]; ac = ac || loadAcess()[n];
+  const mesaEnergia = !!(st?.panico?.energia   && !st?.panico_resolved?.energia);
+  const mesaUrna    = !!(st?.panico?.urnaprob  && !st?.panico_resolved?.urnaprob);
+  const acEnergia   = !!(ac?.panico?.energia   && !ac?.panico_resolved?.energia);
+  const acUrna      = !!(ac?.panico?.urna      && !ac?.panico_resolved?.urna);
+  const origem = [];
+  if(mesaEnergia||mesaUrna) origem.push('mesário');
+  if(acEnergia||acUrna)     origem.push('acessibilidade');
+  return {
+    energia: mesaEnergia || acEnergia,
+    urna:    mesaUrna    || acUrna,
+    panico:  mesaEnergia || mesaUrna || acEnergia || acUrna,
+    fila:    Math.max(st?.fila>0?st.fila:0, ac?.fila>0?ac.fila:0) || 0,
+    origem,
+  };
+}
+
+// fmtNow() vem de sime_ui_utils.js
+
+function getStatus(st,uni){
+  if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
+  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)));
+  if(panic)           return {label:'⚠ Problema',cls:'b-err'};
+  if(!st)             return {label:'⚠ Problema',cls:'b-err'};
+  if(st.urna_cartorio)return {label:'📦 Cartório',cls:'b-ok'};
+  if(st.urna)         return {label:'🚗 Urna saiu',cls:'b-blue'};
+  if(st.enc)          return {label:'🔒 Encerrada',cls:'b-blue'};
+  if(st.vot)          return {label:'🗳️ Votando',cls:'b-ok'};
+  if(st.zero)         return {label:'🖨️ Zerésima',cls:'b-ok'};
+  const mv = Object.values(st.mesa||{});
+  if(mv.some(v=>v>=1)) return {label:'👤 Mesa',cls:'b-warn'};
+  return {label:'Aguardando',cls:'b-off'};
+}
+
+// ══════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════
+function renderDash(){
+  const mesa = loadMesa(); const acess = loadAcess();
+  const escopoSecs = secoesDoUsuario();
+  let tot=escopoSecs.length,vot=0,enc=0,urna=0,car=0,prob=0;
+  const evts=[];
+  escopoSecs.forEach(s=>{
+    const st=mesa[s.n];
+    const uni=estadoSecao(s.n, st, acess[s.n]);
+    if(st){
+      if(st.vot)  vot++;
+      if(st.enc||st.urna||st.urna_cartorio)  enc++;
+      if(st.urna||st.urna_cartorio)  urna++;
+      if(st.urna_cartorio)  car++;
+    }
+    if(uni.panico){ prob++;
+      const tag = uni.origem.includes('acessibilidade') && !uni.origem.includes('mesário') ? ' (acessib.)' : '';
+      if(uni.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia${tag}`,ts:'—'});
+      if(uni.urna)    evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna${tag}`,ts:'—'});
+    }
+    if(st?.enc&&!st?.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
+    if(st?.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
+  });
+
+  // Stat cards
+  const cards = [
+    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?'174 seções cadastradas':escopoLabel()||'Escopo restrito',color:'var(--text)'},
+    {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'#16a34a'},
+    {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'#2563eb'},
+    {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'#dc2626':'var(--text3)'},
+  ];
+  document.getElementById('stat-cards').innerHTML = cards.map(c=>`
+    <div class="stat-card">
+      <div class="stat-val" style="color:${c.color}">${c.val}</div>
+      <div class="stat-lbl">${c.lbl}</div>
+      <div class="stat-sub">${c.sub}</div>
+    </div>`).join('');
+
+  // Feed
+  const feed = document.getElementById('events-feed');
+  if(!evts.length){
+    feed.innerHTML='<div style="text-align:center;padding:24px;color:var(--text3);font-size:.78rem">Aguardando eventos...</div>';
+  } else {
+    feed.innerHTML = evts.slice(0,20).map(e=>`
+      <div class="feed-item ${e.tipo}">
+        <div class="fi-icon">${e.icon}</div>
+        <div class="fi-info">
+          <div class="fi-msg">${e.msg}</div>
+          <div class="fi-ts">${e.ts}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Progresso por cidade (window.cities: populado com dado real do Supabase,
+  // se autenticado — ver <script type="module"> no topo do arquivo)
+  const cities = window.cities || ['Campo Maior','Jatobá do Piauí','Sigefredo Pacheco'];
+  const cp = document.getElementById('city-progress');
+  cp.innerHTML = cities.map(c=>{
+    const secs = escopoSecs.filter(s=>s.city===c);
+    const done = secs.filter(s=>mesa[s.n]?.vot||mesa[s.n]?.enc).length;
+    const pct  = secs.length ? Math.round(done/secs.length*100) : 0;
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:.76rem;margin-bottom:3px;">
+        <span style="font-weight:700">${c}</span>
+        <span style="color:var(--text2)">${done}/${secs.length}</span>
+      </div>
+      <div style="height:7px;background:var(--bg3);border-radius:99px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${pct===100?'#16a34a':'#3a5fa0'};border-radius:99px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Badge tab problemas
+  document.getElementById('prob-count-badge').textContent = prob ? `(${prob})` : '';
+}
+
+// ══════════════════════════════════════════════
+// TABELA DE SEÇÕES
+// ══════════════════════════════════════════════
+let allRows = [];
+function renderTable(){
+  const mesa = loadMesa(); const acess = loadAcess();
+  allRows = secoesDoUsuario().map(s=>{
+    const st = mesa[s.n]||null;
+    const uni = estadoSecao(s.n, st, acess[s.n]);
+    const panic = uni.panico;
+    const status = getStatus(st, uni);
+    const mv = st?Object.values(st.mesa||{}):[]; const chegou=mv.filter(v=>v>=1).length;
+    const fila = uni.fila>0?uni.fila:null;
+    return {s,st,panic,status,chegou,fila};
+  });
+  filterTable();
+}
+
+function filterTable(){
+  const q   = document.getElementById('sec-search').value.toLowerCase();
+  const sf  = document.getElementById('sec-filter-status').value;
+  const cf  = document.getElementById('sec-filter-cidade').value;
+  const mesa= loadMesa();
+
+  const filtered = allRows.filter(r=>{
+    const {s,st,panic,status} = r;
+    if(cf && s.city!==cf) return false;
+    if(q && !s.n.includes(q) && !s.loc.toLowerCase().includes(q) && !s.city.toLowerCase().includes(q)) return false;
+    if(sf){
+      if(sf==='problema'   && !panic) return false;
+      if(sf==='sem_dados'  && st) return false;
+      if(sf==='votando'    && !st?.vot) return false;
+      if(sf==='encerrada'  && !st?.enc) return false;
+      if(sf==='urna_saiu'  && !(st?.urna&&!st?.urna_cartorio)) return false;
+      if(sf==='cartorio'   && !st?.urna_cartorio) return false;
+    }
+    return true;
+  });
+
+  const tbody = document.getElementById('sec-tbody');
+  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>`
+    <tr class="${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
+      <td><strong>${parseInt(s.n)}</strong></td>
+      <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.loc}</td>
+      <td>${s.city.replace(' do Piauí','').replace(' Pacheco','')}</td>
+      <td>${st?`${chegou}/4`:`<span style="color:var(--text3)">—</span>`}</td>
+      <td>${st?.vot?'✓':`<span style="color:var(--text3)">—</span>`}</td>
+      <td>${fila!==null?`<span style="background:var(--yellow-bg);color:var(--yellow);padding:1px 7px;border-radius:99px;font-weight:700">${fila}</span>`:`<span style="color:var(--text3)">—</span>`}</td>
+      <td><span class="badge ${status.cls}">${status.label}</span></td>
+      <td>${st?.urna_cartorio?'📦':st?.urna?'🚗':'<span style="color:var(--text3)">—</span>'}</td>
+      <td><button class="btn btn-out btn-xs" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
+    </tr>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// PROBLEMAS
+// ══════════════════════════════════════════════
+function renderProblemas(){
+  const mesa = loadMesa(); const acess = loadAcess(); const items=[];
+  secoesDoUsuario().forEach(s=>{
+    const uni=estadoSecao(s.n, mesa[s.n], acess[s.n]);
+    if(!uni.panico) return;
+    const origem = uni.origem.join(' + ');
+    if(uni.energia) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',origem});
+    if(uni.urna)    items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',origem});
+  });
+
+  document.getElementById('prob-subtitle').textContent = items.length
+    ? `${items.length} alerta${items.length>1?'s':''} ativo${items.length>1?'s':''}` : 'Nenhum problema ativo';
+
+  const list = document.getElementById('prob-list');
+  if(!items.length){
+    list.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text3)"><div style="font-size:2rem;margin-bottom:8px">✅</div><div>Nenhum problema ativo</div></div>';
+    return;
+  }
+  list.innerHTML = items.map(p=>{
+    const tipos = {energia:'⚡ Falta de energia',urna:'🖥️ Problema na urna'};
+    const cls   = {energia:'pt-energia',urna:'pt-urna'};
+    const canResolve = hasPerm('resolver_panico');
+    return `<div class="prob-card">
+      <div class="pc-icon">${p.tipo==='energia'?'⚡':'🖥️'}</div>
+      <div class="pc-info">
+        <div class="pc-sec">Seção ${parseInt(p.n)}</div>
+        <div class="pc-loc">${p.loc} · ${p.city}</div>
+        <span class="pc-tipo ${cls[p.tipo]}">${tipos[p.tipo]}</span>
+        <div class="pc-ts">Reportado por: ${p.origem||'monitoramento'}</div>
+      </div>
+      <div class="pc-actions">
+        ${canResolve?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${p.n}','${p.tipo}')">✓ Resolver</button>`:''}
+        <button class="btn btn-blue btn-sm" onclick="openEditSec('${p.n}')">Detalhes</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function resolverPanico(n,tipo){
+  if(!hasPerm('resolver_panico')){ showToast('⚠ Sem permissão'); return; }
+  // Resolve nas duas fontes: Mesário (sime_mesa_v1) e Acessibilidade (sime_acess_v1)
+  const mesa=loadMesa();
+  if(!mesa[n]) mesa[n]={};
+  if(!mesa[n].panico_resolved) mesa[n].panico_resolved={};
+  if(tipo==='energia') mesa[n].panico_resolved.energia=true;
+  if(tipo==='urna')    mesa[n].panico_resolved.urnaprob=true;
+  localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+
+  const acess=loadAcess();
+  if(acess[n]){
+    if(!acess[n].panico_resolved) acess[n].panico_resolved={};
+    if(tipo==='energia') acess[n].panico_resolved.energia=true;
+    if(tipo==='urna')    acess[n].panico_resolved.urna=true;
+    localStorage.setItem('sime_acess_v1',JSON.stringify(acess));
+  }
+  showToast(`✓ Pânico resolvido — Seção ${parseInt(n)}`);
+  renderProblemas(); renderDash(); renderTable();
+}
+
+// ══════════════════════════════════════════════
+// MODAL EDITAR SEÇÃO
+// ══════════════════════════════════════════════
+function openEditSec(n){
+  const sec = SECTIONS.find(s=>s.n===n);
+  if(!sec) return;
+  const mesa=loadMesa(); const st=mesa[n]||{};
+  const uni=estadoSecao(n, st, loadAcess()[n]);
+  const mv=Object.values(st.mesa||{}); const chegou=mv.filter(v=>v>=1).length;
+  const canEdit = hasPerm('editar_secoes') || hasPerm('lancar_telefone');
+  const canResolve = hasPerm('resolver_panico');
+  const dis = canEdit?'':' disabled';
+
+  const modalHtml = `
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">Seção ${parseInt(n)}</div>
+        <div class="modal-sub">${sec.loc} · ${sec.city}</div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      ${!canEdit?'<div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:8px 12px;font-size:.74rem;color:var(--yellow);margin-bottom:12px">⚠ Seu perfil não permite edição — visualização apenas.</div>':''}
+
+      <!-- Pânico ativo -->
+      ${uni.panico?`
+      <div style="background:var(--red-bg);border:1.5px solid var(--red-bd);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+        <div style="font-size:1.4rem;animation:pp .7s infinite">🚨</div>
+        <div style="flex:1">
+          <div style="font-weight:800;color:var(--red)">Pânico ativo <span style="font-weight:600;font-size:.7rem">· ${uni.origem.join(' + ')}</span></div>
+          <div style="font-size:.72rem;color:#b91c1c">
+            ${uni.energia?'⚡ Falta de energia<br>':''}
+            ${uni.urna?'🖥️ Problema na urna':''}
+          </div>
+        </div>
+        ${canResolve?`
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${uni.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
+          ${uni.urna?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''}
+        </div>`:''}
+      </div>`:''}
+
+      <!-- Chegada de membros -->
+      <div style="margin-bottom:12px;">
+        <div class="sec-title">Chegada da mesa</div>
+        <div class="form-row">
+          ${['Presidente','1º Mesário','2º Mesário','Secretário'].map((m,i)=>{
+            const key=['pres','m1','m2','sec'][i];
+            const val=st.mesa?.[key]||0;
+            return `<div class="form-group">
+              <label>${m}</label>
+              <select id="mesa-${key}"${dis}>
+                <option value="0" ${val===0?'selected':''}>Ausente</option>
+                <option value="1" ${val===1?'selected':''}>Presente</option>
+                <option value="2" ${val===2?'selected':''}>Com problema</option>
+              </select>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Status operacional -->
+      <div style="margin-bottom:12px;">
+        <div class="sec-title">Status operacional</div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-lbl">Zerésima impressa</div><div class="toggle-sub">Confirmação de zerésima</div></div>
+          <label class="toggle"><input type="checkbox" id="f-zero" ${st.zero?'checked':''} ${!canEdit?'disabled':''}>  <span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-lbl">Votação iniciada</div><div class="toggle-sub">Urna aberta para receber votos</div></div>
+          <label class="toggle"><input type="checkbox" id="f-vot" ${st.vot?'checked':''} ${!canEdit?'disabled':''}>  <span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-lbl">Votação encerrada</div><div class="toggle-sub">Seção não recebe mais votos</div></div>
+          <label class="toggle"><input type="checkbox" id="f-enc" ${st.enc?'checked':''} ${!canEdit?'disabled':''}>  <span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-lbl">Urna recolhida (motorista)</div><div class="toggle-sub">Urna saiu do local com motorista</div></div>
+          <label class="toggle"><input type="checkbox" id="f-urna" ${st.urna?'checked':''} ${!canEdit?'disabled':''}>  <span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info"><div class="toggle-lbl">Urna no cartório</div><div class="toggle-sub">Confirmação de chegada ao cartório</div></div>
+          <label class="toggle"><input type="checkbox" id="f-car" ${st.urna_cartorio?'checked':''} ${!canEdit?'disabled':''}>  <span class="toggle-slider"></span></label>
+        </div>
+      </div>
+
+      <!-- Fila -->
+      <div>
+        <div class="sec-title">Fila de votação</div>
+        <div class="form-group">
+          <label>Número de pessoas na fila (0 = sem fila)</label>
+          <input type="number" id="f-fila" value="${uni.fila||0}" min="0" max="999"${dis}>
+        </div>
+      </div>
+
+      <!-- Observação -->
+      <div>
+        <div class="sec-title">Observação</div>
+        <div class="form-group">
+          <textarea id="f-obs" rows="2" placeholder="Registro de ocorrência por telefone..."${dis}>${st.obs||''}</textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Fechar</button>
+      ${canEdit?`<button class="btn btn-dark" onclick="salvarSec('${n}')">💾 Salvar</button>`:''}
+    </div>`;
+
+  document.getElementById('modal-body').innerHTML = modalHtml;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function salvarSec(n){
+  if(!hasPerm('editar_secoes')&&!hasPerm('lancar_telefone')){ showToast('⚠ Sem permissão'); return; }
+  const patch = {
+    mesa:{
+      pres:+document.getElementById('mesa-pres').value,
+      m1:  +document.getElementById('mesa-m1').value,
+      m2:  +document.getElementById('mesa-m2').value,
+      sec: +document.getElementById('mesa-sec').value,
+    },
+    zero:document.getElementById('f-zero').checked,
+    vot: document.getElementById('f-vot').checked,
+    enc: document.getElementById('f-enc').checked,
+    urna:document.getElementById('f-urna').checked,
+    urna_cartorio:document.getElementById('f-car').checked,
+    fila:+document.getElementById('f-fila').value,
+    obs: document.getElementById('f-obs').value,
+    _editado_por: curUser.nome,
+    _editado_em:  fmtNow(),
+  };
+  saveMesaSec(n,patch);
+  closeModal();
+  showToast(`✓ Seção ${parseInt(n)} atualizada`);
+  renderDash(); renderTable(); renderProblemas();
+}
+
+// ══════════════════════════════════════════════
+// LANÇAR OCORRÊNCIA (atalho)
+// ══════════════════════════════════════════════
+function openNewEvent(){
+  if(!hasPerm('lancar_telefone')){ showToast('⚠ Sem permissão para lançar ocorrências'); return; }
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">📞 Lançar ocorrência por telefone</div><div class="modal-sub">Registre informações recebidas verbalmente</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>Número da seção</label>
+        <select id="ev-sec">
+          <option value="">— selecionar seção —</option>
+          ${SECTIONS.map(s=>`<option value="${s.n}">Seção ${parseInt(s.n)} — ${s.loc}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Tipo de ocorrência</label>
+        <select id="ev-tipo" onchange="updateEvForm()">
+          <option value="status">Atualização de status</option>
+          <option value="fila">Fila de votação</option>
+          <option value="panico_energia">⚡ Falta de energia</option>
+          <option value="panico_urna">🖥️ Problema na urna</option>
+          <option value="obs">Observação livre</option>
+        </select>
+      </div>
+      <div id="ev-extra"></div>
+      <div class="form-group"><label>Recebido por</label>
+        <input type="text" id="ev-recv" value="${curUser.nome}" placeholder="Nome de quem recebeu a informação">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="salvarEvento()">✓ Registrar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  updateEvForm();
+}
+
+function updateEvForm(){
+  const tipo = document.getElementById('ev-tipo').value;
+  const extra = document.getElementById('ev-extra');
+  if(tipo==='fila'){
+    extra.innerHTML='<div class="form-group"><label>Quantidade na fila</label><input type="number" id="ev-val" value="0" min="0" max="999"></div>';
+  } else if(tipo==='status'){
+    extra.innerHTML=`<div class="form-group"><label>Status informado</label><select id="ev-val">
+      <option value="vot">Votação iniciada</option>
+      <option value="enc">Votação encerrada</option>
+      <option value="urna">Urna recolhida pelo motorista</option>
+      <option value="cartorio">Urna chegou ao cartório</option>
+    </select></div>`;
+  } else if(tipo==='obs'){
+    extra.innerHTML='<div class="form-group"><label>Observação</label><textarea id="ev-val" rows="3" placeholder="Descreva a ocorrência..."></textarea></div>';
+  } else { extra.innerHTML=''; }
+}
+
+function salvarEvento(){
+  const n   = document.getElementById('ev-sec').value; if(!n){ showToast('⚠ Selecione a seção'); return; }
+  const tipo= document.getElementById('ev-tipo').value;
+  const mesa= loadMesa(); if(!mesa[n]) mesa[n]={};
+  const st  = mesa[n];
+
+  if(tipo==='panico_energia'){ if(!st.panico)st.panico={};st.panico.energia=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.energia=false; }
+  else if(tipo==='panico_urna'){if(!st.panico)st.panico={};st.panico.urnaprob=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.urnaprob=false;}
+  else if(tipo==='fila'){ st.fila=+document.getElementById('ev-val').value; }
+  else if(tipo==='status'){
+    const val=document.getElementById('ev-val').value;
+    if(val==='vot')     st.vot=true;
+    if(val==='enc')     {st.enc=true;st.vot=true;}
+    if(val==='urna')    {st.urna=true;st.enc=true;}
+    if(val==='cartorio'){st.urna_cartorio=true;st.urna=true;st.enc=true;}
+  } else if(tipo==='obs'){ st.obs=document.getElementById('ev-val').value; }
+
+  st._editado_por=document.getElementById('ev-recv').value;
+  st._editado_em=fmtNow();
+  mesa[n]=st; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+  closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
+  renderDash();renderTable();renderProblemas();
+}
+
+// ══════════════════════════════════════════════
+// EQUIPE
+// ══════════════════════════════════════════════
+function renderTeam(){
+  const team=loadTeam();
+  document.getElementById('team-grid').innerHTML=team.map(m=>{
+    const perfil=PERFIS[m.perfil]||PERFIS.observador;
+    const perms=perfil.perms;
+    return `<div class="team-card">
+      <div class="tc-header">
+        <div class="tc-av" style="background:${m.cor||'#2a2a2a'}">${m.iniciais}</div>
+        <div>
+          <div class="tc-name">${m.nome}</div>
+          <div class="tc-role">${perfil.label}</div>
+          ${m.local?`<div class="tc-scope">📍 ${m.local}</div>`:''}
+          ${m.empresa?`<div class="tc-scope">🏢 ${m.empresa}${m.secoes?.length?` · ${m.secoes.length} seç.`:''}</div>`:''}
+          ${(perfil.escopo==='midias'&&m.secoes?.length)?`<div class="tc-scope">📦 ${m.secoes.length} seç. de coleta</div>`:''}
+          ${m.substituto?`<div class="tc-scope">🔄 Substituto: ${m.substituto}</div>`:''}
+          ${m.email?`<div class="tc-scope">✉️ ${m.email}</div>`:''}
+        </div>
+        <div style="margin-left:auto;display:flex;gap:4px;">
+          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
+          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" onclick="editMember('${m.id}')">✏️</button>`:''}
+        </div>
+      </div>
+      <div class="perm-grid">
+        ${PERMS_ALL.map(p=>`<div class="perm-item ${perms.includes(p)?'on':'off'}">${perms.includes(p)?'✓':'✕'} ${PERMS_LABELS[p]}</div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Populate config select
+  const sel=document.getElementById('cfg-user');
+  sel.innerHTML='<option value="">— selecionar —</option>'+team.map(m=>`<option value="${m.id}">${m.nome} — ${PERFIS[m.perfil]?.label}</option>`).join('');
+}
+
+function openNewMember(){
+  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
+  showMemberModal(null);
+}
+function editMember(id){
+  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
+  const m=loadTeam().find(x=>x.id===id);
+  showMemberModal(m);
+}
+
+function showMemberModal(m){
+  const isNew=!m;
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">${isNew?'Novo membro':'Editar membro'}</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
+        <div class="form-group"><label>Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
+      </div>
+      <div class="form-group">
+        <label>E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
+        <input type="email" id="m-email" value="${m?.email||''}" placeholder="pessoa@tre-pi.jus.br" ${m?.email?'disabled style="opacity:.6"':''}>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
+      </div>
+      <div class="form-group"><label>Perfil de acesso</label>
+        <select id="m-perfil" onchange="onPerfilChange()">
+          ${Object.entries(PERFIS).map(([k,v])=>`<option value="${k}" ${m?.perfil===k?'selected':''} >${v.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- Escopo: Local (Coord. de Acessibilidade) -->
+      <div class="form-group" id="grp-local" style="display:none">
+        <label>Local de votação (escopo)</label>
+        <select id="m-local">
+          <option value="">— selecionar local —</option>
+          ${[...new Set(SECTIONS.map(s=>s.loc))].sort().map(l=>`<option value="${l}" ${m?.local===l?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- Escopo: Empresa (Coord. de Motoristas) — dropdown real (sime_empresas)
+           quando disponível; cai no texto livre se offline/sem empresas cadastradas -->
+      <div class="form-group" id="grp-empresa" style="display:none">
+        <label>Empresa contratada</label>
+        ${window.EMPRESAS?.length ? `
+          <select id="m-empresa-sel" onchange="onEmpresaChange()">
+            <option value="">— selecionar empresa —</option>
+            ${window.EMPRESAS.map(e=>`<option value="${e.id}" ${m?.empresa_id===e.id?'selected':''}>${e.nome}</option>`).join('')}
+          </select>
+          <div id="m-empresa-secoes-preview" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
+        ` : `
+          <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+        `}
+      </div>
+
+      <!-- Escopo: Seções designadas (Motoristas / Coletor de Mídias) -->
+      <div class="form-group" id="grp-secoes" style="display:none">
+        <label>Seções designadas (números separados por vírgula)</label>
+        <input type="text" id="m-secoes" value="${(m?.secoes||[]).map(x=>parseInt(x)).join(', ')}" placeholder="ex: 63, 64, 65">
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Vazio = nenhuma seção visível.</div>
+      </div>
+
+      <!-- Substituto temporário (Coletor de Mídias) -->
+      <div id="grp-substituto" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
+          <div class="form-group"><label>WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
+        </div>
+      </div>
+
+      <div class="form-group"><label>Cor do avatar</label>
+        <input type="color" id="m-cor" value="${m?.cor||'#2a2a2a'}" style="height:36px;padding:2px;">
+      </div>
+    </div>
+    <div class="modal-footer">
+      ${!isNew?`<button class="btn btn-red btn-sm" onclick="deleteMember('${m.id}')">🗑 Remover</button>`:''}
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveMember('${m?.id||''}')">💾 Salvar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  onPerfilChange();
+}
+
+// Mostra/oculta os campos de escopo conforme o perfil escolhido
+function onPerfilChange(){
+  const p = document.getElementById('m-perfil')?.value;
+  const esc = PERFIS[p]?.escopo || 'tudo';
+  const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
+  const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
+  show('grp-local',      esc==='local');
+  show('grp-empresa',    esc==='empresa');
+  // Com empresa real, as seções são derivadas automaticamente das rotas da
+  // empresa (sime_empresas.rotas) — não precisa mais digitar à mão. Sem
+  // empresas cadastradas (offline/dado ainda não sincronizado), cai no campo
+  // manual como antes. Coletor de Mídias continua sempre manual — não tem
+  // agrupamento real (rota/local) do qual derivar suas seções designadas.
+  show('grp-secoes',     esc==='midias' || (esc==='empresa' && !usaEmpresaReal));
+  show('grp-substituto', p==='coletor_midias');
+  if(usaEmpresaReal) onEmpresaChange();
+}
+
+// Preview de quantas seções a empresa selecionada cobre (rotas → seções)
+function onEmpresaChange(){
+  const sel = document.getElementById('m-empresa-sel');
+  const preview = document.getElementById('m-empresa-secoes-preview');
+  if(!sel || !preview) return;
+  const secoes = window.resolverSecoesDaEmpresa ? window.resolverSecoesDaEmpresa(sel.value) : [];
+  preview.textContent = sel.value ? `${secoes.length} seção${secoes.length!==1?'ões':''} nas rotas desta empresa` : '';
+}
+
+// "63, 64" → ['0063','0064']
+function parseSecoes(str){
+  return (str||'').split(',').map(x=>x.trim()).filter(Boolean)
+    .map(x=>String(parseInt(x,10)).padStart(4,'0'))
+    .filter(x=>SECTIONS.some(s=>s.n===x));
+}
+
+async function saveMember(id){
+  const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
+  const email=(document.getElementById('m-email')?.value||'').trim().toLowerCase();
+  const perfil=document.getElementById('m-perfil').value;
+  const esc=PERFIS[perfil]?.escopo||'tudo';
+  const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
+  if(usaEmpresaReal && !document.getElementById('m-empresa-sel')?.value){ showToast('⚠ Selecione a empresa'); return; }
+  const empresaSelecionada = usaEmpresaReal ? window.EMPRESAS.find(e=>e.id===document.getElementById('m-empresa-sel').value) : null;
+  const base={
+    nome,
+    email,
+    iniciais:document.getElementById('m-ini').value.trim().toUpperCase()||nome.slice(0,2).toUpperCase(),
+    perfil,
+    cor:document.getElementById('m-cor').value,
+    // campos de escopo — só os relevantes ao perfil
+    local:      esc==='local'   ? (document.getElementById('m-local')?.value||'') : '',
+    // Empresa: escopo real (sime_empresas.rotas) quando disponível — nome e
+    // seções vêm da empresa, não digitados à mão. Offline, cai no texto livre.
+    empresa_id: usaEmpresaReal ? empresaSelecionada.id : '',
+    empresa:    usaEmpresaReal ? empresaSelecionada.nome : (esc==='empresa' ? (document.getElementById('m-empresa')?.value.trim()||'') : ''),
+    secoes:     usaEmpresaReal ? (window.resolverSecoesDaEmpresa?.(empresaSelecionada.id) || [])
+              : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
+    substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
+    substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
+  };
+  const team=loadTeam();
+  const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
+
+  // ── Cria o login (Supabase Auth) quando há e-mail novo ──
+  // Só na criação do acesso (e-mail ainda não vinculado): chama a Edge Function
+  // sime-admin-user, que exige a sessão do admin logado e cria a conta com senha
+  // temporária. Sem sessão/rede, o membro ainda é salvo localmente, mas sem login.
+  if(email && !jaTinhaEmail){
+    let sessao=null;
+    try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+    if(!sessao){
+      showToast('⚠ Faça login como admin para criar acessos');
+      return;
+    }
+    try{
+      const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+        body:JSON.stringify({ nome, email, perfil }),
+      });
+      const out=await resp.json().catch(()=>({}));
+      if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      base.auth_user_id=out.auth_user_id;
+      base.usuario_id=out.usuario_id;
+      mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
+    }catch(e){
+      showToast('⚠ Sem conexão — acesso não criado');
+      return;
+    }
+  }
+
+  if(id){
+    const idx=team.findIndex(m=>m.id===id);
+    if(idx>-1) team[idx]={...team[idx],...base};
+  } else {
+    team.push({id:'u'+Date.now(),...base});
+  }
+  saveTeam(team); closeModal(); renderTeam();
+  // Se o usuário atual foi editado, reaplica o escopo
+  if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
+  if(!(email && !jaTinhaEmail)) showToast('✓ Membro salvo');
+}
+
+// Modal que exibe a senha temporária UMA vez (não fica salva em lugar nenhum).
+function mostrarSenhaTemporaria(nome, email, senha){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">✓ Acesso criado</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
+      <div class="form-group"><label>E-mail</label>
+        <input type="text" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
+      </div>
+      <div class="form-group"><label>Senha temporária</label>
+        <input type="text" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-dark" onclick="copiarCredenciais('${email}','${senha}')">📋 Copiar</button>
+      <button class="btn btn-out" onclick="closeModal()">Fechar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function copiarCredenciais(email, senha){
+  const txt=`SIME — acesso\nE-mail: ${email}\nSenha temporária: ${senha}\n(troque a senha no primeiro login)`;
+  navigator.clipboard?.writeText(txt).then(()=>showToast('✓ Copiado'),()=>showToast('⚠ Copie manualmente'));
+}
+
+// Redefine a senha de um membro (ação 'reset' da Edge Function): gera nova senha
+// temporária e força a troca no próximo login. Para quando a pessoa perde a senha.
+async function resetarSenhaMembro(id){
+  const m=loadTeam().find(x=>x.id===id);
+  if(!m?.email){ showToast('⚠ Membro sem login'); return; }
+  if(!confirm(`Gerar nova senha temporária para ${m.nome}?`)) return;
+  let sessao=null;
+  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+  if(!sessao){ showToast('⚠ Faça login como admin'); return; }
+  try{
+    const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+      body:JSON.stringify({ acao:'reset', email:m.email }),
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
+    mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
+  }catch(e){ showToast('⚠ Sem conexão'); }
+}
+
+// Troca obrigatória da senha temporária no 1º login (must_change_password).
+// Modal sem botão de fechar: o membro só entra depois de definir a senha nova.
+window.exigirTrocaSenha = function(){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr"><div><div class="modal-title">🔑 Defina sua senha</div></div></div>
+    <div class="modal-body">
+      <p style="margin:0 0 10px;font-size:.85rem">Este é seu primeiro acesso. Crie uma senha pessoal para continuar.</p>
+      <div class="form-group"><label>Nova senha (mín. 6 caracteres)</label>
+        <input type="password" id="ts-senha1" placeholder="nova senha"></div>
+      <div class="form-group"><label>Repita a senha</label>
+        <input type="password" id="ts-senha2" placeholder="repita"></div>
+      <div id="ts-erro" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-dark" onclick="confirmarTrocaSenha()">Salvar senha</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+};
+async function confirmarTrocaSenha(){
+  const s1=document.getElementById('ts-senha1').value;
+  const s2=document.getElementById('ts-senha2').value;
+  const erro=document.getElementById('ts-erro');
+  if(s1.length<6){ erro.textContent='A senha precisa ter ao menos 6 caracteres.'; return; }
+  if(s1!==s2){ erro.textContent='As senhas não conferem.'; return; }
+  try{
+    const { error } = await supabase.auth.updateUser({ password:s1, data:{ must_change_password:false } });
+    if(error){ erro.textContent='Não foi possível salvar: '+error.message; return; }
+    closeModal(); showToast('✓ Senha definida');
+  }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
+}
+function deleteMember(id){
+  if(!confirm('Remover este membro?')) return;
+  saveTeam(loadTeam().filter(m=>m.id!==id));
+  closeModal(); renderTeam(); showToast('✓ Membro removido');
+}
+
+// ══════════════════════════════════════════════
+// GERENCIAR SEÇÕES (CRUD em sime_secoes — exige login + config_equipe)
+// ══════════════════════════════════════════════
+let _secoesCache=[]; // rows completas de sime_secoes carregadas no manager
+
+async function openSecoesManager(){
+  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
+  let sessao=null;
+  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+  if(!sessao){ showToast('⚠ Faça login para gerenciar seções'); return; }
+  const { data, error } = await supabase.from('sime_secoes')
+    .select('id,numero,municipio,local_nome,eleitores,rota_id,ativo').order('numero');
+  if(error){ showToast('⚠ Falha ao carregar seções'); return; }
+  _secoesCache = data||[];
+  renderSecoesManager();
+}
+
+function rotaCodigo(rota_id){
+  const r=(window.ROTAS_REAIS||[]).find(x=>x.id===rota_id);
+  return r?r.codigo:'';
+}
+
+function renderSecoesManager(){
+  const linhas=_secoesCache.map(s=>`
+    <tr>
+      <td>${String(s.numero).padStart(4,'0')}</td>
+      <td>${s.municipio||'—'}</td>
+      <td>${s.local_nome||'—'}</td>
+      <td style="text-align:right">${s.eleitores??'—'}</td>
+      <td>${rotaCodigo(s.rota_id)||'—'}</td>
+      <td>${s.ativo?'✅':'⛔'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-out btn-xs" onclick="secaoForm('${s.id}')">✏️</button>
+        <button class="btn btn-out btn-xs" onclick="excluirSecao('${s.id}')">🗑</button>
+      </td>
+    </tr>`).join('');
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">Gerenciar seções (${_secoesCache.length})</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:60vh;overflow:auto">
+      <div style="margin-bottom:8px"><button class="btn btn-dark btn-sm" onclick="secaoForm('')">+ Nova seção</button></div>
+      <table class="data-table" style="width:100%;font-size:.8rem">
+        <thead><tr><th>Seção</th><th>Município</th><th>Local</th><th>Eleitores</th><th>Rota</th><th>Ativa</th><th></th></tr></thead>
+        <tbody>${linhas||'<tr><td colspan=7 style="text-align:center;color:var(--text3);padding:16px">Nenhuma seção.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function secaoForm(id){
+  const s=id?_secoesCache.find(x=>x.id===id):null;
+  const rotas=(window.ROTAS_REAIS||[]);
+  const cities=(window.cities&&window.cities.length)?window.cities:[...new Set(_secoesCache.map(x=>x.municipio).filter(Boolean))];
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">${s?'Editar seção':'Nova seção'}</div></div>
+      <button class="close-btn" onclick="renderSecoesManager()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Número da seção</label>
+          <input type="number" id="sc-numero" value="${s?s.numero:''}" ${s?'disabled style=\"opacity:.6\"':''} placeholder="ex: 63"></div>
+        <div class="form-group"><label>Eleitores aptos</label>
+          <input type="number" id="sc-eleitores" value="${s?.eleitores??''}" placeholder="ex: 285"></div>
+      </div>
+      <div class="form-group"><label>Município</label>
+        <input list="sc-cities" id="sc-municipio" value="${s?.municipio||''}" placeholder="Município">
+        <datalist id="sc-cities">${cities.map(c=>`<option value="${c}">`).join('')}</datalist>
+      </div>
+      <div class="form-group"><label>Local de votação</label>
+        <input type="text" id="sc-local" value="${s?.local_nome||''}" placeholder="Nome do local"></div>
+      <div class="form-group"><label>Rota (opcional)</label>
+        <select id="sc-rota">
+          <option value="">— sem rota —</option>
+          ${rotas.map(r=>`<option value="${r.id}" ${s?.rota_id===r.id?'selected':''}>Rota ${r.codigo}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label><input type="checkbox" id="sc-ativo" ${(!s||s.ativo)?'checked':''}> Seção ativa</label></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="renderSecoesManager()">Voltar</button>
+      <button class="btn btn-dark" onclick="salvarSecao('${id||''}')">💾 Salvar</button>
+    </div>`;
+}
+
+async function salvarSecao(id){
+  const numero=parseInt(document.getElementById('sc-numero').value,10);
+  const municipio=document.getElementById('sc-municipio').value.trim();
+  const local=document.getElementById('sc-local').value.trim();
+  const eleitoresRaw=document.getElementById('sc-eleitores').value;
+  const rota_id=document.getElementById('sc-rota').value||null;
+  const ativo=document.getElementById('sc-ativo').checked;
+  if(!numero){ showToast('⚠ Número obrigatório'); return; }
+  if(!municipio||!local){ showToast('⚠ Município e local obrigatórios'); return; }
+  const zona_id=window.MINHA_ZONA_ID;
+  if(!zona_id){ showToast('⚠ Zona do usuário não resolvida'); return; }
+  const payload={ zona_id, numero, municipio, local_nome:local,
+    eleitores: eleitoresRaw===''?null:parseInt(eleitoresRaw,10), rota_id, ativo };
+  let error;
+  if(id){
+    ({ error } = await supabase.from('sime_secoes').update(payload).eq('id',id));
+  } else {
+    ({ error } = await supabase.from('sime_secoes').insert(payload));
+  }
+  if(error){
+    const dup=/duplicate|unique/i.test(error.message||'');
+    showToast('⚠ '+(dup?'Já existe seção com esse número':'Falha ao salvar'));
+    return;
+  }
+  showToast('✓ Seção salva');
+  await openSecoesManager();        // recarrega a lista do banco
+  if(window.carregarDadosReais) await carregarDadosReais(); // atualiza SECTIONS/tabela principal
+}
+
+async function excluirSecao(id){
+  const s=_secoesCache.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`)) return;
+  const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
+  if(error){ showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); return; }
+  showToast('✓ Seção excluída');
+  await openSecoesManager();
+  if(window.carregarDadosReais) await carregarDadosReais();
+}
+
+// ══════════════════════════════════════════════
+// CONFIRMAÇÃO DE MESÁRIOS
+// Verificação pré-eleição: cada mesário confirma (ou não) que permanece na função.
+// Campo sime_atores.confirmacao: pendente | confirmado | recusou | substituido.
+// Mantém sime_atores.ativo em sincronia (recusou/substituido ⇒ ativo=false).
+// ══════════════════════════════════════════════
+let _mesariosCache = [];
+let _mesFiltroStatus = '';
+let _mesBusca = '';
+const CONF_LABEL = { pendente:'⏳ Pendente', confirmado:'✅ Confirmado', recusou:'🚫 Recusou', substituido:'🔄 Substituído' };
+
+function mesSecaoNum(obs){
+  const m = /Se[çc][ãa]o\s*vota[çc][ãa]o:\s*(\d+)/i.exec(obs||'');
+  return m ? String(m[1]).padStart(4,'0') : '—';
+}
+function mesFuncaoTxt(obs){
+  const m = /Fun[çc][ãa]o:\s*([^|]+)/i.exec(obs||'');
+  return m ? m[1].trim() : '—';
+}
+
+async function openMesariosManager(){
+  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
+  let sessao=null;
+  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+  if(!sessao){ showToast('⚠ Faça login para gerenciar mesários'); return; }
+  const { data, error } = await supabase.from('sime_atores')
+    .select('id,nome_completo,telefone_whatsapp,observacao,confirmacao,ativo')
+    .eq('funcao','mesario').order('nome_completo');
+  if(error){ showToast('⚠ Falha ao carregar mesários'); return; }
+  _mesariosCache = data||[];
+  renderMesariosManager();
+}
+
+function renderMesariosManager(){
+  const total=_mesariosCache.length;
+  const cont={pendente:0,confirmado:0,recusou:0,substituido:0};
+  _mesariosCache.forEach(m=>{ cont[m.confirmacao]=(cont[m.confirmacao]||0)+1; });
+  const busca=_mesBusca.trim().toLowerCase();
+  const lista=_mesariosCache.filter(m=>{
+    if(_mesFiltroStatus && m.confirmacao!==_mesFiltroStatus) return false;
+    if(busca){
+      const alvo=(m.nome_completo+' '+mesSecaoNum(m.observacao)).toLowerCase();
+      if(!alvo.includes(busca)) return false;
+    }
+    return true;
+  });
+  const linhas=lista.map(m=>`
+    <tr>
+      <td>${mesSecaoNum(m.observacao)}</td>
+      <td>${m.nome_completo}<div style="color:var(--text3);font-size:.72rem">${mesFuncaoTxt(m.observacao)}</div></td>
+      <td style="white-space:nowrap">${CONF_LABEL[m.confirmacao]||m.confirmacao}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-out btn-xs" title="Confirmado" onclick="setConfirmacao('${m.id}','confirmado')">✅</button>
+        <button class="btn btn-out btn-xs" title="Recusou" onclick="setConfirmacao('${m.id}','recusou')">🚫</button>
+        <button class="btn btn-out btn-xs" title="Substituído" onclick="setConfirmacao('${m.id}','substituido')">🔄</button>
+        <button class="btn btn-out btn-xs" title="Voltar a pendente" onclick="setConfirmacao('${m.id}','pendente')">⏳</button>
+      </td>
+    </tr>`).join('');
+  const opt=(v,txt)=>`<option value="${v}" ${_mesFiltroStatus===v?'selected':''}>${txt}</option>`;
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">Confirmação de mesários (${total})</div>
+      <div style="color:var(--text3);font-size:.78rem">
+        ⏳ ${cont.pendente} pendente · ✅ ${cont.confirmado} confirmado · 🚫 ${cont.recusou} recusou · 🔄 ${cont.substituido} substituído</div></div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:62vh;overflow:auto">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <input type="text" id="mes-busca" placeholder="Buscar nome ou seção…" value="${_mesBusca.replace(/"/g,'&quot;')}"
+               oninput="_mesBusca=this.value;renderMesariosManager();document.getElementById('mes-busca').focus()"
+               style="flex:1;min-width:160px;padding:6px 8px">
+        <select id="mes-status" onchange="_mesFiltroStatus=this.value;renderMesariosManager()">
+          ${opt('','Todos os status')}${opt('pendente','⏳ Pendente')}${opt('confirmado','✅ Confirmado')}${opt('recusou','🚫 Recusou')}${opt('substituido','🔄 Substituído')}
+        </select>
+      </div>
+      <table class="data-table" style="width:100%;font-size:.8rem">
+        <thead><tr><th>Seção</th><th>Nome / função</th><th>Status</th><th>Marcar</th></tr></thead>
+        <tbody>${linhas||'<tr><td colspan=4 style="text-align:center;color:var(--text3);padding:16px">Nenhum mesário no filtro.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function setConfirmacao(id, status){
+  // recusou/substituido ⇒ a pessoa não vai atuar (ativo=false); demais ⇒ ativo=true.
+  const ativo = !(status==='recusou' || status==='substituido');
+  const { error } = await supabase.from('sime_atores')
+    .update({ confirmacao:status, ativo }).eq('id',id);
+  if(error){ showToast('⚠ Falha ao salvar'); return; }
+  const local=_mesariosCache.find(m=>m.id===id);
+  if(local){ local.confirmacao=status; local.ativo=ativo; }
+  showToast('✓ '+(CONF_LABEL[status]||status));
+  renderMesariosManager();
+}
+
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+function renderConfig(){
+  try{
+    const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
+    const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
+    document.getElementById('eleicao-info').innerHTML=`
+      <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
+      <strong>Turno ativo:</strong> ${ta}º turno<br>
+      <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+      <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
+  }catch(e){ document.getElementById('eleicao-info').textContent='Não configurada'; }
+
+  const links=[
+    {icon:'📺',label:'TV Dia',href:'SIME_tv_dia.html'},{icon:'🗳️',label:'Mesário',href:'SIME_mesario.html'},{icon:'🔧',label:'Instalador',href:'SIME_instalador.html'},{icon:'🚚',label:'Conferente',href:'SIME_conferente.html'},{icon:'🚐',label:'Motorista',href:'SIME_motorista.html'},{icon:'📋',label:'Coordenador',href:'SIME_coordenador_preparacao.html'},{icon:'🖥️',label:'TV Véspera',href:'SIME_tv_vespera.html'},{icon:'⚙️',label:'Principal',href:'SIME_principal.html'}
+  ];
+  document.getElementById('quick-links').innerHTML=links.map(l=>`<a href="${l.href}" target="_blank" class="btn btn-out btn-sm">${l.icon} ${l.label}</a>`).join('');
+}
+
+function exportarDados(){
+  const data={mesa:loadMesa(),dist:JSON.parse(localStorage.getItem('sime_dist_v1')||'{}')||'{}',lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sime_snapshot_'+Date.now()+'.json'; a.click();
+  showToast('✓ Snapshot exportado');
+}
+function resetarDados(){
+  ['sime_mesa_v1'].forEach(k=>localStorage.removeItem(k));
+  showToast('✓ Dados resetados'); renderDash(); renderTable(); renderProblemas();
+}
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+function goTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='secoes') renderTable();
+  if(id==='problemas') renderProblemas();
+  if(id==='equipe') renderTeam();
+  if(id==='config') renderConfig();
+  if(id==='midias') renderMidias();
+  if(id==='atores') renderAtores();
+}
+
+function closeModal(e){
+  if(!e||e.target===document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('open');
+}
+
+// showToast()/iniciarRelogio() vêm de sime_ui_utils.js
+iniciarRelogio('clock');
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+
+// Chamado pelo <script type="module"> do topo assim que SECTIONS/cities
+// viram dado real do Supabase (login bem-sucedido) — repopula o dropdown de
+// município (antes fixo nos 3 da 7ª Zona) e reconstrói as telas já montadas
+// com o fallback.
+function recarregarAppComSectionsNovas(){
+  const sel = document.getElementById('sec-filter-cidade');
+  if (sel && window.cities) {
+    const valorAtual = sel.value;
+    sel.innerHTML = '<option value="">Todas as cidades</option>' +
+      window.cities.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.value = valorAtual;
+  }
+  applyUser();
+  renderDash();
+  renderTable();
+  renderConfig();
+}
+
+applyUser();
+renderDash();
+renderTable();
+renderConfig();
+setInterval(()=>{ renderDash(); renderProblemas(); },10000);
+
+// ══════════════════════════════════════════════
+// MÍDIAS
+// ══════════════════════════════════════════════
+const MIDIA_STATUS_LABEL = {
+  aguardando_encerramento:'⏳ Aguardando',
+  pronta_para_coleta:'📦 Pronta',
+  em_coleta_rota:'🚗 Em coleta',
+  coleta_dedicada:'⚡ Dedicada',
+  coletada:'✅ Coletada',
+  entregue_transmissao:'📡 Entregue',
+};
+const MIDIA_STATUS_COLOR = {
+  aguardando_encerramento:'var(--text3)',
+  pronta_para_coleta:'var(--yellow)',
+  em_coleta_rota:'var(--blue)',
+  coleta_dedicada:'var(--purple,#6040a0)',
+  coletada:'var(--green)',
+  entregue_transmissao:'#15803d',
+};
+
+function renderMidias(){
+  renderColetores();
+  const midias = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
+  const counts = {};
+  Object.values(midias).forEach(m=>{
+    const s=m.status||'aguardando_encerramento';
+    counts[s]=(counts[s]||0)+1;
+  });
+  const total = Object.keys(midias).length;
+  document.getElementById('midias-sub').textContent = total + ' de 174 com registro';
+
+  // Stats cards
+  const stats = document.getElementById('midias-stats');
+  stats.innerHTML = Object.entries(MIDIA_STATUS_LABEL).map(([k,lbl])=>`
+    <div class="stat-card">
+      <div class="stat-val" style="color:${MIDIA_STATUS_COLOR[k]}">${counts[k]||0}</div>
+      <div class="stat-lbl">${lbl}</div>
+    </div>`).join('');
+
+  // List prontas
+  const list = document.getElementById('midias-list');
+  const prontas = Object.entries(midias).filter(([,m])=>m.status==='pronta_para_coleta');
+  if(!prontas.length){ list.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3)">Nenhuma mídia pronta para coleta.</div>'; return; }
+  list.innerHTML = '<div style="font-weight:700;font-size:.88rem;margin-bottom:10px;">📦 Prontas para coleta ('+prontas.length+')</div>' +
+    prontas.map(([n,m])=>`
+      <div class="prob-card" style="margin-bottom:8px;">
+        <div class="pc-icon">📦</div>
+        <div class="pc-info">
+          <div class="pc-sec">Seção ${parseInt(n)}</div>
+          <div class="pc-ts">Pronta às ${m.pronta_ts?new Date(m.pronta_ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'--:--'}</div>
+        </div>
+        <button class="btn btn-green btn-sm" onclick="coletarMidia('${n}')">✓ Coletar</button>
+      </div>`).join('');
+}
+
+// Coletores de mídia — com substituto temporário + notificação WhatsApp
+function renderColetores(){
+  const el=document.getElementById('midias-coletores'); if(!el) return;
+  const coletores=loadTeam().filter(m=>m.perfil==='coletor_midias');
+  if(!coletores.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:.78rem">Nenhum coletor de mídias cadastrado. Adicione em 👥 Equipe.</div>';
+    return;
+  }
+  el.innerHTML=coletores.map(m=>{
+    const secs=(m.secoes||[]).map(x=>parseInt(x)).join(', ')||'—';
+    const temSub=!!m.substituto;
+    const waMsg=encodeURIComponent(`SIME — Você foi designado(a) substituto(a) do coletor de mídias ${m.nome}. Seções de coleta: ${secs}. Confirme o recebimento.`);
+    return `<div class="prob-card" style="margin-bottom:8px;">
+      <div class="pc-icon">📦</div>
+      <div class="pc-info">
+        <div class="pc-sec">${m.nome}</div>
+        <div class="pc-ts">Seções: ${secs}</div>
+        ${temSub?`<span class="pc-tipo" style="background:var(--yellow-bg);color:var(--yellow)">🔄 Substituto: ${m.substituto}${m.substituto_tel?' · '+m.substituto_tel.replace(/(\d{2})(\d{4,5})(\d{4})/,'($1) $2-$3'):''}</span>`:'<span class="pc-tipo b-off">Sem substituto</span>'}
+      </div>
+      <div class="pc-actions">
+        ${hasPerm('config_equipe')?`<button class="btn btn-out btn-sm" onclick="editMember('${m.id}')">✏️ Substituto</button>`:''}
+        ${temSub&&m.substituto_tel?`<a class="btn btn-green btn-sm" href="https://wa.me/55${m.substituto_tel}?text=${waMsg}" target="_blank">💬 Notificar</a>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function coletarMidia(n){
+  const d = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
+  d[n]={...d[n],status:'coletada',coletada_ts:Date.now(),tipo_coleta:'dedicada',updated_at:Date.now()};
+  localStorage.setItem('sime_midias_v1',JSON.stringify(d));
+  showToast('✓ Mídia seção '+parseInt(n)+' coletada');
+  renderMidias();
+}
+
+// ══════════════════════════════════════════════
+// ATORES
+// ══════════════════════════════════════════════
+const FUNC_EMOJI_A = {mesario:'🗳️',motorista:'🚗',tecnico:'🔧',auxiliar_eleicao:'🧰',coord_acessibilidade:'♿',coord_motoristas:'🚌',coletor_midias:'📦',preposto:'📋',cartorio:'🏛️',coordenador_acessibilidade:'♿'};
+const FUNC_LABEL_A = {mesario:'Mesário',motorista:'Motorista',tecnico:'Técnico',auxiliar_eleicao:'Auxiliar de Eleição',coord_acessibilidade:'Coord. Acessib.',coord_motoristas:'Coord. Motoristas',coletor_midias:'Coletor de Mídias',preposto:'Preposto',cartorio:'Cartório',coordenador_acessibilidade:'Coord. Acessib.'};
+
+function renderAtores(){
+  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]').filter(a=>a.ativo!==false);
+  document.getElementById('atores-sub').textContent = atores.length + ' ator' + (atores.length!==1?'es':'') + ' cadastrado' + (atores.length!==1?'s':'');
+  const q = (document.getElementById('atores-search')?.value||'').toLowerCase();
+  const func = document.getElementById('atores-funcao')?.value||'';
+
+  const filtered = atores.filter(a=>{
+    if(func && a.funcao!==func) return false;
+    if(q && !a.nome.toLowerCase().includes(q) && !a.secao.includes(q) && !a.telefone.includes(q)) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('atores-tbody');
+  if(!filtered.length){ tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">Nenhum ator encontrado</td></tr>'; return; }
+  tbody.innerHTML = filtered.map(a=>`
+    <tr>
+      <td><strong>${a.nome}</strong></td>
+      <td>Seção ${parseInt(a.secao)||a.secao}</td>
+      <td><span class="badge b-off">${FUNC_EMOJI_A[a.funcao]||''} ${FUNC_LABEL_A[a.funcao]||a.funcao}</span></td>
+      <td>${a.telefone.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3')}</td>
+      <td><a href="https://wa.me/55${a.telefone}" target="_blank" style="font-size:.7rem;padding:4px 8px;background:#25d366;color:#fff;border-radius:5px;text-decoration:none;">💬 WA</a></td>
+    </tr>`).join('');
+}
+</script>
+</body>
+</html>

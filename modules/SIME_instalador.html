@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SIME · Instalador</title>
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+:root {
+  /* paleta suave — mesma base do coordenador */
+  --bg:    #f2efe9;
+  --bg2:   #ebe8e0;
+  --bg3:   #e3dfd6;
+  --card:  #f9f7f4;
+  --border:#d8d3c8;
+  --border2:#cac5b8;
+
+  --text:  #2a2a2a;
+  --text2: #6a6560;
+  --text3: #a09a92;
+
+  /* etapa 1 — chegou */
+  --c1:    #4a6fa5;
+  --c1-bg: #dde7f5;
+  --c1-bd: #adc4e0;
+
+  /* etapa 2 — posicionada */
+  --c2:    #8a5c20;
+  --c2-bg: #f5e8d0;
+  --c2-bd: #d4a870;
+
+  /* etapa 3 — instalada */
+  --c3:    #2e7d52;
+  --c3-bg: #d4f0e0;
+  --c3-bd: #80c8a0;
+
+  /* problema */
+  --prob:    #c0392b;
+  --prob-bg: #fae8e6;
+  --prob-bd: #e8a09a;
+
+  --locked:    #e8e4dc;
+  --locked-txt:#b8b2a8;
+
+  --red-bg:#fae8e6;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+.header{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:12px 16px 10px;position:sticky;top:0;z-index:10;
+}
+.header-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.logo{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;}
+.h-title{font-weight:700;font-size:.92rem;}
+.h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+
+.prereq{display:flex;align-items:center;gap:5px;font-size:.67rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
+.prereq .arr{color:var(--text3);}
+.step1{color:var(--c1);font-weight:700;}
+.step2{color:var(--c2);font-weight:700;}
+.step3{color:var(--c3);font-weight:700;}
+
+.bars{display:flex;flex-direction:column;gap:4px;}
+.mb-row{display:flex;align-items:center;gap:8px;}
+.mb-lbl{font-size:.61rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;width:76px;flex-shrink:0;color:var(--text2);}
+.mb-track{flex:1;height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.mb-fill{height:100%;border-radius:99px;transition:width .4s ease;}
+.mb-fill.f1{background:var(--c1);}
+.mb-fill.f2{background:var(--c2);}
+.mb-fill.f3{background:var(--c3);}
+.mb-pct{font-size:.61rem;font-weight:700;width:28px;text-align:right;flex-shrink:0;}
+.mb-pct.p1{color:var(--c1);}
+.mb-pct.p2{color:var(--c2);}
+.mb-pct.p3{color:var(--c3);}
+
+/* ── TOOLBAR ── */
+.toolbar{
+  padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  background:var(--bg);border-bottom:1px solid var(--border);
+  position:sticky;top:118px;z-index:9;
+}
+.search-wrap{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;padding:0 9px;gap:5px;}
+.search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:.82rem;padding:7px 0;width:100%;}
+.search-wrap input::placeholder{color:var(--text3);}
+.cf{padding:5px 9px;border-radius:6px;font-size:.69rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);white-space:nowrap;}
+.cf.on{background:var(--text);color:var(--card);border-color:var(--text);}
+
+/* ── LISTA ── */
+.list{padding:10px 14px 100px;display:flex;flex-direction:column;gap:6px;}
+
+/* ── CARD DE SEÇÃO ── */
+.sec-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:11px;padding:11px 13px;
+  display:flex;flex-direction:column;gap:8px;
+  transition:opacity .2s;
+}
+.sec-card.done{opacity:.55;}
+.sec-card.hidden{display:none;}
+.sec-card.has-prob{border-color:var(--prob-bd);background:#fffaf9;}
+
+.sec-top{display:flex;align-items:flex-start;gap:8px;}
+.sec-num{font-weight:800;font-size:1rem;min-width:52px;line-height:1.2;}
+.sec-info{flex:1;}
+.sec-local{font-size:.77rem;color:var(--text2);line-height:1.3;}
+.sec-meta{display:flex;gap:6px;align-items:center;margin-top:2px;flex-wrap:wrap;}
+.sec-mun{font-size:.63rem;color:var(--text3);}
+.sec-aptos{font-size:.67rem;font-weight:700;color:var(--text2);background:var(--bg2);border-radius:4px;padding:1px 5px;}
+.sec-badge{font-size:.64rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:1px;}
+.sb-done   {background:var(--c3-bg);color:var(--c3);}
+.sb-partial{background:var(--c2-bg);color:var(--c2);}
+.sb-pending{background:var(--bg2);color:var(--text3);}
+.sb-prob   {background:var(--prob-bg);color:var(--prob);}
+
+/* ── CHECKBOXES DE ETAPAS ── */
+.sec-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+
+.ck{
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  gap:3px;padding:10px 4px 8px;border-radius:8px;
+  border:1.5px solid var(--border);background:var(--bg);
+  cursor:pointer;transition:all .15s;
+  -webkit-user-select:none;user-select:none;position:relative;
+}
+.ck input{position:absolute;opacity:0;width:0;height:0;}
+.ck.locked{background:var(--locked);border-color:var(--locked);cursor:not-allowed;opacity:.5;}
+.ck-lock{display:none;position:absolute;top:4px;right:5px;font-size:.55rem;color:var(--locked-txt);}
+.ck.locked .ck-lock{display:block;}
+.ck-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:.8rem;transition:all .15s;}
+.ck-lbl{font-size:.69rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
+.ck:active:not(.locked){transform:scale(.97);}
+
+.ck.s1.on{background:var(--c1-bg);border-color:var(--c1-bd);}
+.ck.s1.on .ck-box{background:var(--c1);border-color:var(--c1);color:#fff;}
+.ck.s1.on .ck-lbl{color:var(--c1);}
+
+.ck.s2.on{background:var(--c2-bg);border-color:var(--c2-bd);}
+.ck.s2.on .ck-box{background:var(--c2);border-color:var(--c2);color:#fff;}
+.ck.s2.on .ck-lbl{color:var(--c2);}
+
+.ck.s3.on{background:var(--c3-bg);border-color:var(--c3-bd);}
+.ck.s3.on .ck-box{background:var(--c3);border-color:var(--c3);color:#fff;}
+.ck.s3.on .ck-lbl{color:var(--c3);}
+
+/* ── BOTÃO PROBLEMA NA SEÇÃO ── */
+.prob-row{display:flex;align-items:center;gap:8px;margin-top:-2px;}
+.prob-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);
+  background:var(--bg);cursor:pointer;font-size:.7rem;font-weight:600;color:var(--text2);
+  -webkit-user-select:none;user-select:none;transition:all .15s;
+}
+.prob-btn:active{transform:scale(.97);}
+.prob-btn.ativo{background:var(--prob-bg);border-color:var(--prob-bd);color:var(--prob);}
+.prob-btn.resolvido{background:#edf7ef;border-color:#80c8a0;color:var(--c3);}
+.prob-note{flex:1;font-size:.68rem;color:var(--prob);font-weight:600;}
+
+/* ── TOAST — .toast.show vem de sime_components.css ── */
+.toast{
+  position:fixed;bottom:80px;left:50%;
+  transform:translateX(-50%) translateY(12px);
+  background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;
+  font-size:.77rem;font-weight:600;opacity:0;transition:all .22s;
+  pointer-events:none;z-index:200;white-space:nowrap;
+}
+
+/* ── FOOTER ── */
+.footer-bar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--card);border-top:1px solid var(--border);
+  padding:8px 14px;display:flex;align-items:center;gap:10px;
+}
+.f-counts{display:flex;gap:10px;}
+.f-count{text-align:center;}
+.f-val{font-size:1rem;font-weight:800;line-height:1;}
+.f-lbl{font-size:.56rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+.f-count.fc1 .f-val{color:var(--c1);}
+.f-count.fc2 .f-val{color:var(--c2);}
+.f-count.fc3 .f-val{color:var(--c3);}
+.f-count.fcp .f-val{color:var(--prob);}
+.f-count.fct .f-val{color:var(--text3);}
+.btn-reset{margin-left:auto;padding:7px 11px;border-radius:7px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.btn-reset:active{background:var(--red-bg);color:var(--prob);border-color:var(--prob-bd);}
+</style>
+</head>
+<body>
+
+<!-- LOGIN — token+PIN (Fase 4). Nunca bloqueia: "continuar offline" segue
+     100% funcional local, só sem sincronizar com o cartório. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Instalador</div>
+    <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN recebidos do cartório (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#4a6fa5;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">S</div>
+    <div>
+      <div class="h-title">SIME Instalador</div>
+      <div class="h-sub">Véspera · <span id="h-tecnico">Técnico</span> · <span id="h-time">—</span></div>
+    </div>
+  </div>
+  <div class="prereq">
+    <span class="step1">📍 Chegou</span>
+    <span class="arr">·</span>
+    <span class="step2">🖥️ Posicionada</span>
+    <span class="arr">·</span>
+    <span class="step3">✅ Instalada</span>
+    <span style="color:var(--text3);margin-left:4px">· marque em qualquer ordem</span>
+  </div>
+  <div class="bars">
+    <div class="mb-row"><div class="mb-lbl">📍 Chegou</div>    <div class="mb-track"><div class="mb-fill f1" id="mb-f1" style="width:0%"></div></div><div class="mb-pct p1" id="mp-f1">0%</div></div>
+    <div class="mb-row"><div class="mb-lbl">🖥️ Posicionada</div><div class="mb-track"><div class="mb-fill f2" id="mb-f2" style="width:0%"></div></div><div class="mb-pct p2" id="mp-f2">0%</div></div>
+    <div class="mb-row"><div class="mb-lbl">✅ Instalada</div>  <div class="mb-track"><div class="mb-fill f3" id="mb-f3" style="width:0%"></div></div><div class="mb-pct p3" id="mp-f3">0%</div></div>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="search-wrap">
+    <span style="color:var(--text3);font-size:.82rem">⌕</span>
+    <input type="text" placeholder="Buscar seção ou local..." oninput="search(this.value)">
+  </div>
+  <button class="cf on" onclick="setFilter('all',this)">Todas</button>
+  <button class="cf"    onclick="setFilter('pending',this)">Pendentes</button>
+  <button class="cf"    onclick="setFilter('partial',this)">Parciais</button>
+  <button class="cf"    onclick="setFilter('done',this)">Prontas</button>
+  <button class="cf"    onclick="setFilter('prob',this)">⚠ Problemas</button>
+</div>
+
+<div class="list" id="list"></div>
+
+<div class="toast" id="toast"></div>
+
+<div class="footer-bar">
+  <div class="f-counts">
+    <div class="f-count fc1"><div class="f-val" id="fc-f1">0</div><div class="f-lbl">Chegou</div></div>
+    <div class="f-count fc2"><div class="f-val" id="fc-f2">0</div><div class="f-lbl">Posic.</div></div>
+    <div class="f-count fc3"><div class="f-val" id="fc-f3">0</div><div class="f-lbl">Instal.</div></div>
+    <div class="f-count fcp"><div class="f-val" id="fc-fp">0</div><div class="f-lbl">Probl.</div></div>
+    <div class="f-count fct"><div class="f-val" id="fc-ft">0</div><div class="f-lbl">Total</div></div>
+  </div>
+  <button class="btn-reset" onclick="resetAll()">↺ Resetar</button>
+</div>
+
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+import { SIME_CONFIG } from './sime_config.js';
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+async function syncQueueFn(acao, dados) {
+  if (!campoClient) throw new Error('sem sessão de campo');
+  const { error } = await campoClient.rpc('sime_acao_mesa', dados);
+  if (error) throw error;
+}
+
+// Exposto pro <script> clássico (toggle/toggleProb). secaoNumero é a string
+// tipo '0017'.
+window.simeCampo = {
+  syncMesa(secaoNumero, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId) return;
+    const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'instalador', ...partial };
+    syncQueueFn('mesa_estado', dados).catch(() => enqueue('mesa_estado', dados));
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo();
+  esconderLogin();
+  iniciarRetryPeriodico(syncQueueFn);
+});
+
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
+<script src="./sime_ui_utils.js"></script>
+<script>
+// ─── SEÇÕES (exemplo — em produção vem do QR/URL do técnico) ──
+// Substitua por apenas as seções atribuídas a este instalador
+const SECOES = [
+  // Exemplo: Rota 006 — Col. Est. Profª Raimundinho Andrade
+  {n:'0017',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:118},
+  {n:'0018',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:115},
+  {n:'0019',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:117},
+  {n:'0020',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:116},
+  {n:'0157',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:115},
+  // G.E. Valdivino Tito
+  {n:'0033',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:109},
+  {n:'0034',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:105},
+  {n:'0035',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:105},
+  {n:'0036',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:103},
+  {n:'0115',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:104},
+  {n:'0128',local:'G.E. Valdivino Tito',mun:'Campo Maior',aptos:110},
+  // Prefeitura
+  {n:'0045',local:'Prefeitura Municipal',mun:'Campo Maior',aptos:72},
+  {n:'0046',local:'Prefeitura Municipal',mun:'Campo Maior',aptos:78},
+  {n:'0047',local:'Prefeitura Municipal',mun:'Campo Maior',aptos:82},
+];
+
+// Estado: { n: { s1, s2, s3, prob, probTxt } }
+let state = {};
+SECOES.forEach(s => {
+  state[s.n] = { s1:false, s2:false, s3:false, prob:false, probResolvido:false };
+});
+
+let currentFilter = 'all';
+let searchVal = '';
+
+// ── Persistência ──
+const STORE_KEY = 'sime_inst_v1';
+function save() { try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+function load() {
+  try{
+    const d = localStorage.getItem(STORE_KEY);
+    if(d){ const p=JSON.parse(d); Object.keys(state).forEach(k=>{ if(p[k]) state[k]={...state[k],...p[k]}; }); }
+  }catch(e){}
+}
+
+// ── Sem pré-requisito — qualquer etapa pode ser marcada independentemente ──
+function canMark(n, field) { return true; }
+function cascade(n, field, val) {}
+
+const FIELD_TO_RPC = { s1: 'p_urna_chegou', s2: 'p_urna_posicionada', s3: 'p_urna_instalada' };
+
+// ── Toggle etapa ──
+function toggle(n, field) {
+  state[n][field] = !state[n][field];
+  save();
+  if (window.simeCampo) window.simeCampo.syncMesa(n, { [FIELD_TO_RPC[field]]: state[n][field] });
+  refreshCard(n);
+  updateStats();
+  applyVisibility();
+  if(state[n][field]) vib([40, 20, 40]);
+}
+
+// ── Toggle problema ──
+function toggleProb(n) {
+  const s = state[n];
+  if(!s.prob) {
+    // acionar
+    state[n].prob = true;
+    state[n].probResolvido = false;
+    showToast(`⚠️ Seção ${n} — problema registrado`);
+    vib([80, 40, 80]);
+  } else if(!s.probResolvido) {
+    // resolver
+    state[n].prob = false;
+    state[n].probResolvido = true;
+    showToast(`✅ Seção ${n} — problema resolvido`);
+    vib([40, 20, 40]);
+  } else {
+    // re-acionar
+    state[n].prob = true;
+    state[n].probResolvido = false;
+    showToast(`⚠️ Seção ${n} — novo problema`);
+    vib([80, 40, 80]);
+  }
+  save();
+  if (window.simeCampo) window.simeCampo.syncMesa(n, { p_problema_instalacao: state[n].prob, p_problema_instalacao_resolvido: state[n].probResolvido });
+  refreshCard(n);
+  updateStats();
+  applyVisibility();
+}
+
+// ── Badge HTML ──
+function badgeHTML(n) {
+  const s = state[n];
+  if(s.prob && !s.probResolvido) return `<div class="sec-badge sb-prob">⚠ Problema</div>`;
+  const cnt = (s.s1?1:0)+(s.s2?1:0)+(s.s3?1:0);
+  if(cnt === 3) return `<div class="sec-badge sb-done">✅ Pronta</div>`;
+  if(cnt > 0)   return `<div class="sec-badge sb-partial">Parcial</div>`;
+  return `<div class="sec-badge sb-pending">Pendente</div>`;
+}
+
+// ── Problema button HTML ──
+function probBtnHTML(n) {
+  const s = state[n];
+  if(s.prob && !s.probResolvido) {
+    return `<button class="prob-btn ativo" onclick="toggleProb('${n}')">⚠️ Problema ativo — toque para resolver</button>`;
+  }
+  if(s.probResolvido) {
+    return `<button class="prob-btn resolvido" onclick="toggleProb('${n}')">✓ Resolvido — toque para re-acionar</button>`;
+  }
+  return `<button class="prob-btn" onclick="toggleProb('${n}')">⚠️ Registrar problema</button>`;
+}
+
+// ── Rebuild card ──
+function refreshCard(n) {
+  const card = document.querySelector(`.sec-card[data-sec="${n}"]`); if(!card) return;
+  const s = state[n];
+  // badge
+  const sb = card.querySelector('.sec-badge'); if(sb) sb.outerHTML = badgeHTML(n);
+  // classe da card
+  const cnt = (s.s1?1:0)+(s.s2?1:0)+(s.s3?1:0);
+  card.classList.toggle('done', cnt===3 && !s.prob);
+  card.classList.toggle('has-prob', s.prob && !s.probResolvido);
+  // checkboxes
+  [['s1','ck.s1'],['s2','ck.s2'],['s3','ck.s3']].forEach(([f,sel])=>{
+    const ck = card.querySelector('.' + sel);
+    const ic = s[f]; const il = !ic && !canMark(n,f);
+    ck.classList.toggle('on', ic); ck.classList.toggle('locked', il);
+    ck.querySelector('.ck-box').textContent = ic ? '✓' : '';
+    ck.querySelector('.ck-lock').style.display = il ? 'block' : 'none';
+  });
+  // prob button
+  const pr = card.querySelector('.prob-row');
+  if(pr) pr.innerHTML = probBtnHTML(n);
+}
+
+function mkCk(n, field, cls, emoji, label) {
+  const ic = state[n][field];
+  const il = !ic && !canMark(n, field);
+  return `<div class="ck ${cls}${ic?' on':''}${il?' locked':''}" onclick="toggle('${n}','${field}')">
+    <input type="checkbox"${ic?' checked':''}>
+    <span class="ck-lock">🔒</span>
+    <div class="ck-box">${ic?'✓':''}</div>
+    <div class="ck-lbl">${emoji}<br>${label}</div>
+  </div>`;
+}
+
+// ── Build list ──
+function buildList() {
+  const list = document.getElementById('list'); list.innerHTML = '';
+  SECOES.forEach(s => {
+    const st = state[s.n];
+    const cnt = (st.s1?1:0)+(st.s2?1:0)+(st.s3?1:0);
+    const card = document.createElement('div');
+    card.className = 'sec-card' + (cnt===3&&!st.prob?' done':'') + (st.prob&&!st.probResolvido?' has-prob':'');
+    card.dataset.sec = s.n; card.dataset.local = s.local.toLowerCase(); card.dataset.mun = s.mun.toLowerCase();
+    card.innerHTML = `
+      <div class="sec-top">
+        <div class="sec-num">Seção<br>${s.n}</div>
+        <div class="sec-info">
+          <div class="sec-local">${s.local}</div>
+          <div class="sec-meta">
+            <span class="sec-mun">${s.mun}</span>
+            <span class="sec-aptos">👤 ${s.aptos}</span>
+          </div>
+        </div>
+        ${badgeHTML(s.n)}
+      </div>
+      <div class="sec-steps">
+        ${mkCk(s.n,'s1','s1','📍','Chegou')}
+        ${mkCk(s.n,'s2','s2','🖥️','Posicionada')}
+        ${mkCk(s.n,'s3','s3','✅','Instalada')}
+      </div>
+      <div class="prob-row">${probBtnHTML(s.n)}</div>
+    `;
+    list.appendChild(card);
+  });
+  applyVisibility();
+}
+
+// ── Stats ──
+function updateStats() {
+  let f1=0,f2=0,f3=0,fp=0;
+  const T = SECOES.length;
+  SECOES.forEach(s => {
+    const st = state[s.n];
+    if(st.s1) f1++;
+    if(st.s2) f2++;
+    if(st.s3) f3++;
+    if(st.prob && !st.probResolvido) fp++;
+  });
+  const pct = v => Math.round(v/T*100);
+  document.getElementById('mb-f1').style.width=pct(f1)+'%'; document.getElementById('mp-f1').textContent=pct(f1)+'%';
+  document.getElementById('mb-f2').style.width=pct(f2)+'%'; document.getElementById('mp-f2').textContent=pct(f2)+'%';
+  document.getElementById('mb-f3').style.width=pct(f3)+'%'; document.getElementById('mp-f3').textContent=pct(f3)+'%';
+  document.getElementById('fc-f1').textContent=f1;
+  document.getElementById('fc-f2').textContent=f2;
+  document.getElementById('fc-f3').textContent=f3;
+  document.getElementById('fc-fp').textContent=fp;
+  document.getElementById('fc-ft').textContent=T;
+}
+
+// ── Filtros ──
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.cf').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  applyVisibility();
+}
+function search(val) { searchVal=val.toLowerCase().trim(); applyVisibility(); }
+function applyVisibility() {
+  document.querySelectorAll('.sec-card').forEach(card => {
+    const n = card.dataset.sec; const s = state[n];
+    const cnt = (s.s1?1:0)+(s.s2?1:0)+(s.s3?1:0);
+    const ms = !searchVal || n.includes(searchVal) || card.dataset.local.includes(searchVal) || card.dataset.mun.includes(searchVal);
+    let mf = true;
+    if(currentFilter==='pending') mf = cnt===0 && !s.prob;
+    if(currentFilter==='partial') mf = cnt>0 && cnt<3;
+    if(currentFilter==='done')    mf = cnt===3;
+    if(currentFilter==='prob')    mf = s.prob && !s.probResolvido;
+    card.classList.toggle('hidden', !mf || !ms);
+  });
+}
+
+// ── Reset ──
+function resetAll() {
+  if(!confirm('Resetar todas as marcações desta sessão?')) return;
+  SECOES.forEach(s => { state[s.n]={s1:false,s2:false,s3:false,prob:false,probResolvido:false}; });
+  save(); buildList(); updateStats();
+}
+
+// ── Relógio/vib/showToast vêm de sime_ui_utils.js ──
+iniciarRelogio('h-time');
+
+load(); buildList(); updateStats();
+</script>
+</body>
+</html>

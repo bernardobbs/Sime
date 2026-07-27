@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SIME · Mídias</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+:root{
+  --purple:#6040a0;--purple-bg:#ece8f8;--purple-bd:#b0a0d8;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* HEADER */
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:99px;}
+.sync-ok  {background:var(--green-bg);color:var(--green);}
+.sync-pend{background:var(--yellow-bg);color:var(--yellow);}
+.sync-err {background:var(--red-bg);color:var(--red);}
+
+/* TABS */
+.tabs{background:var(--card);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;padding:0 12px;}
+.tab{padding:10px 14px;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;flex-shrink:0;}
+.tab.active{color:var(--text);border-bottom-color:var(--text);}
+
+/* PROGRESS BANNER */
+.progress-banner{background:var(--card);border-bottom:1px solid var(--border);padding:10px 16px;}
+.pb-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+.pb-label{font-size:.72rem;font-weight:700;color:var(--text2);}
+.pb-count{font-size:.78rem;font-weight:800;}
+.pb-bar{height:7px;background:var(--bg3);border-radius:99px;overflow:hidden;}
+.pb-fill{height:100%;border-radius:99px;transition:width .4s;}
+.pb-stats{display:flex;gap:12px;margin-top:6px;}
+.pbs{font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:99px;}
+
+/* LIST */
+.list{padding:8px 14px 100px;display:flex;flex-direction:column;gap:6px;flex:1;}
+.section-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:13px 14px;display:flex;align-items:center;gap:12px;transition:all .15s;}
+.section-card.status-pronta     {background:var(--yellow-bg);border-color:var(--yellow-bd);}
+.section-card.status-em-coleta  {background:var(--blue-bg);border-color:var(--blue-bd);}
+.section-card.status-coletada   {background:var(--green-bg);border-color:var(--green-bd);}
+.section-card.status-entregue   {background:#f0fdf6;border-color:#6ee7b0;}
+.section-card.status-dedicada   {background:var(--purple-bg);border-color:var(--purple-bd);}
+
+.sc-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;}
+.sc-icon.ag{background:var(--bg3);}
+.sc-icon.pr{background:var(--yellow-bg);}
+.sc-icon.co{background:var(--green-bg);}
+.sc-icon.en{background:#d4f7ea;}
+.sc-icon.de{background:var(--purple-bg);}
+
+.sc-info{flex:1;}
+.sc-num{font-weight:800;font-size:1rem;}
+.sc-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.sc-status{font-size:.64rem;font-weight:700;margin-top:3px;}
+.sc-status.ag {color:var(--text3);}
+.sc-status.pr {color:var(--yellow);}
+.sc-status.co {color:var(--green);}
+.sc-status.en {color:#15803d;}
+.sc-status.de {color:var(--purple);}
+
+.sc-btn{padding:10px 14px;border-radius:9px;font-size:.75rem;font-weight:800;cursor:pointer;border:none;flex-shrink:0;transition:all .12s;}
+.sc-btn:active{transform:scale(.96);}
+.btn-coletar  {background:var(--yellow);color:#fff;}
+.btn-entregar {background:var(--green);color:#fff;}
+.btn-dedicada {background:var(--purple);color:#fff;}
+.btn-done     {background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+
+/* ENTREGA TRANSMISSÃO */
+.transmissao-panel{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:18px;margin:14px;text-align:center;}
+.tp-title{font-size:1rem;font-weight:800;margin-bottom:8px;}
+.tp-sub{font-size:.8rem;color:var(--text2);margin-bottom:16px;}
+.tp-stats{display:flex;gap:12px;justify-content:center;margin-bottom:18px;}
+.tps-item{text-align:center;}
+.tps-val{font-size:1.4rem;font-weight:900;}
+.tps-lbl{font-size:.65rem;color:var(--text2);}
+.btn-transmissao{width:100%;padding:16px;border-radius:12px;font-size:1rem;font-weight:800;cursor:pointer;border:none;background:#2a2a2a;color:#fff;transition:all .15s;}
+.btn-transmissao:disabled{background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+.btn-transmissao.ready{background:var(--green);}
+
+/* MODAL — overlay/sheet vêm de sime_components.css */
+.sh-title{font-size:.95rem;font-weight:800;margin-bottom:6px;}
+.sh-sub{font-size:.78rem;color:var(--text2);margin-bottom:16px;line-height:1.5;}
+.sh-input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);font-size:.9rem;margin-bottom:12px;color:var(--text);}
+.sh-label{font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:4px;display:block;}
+.sh-select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;margin-bottom:12px;color:var(--text);}
+.sh-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sbtn{padding:13px;border-radius:10px;font-size:.82rem;font-weight:700;cursor:pointer;border:none;}
+.sbtn.cancel{background:var(--bg2);color:var(--text2);}
+.sbtn.ok{background:#2a2a2a;color:#fff;}
+.sbtn.yellow{background:var(--yellow);color:#fff;}
+.sbtn.purple{background:var(--purple);color:#fff;}
+
+/* TOAST */
+/* .toast.show vem de sime_components.css */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
+
+/* WHATSAPP */
+.notif-badge{display:flex;align-items:center;gap:4px;font-size:.62rem;font-weight:700;padding:3px 9px;border-radius:99px;background:#d4f0e0;color:#2e7d52;border:1px solid #80c8a0;}
+.notif-badge.err{background:var(--red-bg);color:var(--red);border-color:var(--red-bd);}
+.wa-preview{background:#1a2e1a;border-radius:10px;padding:12px 14px;font-size:.72rem;color:#e0f0e0;margin:10px 0;line-height:1.6;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow-y:auto;}
+.resp-row{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+.resp-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;}
+.ri-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;background:#25d366;flex-shrink:0;}
+.ri-info{flex:1;}
+.ri-name{font-size:.82rem;font-weight:700;}
+.ri-func{font-size:.68rem;color:var(--text2);}
+.ri-tel{font-size:.68rem;color:var(--text3);}
+</style>
+</head>
+<body>
+
+<!-- LOGIN — token+PIN (Fase 4). Nunca bloqueia: "continuar offline" segue
+     100% funcional local, só sem sincronizar com o cartório. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#faf9f6;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME · Mídias</div>
+    <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN recebidos do cartório (ou escaneie o QR Code).</div>
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
+  </form>
+</div>
+
+<div class="header">
+  <div class="logo">S</div>
+  <div class="h-info">
+    <div class="h-title">SIME · Mídias</div>
+    <div class="h-sub" id="h-sub">Recolhimento de Mídias</div>
+  </div>
+  <button onclick="abrirConfigWA()" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;" title="Configurar WhatsApp">📲</button><div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" id="tab-rota-btn"    onclick="goTab('rota',this)">🚗 Coleta por Rota</div>
+  <div class="tab"        id="tab-ded-btn"     onclick="goTab('ded',this)">⚡ Coleta Dedicada</div>
+  <div class="tab"        id="tab-trans-btn"   onclick="goTab('trans',this)">📡 Transmissão</div>
+</div>
+
+<div class="progress-banner" id="prog-banner">
+  <div class="pb-row">
+    <div class="pb-label">Mídias recolhidas</div>
+    <div class="pb-count" id="prog-count" style="color:var(--green)">0/174</div>
+  </div>
+  <div class="pb-bar"><div class="pb-fill" id="prog-fill" style="width:0%;background:var(--green)"></div></div>
+  <div class="pb-stats" id="prog-stats"></div>
+</div>
+
+<div class="list" id="main-list"></div>
+
+<div class="overlay" id="overlay">
+  <div class="sheet" id="sheet-body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+
+// Expostas pro <script> clássico abaixo (mesmo padrão de window.simeCampoMidia
+// — imports de módulo não viram globais automaticamente).
+window.simeEnqueue = enqueue;
+window.simeIniciarRetryPeriodico = iniciarRetryPeriodico;
+
+// Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
+// — a anon key não é segredo, só a service_role é).
+import { SIME_CONFIG } from './sime_config.js';
+
+let campoClient = null;
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
+function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
+
+async function resolverEscopo() {
+  initSimeDados(campoClient);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+}
+
+// Exposto pro <script> clássico — chamado de dentro de syncAction() (a fila
+// offline já existente naquele arquivo continua sendo a autoridade local;
+// isto só tenta propagar pro Supabase quando há sessão, e PODE lançar — o
+// catch do chamador já enfileira de novo pra tentar depois).
+window.simeCampoMidia = {
+  async sync(dados) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_acao_midia', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_status: dados.status, p_tipo: dados.tipo ?? null, p_obs: dados.obs ?? null,
+    });
+    if (error) throw error;
+  },
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = document.getElementById('login-token').value.trim();
+  const pin = document.getElementById('login-pin').value.trim();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { client } = await bootstrapCampoSession({
+    supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
+  });
+  if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
+  campoClient = client;
+  await resolverEscopo();
+  esconderLogin();
+});
+
+document.getElementById('login-offline').addEventListener('click', () => {
+  esconderLogin();
+});
+</script>
+<script src="./sime_ui_utils.js"></script>
+<script>
+// ══════════════════════════════════════
+// SYNC — enqueue()/iniciarRetryPeriodico() vêm de sime_offline_queue.js
+// (expostos como window.simeEnqueue/window.simeIniciarRetryPeriodico pelo
+// <script type="module"> acima)
+// ══════════════════════════════════════
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
+
+// Sempre aplica local primeiro (a fila offline acima já cobre o resto). Se
+// houver sessão de campo (Fase 4), tenta propagar pro Supabase — pode lançar,
+// e quem chama syncAction() já trata isso enfileirando de novo.
+async function syncAction(acao, dados) {
+  applyLocalAction(acao, dados);
+  if (window.simeCampoMidia) await window.simeCampoMidia.sync(dados);
+}
+
+// ══════════════════════════════════════
+// DADOS
+// ══════════════════════════════════════
+const SECOES = [
+  {n:'0001',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior',rota:'006'},
+  {n:'0002',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior',rota:'006'},
+  {n:'0003',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior',rota:'006'},
+  {n:'0004',loc:'EMATER',city:'Campo Maior',rota:'006'},
+  {n:'0005',loc:'SAAE',city:'Campo Maior',rota:'006'},
+  {n:'0006',loc:'Sec. Mun. de Educação',city:'Campo Maior',rota:'006'},
+  {n:'0012',loc:'Sec. Mun. de Educação',city:'Campo Maior',rota:'006'},
+  {n:'0014',loc:'EMATER',city:'Campo Maior',rota:'006'},
+  {n:'0015',loc:'Clube dos Comerciários',city:'Campo Maior',rota:'006'},
+  {n:'0016',loc:'Clube dos Comerciários',city:'Campo Maior',rota:'006'},
+  {n:'0017',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior',rota:'006'},
+  {n:'0018',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior',rota:'006'},
+  {n:'0029',loc:'G.E. Marion Saraiva',city:'Campo Maior',rota:'005'},
+  {n:'0030',loc:'G.E. Marion Saraiva',city:'Campo Maior',rota:'005'},
+  {n:'0031',loc:'G.E. Marion Saraiva',city:'Campo Maior',rota:'005'},
+  {n:'0033',loc:'G.E. Valdivino Tito',city:'Campo Maior',rota:'006'},
+  {n:'0044',loc:'Sec. Est. de Fazenda',city:'Campo Maior',rota:'005'},
+  {n:'0045',loc:'Prefeitura Municipal',city:'Campo Maior',rota:'006'},
+  {n:'0046',loc:'Prefeitura Municipal',city:'Campo Maior',rota:'006'},
+  {n:'0047',loc:'Prefeitura Municipal',city:'Campo Maior',rota:'006'},
+  {n:'0062',loc:'FSESP',city:'Campo Maior',rota:'004'},
+  {n:'0063',loc:'G.E. Treze de Março',city:'Campo Maior',rota:'004'},
+  {n:'0064',loc:'G.E. Treze de Março',city:'Campo Maior',rota:'004'},
+  {n:'0065',loc:'G.E. Treze de Março',city:'Campo Maior',rota:'004'},
+  {n:'0066',loc:'G.E. Treze de Março',city:'Campo Maior',rota:'004'},
+  {n:'0071',loc:'CAIC',city:'Campo Maior',rota:'005'},
+  {n:'0074',loc:'Creche Tia Medeiros',city:'Campo Maior',rota:'006'},
+  {n:'0079',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco',rota:'008'},
+  {n:'0080',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco',rota:'008'},
+  {n:'0081',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco',rota:'008'},
+  {n:'0085',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco',rota:'009'},
+  {n:'0086',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco',rota:'009'},
+  {n:'0087',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco',rota:'009'},
+  {n:'0088',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco',rota:'009'},
+  {n:'0101',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0102',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0103',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0112',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0122',loc:'FSESP',city:'Campo Maior',rota:'004'},
+  {n:'0135',loc:'G.E. Profª Maroquinha',city:'Campo Maior',rota:'001'},
+  {n:'0136',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0137',loc:'G.E. Povoado Tapera',city:'Campo Maior',rota:'002'},
+  {n:'0139',loc:'Grupo Escolar',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0140',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0144',loc:'G.E. Profª Maroquinha',city:'Campo Maior',rota:'001'},
+  {n:'0147',loc:'G.E. Aguida M. Conceição',city:'Campo Maior',rota:'010'},
+  {n:'0152',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0155',loc:'CAIC',city:'Campo Maior',rota:'005'},
+  {n:'0159',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0160',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0163',loc:"Salão Com. 'Mario Cazuza'",city:'Campo Maior',rota:'001'},
+  {n:'0165',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí',rota:'010'},
+  {n:'0166',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco',rota:'008'},
+  {n:'0168',loc:'G.E. Prof. Francisco Luis',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0174',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0175',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí',rota:'010'},
+  {n:'0179',loc:'G.E. de Tanques',city:'Jatobá do Piauí',rota:'011'},
+  {n:'0185',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior',rota:'011'},
+  {n:'0186',loc:'Esc. Reassentamento Corredores',city:'Campo Maior',rota:'002'},
+  {n:'0188',loc:'Escola Mun. da Montanha',city:'Jatobá do Piauí',rota:'011'},
+  {n:'0189',loc:'G.E. Manoel Pereira dos Reis',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0199',loc:'U.E. Rafael Nogueira Passos',city:'Jatobá do Piauí',rota:'011'},
+  {n:'0200',loc:'Salão Comunitário',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0204',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0209',loc:'Assoc. Moradores Tangará',city:'Campo Maior',rota:'002'},
+  {n:'0213',loc:'U.E. Manoel Rodrigues Melo',city:'Sigefredo Pacheco',rota:'008'},
+  {n:'0221',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí',rota:'011'},
+  {n:'0225',loc:'Esc. Mun. A.F. Ribeiro Paz',city:'Jatobá do Piauí',rota:'012'},
+  {n:'0240',loc:'IFPI',city:'Campo Maior',rota:'005'},
+  {n:'0247',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco',rota:'007'},
+  {n:'0254',loc:"Creche Vovô José",city:'Campo Maior',rota:'003'},
+];
+
+const MIDIA_KEY = 'sime_midias_v1';
+const LOG_KEY   = 'sime_logs_v1';
+
+function loadMidias()  { try{return JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}')}catch(e){return{}} }
+function saveMidias(d) { localStorage.setItem(MIDIA_KEY, JSON.stringify(d)); }
+function loadMesa()    { try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
+
+function getStatusFromMesa(n) {
+  const mesa = loadMesa()[n];
+  if (!mesa) return 'aguardando';
+  if (mesa.enc || mesa.urna) return 'encerrada';
+  return 'votando';
+}
+
+function getMidia(n) {
+  const d = loadMidias();
+  return d[n] || { status: 'aguardando_encerramento' };
+}
+
+function saveMidiaLocal(n, patch) {
+  const d = loadMidias();
+  d[n] = { ...getMidia(n), ...patch, updated_at: Date.now() };
+  saveMidias(d);
+  log('midia_'+patch.status, 'midias', n, patch);
+}
+
+// Timestamp: em produção, chamar sime_now() no Supabase
+function serverTs() { return Date.now(); } // substituir por RPC pós-migração
+
+function log(acao, modulo, secao, payload) {
+  const logs = JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
+  logs.unshift({ acao, modulo, secao, payload, ts: serverTs() });
+  if (logs.length > 500) logs.splice(400);
+  localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+}
+
+function applyLocalAction(acao, dados) {
+  const { n, status, tipo, obs, resp } = dados;
+  saveMidiaLocal(n, { status, tipo_coleta: tipo, observacao: obs, responsavel: resp });
+}
+
+// ══════════════════════════════════════
+// UI
+// ══════════════════════════════════════
+let curTab = 'rota';
+let sheetAction = null;
+
+function goTab(tab, btn) {
+  curTab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  render();
+}
+
+function render() {
+  const midias = loadMidias();
+  const mesa   = loadMesa();
+
+  // Stats
+  let ag=0, pr=0, co=0, en=0, de=0, tot=SECOES.length;
+  SECOES.forEach(s => {
+    const m = midias[s.n]||{};
+    const st = m.status||'aguardando_encerramento';
+    if(st==='aguardando_encerramento') ag++;
+    else if(st==='pronta_para_coleta') pr++;
+    else if(st==='em_coleta_rota')     co++;
+    else if(st==='coletada')           co++;
+    else if(st==='entregue_transmissao') en++;
+    else if(st==='coleta_dedicada')    de++;
+  });
+  const recolhidas = co + en;
+  const pct = Math.round(recolhidas/tot*100);
+
+  document.getElementById('prog-count').textContent = `${recolhidas}/${tot}`;
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-stats').innerHTML = [
+    pr ? `<span class="pbs" style="background:var(--yellow-bg);color:var(--yellow)">${pr} prontas</span>` : '',
+    co ? `<span class="pbs" style="background:var(--blue-bg);color:var(--blue)">${co} coletadas</span>` : '',
+    de ? `<span class="pbs" style="background:var(--purple-bg);color:var(--purple)">${de} dedicadas</span>` : '',
+    en ? `<span class="pbs" style="background:var(--green-bg);color:var(--green)">${en} entregues</span>` : '',
+    `<span class="pbs" style="background:var(--bg3);color:var(--text3)">${ag} aguardando</span>`,
+  ].join('');
+
+  const list = document.getElementById('main-list');
+
+  if (curTab === 'trans') {
+    renderTransmissao(co, en, tot, recolhidas);
+    list.innerHTML = '';
+    return;
+  }
+
+  // Filter
+  let secs = SECOES;
+  if (curTab === 'ded') {
+    secs = SECOES.filter(s => {
+      const m = midias[s.n]||{};
+      return ['coleta_dedicada','pronta_para_coleta','aguardando_encerramento'].includes(m.status||'aguardando_encerramento');
+    });
+  }
+
+  list.innerHTML = '';
+  secs.forEach(sec => {
+    const m  = midias[sec.n]||{};
+    const st = m.status||'aguardando_encerramento';
+    const mesaEnc = mesa[sec.n]?.enc || mesa[sec.n]?.urna;
+
+    let cls='',iconCls='ag',icon='⏳',statusTxt='',statusCls='ag',btnHtml='';
+
+    if(st==='entregue_transmissao'){
+      cls='status-entregue';iconCls='en';icon='✅';
+      statusTxt='Entregue na transmissão • '+fmtTs(m.entregue_ts, '--:--');statusCls='en';
+      btnHtml='<div class="sc-btn btn-done" style="font-size:.7rem">✓ OK</div>';
+    } else if(st==='coletada'){
+      cls='status-coletada';iconCls='co';icon='✅';
+      statusTxt='Mídia coletada • '+fmtTs(m.coletada_ts, '--:--');statusCls='co';
+      btnHtml='<div class="sc-btn btn-done">✓ Coletada</div>';
+    } else if(st==='em_coleta_rota'){
+      cls='status-em-coleta';iconCls='co';icon='🚗';
+      statusTxt='Em coleta pela rota '+sec.rota;statusCls='co';
+      btnHtml='<div class="sc-btn btn-done">Em coleta</div>';
+    } else if(st==='coleta_dedicada'){
+      cls='status-dedicada';iconCls='de';icon='⚡';
+      statusTxt='Coleta dedicada designada';statusCls='de';
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','dedicada')">🚗 Coletar</button>`;
+    } else if(st==='pronta_para_coleta'){
+      cls='status-pronta';iconCls='pr';icon='📦';
+      statusTxt='Pronta para coleta • '+fmtTs(m.pronta_ts, '--:--');statusCls='pr';
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','rota')">📦 Coletar</button>`;
+    } else {
+      // aguardando_encerramento
+      if(mesaEnc){
+        statusTxt='Mesa encerrada — aguardando confirmação do mesário';statusCls='pr';
+      } else {
+        statusTxt='Aguardando encerramento da seção';statusCls='ag';
+      }
+      if(curTab==='ded'){
+        btnHtml=`<button class="sc-btn btn-dedicada" onclick="abrirDesignarResponsavel('${sec.n}')">⚡ Dedicar + Notificar</button>`;
+      }
+    }
+
+    const card = document.createElement('div');
+    card.className = 'section-card ' + cls;
+    card.innerHTML = `
+      <div class="sc-icon ${iconCls}">${icon}</div>
+      <div class="sc-info">
+        <div class="sc-num">Seção ${parseInt(sec.n)}</div>
+        <div class="sc-loc">${sec.loc} · ${sec.city}</div>
+        <div class="sc-status ${statusCls}">${statusTxt}</div>
+      </div>
+      ${btnHtml}`;
+    list.appendChild(card);
+  });
+
+  if (!list.children.length) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:.85rem">Nenhuma seção nesta categoria.</div>';
+  }
+}
+
+function renderTransmissao(co, en, tot, recolh) {
+  const list = document.getElementById('main-list');
+  const prontas = co;
+  const pct = Math.round(prontas/tot*100);
+  list.innerHTML = `
+    <div class="transmissao-panel">
+      <div class="tp-title">📡 Entrega na Transmissão</div>
+      <div class="tp-sub">Confirme quando todas as mídias coletadas forem entregues no ponto de transmissão.</div>
+      <div class="tp-stats">
+        <div class="tps-item"><div class="tps-val" style="color:var(--green)">${prontas}</div><div class="tps-lbl">Mídias coletadas</div></div>
+        <div class="tps-item"><div class="tps-val" style="color:var(--blue)">${en}</div><div class="tps-lbl">Já entregues</div></div>
+        <div class="tps-item"><div class="tps-val" style="color:var(--text3)">${tot-prontas-en}</div><div class="tps-lbl">Pendentes</div></div>
+      </div>
+      ${prontas > 0 ? `<button class="btn-transmissao ready" onclick="confirmarEntregaTransmissao()">✅ Confirmar entrega de ${prontas} mídias na transmissão</button>` :
+        `<button class="btn-transmissao" disabled>🔒 Nenhuma mídia coletada ainda</button>`}
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// AÇÕES
+// ══════════════════════════════════════
+function abrirColeta(n, tipo) {
+  const sec = SECOES.find(s=>s.n===n);
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sh-title">📦 Coletar mídia — Seção ${parseInt(n)}</div>
+    <div class="sh-sub">${sec.loc} · ${sec.city}\nConfirme o recolhimento da mídia desta seção.</div>
+    <label class="sh-label">Observação (opcional)</label>
+    <input class="sh-input" type="text" id="sh-obs" placeholder="Ex: embalagem danificada...">
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn yellow" onclick="confirmarColeta('${n}','${tipo}')">📦 Confirmar coleta</button>
+    </div>`;
+  openSheet();
+}
+
+async function confirmarColeta(n, tipo) {
+  const obs = document.getElementById('sh-obs')?.value||'';
+  const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: serverTs() };
+  
+  // Atualiza mesa (urna recolhida) também
+  const mesa = loadMesa();
+  if (mesa[n]) { mesa[n].urna = true; localStorage.setItem('sime_mesa_v1', JSON.stringify(mesa)); }
+
+  closeSheet();
+  try {
+    await syncAction('midia_coletada', dados);
+    showToast('✓ Mídia da seção ' + parseInt(n) + ' coletada');
+  } catch(e) {
+    await window.simeEnqueue('midia_coletada', dados);
+    showToast('🟡 Coletada — sincronizará em breve');
+  }
+  render();
+}
+
+async function marcarDedicada(n) {
+  const dados = { n, status: 'coleta_dedicada', tipo: 'dedicada', ts: serverTs() };
+  try {
+    await syncAction('midia_dedicada', dados);
+    showToast('⚡ Seção ' + parseInt(n) + ' marcada para coleta dedicada');
+  } catch(e) {
+    await window.simeEnqueue('midia_dedicada', dados);
+  }
+  render();
+}
+
+async function confirmarEntregaTransmissao() {
+  const midias = loadMidias();
+  const coletadas = Object.entries(midias).filter(([,m])=>m.status==='coletada').map(([n])=>n);
+  const ts = serverTs();
+  coletadas.forEach(n => {
+    saveMidiaLocal(n, { status: 'entregue_transmissao', entregue_ts: ts });
+  });
+  log('entrega_transmissao', 'midias', null, { quantidade: coletadas.length, ts });
+  showToast(`✅ ${coletadas.length} mídias marcadas como entregues`);
+  render();
+}
+
+// SHEET
+function openSheet()  { document.getElementById('overlay').classList.add('show'); }
+function closeSheet() { document.getElementById('overlay').classList.remove('show'); }
+document.getElementById('overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('overlay')) closeSheet();
+});
+
+// showToast()/fmtTs() vêm de sime_ui_utils.js
+
+// INIT
+render();
+setInterval(render, 10000);
+// window.simeIniciarRetryPeriodico só existe depois que o <script
+// type="module"> do topo roda — como ele é adiado (defer implícito de
+// type="module") e este é um <script> clássico, este bloco roda ANTES
+// dele; por isso espera o DOMContentLoaded, que só dispara depois de
+// todo script adiado ter terminado.
+window.addEventListener('DOMContentLoaded', () => {
+  window.simeIniciarRetryPeriodico(syncAction, (pendentes) => updateSyncBadge(pendentes));
+});
+
+// ══════════════════════════════════════
+// WHATSAPP — via Z-API ou Edge Function
+// ══════════════════════════════════════
+const ZAPI_CONFIG_KEY = 'sime_zapi_cfg';
+
+function loadZapiCfg(){
+  try{ return JSON.parse(localStorage.getItem(ZAPI_CONFIG_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+function fmtTelWA(tel){
+  const d = tel.replace(/\D/g,'');
+  return d.startsWith('55') ? d : '55'+d;
+}
+
+async function enviarWA(telefone, mensagem){
+  const cfg = loadZapiCfg();
+  // Fase produção: chama Edge Function
+  if(cfg.edgeUrl){
+    try{
+      await fetch(cfg.edgeUrl+'/notificar-whatsapp',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-webhook-secret':cfg.secret||''},
+        body: JSON.stringify({evento:'manual',telefone,mensagem})
+      });
+      return true;
+    }catch(e){ console.warn('Edge function indisponível, tentando Z-API direto'); }
+  }
+  // Z-API direto (fase atual ou fallback)
+  if(!cfg.instanceId||!cfg.token){ return false; }
+  const url = `https://api.z-api.io/instances/${cfg.instanceId}/token/${cfg.token}/send-text`;
+  try{
+    const res = await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Client-Token':cfg.clientToken||''},
+      body: JSON.stringify({ phone: fmtTelWA(telefone), message: mensagem })
+    });
+    return res.ok;
+  }catch(e){
+    console.error('Erro Z-API:',e);
+    return false;
+  }
+}
+
+// Rodapé das mensagens — antes fixo em "Campo Maior" mesmo para seções de
+// Jatobá do Piauí/Sigefredo Pacheco; agora deriva o município real da seção.
+function rodapeZona(secao){
+  const s = SECOES.find(x=>x.n===String(secao).padStart(4,'0'));
+  return `7ª Zona Eleitoral · ${s?.city || 'Campo Maior'}`;
+}
+
+// Monta mensagem formatada
+function montarMsgRotaAlterada(secao, localNome, resp){
+  return `📦 *SIME — Alteração de Rota*
+
+Olá${resp?' '+resp.nome.split(' ')[0]:''}!
+
+A rota que você é responsável foi *alterada*.
+
+*Seção ${parseInt(secao)}* — ${localNome}
+
+➤ Esta seção foi removida da sua rota e será recolhida por coleta dedicada.
+
+Horário: ${fmtNow()}
+_${rodapeZona(secao)}_`;
+}
+
+function montarMsgNovoResponsavel(secao, localNome, resp){
+  return `📦 *SIME — Nova Designação de Recolhimento*
+
+Olá${resp?' '+resp.nome.split(' ')[0]:''}!
+
+Você foi *designado(a)* para recolher a mídia de:
+
+*Seção ${parseInt(secao)}* — ${localNome}
+
+➤ Coleta dedicada — verifique com o cartório o horário.
+
+Por favor, confirme o recebimento.
+
+Horário: ${fmtNow()}
+_${rodapeZona(secao)}_`;
+}
+
+function montarMsgMidiaPronta(secao, localNome){
+  return `📦 *SIME — Mídia Pronta para Coleta*
+
+*Seção ${parseInt(secao)}* — ${localNome}
+
+O mesário confirmou que a *mídia eleitoral está embalada e pronta* para recolhimento.
+
+Horário: ${fmtNow()}
+_${rodapeZona(secao)}_`;
+}
+
+// Dispara notificação de rota alterada — 2 destinatários
+async function notificarRotaAlterada(secao, localNome, respAntigo, novoResp){
+  const cfg = loadZapiCfg();
+  const zapiOk = !!(cfg.instanceId && cfg.token) || !!cfg.edgeUrl;
+  let enviados = 0;
+
+  if(zapiOk){
+    // 1. Avisa o responsável original (rota alterada)
+    if(respAntigo && respAntigo.telefone){
+      const msg = montarMsgRotaAlterada(secao, localNome, respAntigo);
+      const ok = await enviarWA(respAntigo.telefone, msg);
+      if(ok) enviados++;
+      log('wa_rota_alterada_antigo', 'midias', secao, {resp:respAntigo, ok});
+    }
+    // 2. Avisa o novo responsável (coleta dedicada)
+    if(novoResp && novoResp.telefone){
+      const msg = montarMsgNovoResponsavel(secao, localNome, novoResp);
+      const ok = await enviarWA(novoResp.telefone, msg);
+      if(ok) enviados++;
+      log('wa_novo_responsavel', 'midias', secao, {resp:novoResp, ok});
+    }
+    showToast(enviados > 0
+      ? `📲 ${enviados} notificação${enviados>1?'s':''} WhatsApp enviada${enviados>1?'s':''}`
+      : '⚠ Falha ao enviar WhatsApp — verifique configuração');
+  }
+}
+
+// Modal de designar novo responsável
+function abrirDesignarResponsavel(n){
+  const sec = SECOES.find(s=>s.n===n);
+  if(!sec) return;
+
+  // Busca atores cadastrados
+  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]').filter(a=>a.ativo!==false);
+  const motAtores = atores.filter(a=>['motorista','tecnico','cartorio'].includes(a.funcao));
+
+  // Busca coletor original da rota
+  const rotaId = sec.rota;
+  const colOriginal = atores.find(a=>a.funcao==='motorista');
+
+  const optsHtml = motAtores.length
+    ? motAtores.map(a=>`<option value="${a.id}" data-tel="${a.telefone}" data-nome="${a.nome}">${a.nome} — ${a.funcao}</option>`).join('')
+    : '<option value="">Nenhum ator cadastrado</option>';
+
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sh-title">⚡ Designar coleta dedicada</div>
+    <div class="sh-sub" style="margin-bottom:10px">Seção ${parseInt(n)} · ${sec.loc}</div>
+
+    ${colOriginal ? `<div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:8px;padding:8px 12px;font-size:.75rem;color:var(--yellow);margin-bottom:10px">
+      ⚠ Responsável atual: <strong>${colOriginal.nome}</strong> (Rota ${rotaId})<br>Será notificado da alteração.
+    </div>` : ''}
+
+    <label class="sh-label">Novo responsável pela coleta</label>
+    <select class="sh-select" id="sh-resp-sel" onchange="previewNovoResp(this)">
+      <option value="">— selecionar —</option>
+      ${optsHtml}
+    </select>
+
+    <div id="sh-resp-preview" class="resp-row" style="display:none"></div>
+
+    <label class="sh-label" style="margin-top:8px">Observação (opcional)</label>
+    <input class="sh-input" type="text" id="sh-ded-obs" placeholder="Ex: motorista de apoio, viatura disponível...">
+
+    <div id="wa-preview-area"></div>
+
+    <div class="sh-btns" style="margin-top:12px">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn purple" onclick="confirmarDedicada('${n}')">⚡ Confirmar + Notificar</button>
+    </div>`;
+
+  openSheet();
+}
+
+function previewNovoResp(sel){
+  const opt = sel.options[sel.selectedIndex];
+  const nome = opt.getAttribute('data-nome');
+  const tel  = opt.getAttribute('data-tel');
+  const prev = document.getElementById('sh-resp-preview');
+  const waPrev = document.getElementById('wa-preview-area');
+  if(!nome){ prev.style.display='none'; waPrev.innerHTML=''; return; }
+
+  const sec = SECOES.find(s=>s.n===document.querySelector('.sbtn.purple')?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1]);
+
+  prev.style.display='flex';
+  prev.innerHTML=`<div class="resp-item">
+    <div class="ri-av">🚗</div>
+    <div class="ri-info">
+      <div class="ri-name">${nome}</div>
+      <div class="ri-func">Novo responsável pela coleta</div>
+      <div class="ri-tel">${tel ? tel.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3') : ''}</div>
+    </div>
+  </div>`;
+
+  // Preview da mensagem WhatsApp
+  const msg = montarMsgNovoResponsavel('???', sec?.loc||'—', {nome, telefone:tel});
+  waPrev.innerHTML = `<div style="font-size:.65rem;font-weight:700;color:var(--text3);margin-top:8px;margin-bottom:4px">Preview WhatsApp que será enviado:</div>
+    <div class="wa-preview">${msg.replace(/</g,'&lt;').replace(/\*/g,'<b>').replace(/\*/g,'</b>')}</div>`;
+}
+
+// Confirmar coleta dedicada COM notificação
+async function confirmarDedicada(n){
+  const sel   = document.getElementById('sh-resp-sel');
+  const obs   = document.getElementById('sh-ded-obs')?.value||'';
+  const opt   = sel?.options[sel.selectedIndex];
+  const respId= opt?.value;
+  const respNome = opt?.getAttribute('data-nome');
+  const respTel  = opt?.getAttribute('data-tel');
+  const sec   = SECOES.find(s=>s.n===n);
+  const ts    = Date.now();
+
+  // Salva estado
+  const dados = { n, status:'coleta_dedicada', tipo:'dedicada',
+    obs, responsavel: respId, responsavel_nome: respNome, ts };
+
+  // Atualiza mesa (urna recolhida) também
+  const mesa = loadMesa();
+  if(mesa[n]){ mesa[n].urna=true; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa)); }
+
+  try{
+    await syncAction('midia_dedicada', dados);
+  }catch(e){
+    await window.simeEnqueue('midia_dedicada', dados);
+  }
+
+  closeSheet();
+
+  // Busca responsável original da rota
+  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]');
+  const rotaId = sec?.rota;
+  const respOriginal = atores.find(a=>a.funcao==='motorista' && a.rota===rotaId);
+
+  // Dispara WhatsApp para os dois
+  await notificarRotaAlterada(
+    n,
+    sec?.loc || '—',
+    respOriginal ? { nome: respOriginal.nome, telefone: respOriginal.telefone } : null,
+    respNome && respTel ? { nome: respNome, telefone: respTel } : null
+  );
+
+  showToast(`⚡ Seção ${parseInt(n)} designada para coleta dedicada`);
+  render();
+}
+
+// Configuração Z-API (acessível do admin)
+function abrirConfigWA(){
+  const cfg = loadZapiCfg();
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sh-title">📲 Configurar WhatsApp (Z-API)</div>
+    <div class="sh-sub">Configure uma vez. As notificações são enviadas automaticamente.</div>
+    <label class="sh-label">Instance ID</label>
+    <input class="sh-input" type="text" id="cfg-inst" value="${cfg.instanceId||''}" placeholder="Ex: 3C4D5E6F7G8H">
+    <label class="sh-label">Token</label>
+    <input class="sh-input" type="text" id="cfg-tok" value="${cfg.token||''}" placeholder="Ex: ABCD1234...">
+    <label class="sh-label">Client Token (segurança)</label>
+    <input class="sh-input" type="text" id="cfg-cli" value="${cfg.clientToken||''}" placeholder="Ex: F5EE...">
+    <label class="sh-label">Edge Function URL (opcional, pós-Supabase)</label>
+    <input class="sh-input" type="text" id="cfg-edge" value="${cfg.edgeUrl||''}" placeholder="https://xxx.supabase.co/functions/v1">
+    <div class="sh-btns" style="margin-top:12px">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn ok" onclick="salvarCfgWA()">💾 Salvar</button>
+    </div>`;
+  openSheet();
+}
+
+function salvarCfgWA(){
+  const cfg = {
+    instanceId:  document.getElementById('cfg-inst').value.trim(),
+    token:       document.getElementById('cfg-tok').value.trim(),
+    clientToken: document.getElementById('cfg-cli').value.trim(),
+    edgeUrl:     document.getElementById('cfg-edge').value.trim(),
+  };
+  localStorage.setItem(ZAPI_CONFIG_KEY, JSON.stringify(cfg));
+  closeSheet();
+  showToast('✓ Configuração WhatsApp salva');
+  render();
+}
+
+function fmtNow(){
+  const n=new Date();
+  return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+</script>
+</body>
+</html>

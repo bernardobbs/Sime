@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Painel Principal</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+:root{
+  --teal:#1a7a6e;--teal-bg:#d0f0ec;--teal-bd:#70c0b8;
+  --purple:#6040a0;--purple-bg:#ece8f8;--purple-bd:#b0a0d8;
+  --indigo:#3730a3;--indigo-bg:#e0e7ff;--indigo-bd:#a5b4fc;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;min-height:100vh;}
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;}
+.logo{width:38px;height:38px;border-radius:9px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;color:#fff;flex-shrink:0;}
+.brand h1{font-size:1rem;font-weight:800;}.brand p{font-size:.7rem;color:var(--text2);}
+.topbar-right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.phase-pill{font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:99px;border:1px solid;}
+.clock-pill{font-size:.76rem;font-weight:700;color:var(--text2);background:var(--bg2);padding:4px 10px;border-radius:7px;border:1px solid var(--border);}
+.user-pill{display:flex;align-items:center;gap:7px;background:var(--bg2);padding:5px 10px;border-radius:8px;border:1px solid var(--border);}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:#2a2a2a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;}
+.user-name{font-size:.74rem;font-weight:700;}.user-role{font-size:.62rem;color:var(--text3);}
+.nav-tabs{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;display:flex;overflow-x:auto;}
+.nav-tab{padding:11px 16px;font-size:.8rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;border:none;background:none;transition:all .15s;}
+.nav-tab.active{color:var(--text);border-bottom-color:var(--text);}
+.nav-tab:hover:not(.active){color:var(--text);background:var(--bg2);}
+.page{max-width:1160px;margin:0 auto;padding:24px 24px 60px;}
+.sec-title{font-size:.67rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.sec-title::after{content:"";flex:1;height:1px;background:var(--border);}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid4{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+@media(max-width:720px){.grid2,.grid4{grid-template-columns:1fr;}}
+.btn{padding:7px 14px;border-radius:8px;font-size:.76rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:5px;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;}.btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);}.btn-out:hover{background:var(--bg3);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-sm{padding:5px 10px;font-size:.72rem;}
+.form-group{margin-bottom:13px;}
+.form-group label{font-size:.74rem;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;}
+.form-group input,.form-group select{width:100%;padding:8px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.83rem;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+/* FASE BANNER */
+.fase-banner{border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border:1px solid;}
+.fb-icon{font-size:2.2rem;flex-shrink:0;}
+.fb-fase{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;}
+.fb-desc{font-size:.92rem;font-weight:800;}
+.fb-sub{font-size:.75rem;margin-top:3px;opacity:.75;}
+.fb-right{margin-left:auto;text-align:right;}
+.fb-data{font-size:.82rem;font-weight:700;}
+.fb-cd{font-size:.72rem;margin-top:3px;opacity:.8;}
+/* TIMELINE */
+.timeline{display:flex;margin-bottom:24px;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+.tl-step{flex:1;min-width:110px;padding:14px 12px 12px;position:relative;border-top:4px solid var(--border);background:var(--card);}
+.tl-step.done{border-top-color:var(--green);background:#fafdfb;}
+.tl-step.active{border-top-color:var(--blue);background:var(--blue-bg);}
+.tl-step.next{border-top-color:var(--yellow);}
+.tl-step+.tl-step{border-left:1px solid var(--border);}
+.tl-badge{font-size:.58rem;font-weight:700;padding:2px 6px;border-radius:99px;display:inline-block;margin-bottom:5px;}
+.tl-badge.done{background:var(--green-bg);color:var(--green);}
+.tl-badge.active{background:var(--blue-bg);color:var(--blue);}
+.tl-badge.next{background:var(--yellow-bg);color:var(--yellow);}
+.tl-badge.future{background:var(--bg2);color:var(--text3);}
+.tl-label{font-size:.76rem;font-weight:700;}
+.tl-date{font-size:.68rem;color:var(--text2);margin-top:2px;}
+.tl-mod{font-size:.62rem;color:var(--text3);margin-top:4px;line-height:1.5;}
+/* TURNOS */
+.turno-tabs{display:flex;gap:8px;margin-bottom:16px;}
+.turno-btn{padding:8px 20px;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;border:2px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.turno-btn.active{background:#2a2a2a;color:#fff;border-color:#2a2a2a;}
+.turno-panel{display:none;}.turno-panel.active{display:block;}
+.hint{font-size:.68rem;color:var(--text2);margin-top:3px;line-height:1.4;}
+/* MODULOS */
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:11px;}
+.mod-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;text-decoration:none;cursor:pointer;transition:all .15s;position:relative;}
+.mod-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);transform:translateY(-2px);}
+.mod-card.fase-ativa{border-color:var(--blue-bd);background:var(--blue-bg);}
+.mod-card.fase-ativa::before{content:"FASE ATUAL";position:absolute;top:7px;right:8px;font-size:.52rem;font-weight:700;color:var(--blue);letter-spacing:.06em;}
+.mod-card.disabled{opacity:.42;cursor:default;pointer-events:none;}
+.mod-icon{font-size:1.9rem;}
+.mod-title{font-size:.78rem;font-weight:700;color:var(--text);text-align:center;line-height:1.3;}
+.mod-sub{font-size:.65rem;color:var(--text2);text-align:center;line-height:1.4;}
+.mod-badge{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:99px;}
+/* ZONAS */
+.zona-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:box-shadow .15s;}
+.zona-card:hover{box-shadow:0 4px 18px rgba(0,0,0,.09);}
+.zona-header{padding:14px 18px;display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--border);}
+.zona-num{width:44px;height:44px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;color:#fff;}
+.zona-nome{font-weight:800;font-size:.92rem;}
+.zona-sede{font-size:.73rem;color:var(--text2);margin-top:1px;}
+.zona-badges{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;}
+.zbadge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;}
+.zbadge.ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.zbadge.warn{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.zbadge.off{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.zbadge.new{background:var(--indigo-bg);color:var(--indigo);border:1px solid var(--indigo-bd);}
+.zona-body{padding:14px 18px;}
+.zona-stats{display:flex;gap:14px;margin-bottom:12px;}
+.zstat{text-align:center;}
+.zstat-val{font-size:1.1rem;font-weight:800;color:var(--text);line-height:1;}
+.zstat-lbl{font-size:.62rem;color:var(--text2);margin-top:2px;}
+.zona-actions{display:flex;gap:7px;flex-wrap:wrap;}
+.zona-card.nova{border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;min-height:120px;cursor:pointer;}
+.zona-card.nova:hover{border-color:var(--text);background:var(--bg2);}
+.nova-inner{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text3);}
+.nova-inner span{font-size:1.8rem;}.nova-inner p{font-size:.78rem;font-weight:600;}
+/* ROLES */
+.role-badge{font-size:.67rem;font-weight:700;padding:2px 7px;border-radius:99px;}
+.role-super{background:#1a1a22;color:#e0e0f0;border:1px solid #33334a;}
+.role-admin{background:var(--indigo-bg);color:var(--indigo);border:1px solid var(--indigo-bd);}
+.role-coord{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.role-inst{background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal-bd);}
+.role-motor{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
+.user-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+.user-table th{text-align:left;padding:9px 12px;border-bottom:2px solid var(--border);font-size:.72rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;}
+.user-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
+.user-table td strong{color:var(--text);}
+.user-table tr:last-child td{border-bottom:none;}
+.user-table tr:hover td{background:var(--bg2);}
+.avatar-sm{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:#fff;flex-shrink:0;}
+.td-row{display:flex;align-items:center;gap:8px;}
+.td-actions{display:flex;gap:5px;}
+.td-btn{padding:3px 9px;border-radius:5px;font-size:.7rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.td-btn.del{color:var(--red);border-color:var(--red-bd);background:var(--red-bg);}
+.td-btn.edit{color:var(--blue);border-color:var(--blue-bd);background:var(--blue-bg);}
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;padding:16px;}
+.overlay.show{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.18);}
+.modal-header{padding:18px 20px 14px;border-bottom:1px solid var(--border);}
+.modal-title{font-size:.98rem;font-weight:800;}
+.modal-sub{font-size:.74rem;color:var(--text2);margin-top:3px;}
+.modal-body{padding:18px 20px;}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+/* .toast.show vem de sime_components.css */
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">S</div>
+  <div class="brand"><h1>SIME</h1><p>Sistema de Monitoramento Eleitoral</p></div>
+  <div class="topbar-right">
+    <div class="phase-pill" id="phase-pill" style="background:var(--bg2);color:var(--text2);border-color:var(--border)">Carregando...</div>
+    <div class="clock-pill" id="clock">--:--</div>
+    <div class="user-pill">
+      <div class="user-avatar">RA</div>
+      <div><div class="user-name">Rafael A.</div><div class="user-role">Super Admin</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="nav-tabs">
+  <button class="nav-tab active" onclick="goTab('eleicao',this)">🗓️ Eleição</button>
+  <button class="nav-tab"        onclick="goTab('zonas',this)">🗺️ Zonas</button>
+  <button class="nav-tab"        onclick="goTab('modulos',this)">🔗 Módulos</button>
+  <button class="nav-tab"        onclick="goTab('usuarios',this)">👥 Usuários</button>
+  <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
+</div>
+
+<div class="page">
+
+<!-- ABA ELEIÇÃO -->
+<div id="tab-eleicao" class="tab-panel">
+
+  <div class="fase-banner" id="fase-banner">
+    <div class="fb-icon" id="fb-icon">⏳</div>
+    <div style="flex:1">
+      <div class="fb-fase" id="fb-fase">FASE</div>
+      <div class="fb-desc" id="fb-desc">Carregando...</div>
+      <div class="fb-sub"  id="fb-sub">—</div>
+    </div>
+    <div class="fb-right">
+      <div class="fb-data" id="fb-data">—</div>
+      <div class="fb-cd"   id="fb-cd">—</div>
+    </div>
+  </div>
+
+  <div class="timeline" id="timeline"></div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div style="font-size:1rem;font-weight:800;">Configuração da eleição</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-out btn-sm" onclick="openModal('importar-cal')">📥 Importar calendário TRE</button>
+      <button class="btn btn-dark" onclick="saveEleicao()">💾 Salvar configuração</button>
+    </div>
+  </div>
+
+  <div class="turno-tabs">
+    <button class="turno-btn active" id="tbtn-1" onclick="showTurno(1)">1º Turno</button>
+    <button class="turno-btn"        id="tbtn-2" onclick="showTurno(2)">2º Turno</button>
+  </div>
+
+  <div id="turno-panel-1" class="turno-panel active">
+    <div class="grid2" style="gap:16px;">
+      <div class="card">
+        <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">📅 Datas do 1º turno</div>
+        <div class="form-group">
+          <label>🏭 D-X — Carga e lacre das urnas</label>
+          <input type="date" id="t1-dx" oninput="onDateChange()">
+          <div class="hint">Dias/semanas antes. Ativa: Coordenador de Preparação + TV Preparação.</div>
+        </div>
+        <div class="form-group">
+          <label>🚗 D-1 — Véspera da eleição</label>
+          <input type="date" id="t1-d1" oninput="onDateChange()">
+          <div class="hint">Ativa: Conferente + Instalador + TV Véspera + TV Distribuição.</div>
+        </div>
+        <div class="form-group">
+          <label>🗳️ Dia D — Data da eleição</label>
+          <input type="date" id="t1-d" oninput="onDateChange()">
+          <div class="hint">Ativa: Mesário + TV Dia + Motorista.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">⏰ Horários</div>
+        <div class="form-row">
+          <div class="form-group"><label>Abertura das urnas</label><input type="time" id="t1-ab" value="07:00"></div>
+          <div class="form-group"><label>Encerramento</label><input type="time" id="t1-enc" value="17:00"></div>
+        </div>
+        <div class="form-group">
+          <label>Início da distribuição (D-1)</label>
+          <input type="time" id="t1-dist" value="05:30">
+          <div class="hint">Base para cálculo automático de saída das rotas.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Intervalo entre saídas (min)</label>
+            <input type="number" id="t1-intervalo" value="10" min="5" max="30">
+          </div>
+        </div>
+        <div style="padding-top:12px;border-top:1px solid var(--border);">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem">
+            <input type="radio" name="turno-ativo" value="1" id="ta-1" checked>
+            Turno ativo — módulos usam datas deste turno
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="turno-panel-2" class="turno-panel">
+    <div class="grid2" style="gap:16px;">
+      <div class="card">
+        <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">📅 Datas do 2º turno</div>
+        <div class="form-group">
+          <label>🏭 D-X — Carga e lacre</label>
+          <input type="date" id="t2-dx" oninput="onDateChange()">
+        </div>
+        <div class="form-group">
+          <label>🚗 D-1 — Véspera do 2º turno</label>
+          <input type="date" id="t2-d1" oninput="onDateChange()">
+        </div>
+        <div class="form-group">
+          <label>🗳️ Dia D — 2º turno</label>
+          <input type="date" id="t2-d" oninput="onDateChange()">
+        </div>
+        <div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:8px;padding:10px 12px;font-size:.74rem;color:var(--yellow);">
+          ⚠ O 2º turno usa as mesmas seções e rotas do 1º. Dados operacionais são arquivados separadamente.
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">⏰ Horários do 2º turno</div>
+        <div class="form-row">
+          <div class="form-group"><label>Abertura</label><input type="time" id="t2-ab" value="07:00"></div>
+          <div class="form-group"><label>Encerramento</label><input type="time" id="t2-enc" value="17:00"></div>
+        </div>
+        <div class="form-group"><label>Início da distribuição</label><input type="time" id="t2-dist" value="05:30"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Intervalo entre saídas (min)</label><input type="number" id="t2-intervalo" value="10" min="5" max="30"></div>
+        </div>
+        <div style="padding-top:12px;border-top:1px solid var(--border);">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem">
+            <input type="radio" name="turno-ativo" value="2" id="ta-2">
+            Turno ativo — módulos usam datas deste turno
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ABA ZONAS -->
+<div id="tab-zonas" class="tab-panel" style="display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <div style="font-size:1rem;font-weight:800;">Zonas eleitorais</div>
+      <div style="font-size:.75rem;color:var(--text2);margin-top:2px;">Cada zona opera de forma completamente independente.</div>
+    </div>
+    <button class="btn btn-dark" onclick="openModal('nova-zona')">+ Adicionar zona</button>
+  </div>
+  <div class="grid4" style="margin-bottom:20px;">
+    <div class="zona-card">
+      <div class="zona-header">
+        <div class="zona-num" style="background:#3a5fa0">7ª</div>
+        <div>
+          <div class="zona-nome">7ª Zona Eleitoral</div>
+          <div class="zona-sede">Campo Maior — PI</div>
+          <div class="zona-badges"><span class="zbadge ok">✓ Ativa</span><span class="zbadge ok">174 seções</span><span class="zbadge warn">13 sem rota</span></div>
+        </div>
+      </div>
+      <div class="zona-body">
+        <div class="zona-stats">
+          <div class="zstat"><div class="zstat-val">174</div><div class="zstat-lbl">Seções</div></div>
+          <div class="zstat"><div class="zstat-val">12</div><div class="zstat-lbl">Rotas</div></div>
+          <div class="zstat"><div class="zstat-val">34.967</div><div class="zstat-lbl">Eleitores</div></div>
+          <div class="zstat"><div class="zstat-val">3</div><div class="zstat-lbl">Admins</div></div>
+        </div>
+        <div class="zona-actions">
+          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','7')">⚙️ Configurar</button>
+          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','7')">👥 Admins</button>
+        </div>
+      </div>
+    </div>
+    <div class="zona-card">
+      <div class="zona-header">
+        <div class="zona-num" style="background:#6040a0">96ª</div>
+        <div>
+          <div class="zona-nome">96ª Zona Eleitoral</div>
+          <div class="zona-sede">— não definido —</div>
+          <div class="zona-badges"><span class="zbadge new">✦ Recém criada</span><span class="zbadge off">Sem seções</span></div>
+        </div>
+      </div>
+      <div class="zona-body">
+        <div class="zona-stats">
+          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Seções</div></div>
+          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Rotas</div></div>
+          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">1</div><div class="zstat-lbl">Admin</div></div>
+        </div>
+        <div style="font-size:.74rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠ Configure a sede e importe as seções para ativar.</div>
+        <div class="zona-actions">
+          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','96')">⚙️ Configurar</button>
+          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','96')">👥 Admins</button>
+        </div>
+      </div>
+    </div>
+    <div class="zona-card nova" onclick="openModal('nova-zona')">
+      <div class="nova-inner"><span>＋</span><p>Nova zona</p></div>
+    </div>
+  </div>
+  <div class="card" style="font-size:.8rem;color:var(--text2);line-height:1.8;">
+    🔒 <strong style="color:var(--text)">Isolamento total:</strong> seções, rotas, usuários e eventos de cada zona são completamente separados. O Super Admin é o único que enxerga todas as zonas.
+  </div>
+</div>
+
+<!-- ABA MÓDULOS -->
+<div id="tab-modulos" class="tab-panel" style="display:none;">
+  <div style="font-size:1rem;font-weight:800;margin-bottom:4px;">Módulos operacionais</div>
+  <div style="font-size:.75rem;color:var(--text2);margin-bottom:18px;">Os módulos em azul correspondem à fase atual da eleição.</div>
+  <div class="sec-title">D-X · Preparação das urnas</div>
+  <div class="mod-grid" style="margin-bottom:20px;" id="mods-dx"></div>
+  <div class="sec-title">D-1 · Véspera da eleição</div>
+  <div class="mod-grid" style="margin-bottom:20px;" id="mods-d1"></div>
+  <div class="sec-title">Dia D · Eleição</div>
+  <div class="mod-grid" style="margin-bottom:20px;" id="mods-d"></div>
+  <div class="sec-title">Painéis de TV</div>
+  <div class="mod-grid" id="mods-tv"></div>
+</div>
+
+<!-- ABA USUÁRIOS -->
+<div id="tab-usuarios" class="tab-panel" style="display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div><div style="font-size:1rem;font-weight:800;">Usuários e permissões</div></div>
+    <div style="display:flex;gap:8px;">
+      <select id="zona-filter" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.78rem;" onchange="filterUsers()">
+        <option value="all">Todas as zonas</option><option value="7">7ª Zona</option><option value="96">96ª Zona</option>
+      </select>
+      <button class="btn btn-dark" onclick="openModal('novo-usuario')">+ Novo usuário</button>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Zona</th><th>Último acesso</th><th></th></tr></thead>
+    <tbody id="user-tbody"></tbody></table>
+  </div>
+</div>
+
+<!-- ABA CONFIG -->
+<div id="tab-config" class="tab-panel" style="display:none;">
+  <div style="font-size:1rem;font-weight:800;margin-bottom:16px;">Configurações do sistema</div>
+  <div class="grid2" style="gap:16px;">
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Identificação</div>
+      <div class="form-group"><label>Nome da eleição</label><input type="text" id="cfg-nome-eleicao" placeholder="ex: Eleições Municipais 2026"></div>
+      <div class="form-group"><label>Nome do sistema</label><input type="text" value="SIME"></div>
+      <div class="form-group"><label>Fuso horário</label>
+        <select><option>America/Fortaleza (UTC-3)</option><option>America/Sao_Paulo (UTC-3)</option></select>
+      </div>
+      <button class="btn btn-dark" onclick="showToast("✓ Salvo")">💾 Salvar</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Zona de perigo</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:.78rem;font-weight:700;margin-bottom:4px;">Arquivar turno ativo</div>
+          <div style="font-size:.72rem;color:var(--text2);margin-bottom:8px;">Move dados operacionais para o histórico e prepara para o próximo turno.</div>
+          <button class="btn btn-out" onclick="openModal('arquivar')">📦 Arquivar turno</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;">
+          <div style="font-size:.78rem;font-weight:700;margin-bottom:4px;color:var(--red)">Resetar dados operacionais</div>
+          <div style="font-size:.72rem;color:var(--text2);margin-bottom:8px;">Apaga todos os dados de campo do turno ativo. Irreversível.</div>
+          <button class="btn btn-red" onclick="openModal('resetar')">🗑 Resetar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /page -->
+
+<div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="./sime_ui_utils.js"></script>
+<script>
+const ELEICAO_KEY = 'sime_eleicao_v1';
+function loadEl(){ try{return JSON.parse(localStorage.getItem(ELEICAO_KEY)||'{}')}catch(e){return{}} }
+function saveEl(d){ localStorage.setItem(ELEICAO_KEY, JSON.stringify(d)); }
+
+// RELÓGIO — iniciarRelogio() vem de sime_ui_utils.js
+iniciarRelogio('clock');
+
+// DATAS
+function fmtDate(s){ if(!s) return '—'; const d=new Date(s+'T12:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function todayYMD(){ return new Date().toISOString().slice(0,10); }
+function diffDays(s){ if(!s) return null; const h=new Date(); h.setHours(0,0,0,0); const a=new Date(s+'T12:00:00'); a.setHours(0,0,0,0); return Math.round((a-h)/86400000); }
+
+// SALVAR
+function saveEleicao(){
+  const ta = document.querySelector('input[name="turno-ativo"]:checked')?.value||'1';
+  const d = {
+    nome: document.getElementById('cfg-nome-eleicao')?.value||'',
+    turno_ativo: +ta,
+    turno1:{ dx:document.getElementById('t1-dx').value, d1:document.getElementById('t1-d1').value, d:document.getElementById('t1-d').value, abertura:document.getElementById('t1-ab').value, encerramento:document.getElementById('t1-enc').value, dist_inicio:document.getElementById('t1-dist').value, intervalo_min:+document.getElementById('t1-intervalo').value },
+    turno2:{ dx:document.getElementById('t2-dx').value, d1:document.getElementById('t2-d1').value, d:document.getElementById('t2-d').value,  abertura:document.getElementById('t2-ab').value, encerramento:document.getElementById('t2-enc').value, dist_inicio:document.getElementById('t2-dist').value, intervalo_min:+document.getElementById('t2-intervalo').value },
+  };
+  saveEl(d);
+  propagateDist(d);
+  updateFase(); renderTimeline(); renderModulos();
+  showToast('✓ Eleição configurada e salva!');
+}
+
+function propagateDist(el){
+  try{
+    const t=el['turno'+(el.turno_ativo||1)];
+    const dist=JSON.parse(localStorage.getItem('sime_dist_v1')||'{}');
+    if(!dist.config) return;
+    dist.config.intervalo_min=t.intervalo_min;
+    const [hh,mm]=(t.dist_inicio||'05:30').split(':').map(Number);
+    let base=hh*60+mm;
+    Object.keys(dist.config.rotas||{}).sort((a,b)=>(dist.config.rotas[a].ordem_saida||99)-(dist.config.rotas[b].ordem_saida||99)).forEach(nome=>{
+      const H=Math.floor(base/60),M=base%60;
+      dist.config.rotas[nome].saida_prev=String(H).padStart(2,'0')+':'+String(M).padStart(2,'0');
+      base+=t.intervalo_min;
+    });
+    localStorage.setItem('sime_dist_v1',JSON.stringify(dist));
+  }catch(e){}
+}
+
+function onDateChange(){ updateFase(); renderTimeline(); }
+
+// FASE
+function getTurno(){ const el=loadEl(); return el['turno'+(el.turno_ativo||1)]||{}; }
+function getFase(){
+  const t=getTurno(); const hoje=todayYMD();
+  if(!t.d) return 'pre';
+  if(hoje>t.d) return 'pos';
+  if(hoje===t.d) return 'd';
+  if(t.d1&&hoje>=t.d1) return 'd1';
+  if(t.dx&&hoje>=t.dx) return 'dx';
+  return 'pre';
+}
+
+const FASE_CFG = {
+  pre: { icon:'📝', label:'Pré-configuração', desc:'Configure as datas da eleição para ativar o sistema.', bg:'#f2efe9', bc:'#cac5b8', tc:'#6a6560' },
+  dx:  { icon:'📦', label:'D-X · Preparação', desc:'Período de carga, preparação e lacre das urnas.', bg:'#dde7f5', bc:'#adc4e0', tc:'#3a5fa0' },
+  d1:  { icon:'🚗', label:'D-1 · Véspera',    desc:'Distribuição e instalação das seções.', bg:'#fff8ec', bc:'#fcd34d', tc:'#8a5c20' },
+  d:   { icon:'🗳️', label:'Dia D · Eleição',  desc:'Dia da votação. Mesário e motorista ativos.', bg:'#d4f0e0', bc:'#80c8a0', tc:'#2e7d52' },
+  pos: { icon:'🏁', label:'Pós-eleição',       desc:'Eleição encerrada. Configure o próximo turno.', bg:'#f5f3ff', bc:'#c4b5fd', tc:'#5b21b6' },
+};
+
+function updateFase(){
+  const fid=getFase(); const fc=FASE_CFG[fid];
+  const t=getTurno(); const hoje=todayYMD();
+  const banner=document.getElementById('fase-banner');
+  banner.style.background=fc.bg; banner.style.borderColor=fc.bc;
+  document.getElementById('fb-icon').textContent=fc.icon;
+  document.getElementById('fb-fase').textContent=fc.label; document.getElementById('fb-fase').style.color=fc.tc;
+  document.getElementById('fb-desc').textContent=fc.desc; document.getElementById('fb-desc').style.color=fc.tc;
+  const pill=document.getElementById('phase-pill');
+  pill.textContent=fc.icon+' '+fc.label; pill.style.background=fc.bg; pill.style.color=fc.tc; pill.style.borderColor=fc.bc;
+  let prox=null, proxLbl='';
+  if(fid==='pre'||fid==='dx'){prox=fid==='pre'?t.dx:t.d1; proxLbl=fid==='pre'?'Início D-X':'Véspera D-1';}
+  else if(fid==='d1'){prox=t.d; proxLbl='Dia da eleição';}
+  const diff=diffDays(prox);
+  document.getElementById('fb-sub').textContent=prox?('Próximo: '+proxLbl+' — '+fmtDate(prox)):(fid==='pos'?'Configure 2º turno se necessário.':'');
+  document.getElementById('fb-data').textContent=t.d?'Eleição: '+fmtDate(t.d):'Data não configurada';
+  document.getElementById('fb-cd').textContent=diff!==null?(diff===0?'Hoje!':diff>0?'Faltam '+diff+' dia'+(diff>1?'s':''):'Há '+(-diff)+' dia'+(-diff>1?'s':'')):'';
+}
+
+function renderTimeline(){
+  const t=getTurno(); const fid=getFase(); const hoje=todayYMD();
+  const steps=[
+    {label:'D-X · Preparação', date:t.dx, mods:'Coordenador · TV Preparação', cls:fid==='dx'?'active':(t.dx&&hoje>t.dx?'done':'')},
+    {label:'D-1 · Véspera',    date:t.d1, mods:'Conferente · Instalador · TVs', cls:fid==='d1'?'active':(t.d1&&hoje>t.d1?'done':'next')},
+    {label:'Dia D · Eleição',  date:t.d,  mods:'Mesário · Motorista · TV Dia',  cls:fid==='d'?'active':(t.d&&hoje>t.d?'done':'')},
+    {label:'Pós-eleição',      date:'',   mods:'Arquivamento · 2º turno',        cls:fid==='pos'?'active':''},
+  ];
+  document.getElementById('timeline').innerHTML=steps.map(s=>`<div class="tl-step ${s.cls}">
+    <div class="tl-badge ${s.cls||'future'}">${s.cls==='done'?'✓ Concluído':s.cls==='active'?'● Agora':s.cls==='next'?'Próximo':'—'}</div>
+    <div class="tl-label">${s.label}</div>
+    <div class="tl-date">${s.date?fmtDate(s.date):'Não definido'}</div>
+    <div class="tl-mod">${s.mods}</div>
+  </div>`).join('');
+}
+
+// MÓDULOS
+const MODS = {
+  dx:[
+    {icon:'📋',title:'Coordenador de Preparação',sub:'Checklist de carga, preparação e lacre',href:'SIME_coordenador_preparacao.html',fase:'dx'},
+    {icon:'📺',title:'TV Preparação',sub:'Telão do cartório — relógio e progresso',href:'SIME_tv_preparacao.html',fase:'dx'},
+  ],
+  d1:[
+    {icon:'🚚',title:'Conferente',sub:'Embarque das urnas por rota',href:'SIME_conferente.html',fase:'d1'},
+    {icon:'🔧',title:'Instalador',sub:'Instalação das seções por técnico',href:'SIME_instalador.html',fase:'d1'},
+    {icon:'🖥️',title:'TV Véspera',sub:'Acompanhamento da instalação',href:'SIME_tv_vespera.html',fase:'d1'},
+    {icon:'🚗',title:'TV Distribuição',sub:'Acompanhamento do embarque das rotas',href:'SIME_tv_distribuicao.html',fase:'d1'},
+  ],
+  d:[
+    {icon:'🗳️',title:'Mesário',sub:'Controle remoto da seção — Dia D',href:'SIME_mesario.html',fase:'d'},
+    {icon:'🚐',title:'Motorista',sub:'Entrega e recolhimento de urnas',href:'SIME_motorista.html',fase:'d'},
+    {icon:'📊',title:'Dashboard Operacional',sub:'Visão consolidada de todas as seções',href:'SIME_admin.html',fase:'d'},
+  ],
+  tv:[
+    {icon:'📺',title:'Gerenciador de Painéis',sub:'Configure painéis personalizados para TVs',href:'SIME_paineis.html',fase:null},
+    {icon:'🌅',title:'TV Dia da Eleição',sub:'Painel de acompanhamento do Dia D',href:'SIME_tv_dia.html',fase:'d'},
+    {icon:'🔧',title:'Administração',sub:'Gestão de seções, equipe e ocorrências',href:'SIME_admin.html',fase:null},
+    {icon:'📦',title:'Recolhimento de Mídias',sub:'Controle do fluxo de mídias eleitorais',href:'SIME_midias.html',fase:'d'},
+    {icon:'👥',title:'Cadastro de Atores',sub:'Contatos e Modo Guerra por seção',href:'SIME_atores.html',fase:null},
+    {icon:'🔖',title:'Tokens & QR Codes',sub:'Gera e imprime QR + PIN dos operadores de campo',href:'SIME_tokens.html',fase:null},
+    {icon:'📄',title:'Relatórios',sub:'Seções, distribuição de urnas e ocorrências',href:'SIME_relatorios.html',fase:null},
+  ],
+};
+
+function renderModulos(){
+  const fid=getFase();
+  Object.entries(MODS).forEach(([g,mods])=>{
+    const el=document.getElementById('mods-'+g); if(!el) return;
+    el.innerHTML=mods.map(m=>{
+      const ativo=m.fase===fid;
+      const cls=['mod-card',ativo?'fase-ativa':'',m.dis?'disabled':''].filter(Boolean).join(' ');
+      const badge=m.dis?'<span class="mod-badge" style="background:var(--bg2);color:var(--text3)">Em desenvolvimento</span>':ativo?'<span class="mod-badge" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)">Fase atual</span>':'';
+      const tag=m.href?'a':'div';
+      const href=m.href?'href="'+m.href+'" target="_blank"':'';
+      return '<'+tag+' class="'+cls+'" '+href+'><div class="mod-icon">'+m.icon+'</div><div class="mod-title">'+m.title+'</div><div class="mod-sub">'+m.sub+'</div>'+badge+'</'+tag+'>';
+    }).join('');
+  });
+}
+
+// TABS
+function goTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).style.display='block';
+  btn.classList.add('active');
+}
+function showTurno(n){
+  [1,2].forEach(i=>{
+    document.getElementById('turno-panel-'+i).classList.toggle('active',i===n);
+    document.getElementById('tbtn-'+i).classList.toggle('active',i===n);
+  });
+}
+
+// USUÁRIOS
+const USERS=[
+  {name:'Rafael A.',ini:'RA',color:'#2a2a2a',role:'super',rl:'Super Admin',zona:'Todas',last:'Agora'},
+  {name:'Maria S.',ini:'MS',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'hoje 07:12'},
+  {name:'João P.',ini:'JP',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'ontem'},
+  {name:'Ana C.',ini:'AC',color:'#6040a0',role:'admin',rl:'Admin de Zona',zona:'96ª',last:'—'},
+  {name:'Carlos M.',ini:'CM',color:'#1a7a6e',role:'coord',rl:'Coordenador',zona:'7ª',last:'hoje 06:58'},
+  {name:'Paulo T.',ini:'PT',color:'#1a7a6e',role:'inst',rl:'Técnico',zona:'7ª',last:'—'},
+  {name:'José R.',ini:'JR',color:'#8a5c20',role:'motor',rl:'Motorista',zona:'7ª',last:'—'},
+];
+const RCLS={super:'role-super',admin:'role-admin',coord:'role-coord',inst:'role-inst',motor:'role-motor'};
+function buildUsers(f='all'){
+  document.getElementById('user-tbody').innerHTML=USERS
+    .filter(u=>f==='all'||u.zona==='Todas'||(f==='7'&&u.zona==='7ª')||(f==='96'&&u.zona==='96ª'))
+    .map(u=>'<tr><td><div class="td-row"><div class="avatar-sm" style="background:'+u.color+'">'+u.ini+'</div><strong>'+u.name+'</strong></div></td>'
+      +'<td><span class="role-badge '+RCLS[u.role]+'">'+u.rl+'</span></td>'
+      +'<td>'+u.zona+'</td><td style="font-size:.76rem">'+u.last+'</td>'
+      +'<td><div class="td-actions"><button class="td-btn edit" onclick="openModal(\'editar-usuario\',\'' + u.name + '\')">✏️</button><button class="td-btn del">🗑</button></div></td></tr>').join('');
+}
+buildUsers();
+function filterUsers(){ buildUsers(document.getElementById('zona-filter').value); }
+
+// MODAIS
+const MODALS={
+  'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Zona criada")">Criar</button></div>',
+  'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div style="border:2px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer">📄 Selecionar arquivo</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
+  'admins-zona':(z)=>'<div class="modal-header"><div class="modal-title">👥 Admins da '+z+'ª Zona</div></div><div class="modal-body">'+(z==='7'?'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#3a5fa0">MS</div><div style="flex:1"><strong>Maria S.</strong></div><button class="td-btn del">🗑</button></div>':'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#6040a0">AC</div><div style="flex:1"><strong>Ana C.</strong></div><button class="td-btn del">🗑</button></div>')+'</div><div class="modal-footer"><button class="btn btn-dark" onclick="closeModal()">Fechar</button></div>',
+  'novo-usuario':()=>'<div class="modal-header"><div class="modal-title">👤 Novo usuário</div><div class="modal-sub">O usuário verá apenas a zona atribuída.</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Nome</label><input type="text"></div><div class="form-group"><label>E-mail</label><input type="email"></div></div><div class="form-group"><label>Perfil</label><select><option>Admin de Zona</option><option>Coordenador</option><option>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona — Campo Maior</option><option>96ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Criado")">Criar</button></div>',
+  'editar-usuario':(n)=>'<div class="modal-header"><div class="modal-title">✏️ Editar — '+n+'</div></div><div class="modal-body"><div class="form-group"><label>Perfil</label><select><option>Admin</option><option>Coordenador</option><option selected>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona</option><option>96ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
+  'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Turno arquivado")">Arquivar</button></div>',
+  'resetar':()=>`<div class="modal-header"><div class="modal-title" style="color:var(--red)">⚠️ Resetar dados</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--red);background:var(--red-bg);border:1px solid var(--red-bd);border-radius:8px;padding:12px;margin-bottom:14px">Apaga permanentemente todos os dados de campo.</div><div class="form-group"><label>Digite RESETAR para confirmar</label><input type="text" id="rc"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-red" onclick="doResetar()">Resetar</button></div>`,
+  'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div style="border:2px dashed var(--border2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:12px">📅 Selecionar arquivo do TRE (.ics / .csv)</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Calendário importado")">Importar</button></div>',
+};
+
+function doResetar(){ const v=document.getElementById('rc'); if(v&&v.value==='RESETAR'){closeModal();showToast('✓ Resetado');}else showToast('Digite RESETAR para confirmar'); }
+function openModal(k,p){ const fn=MODALS[k]; if(!fn) return; document.getElementById('modal-body').innerHTML=fn(p); document.getElementById('overlay').classList.add('show'); }
+function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeModal(); });
+
+// TOAST
+// showToast() vem de sime_ui_utils.js
+
+// INIT
+(function(){
+  const el=loadEl();
+  const fill=(id,v)=>{ const e=document.getElementById(id); if(e&&v) e.value=v; };
+  if(el.turno1){ fill('t1-dx',el.turno1.dx); fill('t1-d1',el.turno1.d1); fill('t1-d',el.turno1.d); fill('t1-ab',el.turno1.abertura); fill('t1-enc',el.turno1.encerramento); fill('t1-dist',el.turno1.dist_inicio); if(el.turno1.intervalo_min) fill('t1-intervalo',el.turno1.intervalo_min); }
+  if(el.turno2){ fill('t2-dx',el.turno2.dx); fill('t2-d1',el.turno2.d1); fill('t2-d',el.turno2.d); fill('t2-ab',el.turno2.abertura); fill('t2-enc',el.turno2.encerramento); fill('t2-dist',el.turno2.dist_inicio); if(el.turno2.intervalo_min) fill('t2-intervalo',el.turno2.intervalo_min); }
+  const ta=document.getElementById('ta-'+(el.turno_ativo||1)); if(ta) ta.checked=true;
+  if(el.nome) fill('cfg-nome-eleicao',el.nome);
+  updateFase(); renderTimeline(); renderModulos();
+})();
+</script>
+</body>
+</html>

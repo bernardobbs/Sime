@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Painéis TV</title>
+<link rel="stylesheet" href="./sime_theme_purple.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+:root{
+  --bg3:#d8d5eb; --border2:#b8b5cc;
+  --green:#1e7048; --green-bg:#d4f0e0; --green-bd:#80c8a0;
+  --red:#c0392b; --red-bg:#fae8e6; --red-bd:#e0a09a;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;}
+body{display:flex;flex-direction:column;}
+
+/* ═══ MANAGER ═══════════════════════════════════ */
+#manager{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+
+.mgr-top{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:14px 24px;display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;z-index:10;flex-shrink:0;
+}
+.mgr-logo{width:36px;height:36px;border-radius:9px;background:#2a2838;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.95rem;color:#fff;flex-shrink:0;}
+.mgr-brand{font-weight:800;font-size:1rem;}
+.mgr-sub{font-size:.72rem;color:var(--text2);margin-top:1px;}
+.mgr-right{margin-left:auto;display:flex;gap:8px;}
+.btn{padding:8px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:6px;transition:all .15s;}
+.btn-dark{background:#2a2838;color:#fff;} .btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);} .btn-out:hover{background:var(--bg3);}
+.btn-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+.btn-sm{padding:5px 10px;font-size:.72rem;}
+
+.mgr-body{padding:20px 24px 40px;}
+.mgr-title{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+.mgr-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* GRID DE PAINÉIS */
+.panels-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+
+.panel-card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:18px;display:flex;flex-direction:column;gap:12px;
+  transition:box-shadow .15s;
+}
+.panel-card:hover{box-shadow:0 4px 18px rgba(0,0,0,.09);}
+.panel-card.add-card{
+  border:2px dashed var(--border2);cursor:pointer;
+  align-items:center;justify-content:center;min-height:160px;
+}
+.panel-card.add-card:hover{border-color:var(--text);background:var(--bg2);}
+.add-inner{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text3);}
+.add-inner span{font-size:1.8rem;}
+.add-inner p{font-size:.78rem;font-weight:600;}
+
+.pc-header{display:flex;align-items:flex-start;gap:10px;}
+.pc-icon{width:40px;height:40px;border-radius:9px;background:#2a2838;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;color:#fff;}
+.pc-meta{flex:1;}
+.pc-name{font-weight:800;font-size:.95rem;}
+.pc-info{font-size:.73rem;color:var(--text2);margin-top:2px;}
+
+.pc-pages{display:flex;flex-direction:column;gap:4px;}
+.pc-page{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg2);border-radius:6px;font-size:.75rem;}
+.pc-page-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);}
+.pc-page-label{color:var(--text);}
+.pc-page-secs{margin-left:auto;color:var(--text2);font-size:.7rem;}
+.pc-rot{font-size:.7rem;color:var(--text2);display:flex;align-items:center;gap:5px;}
+.pc-rot-badge{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700;}
+.pb-static{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.pb-auto{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
+
+.pc-actions{display:flex;gap:7px;flex-wrap:wrap;}
+
+/* URL box */
+.url-box{background:var(--bg2);border-radius:7px;padding:7px 10px;font-size:.68rem;color:var(--text2);font-family:monospace;display:flex;align-items:center;gap:8px;border:1px solid var(--border);}
+.url-box span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.copy-btn{cursor:pointer;font-size:.7rem;padding:2px 7px;border-radius:5px;background:var(--border);color:var(--text2);border:none;flex-shrink:0;}
+.copy-btn:hover{background:var(--border2);}
+
+/* ═══ MODAL ════════════════════════════════════ */
+.overlay{position:fixed;inset:0;background:rgba(30,27,46,.5);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;padding:16px;}
+.overlay.show{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:14px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.18);}
+.modal-header{padding:18px 20px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:1;}
+.modal-title{font-size:1rem;font-weight:800;}
+.modal-sub{font-size:.75rem;color:var(--text2);margin-top:3px;}
+.modal-body{padding:18px 20px;}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+
+.form-group{margin-bottom:14px;}
+.form-group label{font-size:.74rem;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;}
+.form-group input,.form-group select{width:100%;padding:8px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.83rem;outline:none;}
+.form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+.toggle-row{display:flex;align-items:center;gap:10px;}
+.toggle{width:38px;height:22px;border-radius:99px;background:var(--bg3);cursor:pointer;position:relative;transition:background .2s;border:none;flex-shrink:0;}
+.toggle.on{background:var(--blue);}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;}
+.toggle.on::after{left:19px;}
+.toggle-label{font-size:.78rem;color:var(--text2);}
+
+/* PÁGINAS DO PAINEL */
+.pages-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.page-item{background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:12px 14px;}
+.page-item-header{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.page-num{width:24px;height:24px;border-radius:50%;background:var(--text);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;flex-shrink:0;}
+.page-name-inp{flex:1;padding:5px 9px;border-radius:6px;border:1px solid var(--border2);background:var(--card);font-size:.78rem;outline:none;}
+.page-del{width:26px;height:26px;border-radius:6px;border:none;background:var(--red-bg);color:var(--red);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;}
+
+/* seletor de seções */
+.sec-selector{display:flex;flex-direction:column;gap:8px;}
+.sel-tabs{display:flex;gap:4px;}
+.sel-tab{padding:4px 10px;border-radius:6px;font-size:.7rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--text2);}
+.sel-tab.active{background:#2a2838;color:#fff;border-color:#2a2838;}
+.sel-panel{display:none;} .sel-panel.active{display:block;}
+
+.range-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.range-row input[type=number]{width:80px;padding:6px 9px;border-radius:7px;border:1px solid var(--border2);background:var(--card);font-size:.8rem;text-align:center;}
+.range-row label{font-size:.78rem;color:var(--text2);}
+.add-range-btn{padding:6px 12px;border-radius:7px;border:none;background:#2a2838;color:#fff;font-size:.72rem;font-weight:700;cursor:pointer;}
+
+.check-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:160px;overflow-y:auto;}
+.check-item{display:flex;align-items:center;gap:6px;font-size:.74rem;padding:5px 7px;border-radius:6px;cursor:pointer;}
+.check-item:hover{background:var(--bg2);}
+.check-item input{cursor:pointer;width:14px;height:14px;}
+
+.sec-chips{display:flex;flex-wrap:wrap;gap:3px;max-height:70px;overflow-y:auto;padding:4px;background:var(--bg2);border-radius:7px;border:1px solid var(--border);min-height:32px;}
+.sec-chip{padding:2px 7px;border-radius:99px;font-size:.64rem;font-weight:700;background:#e8e6f0;color:var(--text2);}
+.sec-count{font-size:.7rem;color:var(--text2);padding:4px 6px;}
+.clear-btn{margin-left:auto;font-size:.65rem;color:var(--red);cursor:pointer;border:none;background:none;padding:2px 6px;}
+
+/* ═══ TV VIEWER ═════════════════════════════════ */
+#viewer{flex:1;overflow:hidden;display:none;flex-direction:column;}
+
+.v-topbar{
+  height:38px;flex-shrink:0;background:var(--card);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 16px;gap:10px;
+}
+.v-logo{font-size:.72rem;font-weight:900;letter-spacing:.1em;color:var(--blue);}
+.v-sep{width:1px;height:16px;background:var(--border);}
+.v-panel-name{font-size:.78rem;font-weight:800;color:var(--text);}
+.v-stats{display:flex;gap:9px;flex:1;flex-wrap:wrap;}
+.vts{font-size:.63rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.vtsd{width:5px;height:5px;border-radius:50%;}
+.v-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.v-back{padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);font-size:.68rem;font-weight:700;cursor:pointer;color:var(--text2);}
+.v-clock{font-size:.78rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+
+.v-content{flex:1;overflow:hidden;position:relative;}
+.v-page{position:absolute;inset:0;padding:5px 8px 2px;opacity:0;transition:opacity .4s;pointer-events:none;display:flex;flex-direction:column;gap:4px;}
+.v-page.active{opacity:1;pointer-events:all;}
+
+.v-page-hdr{display:flex;align-items:center;gap:8px;padding:2px 2px 4px;flex-shrink:0;}
+.v-ph-bar{width:3px;border-radius:2px;height:24px;}
+.v-ph-name{font-size:.95rem;font-weight:800;}
+.v-ph-meta{font-size:.67rem;color:var(--text2);}
+.v-ph-prog{margin-left:auto;font-size:.72rem;font-weight:700;}
+
+.v-loc-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));
+  gap:4px;align-content:start;flex:1;overflow:hidden;
+}
+.v-loc{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:6px 7px 5px;
+  display:flex;flex-direction:column;gap:3px;
+  transition:background .3s,border-color .3s;cursor:pointer;
+}
+.v-loc.done{background:#f0fdf6;border-color:#6ee7b0;}
+.v-loc.delayed:not(.done){background:#fffbf0;border-color:#fcd34d;}
+.v-loc.prob:not(.done){background:#fef2f2;border-color:#fca5a5;}
+.v-loc-name{font-size:.63rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.v-loc.done .v-loc-name{color:#15803d;}
+.v-loc-time{min-height:12px;font-size:.58rem;font-weight:700;}
+.v-loc-time.ok{color:#16a34a;} .v-loc-time.late{color:#dc2626;} .v-loc-time.on{color:#d97706;}
+.v-circles{display:flex;flex-wrap:wrap;gap:4px;}
+
+/* círculo */
+.sw{position:relative;width:52px;height:52px;flex-shrink:0;}
+.pb{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.5rem;font-weight:900;color:#fff;z-index:2;border:2px solid var(--bg);}
+.pb.err{background:#ef4444;animation:pp .8s ease-in-out infinite;}
+.pb.warn{background:#f97316;animation:pw 1.2s ease-in-out infinite;}
+@keyframes pp{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 5px rgba(239,68,68,.35);}}
+@keyframes pw{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}50%{box-shadow:0 0 0 4px rgba(249,115,22,.3);}}
+
+/* barra de nav */
+.v-nav{
+  height:36px;flex-shrink:0;background:var(--card);
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;padding:0 12px;gap:8px;
+}
+.nav-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.nav-btn:hover{background:var(--bg3);}
+.pdots{display:flex;gap:5px;}
+.pdot{width:9px;height:9px;border-radius:50%;border:2px solid var(--border);cursor:pointer;transition:all .2s;}
+.pdot.act{transform:scale(1.2);}
+.pg-label{font-size:.7rem;font-weight:700;color:var(--text2);min-width:160px;text-align:center;}
+.cd-wrap{flex:1;display:flex;align-items:center;gap:7px;}
+.cd-track{flex:1;height:4px;background:var(--bg2);border-radius:99px;overflow:hidden;}
+.cd-fill{height:100%;border-radius:99px;background:var(--blue);transition:width 1s linear;}
+.cd-num{font-size:.62rem;font-weight:700;color:var(--text3);min-width:24px;text-align:right;}
+.pause-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.78rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.d-inp-wrap{display:flex;align-items:center;gap:4px;font-size:.65rem;color:var(--text2);}
+.d-inp-wrap input{width:38px;padding:2px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);font-size:.65rem;text-align:center;}
+.v-leg{display:flex;gap:10px;}
+.vli{display:flex;align-items:center;gap:3px;font-size:.58rem;color:var(--text3);}
+.vlid{width:6px;height:6px;border-radius:50%;}
+
+/* toast */
+/* .toast.show vem de sime_components.css */
+.toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2838;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:300;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<!-- ═══ MANAGER ═══════════════════════════════════ -->
+<div id="manager">
+  <div class="mgr-top">
+    <div class="mgr-logo">S</div>
+    <div><div class="mgr-brand">SIME — Gerenciador de Painéis TV</div><div class="mgr-sub">Configure, personalize e abra painéis em diferentes TVs simultaneamente</div></div>
+    <div class="mgr-right">
+      <button class="btn btn-dark" onclick="openEditor(null)">＋ Novo painel</button>
+    </div>
+  </div>
+  <div class="mgr-body">
+    <div class="mgr-title">Painéis configurados</div>
+    <div class="panels-grid" id="panels-grid"></div>
+  </div>
+</div>
+
+<!-- ═══ TV VIEWER ════════════════════════════════= -->
+<div id="viewer">
+  <div class="v-topbar">
+    <div class="v-logo">SIME</div>
+    <div class="v-sep"></div>
+    <div class="v-panel-name" id="v-pname">—</div>
+    <div class="v-sep"></div>
+    <div class="v-stats" id="v-stats"></div>
+    <div class="v-right">
+      <button class="v-back" onclick="goManager()">← Gerenciador</button>
+      <div id="v-datasrc" style="font-size:.65rem;font-weight:700;color:var(--text3)">⚪ Simulação</div>
+      <div class="v-clock" id="v-clock">--:--:--</div>
+    </div>
+  </div>
+  <div class="v-content" id="v-content"></div>
+  <div class="v-nav" id="v-nav">
+    <button class="nav-btn" onclick="vGoPage(vCurPage-1)">‹</button>
+    <div class="pdots" id="v-dots"></div>
+    <div class="pg-label" id="v-pg-label">—</div>
+    <div class="cd-wrap">
+      <div class="cd-track"><div class="cd-fill" id="v-cdfill" style="width:100%"></div></div>
+      <div class="cd-num" id="v-cdnum">—</div>
+    </div>
+    <button class="pause-btn" id="v-pause" onclick="vTogglePause()">⏸</button>
+    <button class="nav-btn" onclick="vGoPage(vCurPage+1)">›</button>
+    <div class="v-sep"></div>
+    <div class="d-inp-wrap">⏱ <input type="number" id="v-delay-inp" value="10" min="3" max="60" onchange="vSetDelay(+this.value)">s</div>
+    <div class="v-sep"></div>
+    <div class="v-leg">
+      <div class="vli"><div class="vlid" style="background:#dc2626"></div>Não saiu</div>
+      <div class="vli"><div class="vlid" style="background:#d97706"></div>Trânsito</div>
+      <div class="vli"><div class="vlid" style="background:#ca8a04"></div>Chegou</div>
+      <div class="vli"><div class="vlid" style="background:#16a34a"></div>Pronta</div>
+      <div class="vli"><div class="vlid" style="background:#ef4444"></div>Problema</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITOR -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Novo painel</div>
+      <div class="modal-sub">Configure o nome, as seções por página e o modo de rotação.</div>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nome do painel</label>
+        <input type="text" id="ed-name" placeholder="ex: TV Entrada · Seções 1–30">
+      </div>
+      <div class="form-group">
+        <label>Ícone do painel</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="ed-icons"></div>
+      </div>
+      <div style="border-bottom:1px solid var(--border);margin-bottom:14px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:.78rem;font-weight:700;">Páginas do painel</div>
+        <button class="btn btn-out btn-sm" onclick="addPage()">+ Adicionar página</button>
+      </div>
+      <div class="pages-list" id="ed-pages"></div>
+      <div style="border-bottom:1px solid var(--border);margin:14px 0;"></div>
+      <div class="form-group">
+        <label>Rotação automática</label>
+        <div class="toggle-row">
+          <button class="toggle" id="rot-toggle" onclick="toggleRot()"></button>
+          <span class="toggle-label" id="rot-label">Estático — exibe tudo sem rotação</span>
+        </div>
+      </div>
+      <div id="rot-delay-row" style="display:none">
+        <div class="form-group">
+          <label>Intervalo entre páginas (segundos)</label>
+          <input type="number" id="ed-delay" value="10" min="3" max="120" style="width:120px">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeEditor()">Cancelar</button>
+      <button class="btn btn-dark" onclick="savePanel()">💾 Salvar painel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { bootstrapTvSession, agruparSecoesPorCidade } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes } from './sime_dados.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+import { SIME_CONFIG } from './sime_config.js';
+
+// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES` — basta
+// reatribuir a variável (sem reload) que o próximo tick já usa o dado real.
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+  const secoes = await getSecoes({ fallback: null });
+  if (secoes) {
+    window.CITIES = agruparSecoesPorCidade(secoes);
+    if (window.recalcularDerivadosDeCities) window.recalcularDerivadosDeCities();
+  }
+})();
+</script>
+<script src="./sime_ui_utils.js"></script>
+<script>
+// ══════════════════════════════════════════════════════
+// DADOS — seções agrupadas por cidade e local
+// ══════════════════════════════════════════════════════
+// `var` (não `let`/`const`): precisa ser a MESMA variável que `window.CITIES`,
+// já que o módulo acima reatribui via `window.CITIES = ...` — `let` no escopo
+// global NÃO vira propriedade de `window` (só `var`/function declarations viram).
+var CITIES=[
+  {city:'Campo Maior',color:'#2d50a0',locs:[
+    {id:'CM-01',n:'Assoc. Moradores Tangará',      s:['0209']},
+    {id:'CM-02',n:'CAIC',                          s:['0071','0155','0202','0223']},
+    {id:'CM-03',n:'Centro Ed. JA Mulata Lima',     s:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},
+    {id:'CM-04',n:'Clube dos Comerciários',        s:['0015','0016','0125']},
+    {id:'CM-05',n:'Col. Est. Profª Raimundinho',   s:['0017','0018','0019','0020','0157']},
+    {id:'CM-06',n:'Creche Tia Medeiros',           s:['0074','0197','0206','0219','0224','0229','0236','0257','0261']},
+    {id:'CM-07',n:'Creche Vovô José',             s:['0254']},
+    {id:'CM-08',n:'EMATER',                        s:['0004','0014','0037','0038']},
+    {id:'CM-09',n:'Esc. Reassentamento Corredores',s:['0186']},
+    {id:'CM-10',n:'Esc. Mun. Mano Castelo Branco', s:['0185','0226']},
+    {id:'CM-11',n:'Esc. Mun. N.S. de Fátima',     s:['0242','0248','0256']},
+    {id:'CM-12',n:'Esc. Mun. R.A. Maximino',      s:['0187']},
+    {id:'CM-13',n:'FSESP',                         s:['0062','0122']},
+    {id:'CM-14',n:'G.E. Aguida M. Conceição',     s:['0147','0173','0198','0215','0235']},
+    {id:'CM-15',n:'G.E. Povoado Tapera',           s:['0137','0220']},
+    {id:'CM-16',n:'G.E. Marion Saraiva',           s:['0029','0030','0031','0123','0148','0259']},
+    {id:'CM-17',n:'G.E. Profª Maroquinha',         s:['0135','0144']},
+    {id:'CM-18',n:'G.E. Treze de Março',           s:['0063','0064','0065','0066','0124','0145','0181']},
+    {id:'CM-19',n:'G.E. Valdivino Tito',           s:['0033','0034','0035','0036','0115','0128']},
+    {id:'CM-20',n:'IFPI',                          s:['0240','0251']},
+    {id:'CM-21',n:'Posto Saúde da Varjota',        s:['0218']},
+    {id:'CM-22',n:'Prefeitura Municipal',          s:['0045','0046','0047','0116','0117']},
+    {id:'CM-23',n:'SAAE',                          s:['0005']},
+    {id:'CM-24',n:'Salão Com. Corredores',         s:['0195','0234']},
+    {id:'CM-25',n:"Salão Com. 'Mario Cazuza'",    s:['0163']},
+    {id:'CM-26',n:'Salão Com. Santo Antônio',      s:['0164']},
+    {id:'CM-27',n:'Sec. Est. de Fazenda',          s:['0044','0191']},
+    {id:'CM-28',n:'Sec. Mun. de Educação',         s:['0006','0012','0149']},
+    {id:'CM-29',n:'U.E. José Gomes de Oliveira',   s:['0180']},
+    {id:'CM-30',n:'U.E. José Gonçalves Oliveira',  s:['0196']},
+    {id:'CM-31',n:'U.E. Linoca Gayoso',            s:['0141','0192','0244']},
+    {id:'CM-32',n:'U.E. Vida Verde',               s:['0205','0217','0233','0255']},
+  ]},
+  {city:'Jatobá do Piauí',color:'#1e7048',locs:[
+    {id:'JP-01',n:'Creche Mamãe Lima M. Oliveira', s:['0174','0210','0232','0260']},
+    {id:'JP-02',n:'Esc. Mun. A.M. Castelo Branco', s:['0212','0245']},
+    {id:'JP-03',n:'Esc. Mun. A.F. Ribeiro Paz',   s:['0225']},
+    {id:'JP-04',n:'Escola Mun. da Montanha',       s:['0188']},
+    {id:'JP-05',n:'G.E. Anita Gaioso',             s:['0175','0238']},
+    {id:'JP-06',n:'G.E. de Tanques',               s:['0179','0194']},
+    {id:'JP-07',n:'G.E. Prof. Francisco Luis',     s:['0168']},
+    {id:'JP-08',n:'Grupo Escolar',                 s:['0139']},
+    {id:'JP-09',n:'Igreja da Morada Nova',         s:['0221','0243']},
+    {id:'JP-10',n:'Posto Saúde M. Sousa Dié',      s:['0160','0162','0258']},
+    {id:'JP-11',n:'Salão Comunitário',             s:['0200']},
+    {id:'JP-12',n:'U.E. Francisco F.P. Oliveira',  s:['0216','0227']},
+    {id:'JP-13',n:'U.E. João Félix de Andrade',    s:['0207','0239']},
+    {id:'JP-14',n:'U.E. José Cândido Gaioso',      s:['0178']},
+    {id:'JP-15',n:'U.E. Oscar Gil C. Branco',      s:['0165','0208','0253']},
+    {id:'JP-16',n:'U.E. Rafael Nogueira Passos',   s:['0199']},
+    {id:'JP-17',n:'U.E. Tertuliano Pereira',       s:['0101','0102','0103','0112','0171','0172','0176']},
+  ]},
+  {city:'Sigefredo Pacheco',color:'#5c3a98',locs:[
+    {id:'SP-01',n:'Esc. Rural Sto. Antônio C.V.',  s:['0193','0214']},
+    {id:'SP-02',n:'G.E. Manoel Francisco',         s:['0136','0152']},
+    {id:'SP-03',n:'G.E. Manoel Pereira dos Reis',  s:['0189']},
+    {id:'SP-04',n:'G.E. Monsenhor Mateus',         s:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},
+    {id:'SP-05',n:'U.E. Antonio Carmelo Barbosa',  s:['0167','0230']},
+    {id:'SP-06',n:'U.E. Antonio Cícero Oliveira',  s:['0166','0228']},
+    {id:'SP-07',n:'U.E. Antônio Pereira Santos',   s:['0140','0201']},
+    {id:'SP-08',n:'U.E. da Paz Sousa',             s:['0079','0080','0081','0133','0252']},
+    {id:'SP-09',n:'U.E. Dr. Jerônimo S. Silva',    s:['0241','0250']},
+    {id:'SP-10',n:'U.E. Ivon Pacheco',             s:['0204','0247']},
+    {id:'SP-11',n:'U.E. José Ribeiro da Luz',      s:['0203','0211','0222']},
+    {id:'SP-12',n:'U.E. Jovino Josino Oliveira',   s:['0138','0231']},
+    {id:'SP-13',n:'U.E. Manoel Rodrigues Melo',    s:['0213']},
+    {id:'SP-14',n:'U.E. Miguel Rocha',             s:['0159','0246']},
+  ]},
+];
+
+// Lista plana de todas as seções + mapa ID→{city,loc}. `var` pelo mesmo motivo
+// de CITIES: recalculados por recalcularDerivadosDeCities() sempre que CITIES
+// for substituído pelo dado real do Supabase (ver <script type="module"> acima).
+function recalcularDerivadosDeCities(){
+  window.ALL_SECS = CITIES.flatMap(c=>c.locs.flatMap(l=>l.s));
+  window.SEC_MAP = {};
+  CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{ SEC_MAP[n]={city:c.city,loc:l.n,cityColor:c.color}; })));
+}
+var ALL_SECS, SEC_MAP;
+recalcularDerivadosDeCities();
+
+// ══════════════════════════════════════════════════════
+// ARMAZENAMENTO DOS PAINÉIS
+// ══════════════════════════════════════════════════════
+const PANELS_KEY = 'sime_panels_v1';
+function loadPanels(){ try{ return JSON.parse(localStorage.getItem(PANELS_KEY)||'[]'); }catch(e){ return []; } }
+function savePanels(panels){ localStorage.setItem(PANELS_KEY, JSON.stringify(panels)); }
+function genId(){ return 'p' + Date.now().toString(36); }
+
+// ══════════════════════════════════════════════════════
+// ESTADO DAS SEÇÕES
+// Fontes reais:
+//   sime_lacre_v3   → coordenador de preparação (carga/prep/lacre)
+//   sime_inst_v1    → instalador (chegou=s1, posicionada=s2, instalada=s3, prob)
+// ══════════════════════════════════════════════════════
+function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
+function loadInst() { try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
+
+// Conta quantas seções têm dados reais
+function countRealData(lacre, inst){
+  return ALL_SECS.filter(n=>lacre[n]||inst[n]).length;
+}
+
+// Demo determinístico (fallback quando não há dados reais)
+function demoSt(n){ const v=((parseInt(n)*2654435761)>>>0)/4294967296; if(v<.50)return{saiu:true,chegou:true,inst:true,prob:false}; if(v<.65)return{saiu:true,chegou:true,inst:false,prob:false}; if(v<.74)return{saiu:true,chegou:false,inst:false,prob:false}; if(v<.88)return{saiu:false,chegou:false,inst:false,prob:false}; if(v<.92)return{saiu:false,chegou:false,inst:true,prob:false}; return{saiu:true,chegou:true,inst:false,prob:true}; }
+
+// Mapeamento dos dados reais:
+//   lacre[n].lacre  → urna lacrada = pronta para sair do cartório (arco 1)
+//   inst[n].s1      → chegou ao local de votação (arco 2)
+//   inst[n].s3      → seção instalada e pronta (arco 3)
+//   inst[n].prob    → problema registrado pelo instalador
+function getSt(n, lacre, inst){
+  const fl=lacre[n], fi=inst[n];
+  if(fl || fi){
+    return {
+      saiu:   !!(fl?.lacre),                        // lacrada pelo coordenador
+      chegou: !!(fi?.s1),                           // chegou ao local (instalador)
+      inst:   !!(fi?.s3),                           // instalada (instalador)
+      prob:   !!(fi?.prob && !fi?.probResolvido),   // problema ativo
+      real:   true,
+    };
+  }
+  return {...demoSt(n), real:false};
+}
+
+// ══════════════════════════════════════════════════════
+// SVG CÍRCULO
+// ══════════════════════════════════════════════════════
+const CX=26,CY=26,R=22,RC=14,SW=5;
+const ARCS=[[-88,28],[32,148],[152,268]];
+function pol(d){ const r=d*Math.PI/180; return [CX+R*Math.cos(r),CY+R*Math.sin(r)]; }
+function ap(a1,a2){ const[x1,y1]=pol(a1),[x2,y2]=pol(a2); const lg=((a2-a1+360)%360)>180?1:0; return `M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x2.toFixed(2)},${y2.toFixed(2)}`; }
+function mkSVG(n,st){ let cc; if(st.inst&&st.chegou)cc='#16a34a'; else if(st.inst)cc='#ea580c'; else if(st.chegou)cc='#ca8a04'; else if(st.saiu)cc='#d97706'; else cc='#dc2626'; const ad=[st.saiu,st.chegou,st.inst]; const paths=ARCS.map((a,i)=>`<path d="${ap(a[0],a[1])}" stroke="${ad[i]?'var(--arc-done)':'var(--arc-off)'}" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`).join(''); const num=parseInt(n).toString(); const fs=num.length<=2?12:10; return `<svg width="52" height="52" viewBox="0 0 52 52">${paths}<circle cx="${CX}" cy="${CY}" r="${RC}" fill="${cc}"/><text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="800" fill="rgba(255,255,255,.95)" font-family="'Segoe UI',system-ui,sans-serif">${num}</text></svg>`; }
+
+// ══════════════════════════════════════════════════════
+// MANAGER
+// ══════════════════════════════════════════════════════
+const ICONS = ['📺','🖥️','📡','🏛️','🗳️','📍','🔵','🟢','⭐','🔶'];
+
+function renderManager(){
+  document.getElementById('manager').style.display='flex';
+  document.getElementById('viewer').style.display='none';
+  const panels = loadPanels();
+  const grid = document.getElementById('panels-grid');
+  grid.innerHTML = '';
+
+  panels.forEach((p,idx)=>{
+    const card = document.createElement('div');
+    card.className='panel-card';
+    const totalSecs = [...new Set(p.pages.flatMap(pg=>pg.sections))].length;
+    const pageItems = p.pages.map((pg,i)=>`<div class="pc-page"><div class="pc-page-dot"></div><div class="pc-page-label">${pg.label||'Página '+(i+1)}</div><div class="pc-page-secs">${pg.sections.length} seções</div></div>`).join('');
+    const rotBadge = p.rotation
+      ? `<span class="pc-rot-badge pb-auto">⏱ ${p.rotDelay}s</span>`
+      : `<span class="pc-rot-badge pb-static">Estático</span>`;
+    const url = window.location.href.split('?')[0] + '?p=' + p.id;
+    card.innerHTML=`
+      <div class="pc-header">
+        <div class="pc-icon">${p.icon||'📺'}</div>
+        <div class="pc-meta"><div class="pc-name">${p.name}</div><div class="pc-info">${p.pages.length} página${p.pages.length!==1?'s':''} · ${totalSecs} seções</div></div>
+        ${rotBadge}
+      </div>
+      <div class="pc-pages">${pageItems}</div>
+      <div class="url-box"><span>${url}</span><button class="copy-btn" onclick="copyUrl('${url}')">Copiar</button></div>
+      <div class="pc-actions">
+        <button class="btn btn-dark btn-sm" onclick="openViewer('${p.id}')">📺 Abrir TV</button>
+        <button class="btn btn-blue btn-sm" onclick="openEditor(${idx})">✏️ Editar</button>
+        <button class="btn btn-red btn-sm" onclick="delPanel(${idx})">🗑</button>
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  // card de adicionar
+  const add = document.createElement('div');
+  add.className='panel-card add-card';
+  add.onclick=()=>openEditor(null);
+  add.innerHTML='<div class="add-inner"><span>＋</span><p>Novo painel</p></div>';
+  grid.appendChild(add);
+}
+
+function copyUrl(url){
+  navigator.clipboard?.writeText(url);
+  showToast('📋 URL copiada!');
+}
+
+function delPanel(idx){
+  if(!confirm('Excluir este painel?')) return;
+  const panels = loadPanels();
+  panels.splice(idx,1);
+  savePanels(panels);
+  renderManager();
+}
+
+// ══════════════════════════════════════════════════════
+// EDITOR MODAL
+// ══════════════════════════════════════════════════════
+let editorPanelIdx = null;
+let edPages = [];
+let edRotation = false;
+let edIcon = '📺';
+
+function openEditor(idx){
+  editorPanelIdx = idx;
+  const panels = loadPanels();
+  const p = idx!==null ? panels[idx] : null;
+
+  document.getElementById('modal-title').textContent = p ? 'Editar painel' : 'Novo painel';
+  document.getElementById('ed-name').value = p?.name || '';
+  edIcon = p?.icon || '📺';
+  edPages = p ? p.pages.map(pg=>({...pg,sections:[...pg.sections]})) : [{ label:'Página 1', sections:[] }];
+  edRotation = p?.rotation || false;
+  document.getElementById('ed-delay').value = p?.rotDelay || 10;
+
+  // ícones
+  const ic = document.getElementById('ed-icons');
+  ic.innerHTML = ICONS.map(i=>`<button onclick="selIcon('${i}')" style="font-size:1.4rem;padding:6px 8px;border-radius:8px;border:2px solid ${i===edIcon?'#2a2838':'var(--border)'};background:${i===edIcon?'#e8e6f0':'var(--bg2)'};cursor:pointer" id="ico-${i.codePointAt(0)}">${i}</button>`).join('');
+
+  renderEdPages();
+  updateRotToggle();
+  document.getElementById('overlay').classList.add('show');
+}
+
+function selIcon(i){ edIcon=i; openEditor(editorPanelIdx); }
+
+function closeEditor(){ document.getElementById('overlay').classList.remove('show'); }
+
+function toggleRot(){ edRotation=!edRotation; updateRotToggle(); }
+function updateRotToggle(){
+  const t=document.getElementById('rot-toggle');
+  t.className='toggle'+(edRotation?' on':'');
+  document.getElementById('rot-label').textContent=edRotation?'Automática — rotaciona entre páginas':'Estático — exibe tudo sem rotação';
+  document.getElementById('rot-delay-row').style.display=edRotation?'block':'none';
+}
+
+function addPage(){
+  edPages.push({label:'Página '+(edPages.length+1),sections:[]});
+  renderEdPages();
+}
+
+function delPage(idx){ if(edPages.length<=1)return; edPages.splice(idx,1); renderEdPages(); }
+
+function renderEdPages(){
+  const el=document.getElementById('ed-pages');
+  el.innerHTML='';
+  edPages.forEach((pg,i)=>{
+    const div=document.createElement('div');
+    div.className='page-item';
+    div.innerHTML=`
+      <div class="page-item-header">
+        <div class="page-num">${i+1}</div>
+        <input class="page-name-inp" value="${pg.label}" oninput="edPages[${i}].label=this.value" placeholder="Nome da página">
+        ${edPages.length>1?`<button class="page-del" onclick="delPage(${i})">✕</button>`:''}
+      </div>
+      <div class="sec-selector">
+        <div class="sel-tabs">
+          <button class="sel-tab active" onclick="selTab(${i},'range',this)">Intervalo</button>
+          <button class="sel-tab" onclick="selTab(${i},'city',this)">Cidade</button>
+          <button class="sel-tab" onclick="selTab(${i},'route',this)">Rota</button>
+          <button class="sel-tab" onclick="selTab(${i},'manual',this)">Manual</button>
+        </div>
+        <div id="seltab-${i}-range" class="sel-panel active">
+          <div class="range-row">
+            <label>De seção</label>
+            <input type="number" id="rng-from-${i}" min="1" max="261" value="1" placeholder="1">
+            <label>até</label>
+            <input type="number" id="rng-to-${i}" min="1" max="261" value="30" placeholder="30">
+            <button class="add-range-btn" onclick="applyRange(${i})">Aplicar</button>
+          </div>
+        </div>
+        <div id="seltab-${i}-city" class="sel-panel">
+          <div class="check-grid">${CITIES.map(c=>`<label class="check-item"><input type="checkbox" id="cc-${i}-${c.city.replace(/\s/g,'')}" onchange="applyCity(${i},'${c.city}',this.checked)"><span>${c.city}</span></label>`).join('')}</div>
+        </div>
+        <div id="seltab-${i}-route" class="sel-panel">
+          <div class="check-grid">${['001','002','003','004','005','006','007','008','009','010','011','012'].map(r=>`<label class="check-item"><input type="checkbox" id="cr-${i}-${r}" onchange="applyRoute(${i},'Rota ${r}',this.checked)"><span>Rota ${r}</span></label>`).join('')}</div>
+        </div>
+        <div id="seltab-${i}-manual" class="sel-panel">
+          <input type="text" placeholder="🔍 Filtrar seções..." oninput="filterManual(${i},this.value)" style="margin-bottom:6px;padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);width:100%;font-size:.75rem">
+          <div class="check-grid" id="manual-grid-${i}"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:6px;">
+          <div class="sec-chips" id="chips-${i}">${renderChips(i)}</div>
+          <button class="clear-btn" onclick="clearPage(${i})">✕ limpar</button>
+        </div>
+      </div>`;
+    el.appendChild(div);
+  });
+}
+
+function selTab(pi,tab,btn){
+  ['range','city','route','manual'].forEach(t=>{
+    document.getElementById(`seltab-${pi}-${t}`)?.classList.toggle('active',t===tab);
+  });
+  btn.closest('.sel-tabs').querySelectorAll('.sel-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(tab==='manual') renderManualGrid(pi,'');
+}
+
+function renderManualGrid(pi, filter){
+  const g=document.getElementById(`manual-grid-${pi}`);
+  if(!g) return;
+  const cur=new Set(edPages[pi].sections);
+  g.innerHTML=ALL_SECS.filter(n=>!filter||parseInt(n).toString().includes(filter)||SEC_MAP[n]?.loc?.toLowerCase().includes(filter.toLowerCase())).map(n=>`<label class="check-item"><input type="checkbox" ${cur.has(n)?'checked':''} onchange="toggleManual(${pi},'${n}',this.checked)"><span>${parseInt(n)} — ${SEC_MAP[n]?.loc?.slice(0,20)||n}</span></label>`).join('');
+}
+
+function filterManual(pi,v){ renderManualGrid(pi,v); }
+function toggleManual(pi,n,on){ const s=new Set(edPages[pi].sections); on?s.add(n):s.delete(n); edPages[pi].sections=[...s].sort(); updateChips(pi); }
+
+function applyRange(pi){
+  const from=+document.getElementById(`rng-from-${pi}`).value;
+  const to  =+document.getElementById(`rng-to-${pi}`).value;
+  const secs=ALL_SECS.filter(n=>parseInt(n)>=from&&parseInt(n)<=to);
+  edPages[pi].sections=[...new Set([...edPages[pi].sections,...secs])].sort();
+  updateChips(pi);
+  showToast(`✓ ${secs.length} seções adicionadas`);
+}
+
+function applyCity(pi,city,on){
+  const citySecs=CITIES.find(c=>c.city===city)?.locs.flatMap(l=>l.s)||[];
+  const cur=new Set(edPages[pi].sections);
+  citySecs.forEach(n=>on?cur.add(n):cur.delete(n));
+  edPages[pi].sections=[...cur].sort();
+  updateChips(pi);
+}
+
+// Mapa de seções por rota (simplificado)
+const ROUTE_MAP={
+  'Rota 001':['0135','0144','0180','0163'],
+  'Rota 002':['0187','0209','0164','0186','0195','0234'],
+  'Rota 003':['0141','0192','0244','0196'],
+  'Rota 004':['0063','0064','0065','0066','0124','0145','0181','0062','0122','0242','0248','0256','0205','0217','0233','0255'],
+  'Rota 005':['0044','0191','0029','0030','0031','0123','0148','0259','0071','0155','0202','0223','0240','0251'],
+  'Rota 006':['0017','0018','0019','0020','0157','0006','0012','0149','0015','0016','0125','0045','0046','0047','0116','0117','0005','0033','0034','0035','0036','0115','0128','0001','0002','0003','0049','0050','0126','0156','0237','0249','0004','0014','0037','0038'],
+  'Rota 007':['0204','0247','0136','0152','0140','0201','0189','0159','0246'],
+  'Rota 008':['0079','0080','0081','0133','0252','0166','0228','0213','0167','0230'],
+  'Rota 009':['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177','0203','0211','0222','0241','0250','0193','0214'],
+  'Rota 010':['0147','0173','0198','0215','0235','0165','0208','0253','0212','0245','0175','0238','0178'],
+  'Rota 011':['0218','0185','0226','0199','0179','0194','0221','0243','0188','0216','0227'],
+  'Rota 012':['0160','0162','0258','0200','0168','0101','0102','0103','0112','0171','0172','0176','0207','0239','0174','0210','0232','0260','0225','0138','0231'],
+};
+function applyRoute(pi,route,on){
+  const rs=ROUTE_MAP[route]||[];
+  const cur=new Set(edPages[pi].sections);
+  rs.forEach(n=>on?cur.add(n):cur.delete(n));
+  edPages[pi].sections=[...cur].sort();
+  updateChips(pi);
+}
+
+function clearPage(pi){ edPages[pi].sections=[]; updateChips(pi); }
+
+function renderChips(pi){
+  const s=edPages[pi]?.sections||[];
+  if(!s.length) return '<span class="sec-count">Nenhuma seção selecionada</span>';
+  return `<span class="sec-count">${s.length} seções: </span>`+s.slice(0,20).map(n=>`<span class="sec-chip">${parseInt(n)}</span>`).join('')+(s.length>20?`<span class="sec-chip">+${s.length-20}</span>`:'');
+}
+function updateChips(pi){
+  const el=document.getElementById(`chips-${pi}`);
+  if(el) el.innerHTML=renderChips(pi);
+}
+
+function savePanel(){
+  const name=document.getElementById('ed-name').value.trim();
+  if(!name){ showToast('⚠ Informe um nome para o painel'); return; }
+  const totalSecs=[...new Set(edPages.flatMap(p=>p.sections))].length;
+  if(!totalSecs){ showToast('⚠ Adicione seções a pelo menos uma página'); return; }
+
+  const panels=loadPanels();
+  const panel={
+    id: editorPanelIdx!==null ? panels[editorPanelIdx].id : genId(),
+    name, icon:edIcon,
+    pages: edPages.map(p=>({...p})),
+    rotation: edRotation,
+    rotDelay: +document.getElementById('ed-delay').value||10,
+  };
+
+  if(editorPanelIdx!==null) panels[editorPanelIdx]=panel;
+  else panels.push(panel);
+  savePanels(panels);
+  closeEditor();
+  renderManager();
+  showToast('✓ Painel salvo!');
+}
+
+document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeEditor(); });
+
+// ══════════════════════════════════════════════════════
+// TV VIEWER
+// ══════════════════════════════════════════════════════
+let vCurPage=0, vDelay=10, vCd=10, vPaused=false, vTicker=null, vPanel=null, vLastProb=0, vAudioCtx=null;
+
+function openViewer(panelId){
+  const panels=loadPanels();
+  vPanel=panels.find(p=>p.id===panelId);
+  if(!vPanel){ showToast('Painel não encontrado'); return; }
+  // Update URL without reload
+  history.pushState({}, '', '?p='+panelId);
+  startViewer();
+}
+
+function goManager(){
+  history.pushState({}, '', window.location.pathname);
+  clearInterval(vTicker); vTicker=null;
+  document.getElementById('manager').style.display='flex';
+  document.getElementById('viewer').style.display='none';
+  renderManager();
+}
+
+function startViewer(){
+  document.getElementById('manager').style.display='none';
+  document.getElementById('viewer').style.display='flex';
+  document.getElementById('v-pname').textContent=vPanel.name;
+  vDelay=vPanel.rotDelay||10;
+  document.getElementById('v-delay-inp').value=vDelay;
+  vCurPage=0; vPaused=false;
+  document.getElementById('v-pause').textContent='⏸';
+  vBuildPages();
+  vRenderCurrent();
+  vUpdateNav();
+  if(vPanel.rotation && vPanel.pages.length>1) vStartTicker();
+  setInterval(()=>{ vBuildPages(); vRenderCurrent(); vUpdateStats(); },3000);
+}
+
+function vBuildPages(){
+  const lacre=loadLacre(), inst=loadInst();
+  const realCount=countRealData(lacre,inst);
+  // indicador de fonte de dados
+  const srcEl=document.getElementById('v-datasrc');
+  if(srcEl){
+    if(realCount>0){
+      srcEl.textContent=`🟢 Dados reais · ${realCount} seções`;
+      srcEl.style.color='#16a34a';
+    } else {
+      srcEl.textContent='⚪ Simulação · sem dados reais';
+      srcEl.style.color='var(--text3)';
+    }
+  }
+  const cfg={}; // TODO: integrate time config
+  const content=document.getElementById('v-content');
+  content.innerHTML='';
+  vPanel.pages.forEach((pg,pi)=>{
+    const secSet=new Set(pg.sections);
+    const div=document.createElement('div');
+    div.className='v-page'; div.id='vp-'+pi;
+
+    // stats da página
+    let done=0;
+    pg.sections.forEach(n=>{ const st=getSt(n,lacre,inst); if(st.inst&&st.chegou) done++; });
+
+    // agrupar por cidade → local (filtrado)
+    const locBlocks=[];
+    CITIES.forEach(city=>{
+      city.locs.forEach(loc=>{
+        const filtered=loc.s.filter(n=>secSet.has(n));
+        if(filtered.length) locBlocks.push({city:city.city,color:city.color,loc,filtered});
+      });
+    });
+
+    div.innerHTML=`<div class="v-page-hdr">
+      <div class="v-ph-bar" style="background:linear-gradient(to bottom,${[...new Set(locBlocks.map(b=>b.color))].join(',')})"></div>
+      <div><div class="v-ph-name">${pg.label}</div><div class="v-ph-meta">${locBlocks.length} locais · ${pg.sections.length} seções</div></div>
+      <div class="v-ph-prog">${done} / ${pg.sections.length} instaladas</div>
+    </div>`;
+
+    const grid=document.createElement('div');
+    grid.className='v-loc-grid';
+
+    locBlocks.forEach(block=>{
+      const states=block.filtered.map(n=>getSt(n,lacre,inst));
+      const allDone=states.every(st=>st.inst&&st.chegou);
+      const hasProb=states.some(st=>st.prob);
+      const hasInco=states.some(st=>st.inst&&!st.chegou);
+
+      const box=document.createElement('div');
+      box.className='v-loc'+(allDone?' done':'')+((!allDone&&(hasProb||hasInco))?' prob':'');
+
+      let circs='';
+      block.filtered.forEach(n=>{
+        const st=getSt(n,lacre,inst);
+        const badge=st.prob?`<div class="pb err">!</div>`:(st.inst&&!st.chegou?`<div class="pb warn">!</div>`:'');
+        circs+=`<div class="sw" title="Seção ${n}">${mkSVG(n,st)}${badge}</div>`;
+      });
+
+      box.innerHTML=`<div class="v-loc-name" style="color:${allDone?'#15803d':block.color}">${block.loc.n}</div>
+        <div class="v-loc-time ${allDone?'ok':''}">${allDone?'✓ Pronto':''}</div>
+        <div class="v-circles">${circs}</div>`;
+      grid.appendChild(box);
+    });
+
+    div.appendChild(grid);
+    content.appendChild(div);
+  });
+}
+
+function vRenderCurrent(){
+  document.querySelectorAll('.v-page').forEach((p,i)=>p.classList.toggle('active',i===vCurPage));
+}
+
+function vUpdateStats(){
+  const lacre=loadLacre(), inst=loadInst();
+  let ok=0,ch=0,tr=0,pd=0,pr=0,inc=0,tot=0;
+  const allSecs=[...new Set(vPanel.pages.flatMap(p=>p.sections))];
+  allSecs.forEach(n=>{ tot++; const st=getSt(n,lacre,inst); if(st.inst&&st.chegou)ok++; else if(st.chegou)ch++; else if(st.saiu)tr++; else if(!st.prob)pd++; if(st.prob)pr++; if(st.inst&&!st.chegou)inc++; });
+  document.getElementById('v-stats').innerHTML=[
+    ok ?`<span class="vts" style="color:#16a34a"><div class="vtsd" style="background:#16a34a"></div>${ok} prontas</span>`:'',
+    ch ?`<span class="vts" style="color:#ca8a04"><div class="vtsd" style="background:#ca8a04"></div>${ch} chegaram</span>`:'',
+    tr ?`<span class="vts" style="color:#d97706"><div class="vtsd" style="background:#d97706"></div>${tr} lacradas</span>`:'',
+    pr ?`<span class="vts" style="color:#ef4444"><div class="vtsd" style="background:#ef4444"></div>${pr} problemas</span>`:'',
+    inc?`<span class="vts" style="color:#f97316"><div class="vtsd" style="background:#f97316"></div>${inc} inconsist.</span>`:'',
+    `<span class="vts" style="color:var(--text3)">${tot} total</span>`,
+  ].join('');
+  if(pr+inc>vLastProb) vBeep();
+  vLastProb=pr+inc;
+}
+
+function vUpdateNav(){
+  const n=vPanel.pages.length;
+  const dots=document.getElementById('v-dots');
+  dots.innerHTML='';
+  vPanel.pages.forEach((_,i)=>{
+    const d=document.createElement('div');
+    d.className='pdot'+(i===vCurPage?' act':'');
+    d.style.borderColor=i===vCurPage?'var(--blue)':'';
+    d.style.background =i===vCurPage?'var(--blue)':'';
+    d.onclick=()=>vGoPage(i);
+    dots.appendChild(d);
+  });
+  document.getElementById('v-pg-label').textContent=
+    (vPanel.pages[vCurPage]?.label||'Página '+(vCurPage+1))+`  ·  ${vCurPage+1} / ${n}`;
+  // hide nav if single page and static
+  document.getElementById('v-nav').style.opacity=(n<=1&&!vPanel.rotation)?'.6':'1';
+}
+
+function vGoPage(idx){
+  const n=vPanel.pages.length;
+  vCurPage=((idx%n)+n)%n;
+  vCd=vDelay;
+  vUpdateCountdown();
+  vRenderCurrent();
+  vUpdateNav();
+}
+
+function vStartTicker(){
+  clearInterval(vTicker); vCd=vDelay;
+  vTicker=setInterval(()=>{
+    if(vPaused) return;
+    vCd--;
+    vUpdateCountdown();
+    if(vCd<=0){ vGoPage(vCurPage+1); vCd=vDelay; }
+  },1000);
+}
+function vSetDelay(v){ vDelay=Math.max(3,Math.min(120,v)); vStartTicker(); }
+function vTogglePause(){ vPaused=!vPaused; document.getElementById('v-pause').textContent=vPaused?'▶':'⏸'; }
+function vUpdateCountdown(){
+  const pct=(vCd/vDelay)*100;
+  const f=document.getElementById('v-cdfill');
+  f.style.width=Math.max(0,pct)+'%';
+  f.style.background=vCd<=3?'#ef4444':vCd<=5?'#f59e0b':'var(--blue)';
+  document.getElementById('v-cdnum').textContent=vCd+'s';
+}
+
+function vBeep(){
+  try{
+    if(!vAudioCtx) vAudioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const o=vAudioCtx.createOscillator(),g=vAudioCtx.createGain();
+    o.connect(g);g.connect(vAudioCtx.destination);
+    o.frequency.setValueAtTime(880,vAudioCtx.currentTime);
+    o.frequency.setValueAtTime(660,vAudioCtx.currentTime+.2);
+    g.gain.setValueAtTime(.25,vAudioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,vAudioCtx.currentTime+.5);
+    o.start();o.stop(vAudioCtx.currentTime+.5);
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════════════════
+// RELÓGIO
+// ══════════════════════════════════════════════════════
+iniciarRelogio('v-clock', { comSegundos: true, intervaloMs: 1000 });
+
+// ══════════════════════════════════════════════════════
+// TOAST — showToast() vem de sime_ui_utils.js
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// INIT — detecta modo via URL
+// ══════════════════════════════════════════════════════
+(function init(){
+  const p=new URLSearchParams(window.location.search).get('p');
+  if(p){
+    const panels=loadPanels();
+    vPanel=panels.find(x=>x.id===p);
+    if(vPanel){ startViewer(); }
+    else { showToast('Painel não encontrado'); renderManager(); }
+  } else {
+    renderManager();
+  }
+  // ativar áudio no primeiro clique
+  document.addEventListener('click',()=>{ if(!vAudioCtx) vAudioCtx=new(window.AudioContext||window.webkitAudioContext)(); },{once:true});
+})();
+
+// popstate (botão voltar do browser)
+window.addEventListener('popstate',()=>{
+  const p=new URLSearchParams(window.location.search).get('p');
+  if(!p){ clearInterval(vTicker); document.getElementById('manager').style.display='flex'; document.getElementById('viewer').style.display='none'; renderManager(); }
+});
+</script>
+</body>
+</html>

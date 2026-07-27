@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME TV Dia</title>
+<link rel="stylesheet" href="./sime_theme_purple.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;}
+body{display:flex;flex-direction:column;}
+.topbar{height:40px;flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;}
+.t-logo{font-size:.72rem;font-weight:900;letter-spacing:.1em;color:var(--blue);}
+.t-sep{width:1px;height:16px;background:var(--border);}
+.t-title{font-size:.76rem;font-weight:700;color:var(--text2);}
+.t-stats{display:flex;gap:10px;flex:1;flex-wrap:wrap;}
+.ts{font-size:.63rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.tsd{width:5px;height:5px;border-radius:50%;}
+.t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.t-clock{font-size:.8rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+.fase-bar{height:34px;flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px;}
+.fase-btn{padding:4px 12px;border-radius:99px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .2s;}
+.fase-btn.active.ab{background:#2d50a0;color:#fff;border-color:#2d50a0;}
+.fase-btn.active.enc{background:#1d4ed8;color:#fff;border-color:#1d4ed8;}
+.fase-btn.active.prob{background:#dc2626;color:#fff;border-color:#dc2626;}
+.fase-info{font-size:.6rem;color:var(--text3);}
+.switch-wrap{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.62rem;color:var(--text2);}
+.switch-wrap input{font-size:.65rem;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);}
+.auto-label{font-size:.6rem;padding:2px 8px;border-radius:99px;font-weight:700;}
+.auto-on{background:var(--arc-done);color:#fff;}
+.auto-off{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.content{flex:1;overflow:hidden;position:relative;min-height:0;}
+.v-page{position:absolute;inset:0;padding:5px 8px 2px;opacity:0;transition:opacity .4s;pointer-events:none;display:flex;flex-direction:column;gap:4px;}
+.v-page.active{opacity:1;pointer-events:all;}
+.city-hdr{display:flex;align-items:center;gap:8px;padding:2px 2px 4px;flex-shrink:0;}
+.city-stripe{width:3px;border-radius:2px;height:22px;flex-shrink:0;}
+.city-nome{font-size:.92rem;font-weight:800;}
+.city-meta{font-size:.67rem;color:var(--text2);}
+.city-prog{margin-left:auto;font-size:.7rem;font-weight:700;}
+.loc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:4px;flex:1;overflow:hidden;align-content:start;}
+.loc{background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:6px 7px 8px;display:flex;flex-direction:column;gap:3px;transition:background .5s,border-color .5s;}
+.loc.done-cartorio{background:#f0fdf6;border-color:#6ee7b0;}
+.loc.done-motorista{background:#eff6ff;border-color:#93c5fd;}
+.loc.done-enc{background:#f0f7ff;border-color:#bfdbfe;}
+.loc.has-prob{background:#fef2f2;border-color:#fca5a5;}
+.loc.has-delay{background:#fffbf0;border-color:#fcd34d;}
+.loc.all-gone{display:none;}
+.loc-name{font-size:.63rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.loc.done-cartorio .loc-name{color:#15803d;}
+.loc.done-motorista .loc-name{color:#1d4ed8;}
+.loc.done-enc .loc-name{color:#2563eb;}
+.loc-status{min-height:13px;font-size:.58rem;font-weight:700;}
+
+/* Barra de progresso dupla (fase encerramento) */
+.urna-bar-wrap{display:flex;flex-direction:column;gap:2px;margin-top:2px;}
+.urna-bar-row{display:flex;align-items:center;gap:4px;font-size:.56rem;font-weight:700;}
+.urna-bar-lbl{width:60px;flex-shrink:0;color:var(--text2);}
+.urna-bar-track{flex:1;height:5px;background:var(--arc-off);border-radius:99px;overflow:hidden;}
+.urna-bar-fill{height:100%;border-radius:99px;transition:width .4s;}
+.urna-bar-count{min-width:28px;text-align:right;color:var(--text2);}
+
+.ls-ok{color:#16a34a;}.ls-late{color:#dc2626;}.ls-warn{color:#d97706;}.ls-enc{color:#2563eb;}
+.loc-circles{display:flex;flex-wrap:wrap;gap:4px 3px;padding-bottom:2px;}
+.sw{position:relative;width:52px;height:52px;flex-shrink:0;margin-bottom:10px;transition:opacity .5s;cursor:pointer;}
+.sw:hover svg circle{filter:brightness(1.15);}
+.sw.gone{opacity:0;pointer-events:none;width:0;height:0;padding:0;margin:0;overflow:hidden;}
+.sw.has-issue{cursor:pointer;}
+
+/* Tooltip customizado (aparece ao hover) */
+.sw-tip{
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:#1e1b2e;color:#e0e0f0;
+  font-size:.62rem;font-weight:600;line-height:1.4;
+  padding:5px 9px;border-radius:7px;
+  white-space:nowrap;z-index:30;
+  pointer-events:none;
+  opacity:0;transition:opacity .15s;
+  border:1px solid #2a2840;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);
+}
+.sw-tip::after{
+  content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:#1e1b2e;
+}
+.sw:hover .sw-tip{opacity:1;}
+
+/* Modal de detalhe da seção */
+.sec-overlay{position:fixed;inset:0;background:rgba(30,27,46,.6);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  opacity:0;pointer-events:none;transition:opacity .2s;}
+.sec-overlay.open{opacity:1;pointer-events:all;}
+.sec-modal{background:var(--card);border-radius:14px;width:100%;max-width:420px;
+  border:1px solid var(--border);box-shadow:0 24px 64px rgba(0,0,0,.25);overflow:hidden;}
+.sm-hdr{padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;}
+.sm-num{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;color:#fff;flex-shrink:0;}
+.sm-info{flex:1;}
+.sm-title{font-size:1rem;font-weight:800;}
+.sm-loc{font-size:.75rem;color:var(--text2);margin-top:2px;}
+.sm-close{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;}
+.sm-body{padding:14px 18px;display:flex;flex-direction:column;gap:10px;}
+.sm-row{display:flex;align-items:center;gap:10px;}
+.sm-icon{font-size:1.2rem;flex-shrink:0;width:28px;text-align:center;}
+.sm-detail{flex:1;}
+.sm-lbl{font-size:.72rem;font-weight:700;color:var(--text);}
+.sm-val{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.sm-badge{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:auto;}
+.sm-badge.ok   {background:var(--green-bg,#d4f0e0);color:#15803d;border:1px solid #80c8a0;}
+.sm-badge.err  {background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;}
+.sm-badge.warn {background:#fff7ed;color:#c2410c;border:1px solid #fdba74;}
+.sm-badge.info {background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.sm-badge.blue {background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;}
+.sm-sep{height:1px;background:var(--border);margin:2px 0;}
+.sm-panic-alert{
+  background:#fef2f2;border:1.5px solid #fca5a5;border-radius:8px;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;
+}
+.sm-panic-icon{font-size:1.4rem;animation:pp .7s ease-in-out infinite;}
+.sm-panic-txt{flex:1;}
+.sm-panic-tipo{font-size:.8rem;font-weight:800;color:#dc2626;}
+.sm-panic-ts{font-size:.68rem;color:#b91c1c;margin-top:2px;}
+.sm-footer{padding:10px 18px 14px;border-top:1px solid var(--border);display:flex;gap:8px;}
+.sm-btn{flex:1;padding:9px;border-radius:8px;font-size:.75rem;font-weight:700;cursor:pointer;border:none;text-align:center;text-decoration:none;display:block;}
+.sm-btn.dark{background:#2a2a2a;color:#fff;}
+.sm-btn.out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+.sm-btn.red{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;}
+.pb{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.5rem;font-weight:900;color:#fff;z-index:2;border:2px solid var(--bg);}
+.pb.err{background:#ef4444;animation:pp .7s ease-in-out infinite;}
+.pb.warn{background:#f97316;animation:pw 1.2s ease-in-out infinite;}
+.pb.yl{background:#f59e0b;animation:pw 1.4s ease-in-out infinite;}
+@keyframes pp{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 6px rgba(239,68,68,.4);}}
+@keyframes pw{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}50%{box-shadow:0 0 0 5px rgba(249,115,22,.35);}}
+.fila-tag{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);background:#d97706;color:#fff;font-size:.6rem;font-weight:900;padding:2px 7px;border-radius:99px;white-space:nowrap;z-index:2;border:1.5px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.2);}
+.prob-list{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px;}
+.prob-item{background:var(--card);border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;}
+.prob-tipo{font-size:1.3rem;flex-shrink:0;}
+.prob-info{flex:1;}
+.prob-sec{font-weight:800;font-size:.92rem;}
+.prob-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
+.prob-badge{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:99px;}
+.pb-energia{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;}
+.pb-urna-prob{background:#fff7ed;color:#c2410c;border:1px solid #fdba74;}
+.pb-mesa{background:#fffbf0;color:#92400e;border:1px solid #fcd34d;}
+.pb-atraso{background:#fff7ed;color:#b45309;border:1px solid #fcd34d;}
+.prob-ts{font-size:.62rem;color:var(--text3);}
+.prob-empty{text-align:center;padding:48px 20px;color:var(--text3);}
+.ticker{height:28px;flex-shrink:0;background:#1e1b2e;display:flex;align-items:center;overflow:hidden;border-top:1px solid #2a2840;}
+.ticker-label{background:#2d50a0;color:#fff;font-size:.65rem;font-weight:800;padding:0 12px;height:100%;display:flex;align-items:center;white-space:nowrap;flex-shrink:0;letter-spacing:.06em;}
+.ticker-wrap{flex:1;overflow:hidden;position:relative;}
+.ticker-inner{display:flex;gap:0;white-space:nowrap;animation:ticker-scroll 40s linear infinite;}
+.ticker-inner:hover{animation-play-state:paused;}
+.ticker-item{display:inline-flex;align-items:center;gap:6px;padding:0 24px 0 0;font-size:.68rem;font-weight:600;color:#a0a0c0;}
+.ticker-item.ti-prob{color:#f87171;}
+.ticker-item.ti-fila{color:#fbbf24;}
+.ticker-item.ti-enc{color:#60a5fa;}
+.ticker-item.ti-urna{color:#4ade80;}
+.ticker-item.ti-atraso{color:#fb923c;}
+.ticker-sep{color:#2a2840;padding:0 4px;}
+@keyframes ticker-scroll{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+
+/* ── PAINEL DE SONS ── */
+.gear-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.82rem;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;}
+.gear-btn:hover{background:var(--border);}
+.sound-overlay{position:fixed;inset:0;background:rgba(30,27,46,.55);z-index:50;display:flex;align-items:flex-end;justify-content:flex-end;padding:12px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.sound-overlay.open{opacity:1;pointer-events:all;}
+.sound-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;width:360px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;}
+.sp-hdr{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.sp-title{font-size:.9rem;font-weight:800;}
+.sp-close{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.sp-body{padding:14px 16px;display:flex;flex-direction:column;gap:16px;}
+.sp-cat{display:flex;flex-direction:column;gap:8px;}
+.sp-cat-title{font-size:.72rem;font-weight:800;display:flex;align-items:center;gap:6px;}
+.sp-cat-sub{font-size:.65rem;color:var(--text2);}
+.preset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+.preset-btn{padding:8px 4px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.7rem;font-weight:700;text-align:center;transition:all .15s;color:var(--text2);}
+.preset-btn:hover{background:var(--bg3);}
+.preset-btn.sel{border-color:var(--blue);background:var(--blue-bg,#dde7f5);color:var(--blue);}
+.preset-preview{display:flex;align-items:center;gap:3px;}
+.preset-preview .pp-play{font-size:.65rem;margin-right:2px;}
+.upload-row{display:flex;gap:8px;align-items:center;}
+.upload-btn{flex:1;padding:7px 10px;border-radius:8px;border:1.5px dashed var(--border);background:var(--bg2);cursor:pointer;font-size:.7rem;font-weight:600;color:var(--text2);text-align:center;transition:all .15s;}
+.upload-btn:hover{border-color:var(--blue);color:var(--blue);}
+.upload-clear{padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.68rem;color:var(--text2);}
+.upload-name{font-size:.62rem;color:var(--arc-done,#16a34a);font-weight:700;margin-top:2px;}
+.vol-row{display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--text2);}
+.vol-row input[type=range]{flex:1;accent-color:var(--blue);}
+.sp-footer{padding:10px 16px;border-top:1px solid var(--border);}
+.sp-mute{width:100%;padding:9px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.78rem;font-weight:700;color:var(--text2);transition:all .15s;}
+.sp-mute.muted{background:#fef2f2;border-color:#fca5a5;color:#dc2626;}
+.sp-test{width:100%;padding:8px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.72rem;font-weight:700;color:var(--text2);margin-top:6px;}
+.nav{height:36px;flex-shrink:0;background:var(--card);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;}
+.nav-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.nav-btn:hover{background:var(--border);}
+.pdots{display:flex;gap:5px;}
+.pdot{width:9px;height:9px;border-radius:50%;border:2px solid var(--border);cursor:pointer;transition:all .2s;}
+.pdot.act{transform:scale(1.2);}
+.pg-label{font-size:.7rem;font-weight:700;color:var(--text2);min-width:160px;text-align:center;}
+.cd-wrap{flex:1;display:flex;align-items:center;gap:7px;}
+.cd-track{flex:1;height:4px;background:var(--bg2);border-radius:99px;overflow:hidden;}
+.cd-fill{height:100%;border-radius:99px;background:var(--blue);transition:width 1s linear;}
+.cd-num{font-size:.62rem;font-weight:700;color:var(--text3);min-width:24px;text-align:right;}
+.pause-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.78rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.d-inp-wrap{display:flex;align-items:center;gap:4px;font-size:.65rem;color:var(--text2);}
+.d-inp-wrap input{width:38px;padding:2px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);font-size:.65rem;text-align:center;}
+.v-leg{display:flex;gap:9px;}
+.vli{display:flex;align-items:center;gap:3px;font-size:.58rem;color:var(--text3);}
+.vlid{width:6px;height:6px;border-radius:50%;}
+
+/* WEATHER CARD */
+.weather-card{
+  position:fixed;top:80px;right:10px;z-index:15;
+  background:var(--card);border:1.5px solid var(--border);border-radius:11px;
+  padding:10px 13px;min-width:150px;max-width:190px;
+  box-shadow:0 4px 16px rgba(0,0,0,.1);
+  transition:all .3s;
+}
+.weather-card.hidden{opacity:0;pointer-events:none;}
+.wc-hdr{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--text3);margin-bottom:5px;}
+.wc-main{display:flex;align-items:center;gap:8px;}
+.wc-icon{font-size:1.6rem;}
+.wc-temp{font-size:1.3rem;font-weight:900;}
+.wc-cond{font-size:.68rem;color:var(--text2);margin-top:1px;}
+.wc-detail{font-size:.65rem;color:var(--text2);margin-top:5px;padding-top:5px;border-top:1px solid var(--border);}
+.wc-alert{background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:6px;padding:4px 7px;font-size:.62rem;font-weight:700;color:var(--yellow);margin-top:5px;}
+.wc-toggle{position:fixed;top:81px;right:9px;z-index:16;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;border:none;cursor:pointer;font-size:.65rem;display:none;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="t-logo">SIME</div><div class="t-sep"></div>
+  <div class="t-title">TV Dia da Eleição</div><div class="t-sep"></div>
+  <div class="t-stats" id="t-stats"></div>
+  <div class="t-right">
+    <div class="t-clock" id="clock">--:--:--</div>
+    <button class="gear-btn" onclick="toggleSoundPanel()" title="Configurar sons de alerta">⚙️</button>
+  </div>
+</div>
+
+<!-- MODAL DETALHE DA SEÇÃO -->
+<div class="sec-overlay" id="sec-overlay" onclick="closeSecModal(event)">
+  <div class="sec-modal" id="sec-modal"></div>
+</div>
+
+<!-- PAINEL DE SONS -->
+<div class="sound-overlay" id="sound-overlay" onclick="closeSoundPanelIfOut(event)">
+  <div class="sound-panel" id="sound-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🔊 Sons de alerta</div>
+      <button class="sp-close" onclick="toggleSoundPanel()">✕</button>
+    </div>
+    <div class="sp-body">
+
+      <!-- PÂNICO -->
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🚨</span> Pânico</div>
+        <div class="sp-cat-sub">Falta de energia · Problema na urna</div>
+        <div class="preset-grid" id="presets-panico"></div>
+        <div class="upload-row">
+          <label class="upload-btn" for="upload-panico">📁 Carregar arquivo .mp3 / .wav</label>
+          <input type="file" id="upload-panico" accept="audio/*" style="display:none" onchange="uploadSound('panico',this)">
+          <button class="upload-clear" onclick="clearUpload('panico')" title="Remover arquivo">✕</button>
+        </div>
+        <div id="upload-name-panico" class="upload-name" style="display:none"></div>
+        <div class="vol-row">
+          🔉 <input type="range" id="vol-panico" min="0" max="100" value="80" oninput="updateVol('panico',this.value)">
+          <span id="vol-panico-val">80%</span>
+        </div>
+      </div>
+
+      <!-- AVISO -->
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>⚠️</span> Aviso</div>
+        <div class="sp-cat-sub">Mesa incompleta · Votação atrasada</div>
+        <div class="preset-grid" id="presets-aviso"></div>
+        <div class="upload-row">
+          <label class="upload-btn" for="upload-aviso">📁 Carregar arquivo .mp3 / .wav</label>
+          <input type="file" id="upload-aviso" accept="audio/*" style="display:none" onchange="uploadSound('aviso',this)">
+          <button class="upload-clear" onclick="clearUpload('aviso')" title="Remover arquivo">✕</button>
+        </div>
+        <div id="upload-name-aviso" class="upload-name" style="display:none"></div>
+        <div class="vol-row">
+          🔉 <input type="range" id="vol-aviso" min="0" max="100" value="60" oninput="updateVol('aviso',this.value)">
+          <span id="vol-aviso-val">60%</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="sp-footer">
+      <button class="sp-mute" id="mute-btn" onclick="toggleMute()">🔇 Silenciar todos os alertas</button>
+      <button class="sp-test" onclick="testBothSounds()">▶ Testar os dois sons</button>
+    </div>
+  </div>
+</div>
+<div class="fase-bar">
+  <button class="fase-btn active ab"  id="fase-ab"   onclick="setFase('ab')">🌅 Abertura</button>
+  <button class="fase-btn enc"        id="fase-enc"  onclick="setFase('enc')">🏁 Encerramento</button>
+  <button class="fase-btn prob"       id="fase-prob" onclick="setFase('prob')">⚠ Problemas</button>
+  <div class="fase-info" id="fase-info">4 arcos: chegou · completa · zerésima · votação</div>
+  <div class="switch-wrap">
+    <span>Trocar enc. às</span>
+    <input type="time" id="auto-switch" value="17:00">
+    <span class="auto-label auto-off" id="auto-lbl">Auto</span>
+  </div>
+</div>
+
+<!-- WEATHER CARD -->
+<div class="weather-card" id="weather-card">
+  <div class="wc-hdr">🌦 CLIMA · CAMPO MAIOR</div>
+  <div class="wc-main">
+    <div class="wc-icon" id="wc-icon">⏳</div>
+    <div>
+      <div class="wc-temp" id="wc-temp">--°C</div>
+      <div class="wc-cond" id="wc-cond">Carregando...</div>
+    </div>
+  </div>
+  <div class="wc-detail" id="wc-detail"></div>
+  <div class="wc-alert" id="wc-alert" style="display:none"></div>
+</div>
+<div class="content" id="content"></div>
+<div class="ticker">
+  <div class="ticker-label">📡 AO VIVO</div>
+  <div class="ticker-wrap"><div class="ticker-inner" id="ticker-inner"><span class="ticker-item">Aguardando eventos...</span></div></div>
+</div>
+<div class="nav" id="nav-bar">
+  <button class="nav-btn" onclick="goPage(curPage-1)">&#8249;</button>
+  <div class="pdots" id="v-dots"></div>
+  <div class="pg-label" id="v-pg-label">—</div>
+  <div class="cd-wrap"><div class="cd-track"><div class="cd-fill" id="v-cdfill" style="width:100%"></div></div><div class="cd-num" id="v-cdnum">—</div></div>
+  <button class="pause-btn" id="v-pause" onclick="vTogglePause()">⏸</button>
+  <button class="nav-btn" onclick="goPage(curPage+1)">&#8250;</button>
+  <div class="t-sep"></div>
+  <div class="d-inp-wrap">⏱ <input type="number" id="v-delay-inp" value="10" min="3" max="60" onchange="vSetDelay(+this.value)">s</div>
+  <div class="t-sep"></div>
+  <div class="v-leg" id="v-leg"></div>
+</div>
+<script type="module">
+import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
+import { initSimeDados, getSecoes, getZonaInfo, getMesaEstadoMap, mapMesaEstadoRow } from './sime_dados.js';
+import { subscribeMesaEstado } from './sime_realtime.js';
+
+// Preenchido pelo Admin ao provisionar esta TV.
+import { SIME_CONFIG } from './sime_config.js';
+const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
+
+(async () => {
+  const { client } = await bootstrapTvSession(SIME_CONFIG);
+  if (!client) return; // sem token de TV configurado ainda — segue no fallback local
+  initSimeDados(client);
+
+  // CITIES: NUMPAGES e os pontos de paginação são montados uma única vez no
+  // carregamento — troca via cache+reload (mesmo padrão de SIME_tv_vespera.html).
+  await atualizarCacheTv(CITIES_CACHE_KEY, async () => {
+    const secoes = await getSecoes({ fallback: null });
+    return secoes ? agruparSecoesPorCidade(secoes) : null;
+  });
+
+  // Realtime: snapshot inicial de sime_mesa_estado + assinatura pra refletir
+  // qualquer mudança quase instantaneamente (em vez de esperar o próximo
+  // ciclo de 5s de buildPages()). loadMesa() abaixo passa a preferir esse
+  // cache remoto quando ele existe — sem sessão, cai no fallback local
+  // (localStorage) automaticamente, como antes.
+  const secoesParaMesa = await getSecoes({ fallback: null });
+  const numeroPorSecaoId = new Map((secoesParaMesa || []).map((s) => [s.id, s.numero]));
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  let rerenderTimer = null;
+  function agendarRerender() {
+    clearTimeout(rerenderTimer);
+    rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); }, 300);
+  }
+  if (mesaInicial) {
+    window.__mesaRemota = mesaInicial;
+    agendarRerender();
+  }
+  subscribeMesaEstado(client, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    if (!window.__mesaRemota) window.__mesaRemota = {};
+    window.__mesaRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    agendarRerender();
+  });
+
+  // Clima: fetchWeather() já lê WEATHER_URL/WEATHER_LABEL por closure a cada
+  // chamada — não precisa de reload, só reatribuir e disparar uma nova busca
+  // imediata (sem esperar os próximos 10min do setInterval).
+  const zona = await getZonaInfo({ fallback: null });
+  if (zona && zona.lat != null && zona.lon != null) {
+    window.WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
+      `?latitude=${zona.lat}&longitude=${zona.lon}` +
+      '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
+      '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';
+    window.WEATHER_LABEL = zona.municipio ? zona.municipio.toUpperCase() : null;
+    if (window.fetchWeather) window.fetchWeather();
+    const hdr = document.querySelector('.wc-hdr');
+    if (hdr && window.WEATHER_LABEL) hdr.textContent = `🌦 CLIMA · ${window.WEATHER_LABEL}`;
+  }
+})();
+</script>
+<script src="./sime_ui_utils.js"></script>
+<script>
+
+// CITIES vem do cache (populado via Supabase pelo módulo acima, se a TV tiver
+// sessão) ou, na ausência dele, da massa hardcoded original (offline-first).
+// NUMPAGES/paginação são montados uma única vez a partir de CITIES logo
+// abaixo, por isso a leitura do cache precisa ser síncrona, antes disso.
+function _lerCacheTvSync(key){ try{ const r=localStorage.getItem(key); return r?JSON.parse(r):null; }catch(e){ return null; } }
+const CITIES_FALLBACK=[{city:'Campo Maior',color:'#2d50a0',locs:[{n:'Assoc. Moradores Tangará',s:['0209']},{n:'CAIC',s:['0071','0155','0202','0223']},{n:'Centro Ed. JA Mulata Lima',s:['0001','0002','0003','0049','0050','0126','0156','0237','0249']},{n:'Clube dos Comerciários',s:['0015','0016','0125']},{n:'Col. Est. Profª Raimundinho',s:['0017','0018','0019','0020','0157']},{n:'Creche Tia Medeiros',s:['0074','0197','0206','0219','0224','0229','0236','0257','0261']},{n:'Creche Vovô José',s:['0254']},{n:'EMATER',s:['0004','0014','0037','0038']},{n:'Esc. Reassentamento Corredores',s:['0186']},{n:'Esc. Mun. Mano Castelo Branco',s:['0185','0226']},{n:'Esc. Mun. N.S. de Fátima',s:['0242','0248','0256']},{n:'Esc. Mun. R.A. Maximino',s:['0187']},{n:'FSESP',s:['0062','0122']},{n:'G.E. Aguida M. Conceição',s:['0147','0173','0198','0215','0235']},{n:'G.E. Povoado Tapera',s:['0137','0220']},{n:'G.E. Marion Saraiva',s:['0029','0030','0031','0123','0148','0259']},{n:'G.E. Profª Maroquinha',s:['0135','0144']},{n:'G.E. Treze de Março',s:['0063','0064','0065','0066','0124','0145','0181']},{n:'G.E. Valdivino Tito',s:['0033','0034','0035','0036','0115','0128']},{n:'IFPI',s:['0240','0251']},{n:'Posto Saúde da Varjota',s:['0218']},{n:'Prefeitura Municipal',s:['0045','0046','0047','0116','0117']},{n:'SAAE',s:['0005']},{n:'Salão Com. Corredores',s:['0195','0234']},{n:"Salão Com. 'Mario Cazuza'",s:['0163']},{n:'Salão Com. Santo Antônio',s:['0164']},{n:'Sec. Est. de Fazenda',s:['0044','0191']},{n:'Sec. Mun. de Educação',s:['0006','0012','0149']},{n:'U.E. José Gomes de Oliveira',s:['0180']},{n:'U.E. José Gonçalves Oliveira',s:['0196']},{n:'U.E. Linoca Gayoso',s:['0141','0192','0244']},{n:'U.E. Vida Verde',s:['0205','0217','0233','0255']}]},{city:'Jatobá do Piauí',color:'#1e7048',locs:[{n:'Creche Mamãe Lima M. Oliveira',s:['0174','0210','0232','0260']},{n:'Esc. Mun. A.M. Castelo Branco',s:['0212','0245']},{n:'Esc. Mun. A.F. Ribeiro Paz',s:['0225']},{n:'Escola Mun. da Montanha',s:['0188']},{n:'G.E. Anita Gaioso',s:['0175','0238']},{n:'G.E. de Tanques',s:['0179','0194']},{n:'G.E. Prof. Francisco Luis',s:['0168']},{n:'Grupo Escolar',s:['0139']},{n:'Igreja da Morada Nova',s:['0221','0243']},{n:'Posto Saúde M. Sousa Dié',s:['0160','0162','0258']},{n:'Salão Comunitário',s:['0200']},{n:'U.E. Francisco F.P. Oliveira',s:['0216','0227']},{n:'U.E. João Félix de Andrade',s:['0207','0239']},{n:'U.E. José Cândido Gaioso',s:['0178']},{n:'U.E. Oscar Gil C. Branco',s:['0165','0208','0253']},{n:'U.E. Rafael Nogueira Passos',s:['0199']},{n:'U.E. Tertuliano Pereira',s:['0101','0102','0103','0112','0171','0172','0176']}]},{city:'Sigefredo Pacheco',color:'#5c3a98',locs:[{n:'Esc. Rural Sto. Antônio C.V.',s:['0193','0214']},{n:'G.E. Manoel Francisco',s:['0136','0152']},{n:'G.E. Manoel Pereira dos Reis',s:['0189']},{n:'G.E. Monsenhor Mateus',s:['0085','0086','0087','0088','0089','0090','0132','0151','0158','0177']},{n:'U.E. Antonio Carmelo Barbosa',s:['0167','0230']},{n:'U.E. Antonio Cícero Oliveira',s:['0166','0228']},{n:'U.E. Antônio Pereira Santos',s:['0140','0201']},{n:'U.E. da Paz Sousa',s:['0079','0080','0081','0133','0252']},{n:'U.E. Dr. Jerônimo S. Silva',s:['0241','0250']},{n:'U.E. Ivon Pacheco',s:['0204','0247']},{n:'U.E. José Ribeiro da Luz',s:['0203','0211','0222']},{n:'U.E. Jovino Josino Oliveira',s:['0138','0231']},{n:'U.E. Manoel Rodrigues Melo',s:['0213']},{n:'U.E. Miguel Rocha',s:['0159','0246']}]}];
+const CITIES = _lerCacheTvSync('sime_tv_cities_v1') || CITIES_FALLBACK;
+// Prefere o cache Realtime (sime_mesa_estado via Supabase) quando existe —
+// populado pelo <script type="module"> acima. Sem sessão/rede, cai no
+// localStorage exatamente como antes (offline-first).
+function loadMesa(){if(window.__mesaRemota) return window.__mesaRemota; try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}}}
+// Pânico/fila reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade)
+function loadAcess(){try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}}}
+let _acess={}; // recarregado a cada buildPages
+function demoSt(n){const v=((parseInt(n)*2654435761)>>>0)/4294967296;const chegou=v<0.94,comp=v<0.88,zero=v<0.83,vot=v<0.78,enc=v<0.32,urna=v<0.18,cartorio=v<0.10,panic_e=v>0.97,panic_u=v>0.975,mesaProb=v>0.91&&v<0.94;const fila=(enc&&!urna)?(v<0.22?Math.floor(v*100)%25+1:0):null;return{mesa:{pres:chegou?(mesaProb?2:1):0,m1:chegou?1:0,m2:comp?1:0,sec:comp?1:0},zero,vot,enc,urna,urna_cartorio:cartorio,fila,panico:{energia:panic_e,urnaprob:panic_u},panico_resolved:{energia:false,urnaprob:false},real:false};}
+function getSt(n,mesa){
+  const d=mesa[n]; const ac=_acess[n];
+  // base: dados reais da mesa; se só houver acessibilidade, base neutra; senão demo
+  let st;
+  if(d) st={...d,real:true};
+  else if(ac) st={mesa:{pres:0,m1:0,m2:0,sec:0},zero:false,vot:false,enc:false,urna:false,urna_cartorio:false,fila:null,panico:{energia:false,urnaprob:false},panico_resolved:{energia:false,urnaprob:false},real:true};
+  else return demoSt(n);
+  // Mescla pânico/fila da acessibilidade (sime_acess_v1). Normaliza urna→urnaprob.
+  if(ac){
+    st.panico=st.panico||{}; st.panico_resolved=st.panico_resolved||{};
+    const eMesa=st.panico.energia&&!st.panico_resolved.energia;
+    const uMesa=st.panico.urnaprob&&!st.panico_resolved.urnaprob;
+    const eAcess=ac.panico?.energia&&!ac.panico_resolved?.energia;
+    const uAcess=ac.panico?.urna&&!ac.panico_resolved?.urna;
+    st.panico.energia=eMesa||eAcess;  st.panico_resolved.energia=false;
+    st.panico.urnaprob=uMesa||uAcess; st.panico_resolved.urnaprob=false;
+    const f=Math.max(st.fila>0?st.fila:0, ac.fila>0?ac.fila:0);
+    if(f>0) st.fila=f;
+  }
+  return st;
+}
+function getHor(){try{const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');const t=el['turno'+(el.turno_ativo||1)]||{};return{ab:t.abertura||'07:00',enc:t.encerramento||'17:00'};}catch(e){return{ab:'07:00',enc:'17:00'};}}
+function toMin(hm){const[h,m]=(hm||'00:00').split(':').map(Number);return h*60+m;}
+function nowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+// fmtNow() vem de sime_ui_utils.js
+function toHM(min){return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0');}
+const CX=26,CY=26,R=22,RC=13,SW=4.5;
+function pol(deg){const r=deg*Math.PI/180;return[CX+R*Math.cos(r),CY+R*Math.sin(r)];}
+function arcPath(a1,a2){const[x1,y1]=pol(a1),[x2,y2]=pol(a2);const lg=((a2-a1+360)%360)>180?1:0;return`M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x2.toFixed(2)},${y2.toFixed(2)}`;}
+function buildArcs(n){const gap=7,total=360-n*gap,each=total/n;const arcs=[];let a=-90;for(let i=0;i<n;i++){arcs.push([a,a+each]);a+=each+gap;}return arcs;}
+function mkSVG(n,st,fase){const panic=(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob);const mv=Object.values(st.mesa||{});const chegouQtd=mv.filter(v=>v>=1).length;const mesaComp=chegouQtd===4;let cc,arcDone,narcs;if(fase==='ab'){narcs=4;arcDone=[chegouQtd>0,mesaComp,!!st.zero,!!st.vot];if(panic)cc='#ef4444';else if(st.vot)cc='#16a34a';else if(st.zero)cc='#84cc16';else if(mesaComp)cc='#f59e0b';else if(chegouQtd>0)cc='#d97706';else cc='#dc2626';}else{narcs=3;if(st.urna_cartorio){arcDone=[true,true,true];cc='#16a34a';}else if(st.urna){arcDone=[true,true,false];cc='#2563eb';}else if(st.enc){arcDone=[true,true,false];cc='#3b82f6';}else if(st.fila>0){arcDone=[true,false,false];cc='#f59e0b';}else if(st.vot){arcDone=[false,false,false];cc='#94a3b8';}else{arcDone=[false,false,false];cc='#cbd5e1';}if(panic)cc='#ef4444';}const arcs=buildArcs(narcs);const paths=arcs.map((a,i)=>`<path d="${arcPath(a[0],a[1])}" stroke="${arcDone[i]?'var(--arc-done)':'var(--arc-off)'}" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`).join('');const lbl=parseInt(n).toString();const fs=lbl.length<=2?12:lbl.length<=3?10:8;return`<svg width="52" height="52" viewBox="0 0 52 52">${paths}<circle cx="${CX}" cy="${CY}" r="${RC}" fill="${cc}"/><text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="900" fill="rgba(255,255,255,.95)" font-family="'Segoe UI',system-ui,sans-serif">${lbl}</text></svg>`;}
+const tickerEvents=[];const tickerSeen=new Set();
+function addEvent(tipo,text){const key=tipo+':'+text;if(tickerSeen.has(key))return;tickerSeen.add(key);tickerEvents.unshift({tipo,text,ts:fmtNow()});if(tickerEvents.length>60)tickerEvents.pop();renderTicker();}
+function clearEvKey(key){tickerSeen.delete(key);}
+const TICON={prob:'🚨',fila:'👥',enc:'🔒',urna:'🚗',atraso:'⏱',info:'ℹ️'};
+const TCLS={prob:'ti-prob',fila:'ti-fila',enc:'ti-enc',urna:'ti-urna',atraso:'ti-atraso'};
+function renderTicker(){if(!tickerEvents.length)return;const items=tickerEvents.map(e=>`<span class="ticker-item ${TCLS[e.tipo]||''}"><span>${TICON[e.tipo]||'•'}</span>${e.ts} — ${e.text}</span><span class="ticker-sep">|</span>`).join('');const el=document.getElementById('ticker-inner');el.innerHTML=items+items;el.style.animationDuration=Math.max(20,tickerEvents.length*4)+'s';}
+let audioCtx=null;
+function initAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+
+// ══════════════════════════════════════════
+// SISTEMA DE SONS — config + presets + upload
+// ══════════════════════════════════════════
+const SONS_KEY='sime_sons_v1';
+function loadSons(){try{return JSON.parse(localStorage.getItem(SONS_KEY)||'{}')}catch(e){return{}}}
+function saveSons(d){localStorage.setItem(SONS_KEY,JSON.stringify(d));}
+
+let sonsCfg={panico:{preset:'sirene',vol:80,custom:null},aviso:{preset:'apito',vol:60,custom:null},muted:false};
+(function loadSonsCfg(){const s=loadSons();if(s.panico)sonsCfg.panico={...sonsCfg.panico,...s.panico};if(s.aviso)sonsCfg.aviso={...sonsCfg.aviso,...s.aviso};if(s.muted!==undefined)sonsCfg.muted=s.muted;})();
+
+// Presets gerados via Web Audio API — sem arquivos externos
+const PRESETS={
+  // Pânico
+  sirene:(ctx,vol)=>{
+    // Sirene oscilatória — urgente
+    [0,.25,.5,.75].forEach(t=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='sawtooth';
+      o.frequency.setValueAtTime(880,ctx.currentTime+t);
+      o.frequency.linearRampToValueAtTime(1320,ctx.currentTime+t+.2);
+      o.frequency.linearRampToValueAtTime(880,ctx.currentTime+t+.24);
+      g.gain.setValueAtTime(vol*.5,ctx.currentTime+t);
+      g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.24);
+      o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.24);
+    });
+  },
+  alarme:(ctx,vol)=>{
+    // Alarme duplo grave — autoritário
+    [0,.35].forEach(t=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='square';
+      o.frequency.setValueAtTime(440,ctx.currentTime+t);
+      g.gain.setValueAtTime(vol*.4,ctx.currentTime+t);
+      g.gain.setValueAtTime(vol*.4,ctx.currentTime+t+.28);
+      g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.32);
+      o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.32);
+    });
+  },
+  buzina:(ctx,vol)=>{
+    // Buzina contínua
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);o.type='sawtooth';
+    o.frequency.setValueAtTime(350,ctx.currentTime);
+    g.gain.setValueAtTime(vol*.45,ctx.currentTime);
+    g.gain.setValueAtTime(vol*.45,ctx.currentTime+.6);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.65);
+    o.start();o.stop(ctx.currentTime+.65);
+  },
+  campainha:(ctx,vol)=>{
+    // Campainha metálica
+    [0,.15,.3].forEach(t=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='sine';
+      o.frequency.setValueAtTime(1200,ctx.currentTime+t);
+      o.frequency.exponentialRampToValueAtTime(600,ctx.currentTime+t+.25);
+      g.gain.setValueAtTime(vol*.35,ctx.currentTime+t);
+      g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.25);
+      o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.25);
+    });
+  },
+  klaxon:(ctx,vol)=>{
+    // Klaxon — dois tons alternados
+    [[880,0],[660,.25],[880,.5]].forEach(([f,t])=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);o.type='square';
+      o.frequency.value=f;
+      g.gain.setValueAtTime(vol*.38,ctx.currentTime+t);
+      g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.22);
+      o.start(ctx.currentTime+t);o.stop(ctx.currentTime+t+.22);
+    });
+  },
+  // Avisos
+  apito:(ctx,vol)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);o.type='sine';
+    o.frequency.setValueAtTime(880,ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(660,ctx.currentTime+.18);
+    g.gain.setValueAtTime(vol*.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.3);
+    o.start();o.stop(ctx.currentTime+.3);
+  },
+  sino:(ctx,vol)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);o.type='sine';
+    o.frequency.setValueAtTime(1047,ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(523,ctx.currentTime+.4);
+    g.gain.setValueAtTime(vol*.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.5);
+    o.start();o.stop(ctx.currentTime+.5);
+  },
+  clique:(ctx,vol)=>{
+    // Click curto
+    const buf=ctx.createBuffer(1,ctx.sampleRate*.05,ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*.3));
+    const src=ctx.createBufferSource(),g=ctx.createGain();
+    src.buffer=buf;src.connect(g);g.connect(ctx.destination);
+    g.gain.value=vol*.6;src.start();
+  },
+  bip:(ctx,vol)=>{
+    beepRaw(ctx,660,440,vol*.28,.2);
+  },
+  beepRaw:undefined,
+};
+function beepRaw(ctx,f1,f2,vol,dur){const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type='sine';o.frequency.setValueAtTime(f1,ctx.currentTime);o.frequency.exponentialRampToValueAtTime(f2,ctx.currentTime+dur*.6);g.gain.setValueAtTime(vol,ctx.currentTime);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+dur);o.start();o.stop(ctx.currentTime+dur);}
+PRESETS.beepRaw=beepRaw;
+PRESETS.bip=(ctx,vol)=>beepRaw(ctx,660,440,vol*.28,.2);
+
+// Toca um som de categoria
+function tocarSom(cat){
+  if(sonsCfg.muted) return;
+  initAudio();
+  const cfg=sonsCfg[cat];
+  const vol=(cfg.vol||70)/100;
+  if(cfg.custom){
+    // Arquivo custom (base64)
+    try{
+      const ab=b64ToArrayBuffer(cfg.custom);
+      audioCtx.decodeAudioData(ab.slice(0),(buf)=>{
+        const src=audioCtx.createBufferSource(),g=audioCtx.createGain();
+        src.buffer=buf;src.connect(g);g.connect(audioCtx.destination);
+        g.gain.value=vol;src.start();
+      });return;
+    }catch(e){}
+  }
+  const fn=PRESETS[cfg.preset];
+  if(fn) fn(audioCtx,vol);
+}
+function b64ToArrayBuffer(b64){const bin=atob(b64.split(',')[1]||b64);const buf=new ArrayBuffer(bin.length);const view=new Uint8Array(buf);for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);return buf;}
+
+// Wrapper para uso nos alertas
+function beepPanico(){ tocarSom('panico'); }
+function beepAtraso(){ tocarSom('aviso'); }
+function beepMesa()  { tocarSom('aviso'); }
+
+// ── PAINEL DE SONS ──────────────────────
+const PRESET_LABELS={
+  sirene:'🚨 Sirene',alarme:'🔔 Alarme',buzina:'📯 Buzina',campainha:'🔔 Campainha',klaxon:'🎺 Klaxon',
+  apito:'⚡ Apito',sino:'🔔 Sino',clique:'👆 Clique',bip:'💡 Bip',
+};
+const PANICO_PRESETS=['sirene','alarme','buzina','campainha','klaxon'];
+const AVISO_PRESETS=['apito','sino','clique','bip','sirene'];
+
+function buildPresetGrid(cat,presets){
+  const el=document.getElementById('presets-'+cat);
+  el.innerHTML=presets.map(p=>`
+    <div class="preset-btn${sonsCfg[cat].preset===p&&!sonsCfg[cat].custom?' sel':''}" onclick="selectPreset('${cat}','${p}')">
+      <div class="preset-preview"><span class="pp-play">▶</span>${PRESET_LABELS[p]||p}</div>
+    </div>`).join('');
+}
+function selectPreset(cat,preset){
+  sonsCfg[cat].preset=preset;
+  sonsCfg[cat].custom=null;
+  saveConfig();
+  buildPresetGrid(cat,cat==='panico'?PANICO_PRESETS:AVISO_PRESETS);
+  document.getElementById('upload-name-'+cat).style.display='none';
+  tocarSom(cat);  // preview
+}
+function updateVol(cat,v){
+  sonsCfg[cat].vol=+v;
+  document.getElementById('vol-'+cat+'-val').textContent=v+'%';
+  saveConfig();
+}
+function uploadSound(cat,input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    sonsCfg[cat].custom=e.target.result;
+    sonsCfg[cat].preset=null;
+    saveConfig();
+    buildPresetGrid(cat,cat==='panico'?PANICO_PRESETS:AVISO_PRESETS);
+    const nm=document.getElementById('upload-name-'+cat);
+    nm.textContent='✓ '+file.name; nm.style.display='block';
+    tocarSom(cat); // preview
+  };
+  reader.readAsDataURL(file);
+}
+function clearUpload(cat){
+  sonsCfg[cat].custom=null;
+  sonsCfg[cat].preset=cat==='panico'?'sirene':'apito';
+  saveConfig();
+  buildPresetGrid(cat,cat==='panico'?PANICO_PRESETS:AVISO_PRESETS);
+  document.getElementById('upload-name-'+cat).style.display='none';
+  const inp=document.getElementById('upload-'+cat); if(inp) inp.value='';
+}
+function toggleMute(){
+  sonsCfg.muted=!sonsCfg.muted;
+  saveConfig();
+  const btn=document.getElementById('mute-btn');
+  btn.className='sp-mute'+(sonsCfg.muted?' muted':'');
+  btn.textContent=sonsCfg.muted?'🔇 Alertas silenciados — clique para ativar':'🔇 Silenciar todos os alertas';
+}
+function testBothSounds(){
+  tocarSom('panico');
+  setTimeout(()=>tocarSom('aviso'),800);
+}
+function saveConfig(){saveSons({panico:sonsCfg.panico,aviso:sonsCfg.aviso,muted:sonsCfg.muted});}
+function toggleSoundPanel(){
+  const ov=document.getElementById('sound-overlay');
+  ov.classList.toggle('open');
+  if(ov.classList.contains('open')){
+    // Atualiza UI com config atual
+    buildPresetGrid('panico',PANICO_PRESETS);
+    buildPresetGrid('aviso',AVISO_PRESETS);
+    document.getElementById('vol-panico').value=sonsCfg.panico.vol;
+    document.getElementById('vol-panico-val').textContent=sonsCfg.panico.vol+'%';
+    document.getElementById('vol-aviso').value=sonsCfg.aviso.vol;
+    document.getElementById('vol-aviso-val').textContent=sonsCfg.aviso.vol+'%';
+    const mb=document.getElementById('mute-btn');
+    mb.className='sp-mute'+(sonsCfg.muted?' muted':'');
+    mb.textContent=sonsCfg.muted?'🔇 Alertas silenciados — clique para ativar':'🔇 Silenciar todos os alertas';
+    ['panico','aviso'].forEach(cat=>{
+      const nm=document.getElementById('upload-name-'+cat);
+      if(sonsCfg[cat].custom){nm.textContent='✓ Arquivo personalizado carregado';nm.style.display='block';}
+      else nm.style.display='none';
+    });
+  }
+}
+function closeSoundPanelIfOut(e){
+  if(e.target===document.getElementById('sound-overlay')) toggleSoundPanel();
+}
+const alertEmit=new Set();
+function emitAlerta(key,fn){if(!alertEmit.has(key)){alertEmit.add(key);fn();}}
+function clearAlerta(key){alertEmit.delete(key);}
+
+// ── REGISTRO DE TIMESTAMPS DE PROBLEMA ────────────────────
+// Guarda quando cada problema foi detectado pela primeira vez
+const probTimestamps={}; // key → 'HH:MM'
+function registerProb(key){
+  if(!probTimestamps[key]) probTimestamps[key]=fmtNow();
+}
+function getProbTs(key){ return probTimestamps[key]||'--:--'; }
+function clearProbTs(key){ delete probTimestamps[key]; }
+
+// ── MAPA SEÇÃO → LOCAL/CIDADE ──────────────────────────────
+const SEC_INFO={};
+CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{SEC_INFO[n]={loc:l.n,city:c.city,color:c.color};})));
+
+// ── MODAL DE DETALHE DA SEÇÃO ──────────────────────────────
+function openSecModal(n, st){
+  const info = SEC_INFO[n]||{loc:'—',city:'—',color:'#2a2a2a'};
+  const mv   = Object.values(st.mesa||{});
+  const chegou = mv.filter(v=>v>=1).length;
+  const memLabels = ['Presidente','1º Mesário','2º Mesário','Secretário'];
+  const memStatus = ['pres','m1','m2','sec'].map((k,i)=>{
+    const v = st.mesa?.[k]||0;
+    const cls = v===2?'err':v===1?'ok':'info';
+    const lbl = v===2?'⚠ Problema':v===1?'✓ Presente':'Ausente';
+    return `<div class="sm-row">
+      <div class="sm-icon">👤</div>
+      <div class="sm-detail"><div class="sm-lbl">${memLabels[i]}</div></div>
+      <span class="sm-badge ${cls}">${lbl}</span>
+    </div>`;
+  }).join('');
+
+  const panic_e = st.panico?.energia  && !st.panico_resolved?.energia;
+  const panic_u = st.panico?.urnaprob && !st.panico_resolved?.urnaprob;
+  const tsE = getProbTs('panico:e:'+n);
+  const tsU = getProbTs('panico:u:'+n);
+
+  const panicBlock = (panic_e||panic_u) ? `
+    ${panic_e?`<div class="sm-panic-alert">
+      <div class="sm-panic-icon">⚡</div>
+      <div class="sm-panic-txt">
+        <div class="sm-panic-tipo">Falta de Energia</div>
+        <div class="sm-panic-ts">Detectado às ${tsE} — aguardando resolução</div>
+      </div>
+    </div>`:''}
+    ${panic_u?`<div class="sm-panic-alert" style="margin-top:6px">
+      <div class="sm-panic-icon">🖥️</div>
+      <div class="sm-panic-txt">
+        <div class="sm-panic-tipo">Problema na Urna</div>
+        <div class="sm-panic-ts">Detectado às ${tsU} — aguardando resolução</div>
+      </div>
+    </div>`:''}` : '';
+
+  // Status geral
+  const rows=[];
+  rows.push(`<div class="sm-row"><div class="sm-icon">⏱</div><div class="sm-detail"><div class="sm-lbl">Abertura da seção</div></div><span class="sm-badge ${chegou>0?'ok':'err'}">${chegou>0?chegou+'/4 membros':'Ninguém chegou'}</span></div>`);
+  if(st.zero!==undefined)  rows.push(`<div class="sm-row"><div class="sm-icon">🖨️</div><div class="sm-detail"><div class="sm-lbl">Zerésima</div></div><span class="sm-badge ${st.zero?'ok':'info'}">${st.zero?'Impressa':'Pendente'}</span></div>`);
+  if(st.vot!==undefined)   rows.push(`<div class="sm-row"><div class="sm-icon">🗳️</div><div class="sm-detail"><div class="sm-lbl">Votação</div></div><span class="sm-badge ${st.vot?'ok':'info'}">${st.vot?'Iniciada':'Não iniciada'}</span></div>`);
+  if(faseAtual==='enc'){
+    if(st.fila!==null&&st.fila>0) rows.push(`<div class="sm-row"><div class="sm-icon">👥</div><div class="sm-detail"><div class="sm-lbl">Fila</div></div><span class="sm-badge warn">${st.fila} pessoa${st.fila!==1?'s':''}</span></div>`);
+    if(st.enc!==undefined) rows.push(`<div class="sm-row"><div class="sm-icon">🔒</div><div class="sm-detail"><div class="sm-lbl">Encerramento</div></div><span class="sm-badge ${st.enc?'ok':'info'}">${st.enc?'Encerrada':'Em votação'}</span></div>`);
+    if(st.urna!==undefined) rows.push(`<div class="sm-row"><div class="sm-icon">🚗</div><div class="sm-detail"><div class="sm-lbl">Urna</div></div><span class="sm-badge ${st.urna_cartorio?'ok':st.urna?'blue':'info'}">${st.urna_cartorio?'No cartório':st.urna?'A caminho':'No local'}</span></div>`);
+  }
+
+  const ccMain = panic_e||panic_u ? '#ef4444' : st.vot ? '#16a34a' : st.zero ? '#84cc16' : chegou===4 ? '#f59e0b' : chegou>0 ? '#d97706' : '#dc2626';
+
+  document.getElementById('sec-modal').innerHTML=`
+    <div class="sm-hdr">
+      <div class="sm-num" style="background:${ccMain};position:relative">
+        ${parseInt(n)}
+      </div>
+      <div class="sm-info">
+        <div class="sm-title">Seção ${parseInt(n)}</div>
+        <div class="sm-loc">${info.loc}</div>
+        <div class="sm-loc">${info.city}</div>
+      </div>
+      <button class="sm-close" onclick="closeSecModal()">✕</button>
+    </div>
+    <div class="sm-body">
+      ${panicBlock}
+      ${panicBlock?'<div class="sm-sep"></div>':''}
+      ${rows.join('')}
+    </div>
+    <div class="sm-footer">
+      <a class="sm-btn out" href="SIME_mesario.html?secao=${n}" target="_blank">🗳️ Abrir Mesário</a>
+      <button class="sm-btn dark" onclick="closeSecModal()">Fechar</button>
+    </div>`;
+
+  document.getElementById('sec-overlay').classList.add('open');
+}
+
+function closeSecModal(e){
+  if(!e||e.target===document.getElementById('sec-overlay'))
+    document.getElementById('sec-overlay').classList.remove('open');
+}
+const NUMPAGES=CITIES.length;
+let faseAtual='ab',curPage=0,rotDelay=10,vCd=10,vPaused=false,vTicker=null,autoSwitchDone=false;
+function setFase(f){faseAtual=f;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Seções com alertas ativos'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
+function checkAutoSwitch(){const val=document.getElementById('auto-switch').value;if(!val)return;const[h,m]=val.split(':').map(Number);const isTime=nowMin()>=h*60+m;document.getElementById('auto-lbl').className='auto-label '+(isTime?'auto-on':'auto-off');document.getElementById('auto-lbl').textContent=isTime?'Ativo':'Auto';if(isTime&&faseAtual==='ab'&&!autoSwitchDone){autoSwitchDone=true;setFase('enc');}}
+// ── BARRA DE PROGRESSO DE URNAS (fase encerramento) ───────
+function mkUrnaBar(states){
+  const total=states.length;
+  const recolhidas=states.filter(st=>st.urna||st.urna_cartorio).length;
+  const cartorio  =states.filter(st=>st.urna_cartorio).length;
+  const pctRec =total>0?Math.round(recolhidas/total*100):0;
+  const pctCar =total>0?Math.round(cartorio/total*100):0;
+  // Cores: azul = saiu com motorista, verde = no cartório
+  const recColor = recolhidas===total ? '#2563eb' : '#93c5fd';
+  const carColor = cartorio===total   ? '#16a34a' : '#4ade80';
+  return `<div class="urna-bar-wrap">
+    <div class="urna-bar-row">
+      <div class="urna-bar-lbl">🚗 Recolhidas</div>
+      <div class="urna-bar-track"><div class="urna-bar-fill" style="width:${pctRec}%;background:${recColor}"></div></div>
+      <div class="urna-bar-count" style="color:${recColor}">${recolhidas}/${total}</div>
+    </div>
+    <div class="urna-bar-row">
+      <div class="urna-bar-lbl">📦 No cartório</div>
+      <div class="urna-bar-track"><div class="urna-bar-fill" style="width:${pctCar}%;background:${carColor}"></div></div>
+      <div class="urna-bar-count" style="color:${carColor}">${cartorio}/${total}</div>
+    </div>
+  </div>`;
+}
+
+function buildPages(){const mesa=loadMesa();_acess=loadAcess();const nm=nowMin();const hor=getHor();const minAb=toMin(hor.ab);const limMesa=minAb+60,limVot=minAb+120;const content=document.getElementById('content');content.innerHTML='';if(faseAtual==='prob'){buildProbView(mesa,nm,limMesa,limVot);return;}let totVot=0,totEnc=0,totUrna=0,totCar=0,totProb=0,totAtrV=0,totAtrM=0,total=0;CITIES.forEach((city,ci)=>{const div=document.createElement('div');div.className='v-page';div.id='vp-'+ci;let cityDone=0,cityTotal=0;city.locs.forEach(l=>{cityTotal+=l.s.length;if(l.s.every(n=>{const st=getSt(n,mesa);return faseAtual==='ab'?st.vot:(st.urna_cartorio||st.urna);}))cityDone+=l.s.length;});div.innerHTML=`<div class="city-hdr"><div class="city-stripe" style="background:${city.color}"></div><div><div class="city-nome" style="color:${city.color}">${city.city}</div><div class="city-meta">${city.locs.length} locais</div></div><div class="city-prog" style="color:${city.color}">${cityDone}/${cityTotal}</div></div>`;const grid=document.createElement('div');grid.className='loc-grid';city.locs.forEach(loc=>{const states=loc.s.map(n=>getSt(n,mesa));const allCar=states.every(st=>st.urna_cartorio);const allUrna=states.every(st=>st.urna||st.urna_cartorio);const allEnc=states.every(st=>st.enc||st.urna||st.urna_cartorio);const hasProb=states.some(st=>(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob));const hasAtrV=faseAtual==='ab'&&nm>=limVot&&states.some(st=>!st.vot&&!st.enc);const hasAtrM=faseAtual==='ab'&&nm>=limMesa&&states.some(st=>Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot);if(allCar&&faseAtual==='enc'){const b=document.createElement('div');b.className='loc all-gone';grid.appendChild(b);return;}const box=document.createElement('div');box.className='loc'+(allCar?' done-cartorio':'')+((!allCar&&allUrna)?' done-motorista':'')+((!allUrna&&allEnc)?' done-enc':'')+((!allEnc&&hasProb)?' has-prob':'')+((!allEnc&&!hasProb&&(hasAtrV||hasAtrM))?' has-delay':'');let stTxt='',stCls='';if(hasProb){const pDesc=[...new Set(states.flatMap(st=>[st.panico?.energia&&!st.panico_resolved?.energia?'⚡ Energia':null,st.panico?.urnaprob&&!st.panico_resolved?.urnaprob?'🖥️ Urna':null].filter(Boolean)))].join(' · ');stTxt='⚠ '+(pDesc||'Problema ativo');stCls='ls-late';}else if(allCar){stTxt='✓ No cartório';stCls='ls-ok';}else if(allUrna){stTxt='🚗 Urna saiu';stCls='ls-enc';}else if(allEnc){stTxt='✓ Encerrada';stCls='ls-enc';}else if(hasAtrV){stTxt='⏱ Votação atrasada';stCls='ls-late';}else if(hasAtrM){stTxt='👥 Mesa incompleta';stCls='ls-warn';}else if(faseAtual==='enc'){const cf=states.filter(st=>st.fila>0).length;if(cf){stTxt=cf+' com fila';stCls='ls-warn';}}let circs='';loc.s.forEach(n=>{const st=getSt(n,mesa);total++;if(st.vot)totVot++;if(st.enc||st.urna||st.urna_cartorio)totEnc++;if(st.urna||st.urna_cartorio)totUrna++;if(st.urna_cartorio)totCar++;const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const panic=panic_e||panic_u;if(panic){totProb++;emitAlerta('panico:'+n,beepPanico);addEvent('prob','Seção '+parseInt(n)+' — '+(st.panico?.energia?'⚡ Falta de energia':'🖥️ Problema na urna'));}else{clearAlerta('panico:'+n);}if(faseAtual==='ab'&&nm>=limVot&&!st.vot&&!st.enc){totAtrV++;emitAlerta('atr-vot:'+n,beepAtraso);addEvent('atraso','Seção '+parseInt(n)+' — votação não iniciada');}else{clearAlerta('atr-vot:'+n);}if(faseAtual==='ab'&&nm>=limMesa){const v=Object.values(st.mesa||{});if(v.filter(x=>x>=1).length<4&&!st.vot){totAtrM++;emitAlerta('atr-mesa:'+n,beepMesa);}else{clearAlerta('atr-mesa:'+n);}}if(st.enc)addEvent('enc','Seção '+parseInt(n)+' encerrada');if(st.urna_cartorio)addEvent('urna','Seção '+parseInt(n)+' — urna no cartório');else if(st.urna)addEvent('urna','Seção '+parseInt(n)+' — urna saiu com motorista');if(st.fila>0)addEvent('fila','Seção '+parseInt(n)+' — '+st.fila+' pessoa'+(st.fila>1?'s':'')+' na fila');// Registrar timestamps
+        if(panic_e){ registerProb('panico:e:'+n); } else { clearProbTs('panico:e:'+n); }
+        if(panic_u){ registerProb('panico:u:'+n); } else { clearProbTs('panico:u:'+n); }
+
+        // Tooltip com horário do problema
+        let tipTxt = '';
+        if(panic_e)  tipTxt += `⚡ Energia desde ${getProbTs('panico:e:'+n)}\n`;
+        if(panic_u)  tipTxt += `🖥️ Urna desde ${getProbTs('panico:u:'+n)}\n`;
+        if(st.fila>0) tipTxt += `👥 ${st.fila} na fila\n`;
+        if(!tipTxt)  tipTxt = `Seção ${parseInt(n)}`;
+        else         tipTxt = `Seção ${parseInt(n)}\n${tipTxt.trim()}`;
+
+        const tipHtml = `<div class="sw-tip">${tipTxt.replace(/\n/g,'<br>')}</div>`;
+
+        const mesaProb=Object.values(st.mesa||{}).some(x=>x===2);
+        const badgeLetter = panic_e ? 'E' : panic_u ? 'U' : mesaProb ? '!' : (faseAtual==='ab'&&nm>=limVot&&!st.vot&&!st.enc) ? '!' : '';
+        const badge = panic ? `<div class="pb err" title="${panic_e?'Falta de energia':'Problema na urna'}">${badgeLetter}</div>` : mesaProb ? `<div class="pb warn" title="Mesa com problema">!</div>` : (faseAtual==='ab'&&nm>=limVot&&!st.vot&&!st.enc) ? `<div class="pb yl" title="Votação não iniciada">!</div>` : '';
+        const filaBadge=(faseAtual==='enc'&&st.fila>0)?`<div class="fila-tag">${st.fila}</div>`:'';
+        const gone=(st.urna_cartorio&&faseAtual==='enc')?' gone':'';
+        const stJson=JSON.stringify(st).replace(/"/g,'&quot;');
+        circs+=`<div class="sw${gone}${panic||st.fila>0?' has-issue':''}" onclick="openSecModal('${n}',JSON.parse(this.dataset.st))" data-st="${stJson}">${mkSVG(n,st,faseAtual)}${badge}${filaBadge}${tipHtml}</div>`;});box.innerHTML=`<div class="loc-name">${loc.n}</div><div class="loc-status ${stCls}">${stTxt}</div>${faseAtual==='enc'?mkUrnaBar(states):''}${faseAtual==='enc'?`<div class="loc-circles" style="margin-top:4px">${circs}</div>`:`<div class="loc-circles">${circs}</div>`}`;grid.appendChild(box);});div.appendChild(grid);content.appendChild(div);});updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total);}
+function buildProbView(mesa,nm,limMesa,limVot){_acess=loadAcess();const content=document.getElementById('content');const div=document.createElement('div');div.className='v-page active';const list=document.createElement('div');list.className='prob-list';const items=[];CITIES.forEach(city=>city.locs.forEach(loc=>loc.s.forEach(n=>{const st=getSt(n,mesa);const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const atrV=nm>=limVot&&!st.vot&&!st.enc;const atrM=nm>=limMesa&&Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot;if(panic_e)items.push({tipo:'⚡',badge:'pb-energia',label:'Falta de energia',n,loc:loc.n});if(panic_u)items.push({tipo:'🖥️',badge:'pb-urna-prob',label:'Problema na urna',n,loc:loc.n});if(atrV)items.push({tipo:'⏱',badge:'pb-atraso',label:'Votação não iniciada',n,loc:loc.n});if(atrM)items.push({tipo:'👥',badge:'pb-mesa',label:'Mesa incompleta',n,loc:loc.n});})));if(!items.length){list.innerHTML='<div class="prob-empty"><div style="font-size:2.5rem;margin-bottom:10px">✅</div><div style="font-size:.85rem;font-weight:700;color:var(--text2)">Nenhum problema ativo</div></div>';}else{items.forEach(p=>{const row=document.createElement('div');row.className='prob-item';row.innerHTML=`<div class="prob-tipo">${p.tipo}</div><div class="prob-info"><div class="prob-sec">Seção ${parseInt(p.n)}</div><div class="prob-loc">${p.loc}</div></div><span class="prob-badge ${p.badge}">${p.label}</span><div class="prob-ts">${fmtNow()}</div>`;list.appendChild(row);});}div.appendChild(list);content.appendChild(div);document.getElementById('t-stats').innerHTML=items.length?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${items.length} problema${items.length>1?'s':''}</span>`:`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>Sem problemas</span>`;}
+function updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total){const el=document.getElementById('t-stats');if(faseAtual==='ab'){el.innerHTML=[totVot?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totVot} votando</span>`:'',totAtrV?`<span class="ts" style="color:#f59e0b"><div class="tsd" style="background:#f59e0b"></div>${totAtrV} atraso vot.</span>`:'',totAtrM?`<span class="ts" style="color:#d97706"><div class="tsd" style="background:#d97706"></div>${totAtrM} mesa inc.</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}else{el.innerHTML=[totCar?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totCar} no cartório</span>`:'',totUrna-totCar>0?`<span class="ts" style="color:#2563eb"><div class="tsd" style="background:#2563eb"></div>${totUrna-totCar} a caminho</span>`:'',totEnc?`<span class="ts" style="color:#3b82f6"><div class="tsd" style="background:#3b82f6"></div>${totEnc} encerradas</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}}
+function renderCurrent(){document.querySelectorAll('.v-page').forEach((p,i)=>p.classList.toggle('active',i===curPage));}
+function goPage(idx){curPage=((idx%NUMPAGES)+NUMPAGES)%NUMPAGES;vCd=rotDelay;updateCountdown();renderCurrent();updateNav();}
+function updateNav(){const dots=document.getElementById('v-dots');dots.innerHTML='';CITIES.forEach((c,i)=>{const d=document.createElement('div');d.className='pdot'+(i===curPage?' act':'');d.style.borderColor=i===curPage?c.color:'';d.style.background=i===curPage?c.color:'';d.onclick=()=>goPage(i);d.title=c.city;dots.appendChild(d);});document.getElementById('v-pg-label').textContent=faseAtual==='prob'?'Todos os problemas':`${CITIES[curPage]?.city}  ·  ${curPage+1}/${NUMPAGES}`;document.getElementById('v-pg-label').style.color=faseAtual==='prob'?'#dc2626':CITIES[curPage]?.color||'var(--text2)';}
+function updateCountdown(){const pct=(vCd/rotDelay)*100;const f=document.getElementById('v-cdfill');f.style.width=Math.max(0,pct)+'%';f.style.background=vCd<=3?'#ef4444':vCd<=5?'#f59e0b':'var(--blue)';document.getElementById('v-cdnum').textContent=vCd+'s';}
+function vSetDelay(v){rotDelay=Math.max(3,Math.min(60,v));vCd=rotDelay;startTicker();}
+function vTogglePause(){vPaused=!vPaused;document.getElementById('v-pause').textContent=vPaused?'▶':'⏸';}
+function startTicker(){clearInterval(vTicker);vTicker=setInterval(()=>{if(vPaused||faseAtual==='prob')return;vCd--;updateCountdown();if(vCd<=0){goPage(curPage+1);vCd=rotDelay;}},1000);}
+function updateLeg(){const leg=document.getElementById('v-leg');if(faseAtual==='ab'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#dc2626"></div>Ninguém</div><div class="vli"><div class="vlid" style="background:#d97706"></div>Incompleta</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Completa</div><div class="vli"><div class="vlid" style="background:#84cc16"></div>Zerésima</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>Votando</div><div class="vli"><div class="vlid" style="background:#ef4444"></div>Problema</div>';}else if(faseAtual==='enc'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#94a3b8"></div>Votando</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Fila (badge=qtd)</div><div class="vli"><div class="vlid" style="background:#3b82f6"></div>Encerrada</div><div class="vli"><div class="vlid" style="background:#2563eb"></div>Urna saiu</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>No cartório</div>';}else{leg.innerHTML='<div class="vli" style="color:#dc2626">Alertas ativos no momento</div>';}}
+iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
+updateLeg();buildPages();renderCurrent();updateNav();startTicker();
+setInterval(()=>{buildPages();renderCurrent();checkAutoSwitch();},5000);
+document.addEventListener('click',()=>initAudio(),{once:true});
+
+
+// ── CLIMA ──────────────────────────────────────────────────
+// Fallback: Campo Maior-PI (Lat -4.8252, Lon -42.1733). `var` (não `const`):
+// o módulo acima reatribui via `window.WEATHER_URL` assim que souber lat/lon
+// reais da zona (sime_zonas.lat/lon) — fetchWeather() lê esta variável a cada
+// chamada, então não precisa de reload, só disparar uma nova busca imediata.
+var WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
+  '?latitude=-4.8252&longitude=-42.1733' +
+  '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
+  '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';
+
+const WMO_CODE = {
+  0:'☀️','1':'🌤️','2':'⛅','3':'☁️',
+  45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',
+  61:'🌧️',63:'🌧️',65:'⛈️',71:'❄️',73:'❄️',75:'❄️',
+  80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',96:'⛈️',99:'⛈️'
+};
+const WMO_LABEL = {
+  0:'Céu limpo',1:'Poucas nuvens',2:'Parcialmente nublado',3:'Nublado',
+  45:'Neblina',48:'Neblina',51:'Garoa',53:'Garoa',55:'Garoa intensa',
+  61:'Chuva fraca',63:'Chuva moderada',65:'Chuva forte',
+  80:'Pancadas',81:'Pancadas',82:'Pancadas fortes',95:'Tempestade',99:'Tempestade forte'
+};
+
+let weatherHidden = false;
+let weatherRetries = 0;
+
+async function fetchWeather() {
+  try {
+    const res = await fetch(WEATHER_URL, { signal: AbortSignal.timeout(5000) });
+    const d   = await res.json();
+    const c   = d.current;
+    const temp   = Math.round(c.temperature_2m);
+    const sens   = Math.round(c.apparent_temperature);
+    const prob   = c.precipitation_probability;
+    const code   = c.weathercode;
+    const icon   = WMO_CODE[code] || '🌡️';
+    const cond   = WMO_LABEL[code] || 'Variável';
+
+    // Previsão próximas 3h
+    const now  = new Date();
+    const hNow = now.getHours();
+    const h3   = d.hourly?.precipitation_probability?.slice(hNow, hNow+3)||[];
+    const maxP = Math.max(...h3, prob);
+
+    document.getElementById('wc-icon').textContent  = icon;
+    document.getElementById('wc-temp').textContent  = temp + '°C';
+    document.getElementById('wc-cond').textContent  = cond;
+    document.getElementById('wc-detail').innerHTML  =
+      `Sensação ${sens}°C  ·  Chuva ${prob}%` +
+      (h3.length ? `<br>Próx 3h: máx ${maxP}% chuva` : '');
+
+    const alertEl = document.getElementById('wc-alert');
+    if (maxP > 50) {
+      alertEl.style.display = 'block';
+      alertEl.textContent   = '⚠ Possível atraso na logística';
+    } else {
+      alertEl.style.display = 'none';
+    }
+    weatherRetries = 0;
+  } catch(e) {
+    weatherRetries++;
+    if (weatherRetries <= 3) {
+      document.getElementById('wc-cond').textContent = 'Sem sinal — tentando...';
+    } else {
+      document.getElementById('weather-card').classList.add('hidden');
+    }
+  }
+}
+
+fetchWeather();
+setInterval(fetchWeather, 10 * 60 * 1000); // a cada 10 min
+</script>
+</body>
+</html>
