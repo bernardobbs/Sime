@@ -13,11 +13,20 @@ export function createClient() {
 }
 
 class QB {
-  constructor(t) { this.t = t; this.f = {}; this._op = null; }
+  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._op = null; }
   select(c) { this._sel = c; return this; }
   eq(c, v) { this.f[c] = v; return this; }
+  // .in(coluna, [valores]) — usado por api/hermes-notificacoes.js para filtrar
+  // as notificações pelas seções da zona.
+  in(c, vals) { this._in[c] = new Set(vals); return this; }
   order() { return this; }
   limit() { return this; }
+  // Aplica os .eq e .in acumulados a uma lista de linhas.
+  _filtra(rows) {
+    return (rows || []).filter((r) =>
+      Object.entries(this.f).every(([k, v]) => r[k] === v) &&
+      Object.entries(this._in).every(([k, set]) => set.has(r[k])));
+  }
   update(p) { this._op = 'update'; this._payload = p; return this; }
   upsert(o, opt) {
     const S = DB();
@@ -43,14 +52,17 @@ class QB {
         const i = (S.atores || []).findIndex(a => a.id === this.f.id);
         if (i > -1) S.atores[i] = { ...S.atores[i], ...this._payload };
       }
+      if (this.t === 'sime_notificacoes') {
+        for (const n of S.notificacoes || []) {
+          if (this._filtra([n]).length) Object.assign(n, this._payload);
+        }
+      }
       return resolve({ error: null });
     }
-    // Consulta de lista (não-single): sime_atores filtrado pelos .eq acumulados.
-    if (this.t === 'sime_atores') {
-      const rows = (S.atores || []).filter(a =>
-        Object.entries(this.f).every(([k, v]) => a[k] === v));
-      return resolve({ data: rows, error: null });
-    }
+    // Consultas de lista (não-single), filtradas pelos .eq/.in acumulados.
+    if (this.t === 'sime_atores')       return resolve({ data: this._filtra(S.atores), error: null });
+    if (this.t === 'sime_notificacoes') return resolve({ data: this._filtra(S.notificacoes), error: null });
+    if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
     return resolve({ data: null, error: null });
   }
   _read() {

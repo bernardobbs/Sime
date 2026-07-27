@@ -86,7 +86,9 @@ HERMES_WEBHOOK_SECRET=senha-forte-aqui
 │   ├── SIME_tokens.html                  Pré-eleição
 │   └── SIME_paineis.html                 Todos
 ├── api/
-│   └── hermes-update.js               ← Vercel serverless function
+│   ├── hermes-update.js               ← escrita de eventos de seção
+│   ├── hermes-mesarios.js             ← leitura + confirmação de mesários
+│   └── hermes-notificacoes.js         ← fila que o Hermes consulta (SIME → Hermes)
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
@@ -287,6 +289,24 @@ supabase
 - `sime_mesarios` — consulta mesários e registra confirmação de permanência na
   função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
 
+### Como o Hermes recebe as notificações (SIME → Hermes)
+
+O Hermes roda atrás de NAT (PC do cartório), sem endereço público — o Supabase
+não consegue chamá-lo. Então **o Hermes é quem pergunta**, a cada ~30s:
+
+```
+POST /api/hermes-notificacoes  { "acao": "pendentes" }   → fila da zona
+POST /api/hermes-notificacoes  { "acao": "confirmar", "ids": [...] }
+POST /api/hermes-notificacoes  { "acao": "erro", "ids": [...], "erro_msg": "..." }
+```
+
+O gatilho de pânico/mídia **enfileira** em `sime_notificacoes`; o POST direto
+para o Hermes virou aceleração opcional, só quando `app.hermes_url` existe.
+Cada notificação traz `idade_s` (relógio do servidor) — é com ela que o Hermes
+decide o nível de escalonamento, sem depender do horário do PC.
+
+Atraso: até um ciclo. Para um pânico que escala em 10 min, irrelevante.
+
 ### Fluxo de atualização via WhatsApp
 ```
 Mesário: "seção 63 encerrada"
@@ -348,7 +368,7 @@ garante que a **ação de um operador** não se perde enquanto a rede volta.
 |---|---|
 | Supabase fora do ar | Fila offline (IndexedDB) assume automaticamente; a ação sincroniza quando a rede voltar |
 | Vercel/Supabase indisponíveis juntos | O painel consolidado simplesmente para — sem impacto na eleição oficial. A operação segue por WhatsApp/telefone, como era antes do SIME |
-| Hermes cai | Operação continua, perde só notificações automáticas |
+| Hermes cai | Operação continua; as notificações ficam na fila (`sime_notificacoes`) e saem quando ele voltar |
 | Celular do mesário sem bateria | Qualquer agente confirma pelo Admin |
 | QR Code ilegível | PIN de 4 dígitos no verso do cartão |
 
