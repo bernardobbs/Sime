@@ -49,7 +49,7 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 - Banco: Supabase (PostgreSQL + Realtime + Auth + Edge Functions)
 - Hospedagem: Vercel (Hobby — gratuito)
 - Fila: Upstash QStash (Free — 500 msg/dia)
-- IA + WhatsApp: Hermes Agent no Oracle Cloud Always Free
+- IA + WhatsApp: Hermes Agent (PC do cartório — sem túnel, ver hermes/README.md)
 - Custo total: **R$ 0,00/mês**
 
 ### Variáveis de ambiente necessárias (Vercel)
@@ -57,9 +57,13 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 SUPABASE_URL=https://SEU_PROJETO.supabase.co
 SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
-HERMES_URL=http://SEU_ORACLE_IP:3000
-HERMES_WEBHOOK_SECRET=senha-forte-aqui
+HERMES_SECRET_ZONA_7=senha-forte-da-7a
+HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
+
+> `HERMES_URL` NÃO deve ser definida quando o Hermes roda atrás de NAT: ela só
+> serve para o SIME empurrar a notificação direto. Sem ela, o SIME enfileira e
+> o Hermes consulta — que é o modo correto. Ver `hermes/README.md`.
 
 ---
 
@@ -80,7 +84,7 @@ HERMES_WEBHOOK_SECRET=senha-forte-aqui
 │   ├── SIME_tv_dia.html                  Dia D (TV)
 │   ├── SIME_admin.html                   Dia D (admin)
 │   ├── SIME_midias.html                  Dia D
-│   ├── SIME_acessibilidade.html          Dia D (PENDENTE)
+│   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
 │   ├── SIME_principal.html               Todos
 │   ├── SIME_tokens.html                  Pré-eleição
@@ -94,10 +98,12 @@ HERMES_WEBHOOK_SECRET=senha-forte-aqui
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
 │   └── SIME_hermes_trigger.sql        ← Triggers para o Hermes
 ├── hermes/
-│   ├── sime_monitor.md                ← Skill: monitora grupos
-│   ├── sime_notificar.md              ← Skill: envia WhatsApp
-│   ├── sime_updater.md                ← Skill: persiste no Supabase
-│   └── setup.sh                       ← Instalação no Oracle Cloud
+│   ├── README.md                      ← Configuração (Linux e Windows)
+│   ├── SIME_hermes_skill_monitor.md   ← Skill: monitora grupos
+│   ├── SIME_hermes_skill_notificar.md ← Skill: drena a fila e envia WhatsApp
+│   ├── SIME_hermes_skill_updater.md   ← Skill: persiste no Supabase
+│   ├── SIME_hermes_skill_mesarios.md  ← Skill: confirma mesários
+│   └── setup.sh                       ← Instalação (ZONA=7 bash setup.sh)
 └── docs/
     ├── descricao_completa.md
     ├── plano_implementacao.md
@@ -138,7 +144,7 @@ HERMES_WEBHOOK_SECRET=senha-forte-aqui
 ### Autônomo
 | Papel | Tecnologia | Função |
 |---|---|---|
-| **Hermes Agent** | IA (Oracle Cloud) | Monitora grupos WhatsApp + envia notificações |
+| **Hermes Agent** | IA (PC do cartório ou VPS) | Monitora grupos WhatsApp + envia notificações |
 
 ### Regras críticas de escalonamento de pânico
 ```
@@ -233,54 +239,38 @@ supabase
 
 ---
 
-## MÓDULOS PENDENTES (implementar nesta ordem)
+## PENDÊNCIAS (atualizado em 27/07/2026)
 
-### Alta prioridade
+Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
+Admin, enum de funções, `sime_empresas`, token de acessibilidade) estão
+**concluídos** — assim como Realtime nas TVs, Supabase Auth, deploy na Vercel
+e os QR Codes por zona.
 
-1. **`SIME_acessibilidade.html`** — módulo novo
-   - Interface simplificada para Coordenador de Acessibilidade
-   - Filtra seções pelo `local_id` do token de acesso
-   - Botões: Fila (contador) / Energia (pânico) / Urna (pânico)
-   - Mesmo padrão visual do Mesário (dark, botões grandes)
-   - QR Code + PIN como acesso
+### Migração localStorage → Supabase (parcial)
 
-2. **`SIME_admin.html`** — novos perfis
-   - Coord. de Motoristas: filtro por `empresa_id` (só vê rotas da empresa)
-   - Coord. de Acessibilidade: filtro por `local_id` (só vê seções do local)
-   - Coletor de Mídias: campo `substituto_temporario` + notificação WA
+Já leem do banco: Admin (seções, equipe, mesários, atores), portal
+(zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
-3. **`SIME_atores.html`** — atualizar enum funções
-   - Adicionar: `auxiliar_eleicao`, `coord_motoristas`,
-     `coord_acessibilidade`, `coletor_midias`, `preposto`
+Ainda só em `localStorage`:
+- **Nome da eleição, início da distribuição e intervalo entre saídas** — não
+  têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
+- **Cadastro/edição de ator** em `SIME_atores.html` — a *leitura* vem do banco,
+  mas criar e editar ainda grava local.
+- **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
+  escrito pelos módulos e lido pelas TVs.
 
-4. **`SIME_schema.sql`** — novas tabelas
-   ```sql
-   CREATE TABLE sime_empresas (
-     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-     zona_id UUID REFERENCES sime_zonas(id),
-     nome TEXT NOT NULL,
-     rotas UUID[],  -- rotas atribuídas à empresa
-     ativo BOOLEAN DEFAULT true
-   );
-   ALTER TABLE sime_usuarios ADD COLUMN empresa_id UUID REFERENCES sime_empresas(id);
-   ALTER TABLE sime_usuarios ADD COLUMN local_id UUID;  -- para coord. acessibilidade
-   ```
+### Operação — antes de 4 de outubro
 
-5. **`SIME_tokens.html`** — novo tipo de token
-   - `coord_acessibilidade`: filtra por `local_id`, não por rota
-
-### Média prioridade
-
-6. **Migração localStorage → Supabase** (todos os 16 módulos)
-7. **Supabase Auth** (login email+senha para admins)
-8. **Deploy Vercel** com variáveis de ambiente
-9. **Realtime** nos TVs (TV Dia, TV Véspera, TV Distribuição)
-10. **Edge Function WhatsApp** (Hermes já configurado)
-11. **QR Codes** gerados por zona (seções + rotas + locais) — ver SIME_tokens.html
+- **94ª Zona zerada**: 0 tokens e 0 atores. Precisa importar os atores e gerar
+  os cartões.
+- **Data de carga e lacre** (`data_dx_ini`) nula nas duas zonas — não há padrão
+  legal, é decisão de cada cartório.
+- **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
+- **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
 
 ---
 
-## HERMES AGENT (Oracle Cloud)
+## HERMES AGENT
 
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
@@ -322,7 +312,7 @@ Pânico: sem confirmação — atualiza imediatamente
 ### Endpoint Vercel
 ```
 POST /api/hermes-update
-Authorization: Bearer HERMES_WEBHOOK_SECRET
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
 Body: { secao, evento, valor, remetente, origem }
 
 Eventos suportados:
