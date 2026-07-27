@@ -77,6 +77,7 @@ await p.route('**/modules/sime_dados.js', async (route) => {
     export async function getRotas(){ return []; }
     export async function getMunicipios(){ return null; }
     export async function getEmpresas(){ return null; }
+    export async function getAtores(){ return null; }
     export async function getZonaInfo(){ return null; }
     export function secoesDaEmpresa(){ return []; }
   `});
