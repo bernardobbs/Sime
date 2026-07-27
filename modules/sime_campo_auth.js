@@ -28,10 +28,10 @@ async function trocarToken(supabaseUrl, token, pin) {
     body: JSON.stringify({ token, pin }),
   });
   if (!resp.ok) throw new Error(`sime-login retornou ${resp.status}`);
-  return resp.json(); // { jwt, exp, zona_id, tipo, rotas, local_id, secoes }
+  return resp.json(); // { jwt, exp, zona_id, tipo, rotas, local_id, local_nome, secoes }
 }
 
-// Retorna { client, zonaId, rotas, localId, secoes, erro }. `client` vem null
+// Retorna { client, zonaId, rotas, localId, localNome, secoes, erro }. `client` vem null
 // se a sessão não puder ser obtida (rede indisponível, token/pin inválidos no
 // servidor, etc.) — o módulo chamador deve seguir no modo local/offline nesse
 // caso. `rotas`/`localId`/`secoes` são o escopo do token (conferente/motorista
@@ -45,11 +45,12 @@ export async function bootstrapCampoSession({ supabaseUrl, supabaseAnonKey, toke
       const dados = await trocarToken(supabaseUrl, token, pin);
       sessao = {
         token, jwt: dados.jwt, exp: dados.exp, zona_id: dados.zona_id, tipo: dados.tipo,
-        rotas: dados.rotas ?? null, local_id: dados.local_id ?? null, secoes: dados.secoes ?? null,
+        rotas: dados.rotas ?? null, local_id: dados.local_id ?? null,
+        local_nome: dados.local_nome ?? null, secoes: dados.secoes ?? null,
       };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(sessao));
     } catch (erro) {
-      return { client: null, zonaId: null, rotas: null, localId: null, secoes: null, erro: String(erro) };
+      return { client: null, zonaId: null, rotas: null, localId: null, localNome: null, secoes: null, erro: String(erro) };
     }
   }
 
@@ -59,7 +60,8 @@ export async function bootstrapCampoSession({ supabaseUrl, supabaseAnonKey, toke
   });
   return {
     client, zonaId: sessao.zona_id,
-    rotas: sessao.rotas ?? null, localId: sessao.local_id ?? null, secoes: sessao.secoes ?? null,
+    rotas: sessao.rotas ?? null, localId: sessao.local_id ?? null,
+    localNome: sessao.local_nome ?? null, secoes: sessao.secoes ?? null,
     erro: null,
   };
 }

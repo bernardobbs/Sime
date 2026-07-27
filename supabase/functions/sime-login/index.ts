@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
   const { data: tokenRow, error: tokenErr } = await supabase
     .from('sime_tokens')
-    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, secoes, expira_em')
+    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, local_nome, secoes, expira_em')
     .eq('token', token)
     .maybeSingle();
 
@@ -133,5 +133,11 @@ Deno.serve(async (req) => {
   return jsonResponse(200, {
     jwt, exp, zona_id: zonaId, tipo: tokenRow.tipo,
     rotas: tokenRow.rotas, local_id: tokenRow.local_id, secoes: tokenRow.secoes,
+    // local_nome acompanha local_id porque é ele que o SIME_acessibilidade usa
+    // para filtrar (o filtro é por nome do local, não por UUID) — e os cartões
+    // gerados em SIME_tokens.html preenchem local_nome, deixando local_id nulo.
+    // Fora do JWT de propósito: é rótulo de exibição/filtro no cliente, não
+    // credencial; quem autoriza no banco é o local_id assinado.
+    local_nome: tokenRow.local_nome,
   });
 });
