@@ -142,6 +142,22 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — mesmo padrão dos demais módulos (Supabase Auth). O portal antes
+     não tinha autenticação nenhuma: abria direto e exibia as zonas cadastradas
+     para qualquer um com a URL. "Continuar offline" preserva o uso local (a
+     configuração da eleição vive em localStorage), só sem resolver a zona. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.6);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME — Painel Principal</div>
+    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de administrador.</div>
+    <input id="login-email" type="email" placeholder="E-mail" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pass" type="password" placeholder="Senha" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (só localStorage)</button>
+  </form>
+</div>
+
 <div class="topbar">
   <div class="logo">S</div>
   <div class="brand"><h1>SIME</h1><p>Sistema de Monitoramento Eleitoral</p></div>
@@ -157,7 +173,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('eleicao',this)">🗓️ Eleição</button>
-  <button class="nav-tab"        onclick="goTab('zonas',this)">🗺️ Zonas</button>
+  <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
   <button class="nav-tab"        onclick="goTab('modulos',this)">🔗 Módulos</button>
   <button class="nav-tab"        onclick="goTab('usuarios',this)">👥 Usuários</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
@@ -294,57 +310,13 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
     </div>
     <button class="btn btn-dark" onclick="openModal('nova-zona')">+ Adicionar zona</button>
   </div>
-  <div class="grid4" style="margin-bottom:20px;">
-    <div class="zona-card">
-      <div class="zona-header">
-        <div class="zona-num" style="background:#3a5fa0">7ª</div>
-        <div>
-          <div class="zona-nome">7ª Zona Eleitoral</div>
-          <div class="zona-sede">Campo Maior — PI</div>
-          <div class="zona-badges"><span class="zbadge ok">✓ Ativa</span><span class="zbadge ok">174 seções</span><span class="zbadge warn">13 sem rota</span></div>
-        </div>
-      </div>
-      <div class="zona-body">
-        <div class="zona-stats">
-          <div class="zstat"><div class="zstat-val">174</div><div class="zstat-lbl">Seções</div></div>
-          <div class="zstat"><div class="zstat-val">12</div><div class="zstat-lbl">Rotas</div></div>
-          <div class="zstat"><div class="zstat-val">34.967</div><div class="zstat-lbl">Eleitores</div></div>
-          <div class="zstat"><div class="zstat-val">3</div><div class="zstat-lbl">Admins</div></div>
-        </div>
-        <div class="zona-actions">
-          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','7')">⚙️ Configurar</button>
-          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','7')">👥 Admins</button>
-        </div>
-      </div>
-    </div>
-    <div class="zona-card">
-      <div class="zona-header">
-        <div class="zona-num" style="background:#6040a0">96ª</div>
-        <div>
-          <div class="zona-nome">96ª Zona Eleitoral</div>
-          <div class="zona-sede">— não definido —</div>
-          <div class="zona-badges"><span class="zbadge new">✦ Recém criada</span><span class="zbadge off">Sem seções</span></div>
-        </div>
-      </div>
-      <div class="zona-body">
-        <div class="zona-stats">
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Seções</div></div>
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Rotas</div></div>
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">1</div><div class="zstat-lbl">Admin</div></div>
-        </div>
-        <div style="font-size:.74rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠ Configure a sede e importe as seções para ativar.</div>
-        <div class="zona-actions">
-          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','96')">⚙️ Configurar</button>
-          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','96')">👥 Admins</button>
-        </div>
-      </div>
-    </div>
-    <div class="zona-card nova" onclick="openModal('nova-zona')">
-      <div class="nova-inner"><span>＋</span><p>Nova zona</p></div>
-    </div>
-  </div>
+  <!-- Preenchido por renderZonas() com o que a RLS deixa este usuário ver:
+       admin de zona recebe só a dele, super_admin recebe todas. Antes as duas
+       zonas vinham fixas no HTML, com números fixos, para qualquer um que
+       abrisse a URL. -->
+  <div class="grid4" style="margin-bottom:20px;" id="zonas-grid"></div>
   <div class="card" style="font-size:.8rem;color:var(--text2);line-height:1.8;">
-    🔒 <strong style="color:var(--text)">Isolamento total:</strong> seções, rotas, usuários e eventos de cada zona são completamente separados. O Super Admin é o único que enxerga todas as zonas.
+    🔒 <strong style="color:var(--text)">Isolamento por zona:</strong> seções, rotas, usuários e eventos de cada zona são separados pela RLS do banco. O Super Admin é o único que enxerga todas as zonas.
   </div>
 </div>
 
@@ -415,6 +387,77 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
 <div class="toast" id="toast"></div>
 
+<script type="module">
+// Escopo por zona do portal. Antes este arquivo não falava com o Supabase:
+// abria sem login e listava as zonas cadastradas (fixas no HTML) para qualquer
+// um com a URL. Agora a lista vem do banco, e a RLS decide o que aparece —
+// admin de zona vê só a dele, super_admin vê todas.
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+async function carregarZonas(){
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: meu } = await supabase
+    .from('sime_usuarios').select('nome, perfil, zona_id')
+    .eq('auth_user_id', user.id).maybeSingle();
+  if (!meu) return;
+
+  window.SIME_PERFIL = meu.perfil;
+  window.MINHA_ZONA_ID = meu.zona_id || null;
+
+  // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
+  // só opera a sua. Mesma regra já usada em SIME_admin.html.
+  const btn = document.getElementById('tab-zonas-btn');
+  if (btn) btn.style.display = meu.perfil === 'super_admin' ? '' : 'none';
+
+  // Consultas já filtradas pela RLS — não é preciso (nem seguro) filtrar aqui.
+  const [{ data: zonas }, { data: secoes }, { data: rotas }, { data: usuarios }] = await Promise.all([
+    supabase.from('sime_zonas').select('id, numero, municipio, uf').order('numero'),
+    supabase.from('sime_secoes').select('zona_id, eleitores'),
+    supabase.from('sime_rotas').select('zona_id'),
+    supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+  ]);
+
+  const soma = (rows, key, campo) => (rows || []).reduce((m, r) => {
+    m[r[key]] = (m[r[key]] || 0) + (campo ? (r[campo] || 0) : 1); return m;
+  }, {});
+  window.ZONAS_REAIS = (zonas || []).map(z => ({
+    ...z,
+    secoes: soma(secoes, 'zona_id')[z.id] || 0,
+    rotas: soma(rotas, 'zona_id')[z.id] || 0,
+    eleitores: soma(secoes, 'zona_id', 'eleitores')[z.id] || 0,
+    admins: soma(usuarios, 'zona_id')[z.id] || 0,
+  }));
+  if (window.renderZonas) window.renderZonas();
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({
+    email: document.getElementById('login-email').value,
+    password: document.getElementById('login-pass').value,
+  });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  await carregarZonas();
+  esconderLogin();
+});
+
+// Contingência: a configuração da eleição vive em localStorage, então o painel
+// continua utilizável sem sessão — só não resolve a zona nem lista zonas.
+document.getElementById('login-offline').addEventListener('click', esconderLogin);
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { await carregarZonas(); esconderLogin(); }
+})();
+</script>
 <script src="./sime_ui_utils.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
@@ -460,6 +503,53 @@ function propagateDist(el){
     localStorage.setItem('sime_dist_v1',JSON.stringify(dist));
   }catch(e){}
 }
+
+// ══════════════════════════════════════════════════
+// ZONAS — sempre do banco, nunca fixas no HTML
+// ══════════════════════════════════════════════════
+const CORES_ZONA = ['#3a5fa0','#6040a0','#1a7a6e','#8a5c20','#c0392b'];
+
+function renderZonas(){
+  const grid = document.getElementById('zonas-grid');
+  if(!grid) return;
+  const zonas = window.ZONAS_REAIS || [];
+  if(!zonas.length){
+    grid.innerHTML = '<div class="card" style="font-size:.8rem;color:var(--text2)">Entre com seu login para ver as zonas que você administra.</div>';
+    return;
+  }
+  const nf = new Intl.NumberFormat('pt-BR');
+  grid.innerHTML = zonas.map((z, i) => {
+    const semSecoes = z.secoes === 0;
+    return `
+    <div class="zona-card">
+      <div class="zona-header">
+        <div class="zona-num" style="background:${CORES_ZONA[i % CORES_ZONA.length]}">${z.numero}ª</div>
+        <div>
+          <div class="zona-nome">${z.numero}ª Zona Eleitoral</div>
+          <div class="zona-sede">${z.municipio ? z.municipio + (z.uf ? ' — ' + z.uf : '') : '— sede não definida —'}</div>
+          <div class="zona-badges">
+            <span class="zbadge ${semSecoes ? 'off' : 'ok'}">${semSecoes ? 'Sem seções' : nf.format(z.secoes) + ' seções'}</span>
+            ${z.rotas ? `<span class="zbadge ok">${z.rotas} rotas</span>` : '<span class="zbadge warn">Sem rotas</span>'}
+          </div>
+        </div>
+      </div>
+      <div class="zona-body">
+        <div class="zona-stats">
+          <div class="zstat"><div class="zstat-val"${semSecoes ? ' style="color:var(--text3)"' : ''}>${nf.format(z.secoes)}</div><div class="zstat-lbl">Seções</div></div>
+          <div class="zstat"><div class="zstat-val"${z.rotas ? '' : ' style="color:var(--text3)"'}>${z.rotas}</div><div class="zstat-lbl">Rotas</div></div>
+          <div class="zstat"><div class="zstat-val">${nf.format(z.eleitores)}</div><div class="zstat-lbl">Eleitores</div></div>
+          <div class="zstat"><div class="zstat-val">${z.admins}</div><div class="zstat-lbl">Admins</div></div>
+        </div>
+        ${semSecoes ? '<div style="font-size:.74rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠ Importe as seções para ativar.</div>' : ''}
+        <div class="zona-actions">
+          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','${z.numero}')">⚙️ Configurar</button>
+          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','${z.numero}')">👥 Admins</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '<div class="zona-card nova" onclick="openModal(\'nova-zona\')"><div class="nova-inner"><span>＋</span><p>Nova zona</p></div></div>';
+}
+window.renderZonas = renderZonas;
 
 // ══════════════════════════════════════════════════
 // DATAS DA ELEIÇÃO — padrões legais e véspera inferida
@@ -695,7 +785,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
   // Depois de carregar o que já estava salvo: sugere as datas legais só nos
   // campos ainda vazios e deriva a véspera de cada turno.
   aplicarPadroesDeData();
-  updateFase(); renderTimeline(); renderModulos();
+  updateFase(); renderTimeline(); renderModulos(); renderZonas();
 })();
 </script>
 </body>
