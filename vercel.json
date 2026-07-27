@@ -5,6 +5,9 @@
       "maxDuration": 30
     }
   },
+  "rewrites": [
+    { "source": "/z/:zona/:caminho*", "destination": "/modules/:caminho*" }
+  ],
   "redirects": [
     { "source": "/", "destination": "/modules/SIME_admin.html", "permanent": false }
   ]

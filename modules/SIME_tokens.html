@@ -793,10 +793,23 @@ const MODULOS_POR_TIPO = {
   instalador: 'SIME_instalador.html',
   coord_acessibilidade: 'SIME_acessibilidade.html',
 };
+// URL impressa no QR Code. Com a zona resolvida vira /z/<numero>/<modulo>, que
+// o vercel.json reescreve para /modules/<modulo> — a reescrita (e não um
+// redirect) mantém o /z/<numero>/ no endereço, então os caminhos relativos do
+// módulo (./sime_config.js, ./vendor/...) continuam resolvendo sozinhos.
+//
+// A zona no caminho é organização, não autorização: quem autoriza é o token
+// validado pela sime-login e a RLS. Serve para cada cartório ter seu próprio
+// endereço e para um cartão trocado ser percebido de imediato.
+//
+// Sem zona resolvida (offline, sessão ausente) cai na URL relativa de antes —
+// que continua válida em produção, então os cartões já impressos seguem
+// funcionando.
 function buildUrl(tokenId, tipo){
-  // URL relativa ao mesmo diretório — módulo destino conforme o tipo
-  const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
   const modulo = MODULOS_POR_TIPO[tipo] || 'SIME_conferente.html';
+  const numeroZona = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
+  if (numeroZona) return `${window.location.origin}/z/${numeroZona}/${modulo}?token=${tokenId}`;
+  const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
   return base + modulo + '?token=' + tokenId;
 }
 
