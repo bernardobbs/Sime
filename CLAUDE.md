@@ -279,7 +279,9 @@ supabase
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
 - `sime_notificar` — envia WhatsApp com 8 templates
-- `sime_updater` — persiste no Supabase via `/api/hermes-update`
+- `sime_updater` — persiste eventos de seção via `/api/hermes-update` (só escrita)
+- `sime_mesarios` — consulta mesários e registra confirmação de permanência na
+  função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
 
 ### Fluxo de atualização via WhatsApp
 ```
@@ -302,6 +304,17 @@ Body: { secao, evento, valor, remetente, origem }
 Eventos suportados:
   enc, vot, zeresima, fila, panico_energia, panico_urna,
   panico_resolvido, urna, midia_pronta, mesa_completa
+```
+
+### Endpoint Vercel — mesários (leitura + confirmação)
+```
+POST /api/hermes-mesarios
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
+Body: { acao, secao?, status?, telefone? }
+
+Ações:
+  listar                          → lista mesários da zona (nome, telefone, seção, status)
+  confirmar | recusar | substituir → grava sime_atores.confirmacao (por telefone)
 ```
 
 ---

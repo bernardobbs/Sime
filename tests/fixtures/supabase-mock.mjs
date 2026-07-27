@@ -39,7 +39,17 @@ class QB {
     if (this._op === 'update') {
       S.ops.push({ op: 'update', t: this.t, payload: this._payload, filter: this.f });
       if (this.t === 'sime_mesa_estado') { const id = this.f.secao_id; S.mesa[id] = { ...S.mesa[id], ...this._payload }; }
+      if (this.t === 'sime_atores') {
+        const i = (S.atores || []).findIndex(a => a.id === this.f.id);
+        if (i > -1) S.atores[i] = { ...S.atores[i], ...this._payload };
+      }
       return resolve({ error: null });
+    }
+    // Consulta de lista (não-single): sime_atores filtrado pelos .eq acumulados.
+    if (this.t === 'sime_atores') {
+      const rows = (S.atores || []).filter(a =>
+        Object.entries(this.f).every(([k, v]) => a[k] === v));
+      return resolve({ data: rows, error: null });
     }
     return resolve({ data: null, error: null });
   }
