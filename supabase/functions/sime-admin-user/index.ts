@@ -30,10 +30,24 @@ const PERFIS_VALIDOS = new Set([
 // perfis que têm permissão de config_equipe (podem criar outros membros)
 const PODE_CRIAR = new Set(['super_admin', 'coordenador']);
 
+// CORS: chamada do navegador a partir do SIME_admin (servido pelo Vercel), com
+// corpo em application/json — o preflight OPTIONS precisa ser respondido, senão
+// o POST nunca sai. Mesmo motivo detalhado em sime-login/index.ts.
+//
+// A sessão de admin viaja no header Authorization, preenchido pelo próprio app;
+// não é cookie, então não é enviado automaticamente por uma página de terceiros
+// e o '*' aqui não expõe a sessão de ninguém.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
 }
 
@@ -47,6 +61,9 @@ function gerarSenhaTemporaria(): string {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }

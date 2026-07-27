@@ -142,6 +142,22 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 </head>
 <body>
 
+<!-- LOGIN — mesmo padrão dos demais módulos (Supabase Auth). O portal antes
+     não tinha autenticação nenhuma: abria direto e exibia as zonas cadastradas
+     para qualquer um com a URL. "Continuar offline" preserva o uso local (a
+     configuração da eleição vive em localStorage), só sem resolver a zona. -->
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(42,40,56,.6);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
+    <div style="font-weight:800;font-size:1rem;">SIME — Painel Principal</div>
+    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de administrador.</div>
+    <input id="login-email" type="email" placeholder="E-mail" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <input id="login-pass" type="password" placeholder="Senha" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
+    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid #cac5b8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (só localStorage)</button>
+  </form>
+</div>
+
 <div class="topbar">
   <div class="logo">S</div>
   <div class="brand"><h1>SIME</h1><p>Sistema de Monitoramento Eleitoral</p></div>
@@ -157,7 +173,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('eleicao',this)">🗓️ Eleição</button>
-  <button class="nav-tab"        onclick="goTab('zonas',this)">🗺️ Zonas</button>
+  <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
   <button class="nav-tab"        onclick="goTab('modulos',this)">🔗 Módulos</button>
   <button class="nav-tab"        onclick="goTab('usuarios',this)">👥 Usuários</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
@@ -208,12 +224,12 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
         <div class="form-group">
           <label>🚗 D-1 — Véspera da eleição</label>
           <input type="date" id="t1-d1" oninput="onDateChange()">
-          <div class="hint">Ativa: Conferente + Instalador + TV Véspera + TV Distribuição.</div>
+          <div class="hint">Preenchida a partir do Dia D (véspera = dia anterior). Editável. Ativa: Conferente + Instalador + TV Véspera + TV Distribuição.</div>
         </div>
         <div class="form-group">
           <label>🗳️ Dia D — Data da eleição</label>
-          <input type="date" id="t1-d" oninput="onDateChange()">
-          <div class="hint">Ativa: Mesário + TV Dia + Motorista.</div>
+          <input type="date" id="t1-d" oninput="onDiaDChange(1)">
+          <div class="hint">Padrão: primeiro domingo de outubro. Editável. Ativa: Mesário + TV Dia + Motorista.</div>
         </div>
       </div>
       <div class="card">
@@ -257,7 +273,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
         </div>
         <div class="form-group">
           <label>🗳️ Dia D — 2º turno</label>
-          <input type="date" id="t2-d" oninput="onDateChange()">
+          <input type="date" id="t2-d" oninput="onDiaDChange(2)">
         </div>
         <div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:8px;padding:10px 12px;font-size:.74rem;color:var(--yellow);">
           ⚠ O 2º turno usa as mesmas seções e rotas do 1º. Dados operacionais são arquivados separadamente.
@@ -294,57 +310,13 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
     </div>
     <button class="btn btn-dark" onclick="openModal('nova-zona')">+ Adicionar zona</button>
   </div>
-  <div class="grid4" style="margin-bottom:20px;">
-    <div class="zona-card">
-      <div class="zona-header">
-        <div class="zona-num" style="background:#3a5fa0">7ª</div>
-        <div>
-          <div class="zona-nome">7ª Zona Eleitoral</div>
-          <div class="zona-sede">Campo Maior — PI</div>
-          <div class="zona-badges"><span class="zbadge ok">✓ Ativa</span><span class="zbadge ok">174 seções</span><span class="zbadge warn">13 sem rota</span></div>
-        </div>
-      </div>
-      <div class="zona-body">
-        <div class="zona-stats">
-          <div class="zstat"><div class="zstat-val">174</div><div class="zstat-lbl">Seções</div></div>
-          <div class="zstat"><div class="zstat-val">12</div><div class="zstat-lbl">Rotas</div></div>
-          <div class="zstat"><div class="zstat-val">34.967</div><div class="zstat-lbl">Eleitores</div></div>
-          <div class="zstat"><div class="zstat-val">3</div><div class="zstat-lbl">Admins</div></div>
-        </div>
-        <div class="zona-actions">
-          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','7')">⚙️ Configurar</button>
-          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','7')">👥 Admins</button>
-        </div>
-      </div>
-    </div>
-    <div class="zona-card">
-      <div class="zona-header">
-        <div class="zona-num" style="background:#6040a0">96ª</div>
-        <div>
-          <div class="zona-nome">96ª Zona Eleitoral</div>
-          <div class="zona-sede">— não definido —</div>
-          <div class="zona-badges"><span class="zbadge new">✦ Recém criada</span><span class="zbadge off">Sem seções</span></div>
-        </div>
-      </div>
-      <div class="zona-body">
-        <div class="zona-stats">
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Seções</div></div>
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">0</div><div class="zstat-lbl">Rotas</div></div>
-          <div class="zstat"><div class="zstat-val" style="color:var(--text3)">1</div><div class="zstat-lbl">Admin</div></div>
-        </div>
-        <div style="font-size:.74rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠ Configure a sede e importe as seções para ativar.</div>
-        <div class="zona-actions">
-          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','96')">⚙️ Configurar</button>
-          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','96')">👥 Admins</button>
-        </div>
-      </div>
-    </div>
-    <div class="zona-card nova" onclick="openModal('nova-zona')">
-      <div class="nova-inner"><span>＋</span><p>Nova zona</p></div>
-    </div>
-  </div>
+  <!-- Preenchido por renderZonas() com o que a RLS deixa este usuário ver:
+       admin de zona recebe só a dele, super_admin recebe todas. Antes as duas
+       zonas vinham fixas no HTML, com números fixos, para qualquer um que
+       abrisse a URL. -->
+  <div class="grid4" style="margin-bottom:20px;" id="zonas-grid"></div>
   <div class="card" style="font-size:.8rem;color:var(--text2);line-height:1.8;">
-    🔒 <strong style="color:var(--text)">Isolamento total:</strong> seções, rotas, usuários e eventos de cada zona são completamente separados. O Super Admin é o único que enxerga todas as zonas.
+    🔒 <strong style="color:var(--text)">Isolamento por zona:</strong> seções, rotas, usuários e eventos de cada zona são separados pela RLS do banco. O Super Admin é o único que enxerga todas as zonas.
   </div>
 </div>
 
@@ -368,7 +340,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
     <div><div style="font-size:1rem;font-weight:800;">Usuários e permissões</div></div>
     <div style="display:flex;gap:8px;">
       <select id="zona-filter" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.78rem;" onchange="filterUsers()">
-        <option value="all">Todas as zonas</option><option value="7">7ª Zona</option><option value="96">96ª Zona</option>
+        <option value="all">Todas as zonas</option><option value="7">7ª Zona</option><option value="94">94ª Zona</option>
       </select>
       <button class="btn btn-dark" onclick="openModal('novo-usuario')">+ Novo usuário</button>
     </div>
@@ -415,6 +387,77 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
 <div class="toast" id="toast"></div>
 
+<script type="module">
+// Escopo por zona do portal. Antes este arquivo não falava com o Supabase:
+// abria sem login e listava as zonas cadastradas (fixas no HTML) para qualquer
+// um com a URL. Agora a lista vem do banco, e a RLS decide o que aparece —
+// admin de zona vê só a dele, super_admin vê todas.
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+async function carregarZonas(){
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { data: meu } = await supabase
+    .from('sime_usuarios').select('nome, perfil, zona_id')
+    .eq('auth_user_id', user.id).maybeSingle();
+  if (!meu) return;
+
+  window.SIME_PERFIL = meu.perfil;
+  window.MINHA_ZONA_ID = meu.zona_id || null;
+
+  // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
+  // só opera a sua. Mesma regra já usada em SIME_admin.html.
+  const btn = document.getElementById('tab-zonas-btn');
+  if (btn) btn.style.display = meu.perfil === 'super_admin' ? '' : 'none';
+
+  // Consultas já filtradas pela RLS — não é preciso (nem seguro) filtrar aqui.
+  const [{ data: zonas }, { data: secoes }, { data: rotas }, { data: usuarios }] = await Promise.all([
+    supabase.from('sime_zonas').select('id, numero, municipio, estado').order('numero'),
+    supabase.from('sime_secoes').select('zona_id, eleitores'),
+    supabase.from('sime_rotas').select('zona_id'),
+    supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+  ]);
+
+  const soma = (rows, key, campo) => (rows || []).reduce((m, r) => {
+    m[r[key]] = (m[r[key]] || 0) + (campo ? (r[campo] || 0) : 1); return m;
+  }, {});
+  window.ZONAS_REAIS = (zonas || []).map(z => ({
+    ...z,
+    secoes: soma(secoes, 'zona_id')[z.id] || 0,
+    rotas: soma(rotas, 'zona_id')[z.id] || 0,
+    eleitores: soma(secoes, 'zona_id', 'eleitores')[z.id] || 0,
+    admins: soma(usuarios, 'zona_id')[z.id] || 0,
+  }));
+  if (window.renderZonas) window.renderZonas();
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({
+    email: document.getElementById('login-email').value,
+    password: document.getElementById('login-pass').value,
+  });
+  if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
+  await carregarZonas();
+  esconderLogin();
+});
+
+// Contingência: a configuração da eleição vive em localStorage, então o painel
+// continua utilizável sem sessão — só não resolve a zona nem lista zonas.
+document.getElementById('login-offline').addEventListener('click', esconderLogin);
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) { await carregarZonas(); esconderLogin(); }
+})();
+</script>
 <script src="./sime_ui_utils.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
@@ -459,6 +502,120 @@ function propagateDist(el){
     });
     localStorage.setItem('sime_dist_v1',JSON.stringify(dist));
   }catch(e){}
+}
+
+// ══════════════════════════════════════════════════
+// ZONAS — sempre do banco, nunca fixas no HTML
+// ══════════════════════════════════════════════════
+const CORES_ZONA = ['#3a5fa0','#6040a0','#1a7a6e','#8a5c20','#c0392b'];
+
+function renderZonas(){
+  const grid = document.getElementById('zonas-grid');
+  if(!grid) return;
+  const zonas = window.ZONAS_REAIS || [];
+  if(!zonas.length){
+    grid.innerHTML = '<div class="card" style="font-size:.8rem;color:var(--text2)">Entre com seu login para ver as zonas que você administra.</div>';
+    return;
+  }
+  const nf = new Intl.NumberFormat('pt-BR');
+  grid.innerHTML = zonas.map((z, i) => {
+    const semSecoes = z.secoes === 0;
+    return `
+    <div class="zona-card">
+      <div class="zona-header">
+        <div class="zona-num" style="background:${CORES_ZONA[i % CORES_ZONA.length]}">${z.numero}ª</div>
+        <div>
+          <div class="zona-nome">${z.numero}ª Zona Eleitoral</div>
+          <div class="zona-sede">${z.municipio ? z.municipio + (z.estado ? ' — ' + z.estado : '') : '— sede não definida —'}</div>
+          <div class="zona-badges">
+            <span class="zbadge ${semSecoes ? 'off' : 'ok'}">${semSecoes ? 'Sem seções' : nf.format(z.secoes) + ' seções'}</span>
+            ${z.rotas ? `<span class="zbadge ok">${z.rotas} rotas</span>` : '<span class="zbadge warn">Sem rotas</span>'}
+          </div>
+        </div>
+      </div>
+      <div class="zona-body">
+        <div class="zona-stats">
+          <div class="zstat"><div class="zstat-val"${semSecoes ? ' style="color:var(--text3)"' : ''}>${nf.format(z.secoes)}</div><div class="zstat-lbl">Seções</div></div>
+          <div class="zstat"><div class="zstat-val"${z.rotas ? '' : ' style="color:var(--text3)"'}>${z.rotas}</div><div class="zstat-lbl">Rotas</div></div>
+          <div class="zstat"><div class="zstat-val">${nf.format(z.eleitores)}</div><div class="zstat-lbl">Eleitores</div></div>
+          <div class="zstat"><div class="zstat-val">${z.admins}</div><div class="zstat-lbl">Admins</div></div>
+        </div>
+        ${semSecoes ? '<div style="font-size:.74rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 10px;margin-bottom:10px;">⚠ Importe as seções para ativar.</div>' : ''}
+        <div class="zona-actions">
+          <button class="btn btn-dark btn-sm" onclick="openModal('config-zona','${z.numero}')">⚙️ Configurar</button>
+          <button class="btn btn-out btn-sm"  onclick="openModal('admins-zona','${z.numero}')">👥 Admins</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '<div class="zona-card nova" onclick="openModal(\'nova-zona\')"><div class="nova-inner"><span>＋</span><p>Nova zona</p></div></div>';
+}
+window.renderZonas = renderZonas;
+
+// ══════════════════════════════════════════════════
+// DATAS DA ELEIÇÃO — padrões legais e véspera inferida
+// ══════════════════════════════════════════════════
+// Eleição ordinária brasileira: 1º turno no primeiro domingo de outubro,
+// 2º turno no último domingo de outubro. São só PADRÕES — os três campos
+// continuam editáveis, porque data de eleição suplementar não segue essa
+// regra e o D-X (carga e lacre) é definido pelo cartório.
+
+function domingosDeOutubro(ano){
+  const primeiro = new Date(ano, 9, 1);          // 9 = outubro
+  // Dias até o primeiro domingo: 0 se dia 1 já é domingo.
+  primeiro.setDate(1 + ((7 - primeiro.getDay()) % 7));
+  const ultimo = new Date(ano, 9, 31);
+  // Volta do dia 31 até cair num domingo.
+  ultimo.setDate(31 - ultimo.getDay());
+  return { primeiro, ultimo };
+}
+
+function ymd(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Ano da próxima eleição: o corrente, ou o seguinte se o 1º turno deste ano
+// já passou — assim o padrão não sugere uma data no passado.
+function anoEleitoralPadrao(){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const ano = hoje.getFullYear();
+  return domingosDeOutubro(ano).primeiro < hoje ? ano + 1 : ano;
+}
+
+// Véspera = dia anterior ao Dia D. Não é escolha, é definição — por isso
+// derivada em vez de digitada (o campo segue editável para casos atípicos).
+function vesperaDe(ymdDiaD){
+  if(!ymdDiaD) return '';
+  const [a,m,d] = ymdDiaD.split('-').map(Number);
+  const dt = new Date(a, m-1, d);
+  dt.setDate(dt.getDate() - 1);
+  return ymd(dt);
+}
+
+// Preenche o que ainda está vazio. Nunca sobrescreve data já configurada —
+// abrir o painel não pode mexer numa eleição já montada pelo cartório.
+function aplicarPadroesDeData(){
+  const { primeiro, ultimo } = domingosDeOutubro(anoEleitoralPadrao());
+  [['t1-d', primeiro], ['t2-d', ultimo]].forEach(([id, data]) => {
+    const el = document.getElementById(id);
+    if(el && !el.value) el.value = ymd(data);
+  });
+  // D-X (carga e lacre) fica em branco de propósito: não há data legal padrão,
+  // quem define é o cartório.
+  ['1','2'].forEach(t => sincronizarVespera(t, { apenasSeVazio: true }));
+}
+
+// Chamado ao mudar o Dia D e no carregamento.
+function sincronizarVespera(turno, { apenasSeVazio = false } = {}){
+  const diaD = document.getElementById(`t${turno}-d`);
+  const vesp = document.getElementById(`t${turno}-d1`);
+  if(!diaD || !vesp) return;
+  if(apenasSeVazio && vesp.value) return;
+  vesp.value = vesperaDe(diaD.value);
+}
+
+function onDiaDChange(turno){
+  sincronizarVespera(turno);
+  onDateChange();
 }
 
 function onDateChange(){ updateFase(); renderTimeline(); }
@@ -580,7 +737,7 @@ const USERS=[
   {name:'Rafael A.',ini:'RA',color:'#2a2a2a',role:'super',rl:'Super Admin',zona:'Todas',last:'Agora'},
   {name:'Maria S.',ini:'MS',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'hoje 07:12'},
   {name:'João P.',ini:'JP',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'ontem'},
-  {name:'Ana C.',ini:'AC',color:'#6040a0',role:'admin',rl:'Admin de Zona',zona:'96ª',last:'—'},
+  {name:'Ana C.',ini:'AC',color:'#6040a0',role:'admin',rl:'Admin de Zona',zona:'94ª',last:'—'},
   {name:'Carlos M.',ini:'CM',color:'#1a7a6e',role:'coord',rl:'Coordenador',zona:'7ª',last:'hoje 06:58'},
   {name:'Paulo T.',ini:'PT',color:'#1a7a6e',role:'inst',rl:'Técnico',zona:'7ª',last:'—'},
   {name:'José R.',ini:'JR',color:'#8a5c20',role:'motor',rl:'Motorista',zona:'7ª',last:'—'},
@@ -588,7 +745,7 @@ const USERS=[
 const RCLS={super:'role-super',admin:'role-admin',coord:'role-coord',inst:'role-inst',motor:'role-motor'};
 function buildUsers(f='all'){
   document.getElementById('user-tbody').innerHTML=USERS
-    .filter(u=>f==='all'||u.zona==='Todas'||(f==='7'&&u.zona==='7ª')||(f==='96'&&u.zona==='96ª'))
+    .filter(u=>f==='all'||u.zona==='Todas'||(f==='7'&&u.zona==='7ª')||(f==='94'&&u.zona==='94ª'))
     .map(u=>'<tr><td><div class="td-row"><div class="avatar-sm" style="background:'+u.color+'">'+u.ini+'</div><strong>'+u.name+'</strong></div></td>'
       +'<td><span class="role-badge '+RCLS[u.role]+'">'+u.rl+'</span></td>'
       +'<td>'+u.zona+'</td><td style="font-size:.76rem">'+u.last+'</td>'
@@ -602,8 +759,8 @@ const MODALS={
   'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Zona criada")">Criar</button></div>',
   'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div style="border:2px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer">📄 Selecionar arquivo</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
   'admins-zona':(z)=>'<div class="modal-header"><div class="modal-title">👥 Admins da '+z+'ª Zona</div></div><div class="modal-body">'+(z==='7'?'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#3a5fa0">MS</div><div style="flex:1"><strong>Maria S.</strong></div><button class="td-btn del">🗑</button></div>':'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#6040a0">AC</div><div style="flex:1"><strong>Ana C.</strong></div><button class="td-btn del">🗑</button></div>')+'</div><div class="modal-footer"><button class="btn btn-dark" onclick="closeModal()">Fechar</button></div>',
-  'novo-usuario':()=>'<div class="modal-header"><div class="modal-title">👤 Novo usuário</div><div class="modal-sub">O usuário verá apenas a zona atribuída.</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Nome</label><input type="text"></div><div class="form-group"><label>E-mail</label><input type="email"></div></div><div class="form-group"><label>Perfil</label><select><option>Admin de Zona</option><option>Coordenador</option><option>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona — Campo Maior</option><option>96ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Criado")">Criar</button></div>',
-  'editar-usuario':(n)=>'<div class="modal-header"><div class="modal-title">✏️ Editar — '+n+'</div></div><div class="modal-body"><div class="form-group"><label>Perfil</label><select><option>Admin</option><option>Coordenador</option><option selected>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona</option><option>96ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
+  'novo-usuario':()=>'<div class="modal-header"><div class="modal-title">👤 Novo usuário</div><div class="modal-sub">O usuário verá apenas a zona atribuída.</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Nome</label><input type="text"></div><div class="form-group"><label>E-mail</label><input type="email"></div></div><div class="form-group"><label>Perfil</label><select><option>Admin de Zona</option><option>Coordenador</option><option>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona — Campo Maior</option><option>94ª Zona — Oeiras</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Criado")">Criar</button></div>',
+  'editar-usuario':(n)=>'<div class="modal-header"><div class="modal-title">✏️ Editar — '+n+'</div></div><div class="modal-body"><div class="form-group"><label>Perfil</label><select><option>Admin</option><option>Coordenador</option><option selected>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona</option><option>94ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
   'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Turno arquivado")">Arquivar</button></div>',
   'resetar':()=>`<div class="modal-header"><div class="modal-title" style="color:var(--red)">⚠️ Resetar dados</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--red);background:var(--red-bg);border:1px solid var(--red-bd);border-radius:8px;padding:12px;margin-bottom:14px">Apaga permanentemente todos os dados de campo.</div><div class="form-group"><label>Digite RESETAR para confirmar</label><input type="text" id="rc"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-red" onclick="doResetar()">Resetar</button></div>`,
   'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div style="border:2px dashed var(--border2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:12px">📅 Selecionar arquivo do TRE (.ics / .csv)</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Calendário importado")">Importar</button></div>',
@@ -625,7 +782,10 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
   if(el.turno2){ fill('t2-dx',el.turno2.dx); fill('t2-d1',el.turno2.d1); fill('t2-d',el.turno2.d); fill('t2-ab',el.turno2.abertura); fill('t2-enc',el.turno2.encerramento); fill('t2-dist',el.turno2.dist_inicio); if(el.turno2.intervalo_min) fill('t2-intervalo',el.turno2.intervalo_min); }
   const ta=document.getElementById('ta-'+(el.turno_ativo||1)); if(ta) ta.checked=true;
   if(el.nome) fill('cfg-nome-eleicao',el.nome);
-  updateFase(); renderTimeline(); renderModulos();
+  // Depois de carregar o que já estava salvo: sugere as datas legais só nos
+  // campos ainda vazios e deriva a véspera de cada turno.
+  aplicarPadroesDeData();
+  updateFase(); renderTimeline(); renderModulos(); renderZonas();
 })();
 </script>
 </body>

@@ -28,14 +28,34 @@ const supabase = createClient(
 // service_role, etc.) e recusa salvar qualquer secret custom com esse prefixo.
 const JWT_SECRET = Deno.env.get('SIME_JWT_SECRET')!;
 
+// CORS: o login é sempre chamado de outra origem (os módulos são servidos pelo
+// Vercel, a função pelo Supabase). Como o corpo vai em application/json, o
+// navegador dispara um preflight OPTIONS antes do POST — e sem estes cabeçalhos
+// ele aborta a chamada, então o POST nunca sai e o operador vê apenas "sem
+// conexão". Era exatamente o que impedia qualquer login de campo.
+//
+// Origin liberada: a função autentica por token+pin no corpo, não por cookie ou
+// header de sessão, então restringir origem aqui não acrescentaria proteção —
+// quem tem o par token+pin autentica de qualquer cliente, inclusive fora do
+// navegador.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
@@ -47,7 +67,7 @@ Deno.serve(async (req) => {
 
   const { data: tokenRow, error: tokenErr } = await supabase
     .from('sime_tokens')
-    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, secoes, expira_em')
+    .select('id, eleicao_id, usuario_id, token, pin, tipo, rotas, local_id, local_nome, secoes, expira_em')
     .eq('token', token)
     .maybeSingle();
 
@@ -133,5 +153,11 @@ Deno.serve(async (req) => {
   return jsonResponse(200, {
     jwt, exp, zona_id: zonaId, tipo: tokenRow.tipo,
     rotas: tokenRow.rotas, local_id: tokenRow.local_id, secoes: tokenRow.secoes,
+    // local_nome acompanha local_id porque é ele que o SIME_acessibilidade usa
+    // para filtrar (o filtro é por nome do local, não por UUID) — e os cartões
+    // gerados em SIME_tokens.html preenchem local_nome, deixando local_id nulo.
+    // Fora do JWT de propósito: é rótulo de exibição/filtro no cliente, não
+    // credencial; quem autoriza no banco é o local_id assinado.
+    local_nome: tokenRow.local_nome,
   });
 });

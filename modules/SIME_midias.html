@@ -164,7 +164,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -221,6 +221,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   await resolverEscopo();
   esconderLogin();
 });
+
+// QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
+// cursor no PIN, para o operador não redigitar os 8 caracteres.
+preencherTokenDaUrl();
 
 document.getElementById('login-offline').addEventListener('click', () => {
   esconderLogin();

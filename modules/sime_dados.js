@@ -151,12 +151,19 @@ export async function getZonaInfo({ fallback = null } = {}) {
 // sime_mesa_estado/sime_midias/sime_rotas_estado). ORDER BY created_at DESC
 // como proteção extra contra 2 eleições ativas simultâneas na mesma zona
 // (mesmo raciocínio já usado em api/hermes-update.js).
-export async function getEleicaoAtiva({ fallback = null } = {}) {
-  return withFallback('eleicaoAtiva', async (c) => {
-    const { data, error } = await c
+// `zonaId` restringe a busca a uma zona específica. Para um admin de zona a RLS
+// já filtra sozinha e o parâmetro é redundante; ele existe por causa do
+// super_admin, que enxerga TODAS as zonas — sem filtro, o ORDER BY created_at
+// devolveria a eleição ativa mais recente de qualquer zona, e as gravações
+// (tokens, mesa, mídias) iriam parar na zona errada, em silêncio.
+export async function getEleicaoAtiva({ fallback = null, zonaId = null } = {}) {
+  return withFallback(`eleicaoAtiva:${zonaId || 'minha'}`, async (c) => {
+    let q = c
       .from('sime_eleicoes')
-      .select('id, turno')
-      .eq('ativa', true)
+      .select('id, turno, zona_id')
+      .eq('ativa', true);
+    if (zonaId) q = q.eq('zona_id', zonaId);
+    const { data, error } = await q
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

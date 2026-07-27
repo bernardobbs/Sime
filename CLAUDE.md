@@ -7,16 +7,20 @@
 
 Sistema auxiliar de observabilidade operacional para eleições.
 **Não substitui** nenhum processo oficial da Justiça Eleitoral.
-Desenvolvido para a **7ª Zona Eleitoral do Piauí**.
-Cobre **Campo Maior**, **Jatobá do Piauí** e **Sigefredo Pacheco**.
+Nasceu para a **7ª Zona Eleitoral do Piauí** e hoje atende **duas zonas** —
+o sistema é multi-zona, com isolamento por RLS.
 
-### Números da operação
-- 174 seções eleitorais
-- 63 locais de votação
-- 34.967 eleitores aptos
-- 12 rotas de distribuição de urnas
-- 3 municípios
-- Eleição: **4 de outubro de 2026**
+### Números da operação (conferidos no Supabase em 27/07/2026)
+
+| Zona | Sede | Seções | Locais | Eleitores | Rotas | Municípios |
+|---|---|---|---|---|---|---|
+| **7ª** | Campo Maior | 175 | 64 | 35.347 | 12 | Campo Maior, Jatobá do Piauí, Sigefredo Pacheco |
+| **94ª** | Oeiras | 98 | 54 | 19.147 | 7 | Cajazeiras do PI, Colônia do PI, São Francisco do PI, São Miguel do Fidalgo |
+
+Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
+
+> Os números acima vêm do banco, não de estimativa. Ao divergirem, o banco é a
+> fonte: o painel e os tokens já leem de lá.
 
 ---
 
@@ -168,8 +172,8 @@ Detecção (SIME/Hermes)
 
 ```sql
 sime_zonas          -- zonas eleitorais
-sime_secoes         -- 174 seções com local, município, eleitores
-sime_rotas          -- 12 rotas com paradas
+sime_secoes         -- seções com local, município, eleitores (por zona)
+sime_rotas          -- rotas com paradas (por zona)
 sime_eleicoes       -- por zona e turno
 sime_empresas       -- empresas contratadas (motoristas) ← NOVO
 sime_usuarios       -- admins com perfil, zona_id, empresa_id, local_id
@@ -270,7 +274,7 @@ supabase
 8. **Deploy Vercel** com variáveis de ambiente
 9. **Realtime** nos TVs (TV Dia, TV Véspera, TV Distribuição)
 10. **Edge Function WhatsApp** (Hermes já configurado)
-11. **QR Codes** gerados para 174 seções + 12 rotas + tokens
+11. **QR Codes** gerados por zona (seções + rotas + locais) — ver SIME_tokens.html
 
 ---
 

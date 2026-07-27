@@ -207,15 +207,25 @@ window.simeCampo = {
   },
 };
 
+// Dois usos, ver o <script> clássico:
+//  - depois de applyToken(): o login local (PIN contra sime_tokens_v1) já
+//    validou e a UI já está de pé; isto só busca a sessão real em paralelo.
+//  - como login principal (loginWithPIN): no celular do coordenador o
+//    localStorage está vazio — nunca viu sime_tokens_v1, que só existe no
+//    computador do cartório. Aí quem autentica é a Edge Function sime-login.
+//
+// Devolve o nome do local porque é por ele que o módulo filtra as seções
+// (localFiltro compara nome, não UUID) — e sempre vindo do servidor, nunca
+// montado no cliente.
 window.tentarLoginCampo = async function(token, pin) {
-  const { client } = await bootstrapCampoSession({
+  const { client, localNome } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
-  if (!client) return false;
+  if (!client) return { ok: false, localNome: null };
   campoClient = client;
   await resolverEscopo();
   iniciarRetryPeriodico(syncQueueFn);
-  return true;
+  return { ok: true, localNome: localNome || null };
 };
 </script>
 <script>
@@ -508,17 +518,47 @@ function pinInput(el, idx){
   if(el.value && idx < 3) document.getElementById('pin-'+(idx+1)).focus();
   if(idx === 3 && el.value) loginWithPIN();
 }
-function loginWithPIN(){
+// Token que veio no QR Code (?token=). No celular do coordenador ele é a única
+// identificação disponível: o localStorage está vazio, então findTokenByPIN()
+// não acha nada e quem valida tem que ser o servidor.
+const TOKEN_URL = new URLSearchParams(window.location.search).get('token');
+
+function erroPin(msg){
+  [0,1,2,3].forEach(i=>{ const el=document.getElementById('pin-'+i); el.classList.add('error'); setTimeout(()=>el.classList.remove('error'),800); });
+  showToast(msg);
+}
+
+async function loginWithPIN(){
   const pin = [0,1,2,3].map(i=>document.getElementById('pin-'+i).value).join('');
   if(pin.length < 4){ showToast('⚠ Digite os 4 dígitos do PIN'); document.getElementById('pin-0').focus(); return; }
+
+  // 1. Token local (computador do cartório) — mantém o login 100% offline.
   const t = findTokenByPIN(pin);
-  if(!t){
-    [0,1,2,3].forEach(i=>{ const el=document.getElementById('pin-'+i); el.classList.add('error'); setTimeout(()=>el.classList.remove('error'),800); });
-    showToast('⚠ PIN inválido — verifique e tente novamente');
+  if(t){
+    if(!validateToken(t)){ showToast('⚠ Este token expirou. Contate o cartório.'); return; }
+    applyToken(t);
     return;
   }
-  if(!validateToken(t)){ showToast('⚠ Este token expirou. Contate o cartório.'); return; }
-  applyToken(t);
+
+  // 2. Sem token local: autentica no servidor, e só se soubermos qual token é.
+  if(!TOKEN_URL){
+    erroPin('⚠ PIN inválido — escaneie o QR Code do seu cartão');
+    return;
+  }
+  showToast('Validando…');
+  const { ok, localNome } = await window.tentarLoginCampo(TOKEN_URL.trim().toUpperCase(), pin);
+  if(!ok){
+    erroPin('⚠ PIN inválido, token expirado ou sem conexão');
+    return;
+  }
+  // Escopo do servidor. Sem local definido no token, não abre "todos os
+  // locais" — seria o mesmo acesso irrestrito que este módulo tinha antes.
+  if(!localNome){
+    erroPin('⚠ Token sem local de votação definido — contate o cartório');
+    return;
+  }
+  localFiltro = localNome;
+  enterApp();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -541,30 +581,28 @@ function syncOK(ok){
   const params  = new URLSearchParams(window.location.search);
   const tokenId = params.get('token');
   const pinP    = params.get('pin');
-  const localP  = params.get('local');   // ?local=G.E. Treze de Março
 
-  // 1. Local direto na URL (acesso simples / impressão)
-  if(localP){ localFiltro = decodeURIComponent(localP); enterApp(); return; }
+  // ?local= não entra mais no app. Era acesso sem credencial nenhuma: bastava
+  // ter o link para ver e operar as seções daquele local (inclusive disparar
+  // pânico). Quem define o local agora é o token, validado no servidor.
 
-  // 2. Token na URL
+  // 1. Token na URL
   if(tokenId){
     const t = findTokenById(tokenId);
     if(t && validateToken(t)){ applyToken(t); return; }
-    showToast('Token inválido ou expirado — use o PIN');
+    // Desconhecido aqui não é inválido: no celular do coordenador o
+    // localStorage está vazio. Cai no PIN, que valida no servidor.
   }
   if(pinP){
     const t = findTokenByPIN(pinP);
     if(t && validateToken(t)){ applyToken(t); return; }
   }
 
-  // 3. Sem tokens cadastrados → modo dev (mostra todos os locais)
-  if(Object.keys(loadAllTokens()).length === 0){
-    localFiltro = null;
-    enterApp();
-    return;
-  }
+  // Não existe mais "modo dev" (sem token cadastrado → todos os locais). O
+  // localStorage vazio é o estado de qualquer celular e de qualquer pessoa com
+  // o link, então aquilo era acesso irrestrito sem credencial.
 
-  // 4. Tela de PIN
+  // 2. Tela de PIN
   showView('view-login');
   setTimeout(()=>document.getElementById('pin-0')?.focus(), 300);
 })();

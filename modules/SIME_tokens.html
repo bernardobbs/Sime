@@ -184,12 +184,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       </select>
     </div>
 
+    <!-- Zona vem da sessão, não de uma escolha livre: os tokens são sempre
+         gravados na eleição da zona do admin logado (RLS), então um seletor
+         aberto só criaria cartões rotulados com uma zona diferente da que eles
+         realmente autenticam. O super_admin, que enxerga todas as zonas,
+         recebe um seletor de verdade — preenchido em resolverEscopo(). -->
     <div class="form-group">
       <label>Zona</label>
-      <select id="f-zona">
-        <option value="7">7ª Zona — Campo Maior/PI</option>
-        <option value="96">96ª Zona</option>
+      <select id="f-zona" disabled>
+        <option value="">— carregando —</option>
       </select>
+      <div id="f-zona-hint" style="font-size:.68rem;color:var(--text2);margin-top:3px;line-height:1.4;">
+        Definida pelo seu acesso.
+      </div>
     </div>
 
     <button class="btn btn-dark" style="width:100%;justify-content:center;" onclick="criarToken()">
@@ -233,9 +240,91 @@ let eleicaoId = null;
 
 function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
 
+// Zona do admin logado. Para quem não é super_admin ela é fixa e define TUDO:
+// a eleição usada, e portanto a zona a que os tokens pertencem de fato.
+let minhaZonaId = null;
+let souSuperAdmin = false;
+let zonasDisponiveis = [];   // só preenchido para super_admin
+
+// Nunca propaga erro: se a identidade não resolver (rede caiu, sessão velha),
+// o módulo segue funcionando em localStorage — os tokens só não vão para o
+// Supabase, exatamente como no "continuar offline". Travar a tela aqui seria
+// pior que gerar cartões sem sincronizar.
+async function carregarIdentidadeZona() {
+  try {
+    const { data: { user } = {} } = await supabase.auth.getUser() || {};
+    if (!user) return;
+    const { data: meu } = await supabase
+      .from('sime_usuarios').select('perfil, zona_id')
+      .eq('auth_user_id', user.id).maybeSingle();
+    if (!meu) return;
+    minhaZonaId = meu.zona_id || null;
+    souSuperAdmin = meu.perfil === 'super_admin';
+
+    // A RLS já limita sime_zonas ao que este usuário pode ver: um admin de zona
+    // recebe só a dele, o super_admin recebe todas.
+    const { data: zonas } = await supabase
+      .from('sime_zonas').select('id, numero, municipio').order('numero');
+    zonasDisponiveis = zonas || [];
+  } catch (e) {
+    // segue sem zona resolvida — montarSeletorZona() mostra o aviso
+  }
+  montarSeletorZona();
+}
+
+function montarSeletorZona() {
+  const sel = document.getElementById('f-zona');
+  const hint = document.getElementById('f-zona-hint');
+  if (!sel) return;
+  if (!zonasDisponiveis.length) {
+    sel.innerHTML = '<option value="">— zona não resolvida —</option>';
+    if (hint) hint.textContent = 'Entre com seu login para os tokens irem para a zona certa.';
+    return;
+  }
+  sel.innerHTML = zonasDisponiveis.map(z =>
+    `<option value="${z.id}">${z.numero}ª Zona${z.municipio ? ' — ' + z.municipio : ''}</option>`).join('');
+  // Só o super_admin escolhe; para os demais o campo é informativo.
+  sel.disabled = !souSuperAdmin;
+  if (minhaZonaId && zonasDisponiveis.some(z => z.id === minhaZonaId)) sel.value = minhaZonaId;
+  if (hint) {
+    hint.textContent = souSuperAdmin
+      ? 'Como super_admin você escolhe a zona — os tokens vão para a eleição dela.'
+      : 'Definida pelo seu acesso: os tokens pertencem à sua zona.';
+  }
+  if (souSuperAdmin) sel.onchange = () => { trocarZonaAtiva(sel.value); };
+}
+
+// Super_admin trocando de zona: recarrega eleição, seções e rotas daquela zona,
+// senão os seletores continuariam mostrando os dados da zona anterior.
+async function trocarZonaAtiva(zonaId) {
+  if (!zonaId) return;
+  await carregarDadosDaZona(zonaId);
+  if (window.atualizarDadosReaisTokens) window.atualizarDadosReaisTokens();
+  if (window.showToast) window.showToast('↻ Dados da zona carregados');
+}
+
+function zonaSelecionadaId() {
+  return document.getElementById('f-zona')?.value || minhaZonaId || null;
+}
+function zonaSelecionadaNumero() {
+  const id = zonaSelecionadaId();
+  return String(zonasDisponiveis.find(z => z.id === id)?.numero || '');
+}
+window.zonaSelecionadaNumero = zonaSelecionadaNumero;
+
+async function carregarDadosDaZona(zonaId) {
+  const eleicao = await getEleicaoAtiva({ fallback: null, zonaId });
+  eleicaoId = eleicao ? eleicao.id : null;
+  const secoes = await getSecoes({ fallback: null });
+  window.SECOES_REAIS = secoes || [];
+  const rotas = await getRotas({ fallback: null });
+  window.ROTAS_REAIS = rotas || [];
+}
+
 async function resolverEscopo() {
   initSimeDados(supabase);
-  const eleicao = await getEleicaoAtiva({ fallback: null });
+  await carregarIdentidadeZona();
+  const eleicao = await getEleicaoAtiva({ fallback: null, zonaId: zonaSelecionadaId() });
   if (eleicao) eleicaoId = eleicao.id;
   // Dados reais pra popular os seletores do form (seções/rotas/locais) e a
   // geração em massa — sem isso os seletores caem no fallback hardcoded.
@@ -264,7 +353,8 @@ function nomeDerivadoToken(row) {
 }
 function linhaParaToken(row) {
   const turnoSel = +(document.getElementById('f-turno')?.value || 1);
-  const zonaSel  = document.getElementById('f-zona')?.value || '7';
+  // Número da zona (rótulo do cartão), não o UUID que o seletor guarda.
+  const zonaSel  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
   return {
     id: row.token, pin: row.pin, nome: nomeDerivadoToken(row), tipo: row.tipo,
     rotas: (row.rotas && row.rotas.length) ? row.rotas.map(c => 'Rota ' + c) : [],
@@ -495,7 +585,7 @@ function criarToken(){
   const local = document.getElementById('f-local').value;
   const secaoUnica = document.getElementById('f-secao')?.value || '';
   const turno = document.getElementById('f-turno').value;
-  const zona  = document.getElementById('f-zona').value;
+  const zona  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
 
   if(!nome){ showToast('⚠ Informe o nome do operador'); return; }
   if(tipo === 'coord_acessibilidade'){
@@ -558,7 +648,7 @@ async function gerarEmMassa(){
   if(!confirm('Gerar 1 token por seção (mesário), por rota (conferente/motorista/instalador) e por local (acessibilidade) — pulando quem já tem token válido. Continuar?')) return;
 
   const turno = document.getElementById('f-turno').value;
-  const zona  = document.getElementById('f-zona').value;
+  const zona  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
   const expira_em = calcularExpiracao(turno);
   const tokens = loadTokens();
   const jaExiste = (tipo, chave) => Object.values(tokens).some(t => t.tipo===tipo && chaveEscopo(t)===chave);
@@ -703,10 +793,23 @@ const MODULOS_POR_TIPO = {
   instalador: 'SIME_instalador.html',
   coord_acessibilidade: 'SIME_acessibilidade.html',
 };
+// URL impressa no QR Code. Com a zona resolvida vira /z/<numero>/<modulo>, que
+// o vercel.json reescreve para /modules/<modulo> — a reescrita (e não um
+// redirect) mantém o /z/<numero>/ no endereço, então os caminhos relativos do
+// módulo (./sime_config.js, ./vendor/...) continuam resolvendo sozinhos.
+//
+// A zona no caminho é organização, não autorização: quem autoriza é o token
+// validado pela sime-login e a RLS. Serve para cada cartório ter seu próprio
+// endereço e para um cartão trocado ser percebido de imediato.
+//
+// Sem zona resolvida (offline, sessão ausente) cai na URL relativa de antes —
+// que continua válida em produção, então os cartões já impressos seguem
+// funcionando.
 function buildUrl(tokenId, tipo){
-  // URL relativa ao mesmo diretório — módulo destino conforme o tipo
-  const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
   const modulo = MODULOS_POR_TIPO[tipo] || 'SIME_conferente.html';
+  const numeroZona = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
+  if (numeroZona) return `${window.location.origin}/z/${numeroZona}/${modulo}?token=${tokenId}`;
+  const base = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
   return base + modulo + '?token=' + tokenId;
 }
 
