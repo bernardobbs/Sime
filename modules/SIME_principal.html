@@ -208,12 +208,12 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
         <div class="form-group">
           <label>🚗 D-1 — Véspera da eleição</label>
           <input type="date" id="t1-d1" oninput="onDateChange()">
-          <div class="hint">Ativa: Conferente + Instalador + TV Véspera + TV Distribuição.</div>
+          <div class="hint">Preenchida a partir do Dia D (véspera = dia anterior). Editável. Ativa: Conferente + Instalador + TV Véspera + TV Distribuição.</div>
         </div>
         <div class="form-group">
           <label>🗳️ Dia D — Data da eleição</label>
-          <input type="date" id="t1-d" oninput="onDateChange()">
-          <div class="hint">Ativa: Mesário + TV Dia + Motorista.</div>
+          <input type="date" id="t1-d" oninput="onDiaDChange(1)">
+          <div class="hint">Padrão: primeiro domingo de outubro. Editável. Ativa: Mesário + TV Dia + Motorista.</div>
         </div>
       </div>
       <div class="card">
@@ -257,7 +257,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
         </div>
         <div class="form-group">
           <label>🗳️ Dia D — 2º turno</label>
-          <input type="date" id="t2-d" oninput="onDateChange()">
+          <input type="date" id="t2-d" oninput="onDiaDChange(2)">
         </div>
         <div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:8px;padding:10px 12px;font-size:.74rem;color:var(--yellow);">
           ⚠ O 2º turno usa as mesmas seções e rotas do 1º. Dados operacionais são arquivados separadamente.
@@ -461,6 +461,73 @@ function propagateDist(el){
   }catch(e){}
 }
 
+// ══════════════════════════════════════════════════
+// DATAS DA ELEIÇÃO — padrões legais e véspera inferida
+// ══════════════════════════════════════════════════
+// Eleição ordinária brasileira: 1º turno no primeiro domingo de outubro,
+// 2º turno no último domingo de outubro. São só PADRÕES — os três campos
+// continuam editáveis, porque data de eleição suplementar não segue essa
+// regra e o D-X (carga e lacre) é definido pelo cartório.
+
+function domingosDeOutubro(ano){
+  const primeiro = new Date(ano, 9, 1);          // 9 = outubro
+  // Dias até o primeiro domingo: 0 se dia 1 já é domingo.
+  primeiro.setDate(1 + ((7 - primeiro.getDay()) % 7));
+  const ultimo = new Date(ano, 9, 31);
+  // Volta do dia 31 até cair num domingo.
+  ultimo.setDate(31 - ultimo.getDay());
+  return { primeiro, ultimo };
+}
+
+function ymd(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Ano da próxima eleição: o corrente, ou o seguinte se o 1º turno deste ano
+// já passou — assim o padrão não sugere uma data no passado.
+function anoEleitoralPadrao(){
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const ano = hoje.getFullYear();
+  return domingosDeOutubro(ano).primeiro < hoje ? ano + 1 : ano;
+}
+
+// Véspera = dia anterior ao Dia D. Não é escolha, é definição — por isso
+// derivada em vez de digitada (o campo segue editável para casos atípicos).
+function vesperaDe(ymdDiaD){
+  if(!ymdDiaD) return '';
+  const [a,m,d] = ymdDiaD.split('-').map(Number);
+  const dt = new Date(a, m-1, d);
+  dt.setDate(dt.getDate() - 1);
+  return ymd(dt);
+}
+
+// Preenche o que ainda está vazio. Nunca sobrescreve data já configurada —
+// abrir o painel não pode mexer numa eleição já montada pelo cartório.
+function aplicarPadroesDeData(){
+  const { primeiro, ultimo } = domingosDeOutubro(anoEleitoralPadrao());
+  [['t1-d', primeiro], ['t2-d', ultimo]].forEach(([id, data]) => {
+    const el = document.getElementById(id);
+    if(el && !el.value) el.value = ymd(data);
+  });
+  // D-X (carga e lacre) fica em branco de propósito: não há data legal padrão,
+  // quem define é o cartório.
+  ['1','2'].forEach(t => sincronizarVespera(t, { apenasSeVazio: true }));
+}
+
+// Chamado ao mudar o Dia D e no carregamento.
+function sincronizarVespera(turno, { apenasSeVazio = false } = {}){
+  const diaD = document.getElementById(`t${turno}-d`);
+  const vesp = document.getElementById(`t${turno}-d1`);
+  if(!diaD || !vesp) return;
+  if(apenasSeVazio && vesp.value) return;
+  vesp.value = vesperaDe(diaD.value);
+}
+
+function onDiaDChange(turno){
+  sincronizarVespera(turno);
+  onDateChange();
+}
+
 function onDateChange(){ updateFase(); renderTimeline(); }
 
 // FASE
@@ -625,6 +692,9 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
   if(el.turno2){ fill('t2-dx',el.turno2.dx); fill('t2-d1',el.turno2.d1); fill('t2-d',el.turno2.d); fill('t2-ab',el.turno2.abertura); fill('t2-enc',el.turno2.encerramento); fill('t2-dist',el.turno2.dist_inicio); if(el.turno2.intervalo_min) fill('t2-intervalo',el.turno2.intervalo_min); }
   const ta=document.getElementById('ta-'+(el.turno_ativo||1)); if(ta) ta.checked=true;
   if(el.nome) fill('cfg-nome-eleicao',el.nome);
+  // Depois de carregar o que já estava salvo: sugere as datas legais só nos
+  // campos ainda vazios e deriva a véspera de cada turno.
+  aplicarPadroesDeData();
   updateFase(); renderTimeline(); renderModulos();
 })();
 </script>
