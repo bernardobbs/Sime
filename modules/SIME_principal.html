@@ -417,7 +417,7 @@ async function carregarZonas(){
 
   // Consultas já filtradas pela RLS — não é preciso (nem seguro) filtrar aqui.
   const [{ data: zonas }, { data: secoes }, { data: rotas }, { data: usuarios }] = await Promise.all([
-    supabase.from('sime_zonas').select('id, numero, municipio, uf').order('numero'),
+    supabase.from('sime_zonas').select('id, numero, municipio, estado').order('numero'),
     supabase.from('sime_secoes').select('zona_id, eleitores'),
     supabase.from('sime_rotas').select('zona_id'),
     supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
@@ -526,7 +526,7 @@ function renderZonas(){
         <div class="zona-num" style="background:${CORES_ZONA[i % CORES_ZONA.length]}">${z.numero}ª</div>
         <div>
           <div class="zona-nome">${z.numero}ª Zona Eleitoral</div>
-          <div class="zona-sede">${z.municipio ? z.municipio + (z.uf ? ' — ' + z.uf : '') : '— sede não definida —'}</div>
+          <div class="zona-sede">${z.municipio ? z.municipio + (z.estado ? ' — ' + z.estado : '') : '— sede não definida —'}</div>
           <div class="zona-badges">
             <span class="zbadge ${semSecoes ? 'off' : 'ok'}">${semSecoes ? 'Sem seções' : nf.format(z.secoes) + ' seções'}</span>
             ${z.rotas ? `<span class="zbadge ok">${z.rotas} rotas</span>` : '<span class="zbadge warn">Sem rotas</span>'}

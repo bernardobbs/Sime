@@ -1,7 +1,7 @@
 // Testa o escopo por zona em SIME_principal.html (portal).
 //
 // Antes o portal não tinha login nenhum e trazia as zonas fixas no HTML (7ª e
-// 96ª, com números fixos), visíveis para qualquer um com a URL. Agora exige
+// 94ª, com números fixos), visíveis para qualquer um com a URL. Agora exige
 // sessão, lista o que a RLS deixa ver e a aba Zonas é só do super_admin.
 import pw from 'playwright';
 const { chromium } = pw;
@@ -14,14 +14,14 @@ const b = await chromium.launch();
 
 const STUB = (meu) => `
 const ZONAS = [
-  { id:'z-7',  numero:7,  municipio:'Campo Maior', uf:'PI' },
-  { id:'z-96', numero:96, municipio:null,          uf:null },
+  { id:'z-7',  numero:7,  municipio:'Campo Maior', estado:'PI' },
+  { id:'z-94', numero:94, municipio:'Oeiras',      estado:'PI' },
 ];
 const SECOES = [
   { zona_id:'z-7', eleitores:300 }, { zona_id:'z-7', eleitores:250 },
 ];
 const ROTAS = [{ zona_id:'z-7' }];
-const USUARIOS = [{ zona_id:'z-7' }, { zona_id:'z-96' }];
+const USUARIOS = [{ zona_id:'z-7' }, { zona_id:'z-94' }];
 const MEU = ${JSON.stringify(meu)};
 
 class QB {
@@ -111,7 +111,7 @@ async function abrir(meu) {
   const primeiro = await p.$eval('#zonas-grid .zona-card', el => el.textContent);
   check('7ª zona soma as seções reais', /2\s*Seções/.test(primeiro.replace(/\s+/g, ' ')), '');
   check('7ª zona soma os eleitores reais', primeiro.includes('550'), '');
-  check('96ª zona aparece como sem seções', texto.includes('Sem seções'));
+  check('94ª zona aparece como sem seções', texto.includes('Sem seções'));
   check('super_admin: sem erro JS', erros.length === 0, erros.join(' | '));
   await p.close();
 }
