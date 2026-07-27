@@ -318,6 +318,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div id="eleicao-info" style="font-size:.8rem;color:var(--text2);line-height:1.8;"></div>
       <a href="SIME_principal.html" target="_blank" class="btn btn-out" style="margin-top:10px;display:inline-flex">⚙️ Painel Principal</a>
     </div>
+    <!-- Só aparece para quem tem config_equipe: gerar token é criar credencial
+         de acesso ao sistema, mesmo nível de "Gerenciar seções" e da equipe.
+         Ocultado em renderConfig(). -->
+    <div class="card" id="card-tokens" style="display:none;">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Tokens &amp; QR Codes</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;line-height:1.5;">
+        Gera e imprime os cartões de acesso (QR Code + PIN) dos operadores de campo —
+        mesários, motoristas, conferentes, instaladores e acessibilidade.
+      </div>
+      <a href="SIME_tokens.html" target="_blank" class="btn btn-dark" style="display:inline-flex;">🔑 Gerar / imprimir QR Codes</a>
+    </div>
     <div class="card">
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Acesso rápido aos módulos</div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;" id="quick-links"></div>
@@ -617,6 +628,11 @@ function applyUser(){
   document.getElementById('u-role').textContent  = PERFIS[curUser.perfil]?.label||'—';
   const zonasBtn = document.getElementById('tab-zonas-btn');
   if (zonasBtn) zonasBtn.style.display = curUser.perfil==='super_admin' ? '' : 'none';
+  // Tokens/QR só para quem administra credenciais (config_equipe) — emitir um
+  // cartão é dar acesso ao sistema. Aqui e não em renderConfig() porque a troca
+  // de perfil acontece dentro da própria aba Config, que não re-renderiza.
+  const cardTokens = document.getElementById('card-tokens');
+  if (cardTokens) cardTokens.style.display = hasPerm('config_equipe') ? '' : 'none';
 }
 
 // Chamado pelo <script type="module"> assim que resolve a identidade real do

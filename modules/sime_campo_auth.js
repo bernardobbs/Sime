@@ -67,3 +67,31 @@ export async function bootstrapCampoSession({ supabaseUrl, supabaseAnonKey, toke
 export function limparSessaoCampo() {
   sessionStorage.removeItem(SESSION_KEY);
 }
+
+// Preenche o campo de token do formulário de login a partir do ?token= da URL —
+// que é exatamente o que o QR Code do cartão codifica (ver buildUrl() em
+// SIME_tokens.html). Sem isso o operador escaneia o QR e ainda tem que digitar
+// os 8 caracteres à mão, o que anula o motivo do QR existir.
+//
+// O PIN continua sendo digitado de propósito: ele é o segundo fator, e por isso
+// não vai no QR. Como o cartão pode ser fotografado ou ficar exposto na mesa, o
+// token sozinho não pode dar acesso.
+//
+// Não valida o token aqui: quem valida é a Edge Function sime-login, no
+// servidor. Validar contra o localStorage seria pior que inútil — o celular do
+// mesário nunca viu sime_tokens_v1, que só existe no computador do cartório
+// onde os cartões foram gerados.
+export function preencherTokenDaUrl({ campoToken = 'login-token', campoPin = 'login-pin' } = {}) {
+  const tokenUrl = new URLSearchParams(window.location.search).get('token');
+  if (!tokenUrl) return null;
+
+  const elToken = document.getElementById(campoToken);
+  if (elToken) elToken.value = tokenUrl.trim().toUpperCase();
+
+  // Cursor direto no PIN: o operador chega no teclado numérico sem um toque a
+  // mais (uso às 5h30, em campo — ver CLAUDE.md).
+  const elPin = document.getElementById(campoPin);
+  if (elPin) elPin.focus();
+
+  return tokenUrl;
+}

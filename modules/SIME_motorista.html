@@ -219,7 +219,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva, getRotas } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -290,6 +290,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   esconderLogin();
   iniciarRetryPeriodico(syncQueueFn);
 });
+
+// QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
+// cursor no PIN, para o operador não redigitar os 8 caracteres.
+preencherTokenDaUrl();
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
 // pré-configurado"): login nunca é um bloqueio absoluto. O acesso por
