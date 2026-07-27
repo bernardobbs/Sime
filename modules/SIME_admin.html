@@ -380,6 +380,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <option value="coord_motoristas">Coord. de Motoristas</option>
       <option value="coletor_midias">Coletor de Mídias</option>
       <option value="preposto">Preposto</option>
+      <option value="junta_eleitoral">Junta Eleitoral</option>
       <option value="cartorio">Cartório</option>
     </select>
   </div>
@@ -414,7 +415,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, secoesDaEmpresa } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa } from './sime_dados.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -442,6 +443,12 @@ async function carregarDadosReais(){
   // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
   // sem empresas cadastradas, o formulário cai no campo de texto manual como
   // antes (offline-first — nunca bloqueia a criação do membro da equipe).
+  // Atores (mesarios, coordenadores, auxiliares) vinham so do localStorage —
+  // a aba Atores mostrava vazio enquanto o banco tinha centenas de pessoas.
+  // Sem sessao, getAtores devolve null e a aba cai no localStorage como antes.
+  const atoresReais = await getAtores({ fallback: null });
+  if (atoresReais) { window.ATORES_REAIS = atoresReais; if (window.renderAtores) window.renderAtores(); }
+
   const rotasReais = await getRotas({ fallback: null });
   const empresasReais = await getEmpresas({ fallback: null });
   if (rotasReais) window.ROTAS_REAIS = rotasReais;
@@ -1838,32 +1845,55 @@ function coletarMidia(n){
 // ══════════════════════════════════════════════
 // ATORES
 // ══════════════════════════════════════════════
-const FUNC_EMOJI_A = {mesario:'🗳️',motorista:'🚗',tecnico:'🔧',auxiliar_eleicao:'🧰',coord_acessibilidade:'♿',coord_motoristas:'🚌',coletor_midias:'📦',preposto:'📋',cartorio:'🏛️',coordenador_acessibilidade:'♿'};
-const FUNC_LABEL_A = {mesario:'Mesário',motorista:'Motorista',tecnico:'Técnico',auxiliar_eleicao:'Auxiliar de Eleição',coord_acessibilidade:'Coord. Acessib.',coord_motoristas:'Coord. Motoristas',coletor_midias:'Coletor de Mídias',preposto:'Preposto',cartorio:'Cartório',coordenador_acessibilidade:'Coord. Acessib.'};
+const FUNC_EMOJI_A = {mesario:'🗳️',motorista:'🚗',tecnico:'🔧',auxiliar_eleicao:'🧰',coord_acessibilidade:'♿',coord_motoristas:'🚌',coletor_midias:'📦',preposto:'📋',cartorio:'🏛️',coordenador_acessibilidade:'♿',junta_eleitoral:'⚖️'};
+const FUNC_LABEL_A = {mesario:'Mesário',motorista:'Motorista',tecnico:'Técnico',auxiliar_eleicao:'Auxiliar de Eleição',coord_acessibilidade:'Coord. Acessib.',coord_motoristas:'Coord. Motoristas',coletor_midias:'Coletor de Mídias',preposto:'Preposto',cartorio:'Cartório',coordenador_acessibilidade:'Coord. Acessib.',junta_eleitoral:'Junta Eleitoral'};
+
+// Telefone pode vir com ou sem o 55 do país (a importação grava '5586...',
+// o cadastro manual costuma gravar '86...'). Normaliza para exibir e para
+// montar o link do WhatsApp sem duplicar o código.
+function telSemPais(t){ const d=String(t||'').replace(/\D/g,''); return d.startsWith('55') ? d.slice(2) : d; }
+function fmtTelefone(t){
+  const d = telSemPais(t);
+  return d.length === 11 ? d.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3')
+       : d.length === 10 ? d.replace(/(\d{2})(\d{4})(\d{4})/,'($1) $2-$3')
+       : (t || '—');
+}
 
 function renderAtores(){
-  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]').filter(a=>a.ativo!==false);
+  // Banco primeiro (RLS já limita à zona do usuário); localStorage é o
+  // fallback offline, como nos demais módulos.
+  const atores = (window.ATORES_REAIS
+    || JSON.parse(localStorage.getItem('sime_atores_v1')||'[]')).filter(a=>a.ativo!==false);
   document.getElementById('atores-sub').textContent = atores.length + ' ator' + (atores.length!==1?'es':'') + ' cadastrado' + (atores.length!==1?'s':'');
   const q = (document.getElementById('atores-search')?.value||'').toLowerCase();
   const func = document.getElementById('atores-funcao')?.value||'';
 
   const filtered = atores.filter(a=>{
     if(func && a.funcao!==func) return false;
-    if(q && !a.nome.toLowerCase().includes(q) && !a.secao.includes(q) && !a.telefone.includes(q)) return false;
+    if(q && !(a.nome||'').toLowerCase().includes(q)
+         && !(a.secao||'').includes(q)
+         && !telSemPais(a.telefone).includes(q.replace(/\D/g,''))) return false;
     return true;
   });
 
   const tbody = document.getElementById('atores-tbody');
   if(!filtered.length){ tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">Nenhum ator encontrado</td></tr>'; return; }
-  tbody.innerHTML = filtered.map(a=>`
+  // Renderiza no máximo 300 linhas: a zona tem centenas de mesários e montar
+  // a tabela inteira de uma vez trava a aba em máquina modesta.
+  const LIMITE = 300;
+  tbody.innerHTML = filtered.slice(0, LIMITE).map(a=>`
     <tr>
-      <td><strong>${a.nome}</strong></td>
-      <td>Seção ${parseInt(a.secao)||a.secao}</td>
+      <td><strong>${a.nome}</strong>${a.funcao_mesa?` <span style="font-size:.68rem;color:var(--text3)">${a.funcao_mesa}</span>`:''}</td>
+      <td>${a.secao ? 'Seção ' + (parseInt(a.secao)||a.secao) : '—'}</td>
       <td><span class="badge b-off">${FUNC_EMOJI_A[a.funcao]||''} ${FUNC_LABEL_A[a.funcao]||a.funcao}</span></td>
-      <td>${a.telefone.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3')}</td>
-      <td><a href="https://wa.me/55${a.telefone}" target="_blank" style="font-size:.7rem;padding:4px 8px;background:#25d366;color:#fff;border-radius:5px;text-decoration:none;">💬 WA</a></td>
-    </tr>`).join('');
+      <td>${fmtTelefone(a.telefone)}</td>
+      <td><a href="https://wa.me/55${telSemPais(a.telefone)}" target="_blank" style="font-size:.7rem;padding:4px 8px;background:#25d366;color:#fff;border-radius:5px;text-decoration:none;">💬 WA</a></td>
+    </tr>`).join('')
+    + (filtered.length > LIMITE
+        ? `<tr><td colspan="5" style="text-align:center;padding:14px;color:var(--text3)">Mostrando ${LIMITE} de ${filtered.length} — refine a busca ou o filtro de função</td></tr>`
+        : '');
 }
+window.renderAtores = renderAtores;
 </script>
 </body>
 </html>

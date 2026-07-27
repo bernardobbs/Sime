@@ -434,7 +434,75 @@ async function carregarZonas(){
     admins: soma(usuarios, 'zona_id')[z.id] || 0,
   }));
   if (window.renderZonas) window.renderZonas();
+  await carregarEleicaoDoBanco();
 }
+
+// ── ELEIÇÃO: sime_eleicoes é a fonte, localStorage é a cópia offline ────────
+// Até aqui a configuração da eleição vivia SÓ no localStorage do navegador de
+// quem configurou. Trocar de máquina (ou limpar o navegador) perdia as datas, e
+// a expiração dos tokens — que sai daí — ia junto. Agora o banco manda, e o
+// localStorage segue existindo para o painel continuar de pé sem sessão.
+//
+// O banco guarda um subconjunto: data_dx_ini, data_d1, data_d, horario_ab,
+// horario_enc e ativa. Nome da eleição, início da distribuição e intervalo
+// entre saídas não têm coluna e continuam só locais.
+const TURNOS = [1, 2];
+
+function idsDoTurno(t) {
+  return { dx: `t${t}-dx`, d1: `t${t}-d1`, d: `t${t}-d`, ab: `t${t}-ab`, enc: `t${t}-enc` };
+}
+
+async function carregarEleicaoDoBanco() {
+  if (!window.MINHA_ZONA_ID) return;   // super_admin sem zona: mantém o local
+  const { data: linhas } = await supabase
+    .from('sime_eleicoes')
+    .select('turno, data_dx_ini, data_d1, data_d, horario_ab, horario_enc, ativa')
+    .eq('zona_id', window.MINHA_ZONA_ID);
+  if (!linhas?.length) return;
+
+  const hhmm = (v) => (v ? String(v).slice(0, 5) : '');
+  for (const linha of linhas) {
+    const ids = idsDoTurno(linha.turno);
+    const por = { [ids.dx]: linha.data_dx_ini, [ids.d1]: linha.data_d1, [ids.d]: linha.data_d,
+                  [ids.ab]: hhmm(linha.horario_ab), [ids.enc]: hhmm(linha.horario_enc) };
+    for (const [id, valor] of Object.entries(por)) {
+      const el = document.getElementById(id);
+      if (el && valor) el.value = valor;
+    }
+    if (linha.ativa) {
+      const radio = document.getElementById('ta-' + linha.turno);
+      if (radio) radio.checked = true;
+    }
+  }
+  // Reflete no localStorage e na UI derivada (fase, linha do tempo, módulos).
+  if (window.espelharFormNoLocalStorage) window.espelharFormNoLocalStorage();
+}
+
+// Chamado por saveEleicao(). Falhar aqui não desfaz o save local: o painel é
+// usável offline, e a próxima gravação com sessão sincroniza.
+window.salvarEleicaoNoBanco = async function () {
+  if (!window.MINHA_ZONA_ID) return { ok: false, motivo: 'sem zona' };
+  const ativo = +(document.querySelector('input[name="turno-ativo"]:checked')?.value || 1);
+  const valor = (id) => document.getElementById(id)?.value || null;
+
+  const linhas = TURNOS.map((t) => {
+    const ids = idsDoTurno(t);
+    return {
+      zona_id: window.MINHA_ZONA_ID, turno: t,
+      data_dx_ini: valor(ids.dx), data_d1: valor(ids.d1), data_d: valor(ids.d),
+      horario_ab: valor(ids.ab), horario_enc: valor(ids.enc),
+      ativa: t === ativo,
+    };
+  // Turno sem Dia D não é gravado: data_d é o que identifica a eleição, e uma
+  // linha vazia de 2º turno viraria "eleição ativa" fantasma nas consultas.
+  }).filter((l) => l.data_d);
+
+  if (!linhas.length) return { ok: false, motivo: 'sem data' };
+  const { error } = await supabase
+    .from('sime_eleicoes')
+    .upsert(linhas, { onConflict: 'zona_id,turno' });
+  return error ? { ok: false, motivo: error.message } : { ok: true };
+};
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -473,7 +541,10 @@ function todayYMD(){ return new Date().toISOString().slice(0,10); }
 function diffDays(s){ if(!s) return null; const h=new Date(); h.setHours(0,0,0,0); const a=new Date(s+'T12:00:00'); a.setHours(0,0,0,0); return Math.round((a-h)/86400000); }
 
 // SALVAR
-function saveEleicao(){
+// Lê o formulário para o shape de sime_eleicao_v1 e grava no localStorage,
+// atualizando a UI derivada. Extraído de saveEleicao() porque a carga vinda do
+// banco precisa exatamente disto, sem reescrever o banco de volta.
+function espelharFormNoLocalStorage(){
   const ta = document.querySelector('input[name="turno-ativo"]:checked')?.value||'1';
   const d = {
     nome: document.getElementById('cfg-nome-eleicao')?.value||'',
@@ -484,7 +555,20 @@ function saveEleicao(){
   saveEl(d);
   propagateDist(d);
   updateFase(); renderTimeline(); renderModulos();
-  showToast('✓ Eleição configurada e salva!');
+  return d;
+}
+window.espelharFormNoLocalStorage = espelharFormNoLocalStorage;
+
+async function saveEleicao(){
+  espelharFormNoLocalStorage();
+
+  // Sem sessão o painel continua funcionando — só não persiste no cartório.
+  if(!window.salvarEleicaoNoBanco){ showToast('✓ Salvo neste navegador'); return; }
+  const r = await window.salvarEleicaoNoBanco();
+  if(r.ok)                       showToast('✓ Eleição salva no cartório');
+  else if(r.motivo === 'sem zona') showToast('✓ Salvo neste navegador (sem zona)');
+  else if(r.motivo === 'sem data') showToast('⚠ Informe o Dia D antes de salvar');
+  else                           showToast('🟡 Salvo aqui — falhou no servidor');
 }
 
 function propagateDist(el){

@@ -117,6 +117,39 @@ export async function getEmpresas({ fallback = [] } = {}) {
   }, fallback);
 }
 
+// -> [{id, nome, telefone, funcao, funcao_mesa, secao, confirmacao, ativo}]
+// Atores operacionais da zona (mesários, coordenadores, auxiliares...).
+// A RLS de sime_atores é sime_zona_visivel(zona_id), então não é preciso — nem
+// correto — filtrar zona aqui: quem manda é a sessão.
+//
+// `secao` sai com 4 dígitos para bater com o shape que os módulos já usam
+// (sime_atores_v1 no localStorage), o que permite trocar a fonte sem reescrever
+// a renderização. O número vem de sime_secoes via secao_id; quando o ator não
+// tem seção (cartório, junta), fica string vazia.
+export async function getAtores({ fallback = [] } = {}) {
+  return withFallback('atores', async (c) => {
+    const [{ data, error }, secoes] = await Promise.all([
+      c.from('sime_atores')
+        .select('id, nome_completo, telefone_whatsapp, funcao, funcao_mesa, secao_id, confirmacao, ativo')
+        .order('nome_completo'),
+      getSecoes({ fallback: [] }),
+    ]);
+    if (error) throw error;
+    const numeroPorId = Object.fromEntries((secoes || []).map((s) => [s.id, s.numero]));
+    return (data || []).map((a) => ({
+      id: a.id,
+      nome: a.nome_completo,
+      telefone: a.telefone_whatsapp || '',
+      funcao: a.funcao,
+      funcao_mesa: a.funcao_mesa || '',
+      secao: a.secao_id && numeroPorId[a.secao_id]
+        ? String(numeroPorId[a.secao_id]).padStart(4, '0') : '',
+      confirmacao: a.confirmacao || 'pendente',
+      ativo: a.ativo !== false,
+    }));
+  }, fallback);
+}
+
 // -> [numero,...] (4 dígitos, ex.: '0063') — todas as seções cobertas pelas
 // rotas de uma empresa. `rotas` já vem de getRotas() (paradas[].secoes já é
 // numero, não UUID) — junta pelos rotaIds da empresa.

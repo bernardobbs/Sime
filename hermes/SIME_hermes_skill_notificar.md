@@ -1,8 +1,9 @@
 # SKILL: sime_notificar
 description: Envia notificações WhatsApp automáticas quando eventos críticos ocorrem no SIME, usando a conexão WhatsApp do próprio Hermes.
 triggers:
-  - chamada via webhook do Supabase (evento crítico detectado)
+  - loop periódico consultando a fila em /api/hermes-notificacoes (modo padrão)
   - chamada direta por outra skill (sime_monitor, sime_updater)
+  - webhook do Supabase (opcional — só se o Hermes tiver endereço alcançável)
 
 ---
 
@@ -10,13 +11,85 @@ triggers:
 
 Enviar mensagens WhatsApp para os responsáveis certos quando o SIME detecta eventos que requerem atenção imediata. Substitui completamente o Z-API — usa a conexão WhatsApp já estabelecida pelo Hermes.
 
-## Endpoint de ativação
+## Como o Hermes recebe os eventos
 
-O Supabase chama este skill via webhook HTTP:
+O Hermes roda no PC do cartório, **atrás do NAT do roteador**: não tem endereço
+público, então o Supabase/Vercel não consegue chamá-lo. Por isso o sentido é
+invertido — **o Hermes é quem pergunta**, e conexão de saída passa por qualquer
+internet residencial, sem túnel, sem abrir porta e sem IP fixo.
+
+### Loop principal (a cada 30 s)
 
 ```
-POST https://SEU_ORACLE_IP:3000/hermes/skill/sime_notificar
-Authorization: Bearer HERMES_API_KEY
+POST https://sime-cyan.vercel.app/api/hermes-notificacoes
+Authorization: Bearer HERMES_SECRET_ZONA_7
+Content-Type: application/json
+
+{ "acao": "pendentes" }
+```
+
+Resposta:
+
+```json
+{
+  "ok": true,
+  "zona": "7",
+  "notificacoes": [
+    {
+      "id": 12,
+      "evento": "panico_energia",
+      "secao": "0063",
+      "local": "G.E. Treze de Março",
+      "municipio": "Campo Maior",
+      "idade_s": 1500,
+      "tentativas": 0,
+      "criado_em": "2026-10-04T09:35:00.000Z",
+      "payload": { "evento": "panico_energia", "secao": "0063", "ts": "06:35" }
+    }
+  ]
+}
+```
+
+Depois de enviar o WhatsApp, **confirme** — senão a notificação volta no
+próximo ciclo:
+
+```
+{ "acao": "confirmar", "ids": [12] }
+```
+
+Se o envio falhar (WhatsApp desconectado, número inválido), marque o erro para
+não travar a fila atrás de uma mensagem impossível:
+
+```
+{ "acao": "erro", "ids": [12], "erro_msg": "WhatsApp desconectado" }
+```
+
+### Escalonamento usa `idade_s`
+
+O campo `idade_s` vem calculado com o **relógio do servidor**, não do PC — use
+ele para decidir o nível, sem depender do horário local estar certo:
+
+| `idade_s` | Destinatário |
+|---|---|
+| < 600 (10 min) | Monitor de Campo |
+| 600–1799 | + Gestor de Problemas |
+| ≥ 1800 (30 min) | + Chefe de Cartório |
+
+**Nunca escalar para o juiz eleitoral.**
+
+### Atraso esperado
+
+Até um ciclo (30 s por padrão). Para um pânico que escala em 10 minutos, é
+irrelevante. Diminuir o intervalo aumenta as chamadas à Vercel sem ganho real.
+
+## Webhook direto (opcional)
+
+Se um dia o Hermes ganhar endereço alcançável (Cloudflare Tunnel, IP público),
+o Supabase também empurra o evento na hora:
+
+```
+POST http://SEU_HERMES:3000/hermes/skill/sime_notificar
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
 Content-Type: application/json
 
 {
@@ -24,13 +97,13 @@ Content-Type: application/json
   "secao": "0063",
   "local": "G.E. Treze de Março",
   "cidade": "Campo Maior",
-  "ts": "08:47",
-  "destinatarios": [
-    { "nome": "Rafael A.", "telefone": "86900000000" },
-    { "nome": "Carlos M.", "telefone": "86900000001" }
-  ]
+  "ts": "08:47"
 }
 ```
+
+Isso é **aceleração, não requisito**: o gatilho enfileira sempre, e só tenta o
+POST se `app.hermes_url` estiver configurado no banco. Com os dois ativos,
+confirme pelo `id` da fila do mesmo jeito, para não enviar em duplicidade.
 
 ## Templates de mensagem por evento
 

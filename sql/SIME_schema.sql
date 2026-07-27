@@ -110,6 +110,12 @@ CREATE TABLE IF NOT EXISTS sime_eleicoes (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Uma eleição por (zona, turno). É a chave que o painel usa para gravar a
+-- configuração com upsert; sem ela, cada "Salvar" criaria uma linha nova e
+-- getEleicaoAtiva() teria que adivinhar a certa pelo created_at.
+ALTER TABLE sime_eleicoes DROP CONSTRAINT IF EXISTS sime_eleicoes_zona_turno_key;
+ALTER TABLE sime_eleicoes ADD  CONSTRAINT sime_eleicoes_zona_turno_key UNIQUE (zona_id, turno);
+
 -- Usuários administrativos
 CREATE TABLE IF NOT EXISTS sime_usuarios (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

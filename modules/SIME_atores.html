@@ -113,10 +113,33 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script type="module">
+// Carrega os atores do Supabase. Este módulo era 100% localStorage: a zona
+// tinha centenas de pessoas cadastradas no banco e a tela abria vazia em
+// qualquer máquina que não fosse aquela onde o CSV foi importado.
+//
+// Sem sessão (aberto direto, sem login) nada acontece e o módulo segue no
+// localStorage — o cadastro/edição local continua funcionando como antes.
+import { createClient } from './vendor/supabase-js.esm.js';
+import { initSimeDados, getAtores } from './sime_dados.js';
+import { SIME_CONFIG } from './sime_config.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  initSimeDados(supabase);
+  const atores = await getAtores({ fallback: null });
+  if (!atores) return;
+  window.ATORES_REAIS = atores;
+  if (window.render) window.render();
+})();
+</script>
 <script>
 const ATORES_KEY = 'sime_atores_v1';
 const LOG_KEY    = 'sime_logs_v1';
-const FUNCOES    = ['mesario','motorista','tecnico','auxiliar_eleicao','coord_acessibilidade','coord_motoristas','coletor_midias','preposto','cartorio'];
+const FUNCOES    = ['mesario','motorista','tecnico','auxiliar_eleicao','coord_acessibilidade','coord_motoristas','coletor_midias','preposto','junta_eleitoral','cartorio'];
 const FUNC_LABEL = {
   mesario:'Mesário', motorista:'Motorista', tecnico:'Técnico',
   auxiliar_eleicao:'Auxiliar de Eleição',
@@ -125,6 +148,7 @@ const FUNC_LABEL = {
   coletor_midias:'Coletor de Mídias',
   preposto:'Preposto',
   cartorio:'Cartório',
+  junta_eleitoral:'Junta Eleitoral',
   coordenador_acessibilidade:'Coord. Acessibilidade', // alias legado
 };
 const FUNC_EMOJI = {
@@ -135,13 +159,24 @@ const FUNC_EMOJI = {
   coletor_midias:'📦',
   preposto:'📋',
   cartorio:'🏛️',
+  junta_eleitoral:'⚖️',
   coordenador_acessibilidade:'♿', // alias legado
 };
 
-function loadAtores()  { try{return JSON.parse(localStorage.getItem(ATORES_KEY)||'[]')}catch(e){return[]} }
+// Banco primeiro (a RLS de sime_atores limita à zona do usuário); localStorage
+// é o fallback offline. ATORES_REAIS é preenchido pelo <script type="module">
+// abaixo assim que a sessão resolve — até lá, ou sem sessão, vale o local.
+function loadAtores()  {
+  if (window.ATORES_REAIS) return window.ATORES_REAIS;
+  try{return JSON.parse(localStorage.getItem(ATORES_KEY)||'[]')}catch(e){return[]}
+}
 function saveAtores(d) { localStorage.setItem(ATORES_KEY, JSON.stringify(d)); }
-function fmtTel(t)     { const d=t.replace(/\D/g,''); return d.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')||t; }
-function waLink(t)     { return 'https://wa.me/55'+t.replace(/\D/g,''); }
+// A importação grava o telefone com o 55 do país ('5586...'); o cadastro
+// manual costuma gravar sem ('86...'). Normaliza para não duplicar o código
+// no link do WhatsApp nem quebrar a formatação.
+function telLocal(t)   { const d=String(t||'').replace(/\D/g,''); return d.startsWith('55') ? d.slice(2) : d; }
+function fmtTel(t)     { const d=telLocal(t); return d.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')||t; }
+function waLink(t)     { return 'https://wa.me/55'+telLocal(t); }
 function serverTs()    { return Date.now(); }
 function log(acao,secao,payload) {
   const logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
@@ -161,6 +196,7 @@ function goTab(tab,btn){
   render();
 }
 
+window.render = render;
 function render(){
   const atores=loadAtores();
   document.getElementById('h-sub').textContent=`${atores.length} ator${atores.length!==1?'es':''} cadastrado${atores.length!==1?'s':''}`;

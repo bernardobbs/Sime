@@ -67,16 +67,30 @@ BEGIN
     INTO v_payload;
   END IF;
 
-  -- Chama o Hermes via HTTP (pg_net — extensao Supabase)
-  PERFORM net.http_post(
-    url     := current_setting('app.hermes_url')
-               || '/hermes/skill/sime_notificar',
-    body    := v_payload::text,
-    headers := jsonb_build_object(
-      'Content-Type',  'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.hermes_secret')
-    )
-  );
+  -- 1) ENFILEIRA — este e o caminho principal.
+  -- O Hermes roda atras de NAT (PC do cartorio), entao o Supabase nao consegue
+  -- alcanca-lo: quem inicia a conexao tem que ser o Hermes. Ele consulta
+  -- /api/hermes-notificacoes a cada X segundos e drena esta fila.
+  -- Gravar aqui tambem deixa rastro auditavel do que foi disparado, coisa que
+  -- o POST direto nao deixava.
+  INSERT INTO sime_notificacoes(evento, secao_id, destinatarios, mensagem, status)
+  VALUES (v_evento, NEW.secao_id, '[]'::jsonb, v_payload::text, 'pendente');
+
+  -- 2) EMPURRA — so se houver um Hermes alcancavel configurado (tunel, IP
+  -- publico). E aceleracao, nao requisito: sem app.hermes_url o passo e pulado
+  -- e a fila acima resolve. O 'true' em current_setting evita o erro que
+  -- ocorreria quando a configuracao nao existe.
+  IF current_setting('app.hermes_url', true) IS NOT NULL THEN
+    PERFORM net.http_post(
+      url     := current_setting('app.hermes_url', true)
+                 || '/hermes/skill/sime_notificar',
+      body    := v_payload::text,
+      headers := jsonb_build_object(
+        'Content-Type',  'application/json',
+        'Authorization', 'Bearer ' || COALESCE(current_setting('app.hermes_secret', true), '')
+      )
+    );
+  END IF;
 
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
