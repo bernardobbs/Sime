@@ -123,6 +123,7 @@ body{display:flex;flex-direction:column;}
 .sm-btn.dark{background:#2a2a2a;color:#fff;}
 .sm-btn.out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
 .sm-btn.red{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;}
+.sm-btn.wa{background:#25d366;color:#fff;flex:1.6;}
 .pb{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.5rem;font-weight:900;color:#fff;z-index:2;border:2px solid var(--bg);}
 .pb.err{background:#ef4444;animation:pp .7s ease-in-out infinite;}
 .pb.warn{background:#f97316;animation:pw 1.2s ease-in-out infinite;}
@@ -131,7 +132,8 @@ body{display:flex;flex-direction:column;}
 @keyframes pw{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}50%{box-shadow:0 0 0 5px rgba(249,115,22,.35);}}
 .fila-tag{position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);background:#d97706;color:#fff;font-size:.6rem;font-weight:900;padding:2px 7px;border-radius:99px;white-space:nowrap;z-index:2;border:1.5px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.2);}
 .prob-list{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px;}
-.prob-item{background:var(--card);border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;}
+.prob-item{background:var(--card);border:1.5px solid #fca5a5;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:transform .12s,box-shadow .12s;}
+.prob-item:hover,.prob-item:focus{transform:translateY(-1px);box-shadow:0 4px 14px rgba(220,38,38,.18);outline:none;border-color:#ef4444;}
 .prob-tipo{font-size:1.3rem;flex-shrink:0;}
 .prob-info{flex:1;}
 .prob-sec{font-weight:800;font-size:.92rem;}
@@ -205,23 +207,6 @@ body{display:flex;flex-direction:column;}
 .vli{display:flex;align-items:center;gap:3px;font-size:.58rem;color:var(--text3);}
 .vlid{width:6px;height:6px;border-radius:50%;}
 
-/* WEATHER CARD */
-.weather-card{
-  position:fixed;top:80px;right:10px;z-index:15;
-  background:var(--card);border:1.5px solid var(--border);border-radius:11px;
-  padding:10px 13px;min-width:150px;max-width:190px;
-  box-shadow:0 4px 16px rgba(0,0,0,.1);
-  transition:all .3s;
-}
-.weather-card.hidden{opacity:0;pointer-events:none;}
-.wc-hdr{font-size:.62rem;font-weight:800;letter-spacing:.08em;color:var(--text3);margin-bottom:5px;}
-.wc-main{display:flex;align-items:center;gap:8px;}
-.wc-icon{font-size:1.6rem;}
-.wc-temp{font-size:1.3rem;font-weight:900;}
-.wc-cond{font-size:.68rem;color:var(--text2);margin-top:1px;}
-.wc-detail{font-size:.65rem;color:var(--text2);margin-top:5px;padding-top:5px;border-top:1px solid var(--border);}
-.wc-alert{background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:6px;padding:4px 7px;font-size:.62rem;font-weight:700;color:var(--yellow);margin-top:5px;}
-.wc-toggle{position:fixed;top:81px;right:9px;z-index:16;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;border:none;cursor:pointer;font-size:.65rem;display:none;}
 </style>
 </head>
 <body>
@@ -302,19 +287,6 @@ body{display:flex;flex-direction:column;}
   </div>
 </div>
 
-<!-- WEATHER CARD -->
-<div class="weather-card" id="weather-card">
-  <div class="wc-hdr">🌦 CLIMA · CAMPO MAIOR</div>
-  <div class="wc-main">
-    <div class="wc-icon" id="wc-icon">⏳</div>
-    <div>
-      <div class="wc-temp" id="wc-temp">--°C</div>
-      <div class="wc-cond" id="wc-cond">Carregando...</div>
-    </div>
-  </div>
-  <div class="wc-detail" id="wc-detail"></div>
-  <div class="wc-alert" id="wc-alert" style="display:none"></div>
-</div>
 <div class="content" id="content"></div>
 <div class="ticker">
   <div class="ticker-label">📡 AO VIVO</div>
@@ -334,7 +306,7 @@ body{display:flex;flex-direction:column;}
 </div>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getZonaInfo, getMesaEstadoMap, mapMesaEstadoRow } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMesaEstadoMap, mapMesaEstadoRow, getAtores } from './sime_dados.js';
 import { subscribeMesaEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
@@ -378,20 +350,19 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     agendarRerender();
   });
 
-  // Clima: fetchWeather() já lê WEATHER_URL/WEATHER_LABEL por closure a cada
-  // chamada — não precisa de reload, só reatribuir e disparar uma nova busca
-  // imediata (sem esperar os próximos 10min do setInterval).
-  const zona = await getZonaInfo({ fallback: null });
-  if (zona && zona.lat != null && zona.lon != null) {
-    window.WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
-      `?latitude=${zona.lat}&longitude=${zona.lon}` +
-      '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
-      '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';
-    window.WEATHER_LABEL = zona.municipio ? zona.municipio.toUpperCase() : null;
-    if (window.fetchWeather) window.fetchWeather();
-    const hdr = document.querySelector('.wc-hdr');
-    if (hdr && window.WEATHER_LABEL) hdr.textContent = `🌦 CLIMA · ${window.WEATHER_LABEL}`;
-  }
+  // Contatos da mesa, pra que o modal de problema ofereça o WhatsApp de quem
+  // está naquela seção. Cai em silêncio se não vier nada: o botão some e o
+  // resto do painel continua igual — a TV nunca deve travar por causa disso.
+  try {
+    const atores = await getAtores({ fallback: [] });
+    const porSecao = {};
+    for (const a of atores || []) {
+      if (!a.ativo || !a.secao || !a.telefone) continue;
+      if (!porSecao[a.secao]) porSecao[a.secao] = [];
+      porSecao[a.secao].push({ nome: a.nome, telefone: a.telefone, funcao_mesa: a.funcao_mesa, funcao: a.funcao });
+    }
+    window.__contatosPorSecao = porSecao;
+  } catch (e) { /* sem contatos — o modal simplesmente não mostra o botão */ }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -690,6 +661,39 @@ function clearProbTs(key){ delete probTimestamps[key]; }
 const SEC_INFO={};
 CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{SEC_INFO[n]={loc:l.n,city:c.city,color:c.color};})));
 
+// ── CONTATO DA MESA ────────────────────────────────────────
+// Quem ligar quando a seção tem problema. A ordem é a da mesa: o Presidente
+// responde pela seção; os outros são o plano B de quem não atende.
+//
+// O filtro por funcao==='mesario' não é redundante — a junta eleitoral também
+// tem gente com funcao_mesa='Presidente', e ligar pra ela por causa de uma
+// urna com defeito seria escalar para o lugar errado.
+const ORDEM_MESA = ['Presidente', '1º Mesário', '2º Mesário', '1º Secretário'];
+function contatoDaSecao(n){
+  const lista = (window.__contatosPorSecao || {})[n] || [];
+  const mesarios = lista.filter(c => c.funcao === 'mesario' && c.telefone);
+  if (!mesarios.length) return null;
+  mesarios.sort((a,b) => {
+    const ia = ORDEM_MESA.indexOf(a.funcao_mesa), ib = ORDEM_MESA.indexOf(b.funcao_mesa);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  return mesarios[0];
+}
+
+// Mensagem já escrita: às 5h30, com o telão apitando, ninguém quer redigir.
+function msgContato(n, problema){
+  return `SIME — Seção ${parseInt(n)}\n${problema}\n\nAqui é o cartório. Pode nos atualizar sobre a situação?`;
+}
+
+function botaoContatoHtml(n, problema){
+  const c = contatoDaSecao(n);
+  if (!c) return '';
+  const href = linkWhatsApp(c.telefone, msgContato(n, problema));
+  if (!href) return '';
+  const papel = c.funcao_mesa || 'Mesário';
+  return `<a class="sm-btn wa" href="${href}" target="_blank" rel="noopener">💬 ${papel}: ${c.nome.split(' ')[0]} · ${fmtTelefone(c.telefone)}</a>`;
+}
+
 // ── MODAL DE DETALHE DA SEÇÃO ──────────────────────────────
 function openSecModal(n, st){
   const info = SEC_INFO[n]||{loc:'—',city:'—',color:'#2a2a2a'};
@@ -759,6 +763,7 @@ function openSecModal(n, st){
       ${rows.join('')}
     </div>
     <div class="sm-footer">
+      ${botaoContatoHtml(n, panic_e ? '⚡ Falta de energia' : panic_u ? '🖥️ Problema na urna' : 'Situação da seção')}
       <a class="sm-btn out" href="SIME_mesario.html?secao=${n}" target="_blank">🗳️ Abrir Mesário</a>
       <button class="sm-btn dark" onclick="closeSecModal()">Fechar</button>
     </div>`;
@@ -772,7 +777,7 @@ function closeSecModal(e){
 }
 const NUMPAGES=CITIES.length;
 let faseAtual='ab',curPage=0,rotDelay=10,vCd=10,vPaused=false,vTicker=null,autoSwitchDone=false;
-function setFase(f){faseAtual=f;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Seções com alertas ativos'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
+function setFase(f){faseAtual=f;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Alertas ativos — clique num item para ver o detalhe e contatar a mesa'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
 function checkAutoSwitch(){const val=document.getElementById('auto-switch').value;if(!val)return;const[h,m]=val.split(':').map(Number);const isTime=nowMin()>=h*60+m;document.getElementById('auto-lbl').className='auto-label '+(isTime?'auto-on':'auto-off');document.getElementById('auto-lbl').textContent=isTime?'Ativo':'Auto';if(isTime&&faseAtual==='ab'&&!autoSwitchDone){autoSwitchDone=true;setFase('enc');}}
 // ── BARRA DE PROGRESSO DE URNAS (fase encerramento) ───────
 function mkUrnaBar(states){
@@ -819,7 +824,7 @@ function buildPages(){const mesa=loadMesa();_acess=loadAcess();const nm=nowMin()
         const gone=(st.urna_cartorio&&faseAtual==='enc')?' gone':'';
         const stJson=JSON.stringify(st).replace(/"/g,'&quot;');
         circs+=`<div class="sw${gone}${panic||st.fila>0?' has-issue':''}" onclick="openSecModal('${n}',JSON.parse(this.dataset.st))" data-st="${stJson}">${mkSVG(n,st,faseAtual)}${badge}${filaBadge}${tipHtml}</div>`;});box.innerHTML=`<div class="loc-name">${loc.n}</div><div class="loc-status ${stCls}">${stTxt}</div>${faseAtual==='enc'?mkUrnaBar(states):''}${faseAtual==='enc'?`<div class="loc-circles" style="margin-top:4px">${circs}</div>`:`<div class="loc-circles">${circs}</div>`}`;grid.appendChild(box);});div.appendChild(grid);content.appendChild(div);});updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total);}
-function buildProbView(mesa,nm,limMesa,limVot){_acess=loadAcess();const content=document.getElementById('content');const div=document.createElement('div');div.className='v-page active';const list=document.createElement('div');list.className='prob-list';const items=[];CITIES.forEach(city=>city.locs.forEach(loc=>loc.s.forEach(n=>{const st=getSt(n,mesa);const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const atrV=nm>=limVot&&!st.vot&&!st.enc;const atrM=nm>=limMesa&&Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot;if(panic_e)items.push({tipo:'⚡',badge:'pb-energia',label:'Falta de energia',n,loc:loc.n});if(panic_u)items.push({tipo:'🖥️',badge:'pb-urna-prob',label:'Problema na urna',n,loc:loc.n});if(atrV)items.push({tipo:'⏱',badge:'pb-atraso',label:'Votação não iniciada',n,loc:loc.n});if(atrM)items.push({tipo:'👥',badge:'pb-mesa',label:'Mesa incompleta',n,loc:loc.n});})));if(!items.length){list.innerHTML='<div class="prob-empty"><div style="font-size:2.5rem;margin-bottom:10px">✅</div><div style="font-size:.85rem;font-weight:700;color:var(--text2)">Nenhum problema ativo</div></div>';}else{items.forEach(p=>{const row=document.createElement('div');row.className='prob-item';row.innerHTML=`<div class="prob-tipo">${p.tipo}</div><div class="prob-info"><div class="prob-sec">Seção ${parseInt(p.n)}</div><div class="prob-loc">${p.loc}</div></div><span class="prob-badge ${p.badge}">${p.label}</span><div class="prob-ts">${fmtNow()}</div>`;list.appendChild(row);});}div.appendChild(list);content.appendChild(div);document.getElementById('t-stats').innerHTML=items.length?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${items.length} problema${items.length>1?'s':''}</span>`:`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>Sem problemas</span>`;}
+function buildProbView(mesa,nm,limMesa,limVot){_acess=loadAcess();const content=document.getElementById('content');const div=document.createElement('div');div.className='v-page active';const list=document.createElement('div');list.className='prob-list';const items=[];CITIES.forEach(city=>city.locs.forEach(loc=>loc.s.forEach(n=>{const st=getSt(n,mesa);const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const atrV=nm>=limVot&&!st.vot&&!st.enc;const atrM=nm>=limMesa&&Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot;if(panic_e)items.push({tipo:'⚡',badge:'pb-energia',label:'Falta de energia',n,loc:loc.n,ts:getProbTs('panico:e:'+n)});if(panic_u)items.push({tipo:'🖥️',badge:'pb-urna-prob',label:'Problema na urna',n,loc:loc.n,ts:getProbTs('panico:u:'+n)});if(atrV){registerProb('atr:v:'+n);items.push({tipo:'⏱',badge:'pb-atraso',label:'Votação não iniciada',n,loc:loc.n,ts:getProbTs('atr:v:'+n)});}else clearProbTs('atr:v:'+n);if(atrM){registerProb('atr:m:'+n);items.push({tipo:'👥',badge:'pb-mesa',label:'Mesa incompleta',n,loc:loc.n,ts:getProbTs('atr:m:'+n)});}else clearProbTs('atr:m:'+n);})));if(!items.length){list.innerHTML='<div class="prob-empty"><div style="font-size:2.5rem;margin-bottom:10px">✅</div><div style="font-size:.85rem;font-weight:700;color:var(--text2)">Nenhum problema ativo</div></div>';}else{items.forEach(p=>{const row=document.createElement('div');row.className='prob-item';row.tabIndex=0;row.title='Ver detalhe e contato da seção';row.innerHTML=`<div class="prob-tipo">${p.tipo}</div><div class="prob-info"><div class="prob-sec">Seção ${parseInt(p.n)}</div><div class="prob-loc">${p.loc}</div></div><span class="prob-badge ${p.badge}">${p.label}</span><div class="prob-ts" title="Detectado às ${p.ts}">desde ${p.ts}</div>`;row.onclick=()=>openSecModal(p.n,getSt(p.n,loadMesa()));row.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();row.click();}};list.appendChild(row);});}div.appendChild(list);content.appendChild(div);document.getElementById('t-stats').innerHTML=items.length?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${items.length} problema${items.length>1?'s':''}</span>`:`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>Sem problemas</span>`;}
 function updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total){const el=document.getElementById('t-stats');if(faseAtual==='ab'){el.innerHTML=[totVot?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totVot} votando</span>`:'',totAtrV?`<span class="ts" style="color:#f59e0b"><div class="tsd" style="background:#f59e0b"></div>${totAtrV} atraso vot.</span>`:'',totAtrM?`<span class="ts" style="color:#d97706"><div class="tsd" style="background:#d97706"></div>${totAtrM} mesa inc.</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}else{el.innerHTML=[totCar?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totCar} no cartório</span>`:'',totUrna-totCar>0?`<span class="ts" style="color:#2563eb"><div class="tsd" style="background:#2563eb"></div>${totUrna-totCar} a caminho</span>`:'',totEnc?`<span class="ts" style="color:#3b82f6"><div class="tsd" style="background:#3b82f6"></div>${totEnc} encerradas</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}}
 function renderCurrent(){document.querySelectorAll('.v-page').forEach((p,i)=>p.classList.toggle('active',i===curPage));}
 function goPage(idx){curPage=((idx%NUMPAGES)+NUMPAGES)%NUMPAGES;vCd=rotDelay;updateCountdown();renderCurrent();updateNav();}
@@ -828,84 +833,13 @@ function updateCountdown(){const pct=(vCd/rotDelay)*100;const f=document.getElem
 function vSetDelay(v){rotDelay=Math.max(3,Math.min(60,v));vCd=rotDelay;startTicker();}
 function vTogglePause(){vPaused=!vPaused;document.getElementById('v-pause').textContent=vPaused?'▶':'⏸';}
 function startTicker(){clearInterval(vTicker);vTicker=setInterval(()=>{if(vPaused||faseAtual==='prob')return;vCd--;updateCountdown();if(vCd<=0){goPage(curPage+1);vCd=rotDelay;}},1000);}
-function updateLeg(){const leg=document.getElementById('v-leg');if(faseAtual==='ab'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#dc2626"></div>Ninguém</div><div class="vli"><div class="vlid" style="background:#d97706"></div>Incompleta</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Completa</div><div class="vli"><div class="vlid" style="background:#84cc16"></div>Zerésima</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>Votando</div><div class="vli"><div class="vlid" style="background:#ef4444"></div>Problema</div>';}else if(faseAtual==='enc'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#94a3b8"></div>Votando</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Fila (badge=qtd)</div><div class="vli"><div class="vlid" style="background:#3b82f6"></div>Encerrada</div><div class="vli"><div class="vlid" style="background:#2563eb"></div>Urna saiu</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>No cartório</div>';}else{leg.innerHTML='<div class="vli" style="color:#dc2626">Alertas ativos no momento</div>';}}
+function updateLeg(){const leg=document.getElementById('v-leg');if(faseAtual==='ab'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#dc2626"></div>Ninguém</div><div class="vli"><div class="vlid" style="background:#d97706"></div>Incompleta</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Completa</div><div class="vli"><div class="vlid" style="background:#84cc16"></div>Zerésima</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>Votando</div><div class="vli"><div class="vlid" style="background:#ef4444"></div>Problema</div>';}else if(faseAtual==='enc'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#94a3b8"></div>Votando</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Fila (badge=qtd)</div><div class="vli"><div class="vlid" style="background:#3b82f6"></div>Encerrada</div><div class="vli"><div class="vlid" style="background:#2563eb"></div>Urna saiu</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>No cartório</div>';}else{leg.innerHTML='<div class="vli">⚡ <span>Falta de energia</span></div><div class="vli">🖥️ <span>Problema na urna</span></div><div class="vli">⏱ <span>Votação não iniciada</span></div><div class="vli">👥 <span>Mesa incompleta</span></div><div class="vli" style="color:var(--text3)">· clique para ver e contatar</div>';}}
 iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
 updateLeg();buildPages();renderCurrent();updateNav();startTicker();
 setInterval(()=>{buildPages();renderCurrent();checkAutoSwitch();},5000);
 document.addEventListener('click',()=>initAudio(),{once:true});
 
 
-// ── CLIMA ──────────────────────────────────────────────────
-// Fallback: Campo Maior-PI (Lat -4.8252, Lon -42.1733). `var` (não `const`):
-// o módulo acima reatribui via `window.WEATHER_URL` assim que souber lat/lon
-// reais da zona (sime_zonas.lat/lon) — fetchWeather() lê esta variável a cada
-// chamada, então não precisa de reload, só disparar uma nova busca imediata.
-var WEATHER_URL = 'https://api.open-meteo.com/v1/forecast' +
-  '?latitude=-4.8252&longitude=-42.1733' +
-  '&current=temperature_2m,apparent_temperature,precipitation_probability,weathercode' +
-  '&hourly=precipitation_probability&forecast_days=1&timezone=America%2FFortaleza';
-
-const WMO_CODE = {
-  0:'☀️','1':'🌤️','2':'⛅','3':'☁️',
-  45:'🌫️',48:'🌫️',51:'🌦️',53:'🌧️',55:'🌧️',
-  61:'🌧️',63:'🌧️',65:'⛈️',71:'❄️',73:'❄️',75:'❄️',
-  80:'🌦️',81:'🌧️',82:'⛈️',95:'⛈️',96:'⛈️',99:'⛈️'
-};
-const WMO_LABEL = {
-  0:'Céu limpo',1:'Poucas nuvens',2:'Parcialmente nublado',3:'Nublado',
-  45:'Neblina',48:'Neblina',51:'Garoa',53:'Garoa',55:'Garoa intensa',
-  61:'Chuva fraca',63:'Chuva moderada',65:'Chuva forte',
-  80:'Pancadas',81:'Pancadas',82:'Pancadas fortes',95:'Tempestade',99:'Tempestade forte'
-};
-
-let weatherHidden = false;
-let weatherRetries = 0;
-
-async function fetchWeather() {
-  try {
-    const res = await fetch(WEATHER_URL, { signal: AbortSignal.timeout(5000) });
-    const d   = await res.json();
-    const c   = d.current;
-    const temp   = Math.round(c.temperature_2m);
-    const sens   = Math.round(c.apparent_temperature);
-    const prob   = c.precipitation_probability;
-    const code   = c.weathercode;
-    const icon   = WMO_CODE[code] || '🌡️';
-    const cond   = WMO_LABEL[code] || 'Variável';
-
-    // Previsão próximas 3h
-    const now  = new Date();
-    const hNow = now.getHours();
-    const h3   = d.hourly?.precipitation_probability?.slice(hNow, hNow+3)||[];
-    const maxP = Math.max(...h3, prob);
-
-    document.getElementById('wc-icon').textContent  = icon;
-    document.getElementById('wc-temp').textContent  = temp + '°C';
-    document.getElementById('wc-cond').textContent  = cond;
-    document.getElementById('wc-detail').innerHTML  =
-      `Sensação ${sens}°C  ·  Chuva ${prob}%` +
-      (h3.length ? `<br>Próx 3h: máx ${maxP}% chuva` : '');
-
-    const alertEl = document.getElementById('wc-alert');
-    if (maxP > 50) {
-      alertEl.style.display = 'block';
-      alertEl.textContent   = '⚠ Possível atraso na logística';
-    } else {
-      alertEl.style.display = 'none';
-    }
-    weatherRetries = 0;
-  } catch(e) {
-    weatherRetries++;
-    if (weatherRetries <= 3) {
-      document.getElementById('wc-cond').textContent = 'Sem sinal — tentando...';
-    } else {
-      document.getElementById('weather-card').classList.add('hidden');
-    }
-  }
-}
-
-fetchWeather();
-setInterval(fetchWeather, 10 * 60 * 1000); // a cada 10 min
 </script>
 </body>
 </html>

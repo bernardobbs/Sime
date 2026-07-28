@@ -48,12 +48,6 @@ async function newPage(ctx, mockConfig) {
       jwt: 'x.y.z', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-x',
     }) });
   });
-  await p.route('**api.open-meteo.com/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-      current: { temperature_2m: 30, apparent_temperature: 32, precipitation_probability: 10, weathercode: 1 },
-      hourly: { precipitation_probability: [10, 10, 10] },
-    }) });
-  });
   return p;
 }
 

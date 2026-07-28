@@ -59,3 +59,29 @@ function fmtTs(ts, vazio = '—') {
   const d = new Date(ts);
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
+
+// ── TELEFONE / WHATSAPP ──────────────────────────────────────
+// Os números vêm de sime_atores.telefone_whatsapp, cadastrados à mão: uns com
+// o 55 na frente, outros sem, alguns com máscara. Normalizar aqui evita o
+// link com 55 duplicado (wa.me/5555...), que abre uma conversa vazia.
+function telSemPais(t) {
+  const d = String(t || '').replace(/\D/g, '');
+  return d.startsWith('55') ? d.slice(2) : d;
+}
+
+function fmtTelefone(t) {
+  const d = telSemPais(t);
+  return d.length === 11 ? d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+       : d.length === 10 ? d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+       : (t || '—');
+}
+
+// Link wa.me com mensagem opcional. Devolve '' quando o número não dá um DDD +
+// número plausível — o chamador usa isso pra esconder o botão em vez de
+// oferecer um link que abre no vazio.
+function linkWhatsApp(telefone, mensagem) {
+  const d = telSemPais(telefone);
+  if (d.length < 10) return '';
+  const txt = mensagem ? '?text=' + encodeURIComponent(mensagem) : '';
+  return `https://wa.me/55${d}${txt}`;
+}
