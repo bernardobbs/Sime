@@ -97,7 +97,7 @@ initSimeDados(makeClient(seed()));
 {
   const zona = await getZonaInfo({ fallback: null });
   check('getZonaInfo retorna número correto', zona.numero === 7);
-  check('getZonaInfo retorna lat/lon (clima dinâmico)', zona.lat === -4.8252 && zona.lon === -42.1733);
+  check('getZonaInfo retorna lat/lon', zona.lat === -4.8252 && zona.lon === -42.1733);
 }
 
 // ── 4b. getEleicaoAtiva: só pega a que está ativa=true ──

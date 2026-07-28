@@ -35,6 +35,14 @@ export function createClient(url, key, opts) {
   return {
     __authHeader: opts?.global?.headers?.Authorization || null,
     from(table) { return new QB(table); },
+    // O mesário assina sime_mesa_estado da própria seção pra saber quando a
+    // equipe resolve um pânico pelo Admin — sem estes dois o módulo quebra
+    // logo depois do login.
+    channel(name) {
+      const chan = { on(ev, filtro, cb) { window.__mockConfig.realtimeCallback = cb; return chan; }, subscribe() { return chan; } };
+      return chan;
+    },
+    removeChannel() {},
     rpc(name, params) {
       window.__mockConfig.rpcCalls.push({ name, params });
       if (window.__mockConfig.rpcShouldFail) {

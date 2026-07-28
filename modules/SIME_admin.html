@@ -1851,13 +1851,8 @@ const FUNC_LABEL_A = {mesario:'Mesário',motorista:'Motorista',tecnico:'Técnico
 // Telefone pode vir com ou sem o 55 do país (a importação grava '5586...',
 // o cadastro manual costuma gravar '86...'). Normaliza para exibir e para
 // montar o link do WhatsApp sem duplicar o código.
-function telSemPais(t){ const d=String(t||'').replace(/\D/g,''); return d.startsWith('55') ? d.slice(2) : d; }
-function fmtTelefone(t){
-  const d = telSemPais(t);
-  return d.length === 11 ? d.replace(/(\d{2})(\d{5})(\d{4})/,'($1) $2-$3')
-       : d.length === 10 ? d.replace(/(\d{2})(\d{4})(\d{4})/,'($1) $2-$3')
-       : (t || '—');
-}
+// telSemPais()/fmtTelefone() vêm de sime_ui_utils.js — mesma normalização
+// usada pelas TVs no botão de contato do mesário.
 
 function renderAtores(){
   // Banco primeiro (RLS já limita à zona do usuário); localStorage é o

@@ -407,6 +407,7 @@ import { createClient } from './vendor/supabase-js.esm.js';
 import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
+import { subscribeMesaEstadoSecao } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -431,7 +432,50 @@ async function resolverEscopo(secoesToken) {
   if (s) {
     secaoId = s.id;
     if (window.aplicarSecaoAtiva) window.aplicarSecaoAtiva(s.numero, s.local_nome, s.municipio);
+    assinarPanicoRemoto();
   }
+}
+
+// Escritas em voo. O mesário manda o snapshot inteiro a cada toque, então o
+// eco da própria escrita volta pelo Realtime; enquanto houver escrita
+// pendente, ignoramos o que chega, senão um evento em trânsito (disparado
+// antes do toque) pisaria no estado que o operador acabou de definir.
+let escritasEmVoo = 0;
+
+// Sem isto o aparelho do mesário nunca fica sabendo que a equipe resolveu o
+// pânico pelo Admin: a tela seguiria vermelha e — pior — o próximo toque
+// reenviaria `panico_*_resolvido: false`, desfazendo a resolução no banco.
+function assinarPanicoRemoto() {
+  if (!campoClient || !secaoId) return;
+  subscribeMesaEstadoSecao(campoClient, secaoId, (row) => {
+    if (!row || escritasEmVoo > 0) return;
+    if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(row);
+  });
+  lerPanicoAtual();
+
+  // O canal só entrega o que acontece enquanto ele está de pé. Um celular no
+  // bolso a manhã inteira perde os eventos do período — então, toda vez que a
+  // tela volta, relemos a linha em vez de confiar só no canal.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lerPanicoAtual();
+  });
+}
+
+// Estado atual do pânico no servidor. Sem esta leitura, um mesário que fecha
+// o app enquanto a equipe resolve reabriria com o vermelho do localStorage e
+// nenhum evento para corrigi-lo.
+async function lerPanicoAtual() {
+  if (!campoClient || !secaoId || escritasEmVoo > 0) return;
+  try {
+    let q = campoClient
+      .from('sime_mesa_estado')
+      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido')
+      .eq('secao_id', secaoId);
+    if (eleicaoId) q = q.eq('eleicao_id', eleicaoId);
+    const { data, error } = await q.maybeSingle();
+    if (error || !data) return;
+    if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(data);
+  } catch (e) { /* offline — o localStorage segue valendo */ }
 }
 
 async function syncQueueFn(acao, dados) {
@@ -442,10 +486,13 @@ async function syncQueueFn(acao, dados) {
 }
 
 async function sincronizarOuEnfileirar(acao, dados) {
+  escritasEmVoo++;
   try {
     await syncQueueFn(acao, dados);
   } catch (e) {
     await enqueue(acao, dados);
+  } finally {
+    escritasEmVoo--;
   }
 }
 
@@ -702,7 +749,7 @@ function togglePanico(id) {
     showToast(labels[id]);
     vib([60,30,60]);
   }
-  saveState();
+  saveState({ incluirPanico: true });
 }
 
 function applyPanico(id, state) {
@@ -717,13 +764,47 @@ function applyPanico(id, state) {
     lbl.style.color = 'var(--red)';
     badge.textContent = '🔴';
     sub.textContent = 'ATIVO — toque para marcar como resolvido';
-  } else {
+  } else if(state === 'resolved') {
     btn.className = 'rbtn wide c-panic-resolved';
     lbl.style.color = 'var(--green)';
     badge.textContent = '✓';
     sub.textContent = 'Resolvido';
+  } else {
+    // Volta ao repouso — só acontece quando o estado chega de fora (Admin ou
+    // Hermes zerou os dois campos); pelo toque local não há caminho até aqui.
+    btn.className = 'rbtn c-red wide';
+    lbl.style.color = '';
+    badge.textContent = '';
+    sub.textContent = 'toque para acionar — toque novamente para resolver';
   }
 }
+
+// Chamado pelo Realtime quando a linha da seção muda no servidor. Só mexe no
+// pânico: o resto do estado (mesa, zerésima, votação, BU…) só o mesário
+// escreve, então não há terceiro para divergir dele.
+window.aplicarPanicoRemoto = function(row) {
+  const remoto = {
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
+    resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+  };
+
+  let mudou = false;
+  let resolvidoDeFora = false;
+  Object.keys(S.panico).forEach(id => {
+    if(S.panico[id] === remoto.panico[id] && S.panico_resolved[id] === remoto.resolvido[id]) return;
+    if(S.panico[id] && !remoto.panico[id] && remoto.resolvido[id]) resolvidoDeFora = true;
+    S.panico[id] = remoto.panico[id];
+    S.panico_resolved[id] = remoto.resolvido[id];
+    applyPanico(id, remoto.panico[id] ? 'active' : (remoto.resolvido[id] ? 'resolved' : 'idle'));
+    mudou = true;
+  });
+  if(!mudou) return;
+
+  // saveLocal, não saveState: o servidor é a origem desta mudança — reenviar
+  // o snapshot devolveria o que acabou de chegar.
+  saveLocal();
+  if(resolvidoDeFora) { showToast('✓ Problema resolvido pela equipe'); vib([60,30,60]); }
+};
 
 // ─── PERSISTÊNCIA ──────────────────────────────────────────
 // Chave: sime_mesa_{secao} — lida pelo dashboard operacional
@@ -744,22 +825,35 @@ window.aplicarSecaoAtiva = function(numero, localNome, municipio) {
   renderMidiaBtn();
 };
 
-// Payload pra sime_acao_mesa — mesário é o único ator que grava estas colunas
-// (mesa_pres/m1/m2/sec, zeresima, votacao, encerrada, bu_impresso,
-// material_recolhido, fila, pânico, urna_recolhida), então mandar o snapshot
-// inteiro a cada toque é seguro (nenhum outro papel escreve nelas).
-function buildMesaPayload() {
-  return {
+// Payload pra sime_acao_mesa — mesário é o único ator que grava a maior parte
+// destas colunas (mesa_pres/m1/m2/sec, zeresima, votacao, encerrada,
+// bu_impresso, material_recolhido, fila, urna_recolhida), então mandar o
+// snapshot delas a cada toque é seguro: nenhum outro papel as escreve.
+//
+// O PÂNICO É A EXCEÇÃO, e é o defeito que motivou esta correção. Admin e
+// Hermes também resolvem pânico. Se o snapshot levasse pânico sempre, o
+// próximo toque do mesário em qualquer outro botão reenviaria
+// `panico_*_resolvido: false` e desfaria no banco a resolução da equipe.
+// Como o RPC trata NULL como "mantém o que está lá", basta omitir os campos
+// quando o toque não foi de pânico — assim nenhuma outra ação pode pisar
+// neles, mesmo offline ou com o Realtime fora do ar.
+function buildMesaPayload({ incluirPanico = false } = {}) {
+  const p = {
     p_mesa_pres: S.mesa.pres, p_mesa_m1: S.mesa.m1, p_mesa_m2: S.mesa.m2, p_mesa_sec: S.mesa.sec,
     p_zeresima: S.zero, p_votacao: S.vot, p_encerrada: S.enc, p_bu_impresso: S.bu,
     p_material_recolhido: S.mat, p_fila: S.fila ?? 0,
-    p_panico_energia: S.panico.energia, p_panico_urna: S.panico.urnaprob,
-    p_panico_energia_resolvido: S.panico_resolved.energia, p_panico_urna_resolvido: S.panico_resolved.urnaprob,
     p_urna_recolhida: S.urna,
   };
+  if (incluirPanico) {
+    p.p_panico_energia = S.panico.energia;
+    p.p_panico_urna = S.panico.urnaprob;
+    p.p_panico_energia_resolvido = S.panico_resolved.energia;
+    p.p_panico_urna_resolvido = S.panico_resolved.urnaprob;
+  }
+  return p;
 }
 
-function saveState() {
+function saveLocal() {
   try {
     const all = JSON.parse(localStorage.getItem(MESA_KEY) || '{}');
     all[SECAO_ID] = {
@@ -772,7 +866,11 @@ function saveState() {
     };
     localStorage.setItem(MESA_KEY, JSON.stringify(all));
   } catch(e) {}
-  if (window.simeCampo) window.simeCampo.syncMesa(buildMesaPayload());
+}
+
+function saveState(opts) {
+  saveLocal();
+  if (window.simeCampo) window.simeCampo.syncMesa(buildMesaPayload(opts));
 }
 
 function loadState() {

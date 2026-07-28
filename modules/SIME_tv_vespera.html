@@ -128,6 +128,36 @@ body{display:flex;flex-direction:column;}
 .leg{display:flex;gap:12px;align-items:center;}
 .li{display:flex;align-items:center;gap:3px;font-size:.6rem;color:var(--text3);}
 .li-d{width:6px;height:6px;border-radius:50%;}
+.li-b{display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;background:#ef4444;color:#fff;font-size:.5rem;font-weight:900;}
+.li-arcs,.li-dica{color:var(--text3);opacity:.85;}
+.li-dica{font-style:italic;}
+
+/* ── MODAL DE SEÇÃO ── */
+.sec-modal{max-width:430px;padding:0;overflow:hidden;}
+.sm-hdr{display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid var(--border);}
+.sm-num{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.95rem;flex-shrink:0;}
+.sm-info{flex:1;min-width:0;}
+.sm-title{font-size:.92rem;font-weight:800;}
+.sm-loc{font-size:.72rem;color:var(--text2);}
+.sm-close{background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--text3);padding:4px 8px;}
+.sm-body{padding:13px 17px;}
+.sm-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);}
+.sm-row:last-child{border-bottom:none;}
+.sm-icon{font-size:1rem;width:22px;text-align:center;}
+.sm-lbl{flex:1;font-size:.78rem;font-weight:600;}
+.sm-badge{font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:99px;}
+.sm-badge.ok{background:#dcfce7;color:#15803d;}
+.sm-badge.info{background:var(--bg2);color:var(--text2);}
+.sm-badge.err{background:#fee2e2;color:#b91c1c;}
+.sm-prob{display:flex;align-items:center;gap:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:9px;padding:10px 12px;margin-bottom:11px;}
+.sm-prob-ico{font-size:1.3rem;}
+.sm-prob-tipo{font-size:.8rem;font-weight:800;color:#b91c1c;}
+.sm-prob-sub{font-size:.68rem;color:#b91c1c;opacity:.85;}
+.sm-footer{display:flex;gap:8px;padding:12px 17px;border-top:1px solid var(--border);}
+.sm-btn{flex:1;padding:9px;border-radius:8px;font-size:.75rem;font-weight:700;cursor:pointer;border:none;text-align:center;text-decoration:none;display:block;}
+.sm-btn.dark{background:#2a2a2a;color:#fff;}
+.sm-btn.wa{background:#25d366;color:#fff;flex:1.6;}
+.sw{cursor:pointer;}
 
 /* ── MODAL CONFIG ── */
 .overlay{position:fixed;inset:0;background:rgba(30,27,46,.5);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px;}
@@ -183,8 +213,11 @@ body{display:flex;flex-direction:column;}
     <div class="li"><div class="li-d" style="background:#dc2626"></div>Não saiu</div>
     <div class="li"><div class="li-d" style="background:#d97706"></div>Trânsito</div>
     <div class="li"><div class="li-d" style="background:#ca8a04"></div>Chegou</div>
+    <div class="li"><div class="li-d" style="background:#ea580c"></div>Instalada s/ chegada</div>
     <div class="li"><div class="li-d" style="background:#16a34a"></div>Pronta</div>
-    <div class="li"><div class="li-d" style="background:#ef4444"></div>Problema</div>
+    <div class="li"><span class="li-b">!</span>Problema</div>
+    <div class="li li-arcs">3 arcos: saiu · chegou · instalada</div>
+    <div class="li li-dica">clique numa seção para ver e contatar</div>
   </div>
 </div>
 
@@ -204,9 +237,14 @@ body{display:flex;flex-direction:column;}
   </div>
 </div>
 
+<!-- MODAL DE DETALHE DA SEÇÃO -->
+<div class="overlay" id="sec-overlay" onclick="closeSecModal(event)">
+  <div class="modal sec-modal" id="sec-modal" onclick="event.stopPropagation()"></div>
+</div>
+
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst } from './sime_dados.js';
+import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst, getAtores } from './sime_dados.js';
 import { subscribeMesaEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
@@ -246,6 +284,19 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     window.__instRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
     agendarRerender();
   });
+
+  // Contatos da mesa, pro modal de seção oferecer o WhatsApp. Falha em
+  // silêncio: sem contato o botão some, e a véspera segue funcionando.
+  try {
+    const atores = await getAtores({ fallback: [] });
+    const porSecao = {};
+    for (const a of atores || []) {
+      if (!a.ativo || !a.secao || !a.telefone) continue;
+      if (!porSecao[a.secao]) porSecao[a.secao] = [];
+      porSecao[a.secao].push({ nome: a.nome, telefone: a.telefone, funcao_mesa: a.funcao_mesa, funcao: a.funcao });
+    }
+    window.__contatosPorSecao = porSecao;
+  } catch (e) { /* sem contatos — o modal só não mostra o botão */ }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -562,7 +613,7 @@ function buildPageEl(cityIdx, inst, lacre, cfg){
       const badge = st.prob
         ? `<div class="pb err">!</div>`
         : (st.inst&&!st.chegou ? `<div class="pb warn">!</div>` : '');
-      circs += `<div class="sw" title="Seção ${n}">${mkSVG(n,st)}${badge}</div>`;
+      circs += `<div class="sw" title="Seção ${n} — clique para ver e contatar" onclick="openSecModal('${n}','${loc.n.replace(/'/g,"\\'")}')">${mkSVG(n,st)}${badge}</div>`;
     });
 
     box.innerHTML = `<div class="loc-name">${loc.n}</div>${timeLn}<div class="loc-circles">${circs}</div>`;
@@ -572,6 +623,90 @@ function buildPageEl(cityIdx, inst, lacre, cfg){
 
   div.appendChild(grid);
   return div;
+}
+
+// ══════════════════════════════════════════════════
+// MODAL DE SEÇÃO — detalhe do problema + contato
+// ══════════════════════════════════════════════════
+// Na véspera o telão mostra o avanço da instalação; quando algo trava, quem
+// está no cartório precisa de duas coisas na mesma tela: o que exatamente
+// falhou naquela seção e como falar com quem está lá.
+
+// A ordem é a da mesa: o Presidente responde pela seção, os demais são o
+// plano B. O filtro por funcao==='mesario' evita cair na junta eleitoral, que
+// também tem gente com funcao_mesa='Presidente'.
+const ORDEM_MESA = ['Presidente', '1º Mesário', '2º Mesário', '1º Secretário'];
+function contatoDaSecao(n){
+  const lista = (window.__contatosPorSecao || {})[n] || [];
+  const mesarios = lista.filter(c => c.funcao === 'mesario' && c.telefone);
+  if (!mesarios.length) return null;
+  mesarios.sort((a,b) => {
+    const ia = ORDEM_MESA.indexOf(a.funcao_mesa), ib = ORDEM_MESA.indexOf(b.funcao_mesa);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  return mesarios[0];
+}
+
+function botaoContatoHtml(n, situacao){
+  const c = contatoDaSecao(n);
+  if (!c) return '';
+  const msg = `SIME — Seção ${parseInt(n)}\n${situacao}\n\nAqui é o cartório. Pode nos atualizar sobre a situação?`;
+  const href = linkWhatsApp(c.telefone, msg);
+  if (!href) return '';
+  const papel = c.funcao_mesa || 'Mesário';
+  return `<a class="sm-btn wa" href="${href}" target="_blank" rel="noopener">💬 ${papel}: ${c.nome.split(' ')[0]} · ${fmtTelefone(c.telefone)}</a>`;
+}
+
+function openSecModal(n, localNome){
+  const st = getSt(n, loadLacre(), loadInst());
+  const cor = (st.inst&&st.chegou) ? '#16a34a' : st.inst ? '#ea580c' : st.chegou ? '#ca8a04' : st.saiu ? '#d97706' : '#dc2626';
+
+  // O que está errado, em ordem de gravidade. "Instalada sem registro de
+  // chegada" não é um pânico, mas é uma inconsistência que alguém precisa
+  // resolver antes do dia D — por isso aparece aqui.
+  let probHtml = '', situacao = 'Situação da seção';
+  if(st.prob){
+    situacao = '⚠ Problema na instalação';
+    probHtml = `<div class="sm-prob"><div class="sm-prob-ico">⚠️</div><div>
+      <div class="sm-prob-tipo">Problema na instalação</div>
+      <div class="sm-prob-sub">Registrado pelo instalador — aguardando resolução</div></div></div>`;
+  } else if(st.inst && !st.chegou){
+    situacao = '⚠ Instalada sem registro de chegada';
+    probHtml = `<div class="sm-prob" style="background:#fff7ed;border-color:#fdba74">
+      <div class="sm-prob-ico">🔀</div><div>
+      <div class="sm-prob-tipo" style="color:#c2410c">Instalada sem registro de chegada</div>
+      <div class="sm-prob-sub" style="color:#c2410c">A urna foi marcada como instalada, mas a chegada nunca foi registrada</div></div></div>`;
+  }
+
+  const linha = (icone,label,ok,txtOk,txtNao) =>
+    `<div class="sm-row"><div class="sm-icon">${icone}</div><div class="sm-lbl">${label}</div>
+     <span class="sm-badge ${ok?'ok':'info'}">${ok?txtOk:txtNao}</span></div>`;
+
+  document.getElementById('sec-modal').innerHTML = `
+    <div class="sm-hdr">
+      <div class="sm-num" style="background:${cor}">${parseInt(n)}</div>
+      <div class="sm-info">
+        <div class="sm-title">Seção ${parseInt(n)}</div>
+        <div class="sm-loc">${localNome || ''}</div>
+      </div>
+      <button class="sm-close" onclick="closeSecModal()">✕</button>
+    </div>
+    <div class="sm-body">
+      ${probHtml}
+      ${linha('🚚','Urna saiu do cartório', st.saiu, 'Saiu', 'Não saiu')}
+      ${linha('📍','Chegou ao local', st.chegou, 'Chegou', 'Não chegou')}
+      ${linha('🔧','Instalada', st.inst, 'Instalada', 'Pendente')}
+    </div>
+    <div class="sm-footer">
+      ${botaoContatoHtml(n, situacao)}
+      <button class="sm-btn dark" onclick="closeSecModal()">Fechar</button>
+    </div>`;
+  document.getElementById('sec-overlay').classList.add('show');
+}
+
+function closeSecModal(e){
+  if(!e || e.target === document.getElementById('sec-overlay'))
+    document.getElementById('sec-overlay').classList.remove('show');
 }
 
 // stats globais

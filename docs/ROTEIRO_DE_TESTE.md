@@ -24,27 +24,31 @@ de marcação. Marque `[x]` quando passar, ou anote a falha na coluna de observa
 
 ---
 
-## ⚠️ Defeito conhecido — leia antes de testar o Dia D
+## ⚠️ O defeito do pânico — corrigido no mesário, ainda aberto nos outros
 
-**Os módulos de campo não recebem atualizações do servidor.** Só as três TVs
-assinam o Realtime; mesário, motorista, conferente, instalador, mídias e
-acessibilidade **apenas escrevem**.
+O defeito relatado em campo era: a equipe resolve o pânico pelo Admin e **o
+controle do mesário continua vermelho**. Por trás dele havia um segundo,
+pior: o mesário gravava o **snapshot inteiro** da seção a cada toque, então o
+toque seguinte em qualquer botão reenviava `panico_resolvido: false` e
+**desfazia a resolução no banco**. Não era só tela desatualizada — era perda
+de dado.
 
-Consequência direta, que motivou este roteiro:
+**Os dois estão corrigidos no `SIME_mesario.html`**, por dois caminhos
+independentes:
 
-> A equipe resolve o pânico pelo Admin → **o controle do mesário continua
-> mostrando o pânico ativo**, porque nada avisa aquele aparelho.
+1. O mesário passou a assinar o Realtime da própria seção (e a reler o estado
+   ao abrir e sempre que a tela volta), então a resolução feita pelo Admin
+   chega ao aparelho.
+2. Os campos de pânico **só entram no payload quando o toque foi de pânico**.
+   Como o RPC trata `NULL` como "mantém o que está lá", nenhuma outra ação
+   pode pisar neles — mesmo offline, mesmo com o Realtime fora do ar.
 
-E uma consequência pior, menos óbvia:
+**Continua aberto nos outros cinco módulos de campo** (motorista, conferente,
+instalador, mídias, acessibilidade): eles ainda só escrevem. O caso que
+importa na prática é o **pânico da acessibilidade** (passo 8.5) — se a equipe
+resolver pelo Admin, aquele aparelho não fica sabendo.
 
-> O mesário grava o **snapshot inteiro** da seção a cada toque
-> (`buildMesaPayload`). Então, depois que a equipe resolveu, **o próximo toque
-> do mesário em qualquer botão reenvia `panico_resolvido: false` e desfaz a
-> resolução no banco.**
-
-Não é só tela desatualizada — é perda de dado. Os passos **7.6 a 7.9** existem
-para medir exatamente isso. Enquanto não for corrigido, **a resolução de pânico
-deve ser feita no aparelho do mesário**, não pelo Admin.
+Os passos **7.6 a 7.9** medem a correção; **8.7** mede o que sobrou.
 
 ---
 
@@ -74,7 +78,7 @@ Se **S3** falhar, o token não está sendo lido da URL. Se **S4** falhar com
 | 0.1 | `SIME_JWT_SECRET` configurado na Edge Function | [ ] |
 | 0.2 | `HERMES_SECRET_ZONA_7` e `_94` na Vercel **e** no Hermes, com o mesmo valor | [ ] |
 | 0.3 | Conta de admin da 7ª e conta da 94ª (Maria Gomes) | [ ] |
-| 0.4 | Cartões impressos: 1 mesário, 1 motorista, 1 conferente, 1 acessibilidade | [ ] |
+| 0.4 | Cartões impressos: 1 mesário, 1 motorista, 1 conferente, 1 acessibilidade, 1 coletor de mídias | [ ] |
 | 0.5 | 1 token de TV | [ ] |
 | 0.6 | Aparelhos: 2 celulares, 1 TV Box, 1 PC | [ ] |
 
@@ -138,6 +142,7 @@ navegador limpo. Estes passos garantem que a porta continua fechada.
 | 4.4 | **Desligar a internet** e recarregar a página de tokens | O QR **continua** desenhando | [ ] | |
 | 4.5 | Botão **Gerar em massa** | Cria 1 por seção/rota/local, sem duplicar | [ ] | |
 | 4.6 | Clicar em massa **de novo** | "Todos os tokens já existem" | [ ] | |
+| 4.6b | Gerar um **📦 Coletor de Mídias** | Sai sem pedir seção/rota/local; QR aponta pra `SIME_midias.html` | [ ] | |
 | 4.7 | **Imprimir 3 cartões** e ler o QR a 30 cm | Câmera reconhece; PIN legível | [ ] | |
 | 4.8 | Conferir a URL impressa | Contém `/z/<zona>/` | [ ] | |
 
@@ -178,17 +183,23 @@ navegador limpo. Estes passos garantem que a porta continua fechada.
 | 7.4 | Zerésima → Votação | Status muda a cada uma; 🟢 | [ ] | |
 | 7.5 | Ajustar a **fila** (+5, −1, zerar) | Contador responde | [ ] | |
 
-### 7.6–7.9 — o defeito relatado
+### 7.6–7.9 — o defeito relatado (agora corrigido)
 
-| # | Ação | Esperado **hoje** | Deveria ser | OK |
+Estes quatro passos são a verificação da correção. **Se algum falhar, o
+defeito voltou** — anote exatamente o que aconteceu.
+
+| # | Ação | Esperado | OK | Obs |
 |---|---|---|---|---|
-| 7.6 | Acionar **pânico de energia** no mesário | Botão fica vermelho pulsando | igual | [ ] |
-| 7.7 | Ver no Admin e na TV Dia | Alerta aparece em segundos | igual | [ ] |
-| 7.8 | **Resolver o pânico pelo Admin** | Admin/TV mostram resolvido, **mas o mesário continua vermelho** | mesário deveria atualizar sozinho | [ ] |
-| 7.9 | No mesário, tocar em **qualquer** outro botão | **O pânico volta a ativo no Admin** — a resolução foi desfeita | não deveria voltar | [ ] |
+| 7.6 | Acionar **pânico de energia** no mesário | Botão fica vermelho pulsando | [ ] | |
+| 7.7 | Ver no Admin e na TV Dia | Alerta aparece em segundos | [ ] | |
+| 7.8 | **Resolver o pânico pelo Admin** | O mesário vira **verde sozinho**, com aviso "Problema resolvido pela equipe" | [ ] | |
+| 7.9 | No mesário, tocar em **qualquer** outro botão | O pânico **continua resolvido** no Admin | [ ] | |
+| 7.9b | Fechar o app do mesário, resolver pelo Admin, **reabrir** | Abre já verde — não volta com o vermelho antigo | [ ] | |
+| 7.9c | Modo avião no mesário, resolver pelo Admin, tocar outro botão, voltar a rede | A resolução **sobrevive** — o toque offline não a desfaz | [ ] | |
 
-**Anote em 7.8 e 7.9 o que de fato aconteceu.** São a medida do defeito, e o
-que vai dizer se a correção funcionou.
+> **7.9c é o mais importante dos três.** É o único que testa a correção que não
+> depende de rede: os campos de pânico não são reenviados por toques que não
+> são de pânico.
 
 | # | Ação | Esperado | OK | Obs |
 |---|---|---|---|---|
@@ -207,7 +218,11 @@ que vai dizer se a correção funcionou.
 | 8.3 | Recolhimento + chegada ao cartório | Botão do cartório libera no fim | [ ] | |
 | 8.4 | `SIME_acessibilidade.html` com cartão | Só as seções **daquele local** | [ ] | |
 | 8.5 | Pânico pela acessibilidade | Chega ao Admin e à TV Dia | [ ] | |
-| 8.6 | `SIME_midias.html`, registrar coleta | Mídia avança (pronta → coletada) | [ ] | |
+| 8.6 | `SIME_midias.html` com o cartão de **coletor de mídias**, registrar coleta | Entra pelo QR+PIN e a mídia avança (pronta → coletada) | [ ] | |
+| 8.7 | Resolver o pânico de 8.5 **pelo Admin** | Hoje o aparelho da acessibilidade **continua vermelho** — defeito conhecido, ainda não corrigido | [ ] | |
+
+> **8.7 é o que sobrou do defeito do pânico.** Enquanto não for corrigido, o
+> pânico levantado pela acessibilidade deve ser resolvido **naquele aparelho**.
 
 ---
 
@@ -318,6 +333,7 @@ Sem estes, o sistema não está pronto para 4 de outubro:
 - [ ] Admin de uma zona **não** enxerga a outra (§3)
 - [ ] O QR **preenche o token** e o cartão impresso é **legível** (§4)
 - [ ] Ação do mesário chega à TV Dia e ao Admin em segundos (§7)
+- [ ] Resolver o pânico pelo Admin atualiza o mesário e **não é desfeito** (7.8–7.9c)
 - [ ] A fila offline recupera **todas** as ações (§9)
 - [ ] O Hermes drena a fila e o WhatsApp chega (§10)
 - [ ] A configuração da eleição sobrevive à troca de navegador (§12)
@@ -325,8 +341,11 @@ Sem estes, o sistema não está pronto para 4 de outubro:
 
 ### Fora dos critérios, por decisão consciente
 
-- **7.8 / 7.9** — o defeito de propagação. Enquanto não for corrigido, a
-  instrução operacional é: **pânico se resolve no aparelho do mesário.**
+- **8.7** — os outros cinco módulos de campo continuam só escrevendo. O caso
+  que aparece na operação é o pânico da acessibilidade: enquanto não for
+  corrigido, **resolva-o naquele aparelho**, não pelo Admin. Estender o
+  Realtime aos cinco ficou para depois de outubro — mexer nos seis módulos a
+  esta altura é superfície de regressão demais para o ganho.
 
 ---
 
