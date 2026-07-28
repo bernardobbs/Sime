@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Mesário</title>
 <link rel="stylesheet" href="./sime_theme_dark.css">
@@ -21,7 +21,7 @@
   --purple:#a855f7;--purple-d:#2d1248;--purple-s:#1a0a2a;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
+html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
 
 /* ── CORPO DO CONTROLE ── */
 .remote{
@@ -381,6 +381,19 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
     <span class="rbadge" id="badge-urnaprob"></span>
   </button>
 
+
+  <!-- MÍDIA — sempre visível, muda de estado.
+       Ficava FORA do .remote, como filho direto do body. Como o body é flex,
+       os 158px dele somavam à largura do controle (365+158=523) e empurravam
+       a tela inteira para fora do viewport no celular — justamente o aparelho
+       para o qual esta tela foi desenhada. -->
+  <div class="midia-block" id="midia-block">
+    <div class="midia-hdr">📦 MÍDIA ELEITORAL</div>
+    <button class="midia-btn locked" id="midia-btn" onclick="marcarMidiaPronta()" disabled>
+      🔒 Disponível após encerramento
+    </button>
+    <div class="midia-tip" id="midia-tip">Aguardando encerramento da seção</div>
+  </div>
 </div><!-- /remote -->
 
 <!-- ── MODAL ── -->
@@ -1025,13 +1038,5 @@ setInterval(renderMidiaBtn, 3000);
 setTimeout(renderMidiaBtn, 400);
 </script>
 
-<!-- MÍDIA — sempre visível, muda de estado -->
-<div class="midia-block" id="midia-block">
-  <div class="midia-hdr">📦 MÍDIA ELEITORAL</div>
-  <button class="midia-btn locked" id="midia-btn" onclick="marcarMidiaPronta()" disabled>
-    🔒 Disponível após encerramento
-  </button>
-  <div class="midia-tip" id="midia-tip">Aguardando encerramento da seção</div>
-</div>
 </body>
 </html>
