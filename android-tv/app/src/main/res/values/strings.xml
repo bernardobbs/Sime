@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SIME TV</string>
+    <string name="config_titulo">Qual painel este telão vai exibir?</string>
+    <string name="config_token">Token de TV (8 caracteres do cartão)</string>
+    <string name="config_zona">Zona eleitoral</string>
+    <string name="salvar">Salvar e exibir</string>
+    <string name="painel_escolhido">Painel: %1$s</string>
+    <string name="rodape_servidor">Servidor: %1$s\nSegure OK por 5 segundos no painel para voltar aqui.</string>
+    <string name="erro_sem_painel">Escolha um painel primeiro</string>
+    <string name="erro_token">O token tem 8 caracteres — confira o cartão</string>
+</resources>
