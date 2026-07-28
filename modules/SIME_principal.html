@@ -338,15 +338,16 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div id="tab-usuarios" class="tab-panel" style="display:none;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
     <div><div style="font-size:1rem;font-weight:800;">Usuários e permissões</div></div>
-    <div style="display:flex;gap:8px;">
-      <select id="zona-filter" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.78rem;" onchange="filterUsers()">
-        <option value="all">Todas as zonas</option><option value="7">7ª Zona</option><option value="94">94ª Zona</option>
-      </select>
-      <button class="btn btn-dark" onclick="openModal('novo-usuario')">+ Novo usuário</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="usuarios-escopo" style="font-size:.76rem;color:var(--text3);"></span>
+      <!-- Criar acesso acontece no Admin, onde a Edge Function sime-admin-user
+           cria a conta de verdade e mostra a senha temporária. Aqui era um
+           formulário que anunciava sucesso e não criava nada. -->
+      <a class="btn btn-dark" href="SIME_admin.html" style="text-decoration:none;">👥 Gerenciar no Admin</a>
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
-    <table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Zona</th><th>Último acesso</th><th></th></tr></thead>
+    <table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Zona</th></tr></thead>
     <tbody id="user-tbody"></tbody></table>
   </div>
 </div>
@@ -362,7 +363,11 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
       <div class="form-group"><label>Fuso horário</label>
         <select><option>America/Fortaleza (UTC-3)</option><option>America/Sao_Paulo (UTC-3)</option></select>
       </div>
-      <button class="btn btn-dark" onclick="showToast("✓ Salvo")">💾 Salvar</button>
+      <!-- Este cartão nunca gravou nada: o "Nome da eleição" real está na aba
+           Eleição (que persiste em sime_eleicoes); nome do sistema e fuso são
+           fixos. Dizer "✓ Salvo" aqui fazia o operador acreditar num ajuste
+           que não existe. -->
+      <button class="btn btn-out" onclick="showToast("Ajuste o nome da eleição na aba Eleição")">💾 Salvar</button>
     </div>
     <div class="card">
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Zona de perigo</div>
@@ -420,8 +425,9 @@ async function carregarZonas(){
     supabase.from('sime_zonas').select('id, numero, municipio, estado').order('numero'),
     supabase.from('sime_secoes').select('zona_id, eleitores'),
     supabase.from('sime_rotas').select('zona_id'),
-    supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+    supabase.from('sime_usuarios').select('id, nome, perfil, zona_id').eq('ativo', true),
   ]);
+  window.USUARIOS_REAIS = usuarios || [];
 
   const soma = (rows, key, campo) => (rows || []).reduce((m, r) => {
     m[r[key]] = (m[r[key]] || 0) + (campo ? (r[campo] || 0) : 1); return m;
@@ -434,6 +440,7 @@ async function carregarZonas(){
     admins: soma(usuarios, 'zona_id')[z.id] || 0,
   }));
   if (window.renderZonas) window.renderZonas();
+  if (window.buildUsers) window.buildUsers();
   await carregarEleicaoDoBanco();
 }
 
@@ -817,38 +824,65 @@ function showTurno(n){
   });
 }
 
-// USUÁRIOS
-const USERS=[
-  {name:'Rafael A.',ini:'RA',color:'#2a2a2a',role:'super',rl:'Super Admin',zona:'Todas',last:'Agora'},
-  {name:'Maria S.',ini:'MS',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'hoje 07:12'},
-  {name:'João P.',ini:'JP',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'ontem'},
-  {name:'Ana C.',ini:'AC',color:'#6040a0',role:'admin',rl:'Admin de Zona',zona:'94ª',last:'—'},
-  {name:'Carlos M.',ini:'CM',color:'#1a7a6e',role:'coord',rl:'Coordenador',zona:'7ª',last:'hoje 06:58'},
-  {name:'Paulo T.',ini:'PT',color:'#1a7a6e',role:'inst',rl:'Técnico',zona:'7ª',last:'—'},
-  {name:'José R.',ini:'JR',color:'#8a5c20',role:'motor',rl:'Motorista',zona:'7ª',last:'—'},
-];
-const RCLS={super:'role-super',admin:'role-admin',coord:'role-coord',inst:'role-inst',motor:'role-motor'};
-function buildUsers(f='all'){
-  document.getElementById('user-tbody').innerHTML=USERS
-    .filter(u=>f==='all'||u.zona==='Todas'||(f==='7'&&u.zona==='7ª')||(f==='94'&&u.zona==='94ª'))
-    .map(u=>'<tr><td><div class="td-row"><div class="avatar-sm" style="background:'+u.color+'">'+u.ini+'</div><strong>'+u.name+'</strong></div></td>'
-      +'<td><span class="role-badge '+RCLS[u.role]+'">'+u.rl+'</span></td>'
-      +'<td>'+u.zona+'</td><td style="font-size:.76rem">'+u.last+'</td>'
-      +'<td><div class="td-actions"><button class="td-btn edit" onclick="openModal(\'editar-usuario\',\'' + u.name + '\')">✏️</button><button class="td-btn del">🗑</button></div></td></tr>').join('');
+// USUÁRIOS — dado real, escopado pela RLS
+//
+// Esta aba listava SETE pessoas inventadas ('Maria S.', 'João P.', …) com um
+// filtro de zona escrito no HTML, e o botão "+ Novo usuário" abria um modal
+// que anunciava sucesso sem criar nada. Alguém podia cadastrar a equipe
+// aqui, ver o visto verde, e descobrir no dia 4 que ninguém consegue entrar.
+//
+// Agora vem de sime_usuarios. Não há filtro de zona porque não é preciso: a
+// RLS já devolve só a zona do usuário logado (e todas, para o super_admin) —
+// filtrar de novo no cliente seria fingir um controle que o banco já faz.
+const PERFIL_LABEL = {
+  super_admin:'Super Admin', coordenador:'Coordenador Geral', monitor:'Monitor de Campo',
+  gestor_prob:'Gestor de Problemas', gestor_dist:'Gestor de Distribuição',
+  coord_motoristas:'Coord. de Motoristas', coord_acessibilidade:'Coord. de Acessibilidade',
+  coletor_midias:'Coletor de Mídias', observador:'Observador',
+};
+const RCLS={super_admin:'role-super',coordenador:'role-admin',monitor:'role-coord',
+  gestor_prob:'role-coord',gestor_dist:'role-inst',observador:'role-motor'};
+
+function iniciais(nome){
+  return String(nome||'?').split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
-buildUsers();
-function filterUsers(){ buildUsers(document.getElementById('zona-filter').value); }
+
+function buildUsers(){
+  const tb = document.getElementById('user-tbody');
+  if(!tb) return;
+  const zonas = window.ZONAS_REAIS || [];
+  const porZona = Object.fromEntries(zonas.map(z=>[z.id, z.numero+'ª']));
+  // Tokens de TV entram em sime_usuarios como 'observador' criado pela
+  // sime-login. Não são gente da equipe e poluiriam a lista.
+  const users = (window.USUARIOS_REAIS || []).filter(u => !/^Token /.test(u.nome||''));
+
+  const escopo = document.getElementById('usuarios-escopo');
+  if(escopo) escopo.textContent = users.length
+    ? `${users.length} pessoa${users.length>1?'s':''}` + (zonas.length===1 ? ` · ${zonas[0].numero}ª Zona` : '')
+    : '';
+
+  if(!users.length){
+    tb.innerHTML = '<tr><td colspan="3" style="padding:18px;color:var(--text3);font-size:.82rem">'
+      + (window.SIME_PERFIL ? 'Nenhum usuário cadastrado nesta zona.' : 'Entre com seu login para ver a equipe.')
+      + '</td></tr>';
+    return;
+  }
+  tb.innerHTML = users.map(u =>
+    '<tr><td><div class="td-row"><div class="avatar-sm" style="background:#3a5fa0">'+iniciais(u.nome)+'</div>'
+    + '<strong>'+(u.nome||'—')+'</strong></div></td>'
+    + '<td><span class="role-badge '+(RCLS[u.perfil]||'role-motor')+'">'+(PERFIL_LABEL[u.perfil]||u.perfil)+'</span></td>'
+    + '<td>'+(porZona[u.zona_id]||'—')+'</td></tr>').join('');
+}
+window.buildUsers = buildUsers;
 
 // MODAIS
 const MODALS={
-  'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Zona criada")">Criar</button></div>',
-  'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div style="border:2px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer">📄 Selecionar arquivo</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
+  'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("Cadastro de zona ainda não implementado")">Entendi</button></div>',
+  'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div style="border:2px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer">📄 Selecionar arquivo</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("Configuração de zona ainda não implementada")">Entendi</button></div>',
   'admins-zona':(z)=>'<div class="modal-header"><div class="modal-title">👥 Admins da '+z+'ª Zona</div></div><div class="modal-body">'+(z==='7'?'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#3a5fa0">MS</div><div style="flex:1"><strong>Maria S.</strong></div><button class="td-btn del">🗑</button></div>':'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#6040a0">AC</div><div style="flex:1"><strong>Ana C.</strong></div><button class="td-btn del">🗑</button></div>')+'</div><div class="modal-footer"><button class="btn btn-dark" onclick="closeModal()">Fechar</button></div>',
-  'novo-usuario':()=>'<div class="modal-header"><div class="modal-title">👤 Novo usuário</div><div class="modal-sub">O usuário verá apenas a zona atribuída.</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Nome</label><input type="text"></div><div class="form-group"><label>E-mail</label><input type="email"></div></div><div class="form-group"><label>Perfil</label><select><option>Admin de Zona</option><option>Coordenador</option><option>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona — Campo Maior</option><option>94ª Zona — Oeiras</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Criado")">Criar</button></div>',
-  'editar-usuario':(n)=>'<div class="modal-header"><div class="modal-title">✏️ Editar — '+n+'</div></div><div class="modal-body"><div class="form-group"><label>Perfil</label><select><option>Admin</option><option>Coordenador</option><option selected>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona</option><option>94ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
-  'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Turno arquivado")">Arquivar</button></div>',
+  'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("Arquivamento de turno ainda não implementado")">Entendi</button></div>',
   'resetar':()=>`<div class="modal-header"><div class="modal-title" style="color:var(--red)">⚠️ Resetar dados</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--red);background:var(--red-bg);border:1px solid var(--red-bd);border-radius:8px;padding:12px;margin-bottom:14px">Apaga permanentemente todos os dados de campo.</div><div class="form-group"><label>Digite RESETAR para confirmar</label><input type="text" id="rc"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-red" onclick="doResetar()">Resetar</button></div>`,
-  'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div style="border:2px dashed var(--border2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:12px">📅 Selecionar arquivo do TRE (.ics / .csv)</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Calendário importado")">Importar</button></div>',
+  'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div style="border:2px dashed var(--border2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:12px">📅 Selecionar arquivo do TRE (.ics / .csv)</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("Importação de calendário ainda não implementada")">Entendi</button></div>',
 };
 
 function doResetar(){ const v=document.getElementById('rc'); if(v&&v.value==='RESETAR'){closeModal();showToast('✓ Resetado');}else showToast('Digite RESETAR para confirmar'); }
@@ -870,7 +904,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
   // Depois de carregar o que já estava salvo: sugere as datas legais só nos
   // campos ainda vazios e deriva a véspera de cada turno.
   aplicarPadroesDeData();
-  updateFase(); renderTimeline(); renderModulos(); renderZonas();
+  updateFase(); renderTimeline(); renderModulos(); renderZonas(); buildUsers();
 })();
 </script>
 </body>
