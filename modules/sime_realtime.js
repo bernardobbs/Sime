@@ -35,6 +35,11 @@ export function subscribeMesaEstadoSecao(client, secaoId, onChange) {
 export function subscribeRotasEstado(client, onChange) { return subscribeTable(client, 'sime_rotas_estado', onChange); }
 export function subscribeRotasUrnas(client, onChange) { return subscribeTable(client, 'sime_rotas_urnas', onChange); }
 
+// Painel de problemas: a lista precisa refletir o que outra pessoa da equipe
+// acabou de fazer (assumir, delegar, resolver) sem ninguém apertar F5 — é o
+// que impede duas pessoas de ligarem para a mesma seção ao mesmo tempo.
+export function subscribeOcorrencias(client, onChange) { return subscribeTable(client, 'sime_ocorrencias', onChange); }
+
 export function unsubscribe(client, channel) {
   if (channel) client.removeChannel(channel);
 }

@@ -6,6 +6,26 @@ o sistema escala sozinho.
 
 > Projetado em 28/07/2026, a partir do uso real do painel. Os números deste
 > documento vêm do Supabase de produção, não de estimativa.
+>
+> **Estado: implementado** em `modules/SIME_problemas.html` e
+> `sql/SIME_ocorrencias.sql`. O que falta é cadastro, não código — ver §5.
+
+---
+
+## 0. A regra que organiza a tela
+
+**O contato oferecido é função do tipo do problema.** Foi a definição do
+cartório, e é o que separa esta tela de uma lista de telefones:
+
+| Problema | Quem resolve |
+|---|---|
+| ⚡ Faltou luz | **Equatorial** |
+| 🖥️ Urna com problema | **Auxiliar de eleição** — contratado do TRE que faz manutenção de urna |
+| 👥 Faltou mesário | **A própria mesa** (Presidente primeiro) |
+| ♿ Acessibilidade | **Coord. de acessibilidade** do local |
+
+O primeiro da lista vem destacado em verde — é quem acionar primeiro. Os
+demais ficam abaixo, porque na prática o primeiro às vezes não atende.
 
 ---
 
@@ -187,18 +207,16 @@ O `CLAUDE.md` diz isso, mas o cadastro guarda `secao_id`. Buscar pelo
 45 sedes e, com elas, a maioria das 175 seções. **É só mudar a busca — não
 precisa recadastrar ninguém.**
 
-**b) O auxiliar de eleição "fica responsável por algumas seções"** — no
-plural, como você descreveu. O modelo não expressa isso: cada ator tem um
-`secao_id` só. Por isso 21 auxiliares cobrem 19 seções. Duas saídas:
+**b) O auxiliar de eleição é o contratado do TRE que faz manutenção de urna** —
+por isso ele, e não a Equatorial, é o primeiro contato quando a urna dá
+problema. Ele cobre **várias seções**, mas o modelo só admite uma (`secao_id`);
+por isso 21 auxiliares apareciam em 19 seções.
 
-- **Barata:** tratar o auxiliar como responsável pelo **local** (mesma busca
-  do item a). Resolve sem migração, e é provavelmente como a operação já
-  pensa.
-- **Correta:** tabela `sime_ator_secoes (ator_id, secao_id)` para os papéis
-  que cobrem várias seções. Migração pequena, mas exige recadastro.
-
-Recomendo a barata agora e a correta depois de outubro. A diferença aparece
-só se um auxiliar cobrir seções de **locais diferentes**.
+**Adotado:** buscar pelo **local**, igual ao item (a). Sem migração e sem
+recadastro. A diferença para a solução "correta" — uma tabela
+`sime_ator_secoes (ator_id, secao_id)` — só aparece se um auxiliar cobrir
+seções de **locais diferentes**; se isso acontecer na prática, a migração é
+pequena e fica para depois de outubro.
 
 **c) A Equatorial não existe em lugar nenhum.** E o contato provavelmente não
 é um só — a 7ª Zona abrange Campo Maior, Jatobá do Piauí e Sigefredo Pacheco,

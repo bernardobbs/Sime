@@ -191,7 +191,26 @@ sime_midias         -- fluxo das mídias eleitorais
 sime_atores         -- cadastro de contatos operacionais
 sime_notificacoes   -- histórico de WhatsApps enviados
 sime_logs           -- auditoria append-only
+sime_ocorrencias    -- problemas como registro (dono, relógio, escalonamento)
+sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
+sime_contatos_externos  -- Equatorial e afins, por zona/município
 ```
+
+### Painel de Problemas (`SIME_problemas.html`)
+
+O contato oferecido é **função do tipo do problema** — é a regra que organiza
+a tela: faltou luz → Equatorial; urna com defeito → **auxiliar de eleição**
+(contratado do TRE que faz manutenção de urna); faltou mesário → a própria
+mesa; acessibilidade → coordenador do local.
+
+Quem assume cuida até o fim: `sime_ocorrencia_assumir` **recusa** ocorrência
+que já tem dono — para trocar de mãos existe `sime_ocorrencia_delegar`, que
+exige motivo. Resolver pelo cartório fecha a ocorrência **e** baixa o pânico
+na seção pelo mesmo RPC do mesário, então a resolução chega ao aparelho dele
+pelo Realtime.
+
+Escalonamento conta de `aberta_em`, não de `assumida_em` — senão a forma mais
+fácil de não ser escalado seria clicar em "Assumir" e esquecer.
 
 ### RPCs críticas
 ```sql
