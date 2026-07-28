@@ -151,6 +151,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <option value="motorista">🚗 Motorista (por rotas)</option>
         <option value="instalador">🔧 Instalador (por rotas)</option>
         <option value="coord_acessibilidade">♿ Coord. de Acessibilidade (por local)</option>
+        <option value="coletor_midias">📦 Coletor de Mídias (zona toda)</option>
       </select>
     </div>
 
@@ -348,6 +349,7 @@ function nomeDerivadoToken(row) {
     case 'motorista':            return `Motorista — ${rota}`;
     case 'instalador':           return `Instalador — ${rota}`;
     case 'coord_acessibilidade': return `Acessibilidade — ${row.local_nome || '?'}`;
+    case 'coletor_midias':       return 'Coletor de Mídias';
     default:                     return `${row.tipo} — ${rota || row.local_nome || ''}`.trim();
   }
 }
@@ -393,8 +395,8 @@ async function mesclarTokensRemotos() {
 }
 
 // Converte um token local (shape de sime_tokens_v1) pra linha de sime_tokens
-// (Supabase) — genérico o bastante pros 5 tipos com escopo (rotas OU secoes
-// OU local, nunca mais de um por tipo).
+// (Supabase) — os 5 tipos com escopo usam rotas OU secoes OU local, nunca mais
+// de um por tipo; o coletor de mídias não usa nenhum e vai com os três nulos.
 function tokenParaLinha(token) {
   return {
     eleicao_id: eleicaoId,
@@ -524,7 +526,11 @@ window.atualizarDadosReaisTokens = function(){
   onTipoChange();
 };
 
-// Alterna os campos conforme o tipo de acesso escolhido
+// Alterna os campos conforme o tipo de acesso escolhido.
+//
+// coletor_midias não aparece em nenhum grupo de propósito: o SIME_midias.html
+// não filtra por seção/rota/local — ele enxerga a zona inteira (é a RLS que
+// delimita). Pedir um escopo aqui seria pedir um dado que ninguém lê.
 function onTipoChange(){
   const tipo = document.getElementById('f-tipo').value;
   const usaRotas = ['conferente','motorista','instalador'].includes(tipo);
@@ -588,17 +594,18 @@ function criarToken(){
   const zona  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
 
   if(!nome){ showToast('⚠ Informe o nome do operador'); return; }
+  const semEscopo = tipo === 'coletor_midias'; // enxerga a zona toda
   if(tipo === 'coord_acessibilidade'){
     if(!local){ showToast('⚠ Selecione o local de votação'); return; }
   } else if(tipo === 'mesario'){
     if(!secaoUnica){ showToast('⚠ Selecione a seção'); return; }
-  } else {
+  } else if(!semEscopo){
     if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
   }
 
   const token = criarTokenObj({
     nome, tipo,
-    rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario') ? [] : rotas,
+    rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario' || semEscopo) ? [] : rotas,
     local: tipo === 'coord_acessibilidade' ? local : null,
     secoes: tipo === 'mesario' ? [secaoUnica] : [],
     turno, zona, expira_em: calcularExpiracao(turno),
@@ -632,14 +639,18 @@ function criarToken(){
 function chaveEscopo(t){
   if(t.tipo==='mesario') return t.secoes?.[0];
   if(t.tipo==='coord_acessibilidade') return t.local;
+  if(t.tipo==='coletor_midias') return 'zona';
   return t.rotas?.[0];
 }
 
 // Gera 1 token por seção (mesário), por rota (conferente/motorista/
 // instalador) e por local de votação (acessibilidade) — pulando qualquer
-// escopo que já tenha um token. Coletor de Mídias fica de fora (papel fixo,
-// sem agrupamento real do qual derivar — ver comentário em
-// SIME_admin.html/secoesDoUsuario()).
+// escopo que já tenha um token.
+//
+// Coletor de Mídias continua fora DA GERAÇÃO EM MASSA — e só dela: o cartório
+// designa essas pessoas uma a uma, então quantos cartões emitir é decisão de
+// escala, não algo que se derive de seções ou rotas. O token existe e sai pelo
+// formulário acima, escolhendo "📦 Coletor de Mídias".
 async function gerarEmMassa(){
   if(!window.SECOES_REAIS?.length || !window.ROTAS_REAIS?.length){
     showToast('⚠ Sem dados reais carregados — faça login primeiro');
@@ -691,14 +702,17 @@ const TIPO_LABEL = {
   motorista: { icon:'🚗', nome:'Motorista' },
   instalador: { icon:'🔧', nome:'Instalador' },
   coord_acessibilidade: { icon:'♿', nome:'Acessibilidade' },
+  coletor_midias: { icon:'📦', nome:'Coletor de Mídias' },
 };
 function scopeBadgeHtml(t){
+  if(t.tipo==='coletor_midias') return '<span class="tc-badge tcb-blue">📦 Zona toda</span>';
   if(t.tipo==='coord_acessibilidade') return '<span class="tc-badge tcb-blue">♿ Acessibilidade</span>';
   if(t.tipo==='mesario') return `<span class="tc-badge tcb-blue">🗳️ Seção ${t.secoes?.[0]?parseInt(t.secoes[0]):'—'}</span>`;
   const n = (t.rotas||[]).length;
   return `<span class="tc-badge tcb-blue">${n} rota${n>1?'s':''}</span>`;
 }
 function scopeDetailHtml(t){
+  if(t.tipo==='coletor_midias') return 'Escopo: <span>todas as seções da zona</span>';
   if(t.tipo==='coord_acessibilidade') return 'Local: <span>'+(t.local||'—')+'</span>';
   if(t.tipo==='mesario') return 'Seção: <span>'+(t.secoes?.[0]?parseInt(t.secoes[0]):'—')+'</span>';
   return 'Rotas: <span>'+(t.rotas||[]).join(' · ')+'</span>';
@@ -792,6 +806,7 @@ const MODULOS_POR_TIPO = {
   motorista: 'SIME_motorista.html',
   instalador: 'SIME_instalador.html',
   coord_acessibilidade: 'SIME_acessibilidade.html',
+  coletor_midias: 'SIME_midias.html',
 };
 // URL impressa no QR Code. Com a zona resolvida vira /z/<numero>/<modulo>, que
 // o vercel.json reescreve para /modules/<modulo> — a reescrita (e não um

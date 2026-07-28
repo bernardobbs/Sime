@@ -78,7 +78,7 @@ Se **S3** falhar, o token não está sendo lido da URL. Se **S4** falhar com
 | 0.1 | `SIME_JWT_SECRET` configurado na Edge Function | [ ] |
 | 0.2 | `HERMES_SECRET_ZONA_7` e `_94` na Vercel **e** no Hermes, com o mesmo valor | [ ] |
 | 0.3 | Conta de admin da 7ª e conta da 94ª (Maria Gomes) | [ ] |
-| 0.4 | Cartões impressos: 1 mesário, 1 motorista, 1 conferente, 1 acessibilidade | [ ] |
+| 0.4 | Cartões impressos: 1 mesário, 1 motorista, 1 conferente, 1 acessibilidade, 1 coletor de mídias | [ ] |
 | 0.5 | 1 token de TV | [ ] |
 | 0.6 | Aparelhos: 2 celulares, 1 TV Box, 1 PC | [ ] |
 
@@ -142,6 +142,7 @@ navegador limpo. Estes passos garantem que a porta continua fechada.
 | 4.4 | **Desligar a internet** e recarregar a página de tokens | O QR **continua** desenhando | [ ] | |
 | 4.5 | Botão **Gerar em massa** | Cria 1 por seção/rota/local, sem duplicar | [ ] | |
 | 4.6 | Clicar em massa **de novo** | "Todos os tokens já existem" | [ ] | |
+| 4.6b | Gerar um **📦 Coletor de Mídias** | Sai sem pedir seção/rota/local; QR aponta pra `SIME_midias.html` | [ ] | |
 | 4.7 | **Imprimir 3 cartões** e ler o QR a 30 cm | Câmera reconhece; PIN legível | [ ] | |
 | 4.8 | Conferir a URL impressa | Contém `/z/<zona>/` | [ ] | |
 
@@ -217,7 +218,7 @@ defeito voltou** — anote exatamente o que aconteceu.
 | 8.3 | Recolhimento + chegada ao cartório | Botão do cartório libera no fim | [ ] | |
 | 8.4 | `SIME_acessibilidade.html` com cartão | Só as seções **daquele local** | [ ] | |
 | 8.5 | Pânico pela acessibilidade | Chega ao Admin e à TV Dia | [ ] | |
-| 8.6 | `SIME_midias.html`, registrar coleta | Mídia avança (pronta → coletada) | [ ] | |
+| 8.6 | `SIME_midias.html` com o cartão de **coletor de mídias**, registrar coleta | Entra pelo QR+PIN e a mídia avança (pronta → coletada) | [ ] | |
 | 8.7 | Resolver o pânico de 8.5 **pelo Admin** | Hoje o aparelho da acessibilidade **continua vermelho** — defeito conhecido, ainda não corrigido | [ ] | |
 
 > **8.7 é o que sobrou do defeito do pânico.** Enquanto não for corrigido, o

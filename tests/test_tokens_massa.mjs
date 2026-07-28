@@ -1,7 +1,10 @@
 // Testa a geração em massa de tokens (item 3) em SIME_tokens.html: mesário
 // por seção, conferente/motorista/instalador por rota, acessibilidade por
-// local — idempotente (não duplica em cliques repetidos). Coletor de Mídias
-// fica de fora (papel fixo, sem agrupamento real).
+// local — idempotente (não duplica em cliques repetidos).
+//
+// Cobre também o Coletor de Mídias, que sai só pelo formulário individual e
+// sem escopo nenhum: ele tinha ficado de fora do arquivo inteiro, e como o
+// SIME_midias.html exige token+PIN, não havia como emitir o cartão dele.
 import pw from 'playwright';
 const { chromium } = pw;
 
@@ -144,8 +147,10 @@ async function login(p) {
   await login(p);
 
   const opcoesTipo = await p.evaluate(() => [...document.getElementById('f-tipo').options].map(o => o.value));
-  check('coletor_midias não está no dropdown de tipos', !opcoesTipo.includes('coletor_midias'));
-  check('os 5 tipos esperados estão no dropdown', JSON.stringify(opcoesTipo.sort()) === JSON.stringify(['coord_acessibilidade','conferente','instalador','mesario','motorista'].sort()));
+  check('os 6 tipos de campo estão no dropdown',
+    JSON.stringify([...opcoesTipo].sort()) === JSON.stringify(
+      ['coletor_midias','coord_acessibilidade','conferente','instalador','mesario','motorista'].sort()),
+    opcoesTipo.join(','));
 
   await p.evaluate(() => window.gerarEmMassa());
   await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
@@ -193,6 +198,63 @@ async function login(p) {
   const tokens = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}'));
   check('offline: gerar em massa não cria nenhum token (sem dado real)', Object.keys(tokens).length === 0);
   check('offline: zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 5. Coletor de Mídias: existe, e sem escopo ──
+// O tipo tinha ficado de fora do formulário inteiro — não só da geração em
+// massa. Como o SIME_midias.html exige token+PIN, o coletor simplesmente não
+// tinha como entrar: não havia caminho nenhum para emitir o cartão dele.
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+
+  const tipos = await p.evaluate(() => [...document.querySelectorAll('#f-tipo option')].map(o => o.value));
+  check('coletor_midias está no dropdown de tipos', tipos.includes('coletor_midias'), tipos.join(','));
+
+  await p.fill('#f-nome', 'Rita Coletora');
+  await p.selectOption('#f-tipo', 'coletor_midias');
+  check('coletor: grupo de rotas oculto', await p.evaluate(() => document.getElementById('grp-rotas').style.display === 'none'));
+  check('coletor: grupo de seção oculto', await p.evaluate(() => document.getElementById('grp-secao-unica').style.display === 'none'));
+  check('coletor: grupo de local oculto', await p.evaluate(() => document.getElementById('grp-local').style.display === 'none'));
+
+  // Sem selecionar nada — é justamente o ponto: não há escopo a selecionar.
+  await p.click('text=🔑 Gerar QR Code + PIN');
+  await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
+  const call = (await p.evaluate(() => window.__mockConfig.insertCalls))[0];
+  check('coletor: grava tipo=coletor_midias', call.payload.tipo === 'coletor_midias');
+  check('coletor: rotas nulas', call.payload.rotas === null);
+  check('coletor: secoes nulas', call.payload.secoes === null);
+  check('coletor: local nulo', call.payload.local_nome === null);
+
+  const url = await p.locator('.tc-url').first().textContent();
+  check('coletor: QR aponta pra SIME_midias.html', url.includes('SIME_midias.html?token='), url);
+  check('coletor: cartão mostra o escopo da zona', (await p.locator('.tc-badges').first().textContent()).includes('Zona toda'));
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 6. Geração em massa continua sem emitir cartão de coletor ──
+// Não é esquecimento: quantos coletores existem é decisão de escala do
+// cartório, não algo derivável de seções ou rotas.
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+  p.on('dialog', (d) => d.accept());
+  await p.evaluate(() => window.gerarEmMassa());
+  await p.waitForTimeout(400);
+  const tipos = await p.evaluate(() =>
+    [...new Set(Object.values(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).map(t => t.tipo))]);
+  check('massa não emite coletor_midias', !tipos.includes('coletor_midias'), tipos.join(','));
+  check('massa continua emitindo os 5 tipos com escopo', tipos.length === 5, tipos.join(','));
   await ctx.close();
 }
 
