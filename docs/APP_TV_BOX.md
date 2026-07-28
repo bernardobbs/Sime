@@ -3,10 +3,15 @@
 Aplicativo único que exibe os quatro painéis do SIME num telão, instalado por
 APK num TV Box Android.
 
-> **Nomenclatura:** este documento trata **TV Expedição = TV Distribuição**
-> (`SIME_tv_distribuicao.html`, o embarque de urnas nas rotas). É o único
-> painel que corresponde a "expedição". Se a intenção era uma **quinta tela
-> nova**, o projeto abaixo continua válido — muda só a contagem de modos.
+> **Definido com o cartório em 28/07/2026:**
+> - **Expedição = Distribuição** (`SIME_tv_distribuicao.html`, embarque de urnas).
+>   No app o painel se chama "Expedição", que é o nome usado na operação; o
+>   arquivo no servidor continua `SIME_tv_distribuicao.html`.
+> - **Aparelho:** MXQ Pro 4K.
+> - **Escala:** 2 telões, ambos na 7ª Zona.
+> - **Decisão:** partir direto para o app, sem a etapa do Fully Kiosk.
+>
+> O código está em [`android-tv/`](../android-tv/).
 
 ---
 
@@ -222,11 +227,33 @@ se o resto valeu.
 
 ---
 
-## 11. Decisões que dependem de você
+## 11. Estado
 
-1. **"Expedição" é a Distribuição** (embarque de urnas) ou uma tela nova?
-2. **Qual box** será usado — o MXQ Pro 4K já citado, ou outro modelo?
-3. **Quantos telões**, e em quais zonas? Muda o esforço de instalação, não o app.
-4. **Vale a pena agora?** Faltam ~10 semanas para a eleição. O Fully entrega
-   80% em uma tarde; o app entrega 100% em ~4 dias. Se a agenda estiver
-   apertada, o Fully primeiro é a escolha mais segura.
+Código-fonte completo em [`android-tv/`](../android-tv/): quatro painéis,
+GeckoView, auto-início, vigia de tela, reconexão e anti burn-in.
+
+**Não foi compilado nem testado em aparelho** — o ambiente onde foi escrito não
+tem Android SDK e não consegue baixá-lo (proxy bloqueia `dl.google.com`). Falta:
+
+1. Abrir no Android Studio e gerar o APK assinado.
+2. Instalar num MXQ Pro 4K real e rodar o roteiro de `android-tv/README.md`.
+
+O primeiro item do roteiro — *o painel carrega e sai do fallback* — é o que
+valida a decisão do §2. Se o GeckoView der conta onde o WebView de fábrica não
+daria, o resto do projeto se sustenta. Se falhar, é ali que se descobre, e
+ainda em julho.
+
+### Sobre os dois telões
+
+Com dois aparelhos e quatro modos, a configuração muda conforme a fase:
+
+| Fase | Telão 1 | Telão 2 |
+|---|---|---|
+| D-X (carga e lacre) | Preparação | Preparação |
+| D-1 (véspera) | Expedição | Véspera |
+| Dia D | Dia D | Dia D |
+
+São dois comandos `adb` por troca de fase, ou a tela de configuração pelo
+controle. Se isso incomodar na prática, cabe um **modo automático** que siga as
+datas de `sime_eleicoes` — que agora estão no banco. Não foi implementado por
+não ser necessário para dois aparelhos.

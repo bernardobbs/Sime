@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tudo aqui é grande e focável pelo D-pad: quem instala está a 3 metros da
+     TV, com um controle remoto na mão. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111118"
+    android:padding="32dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/config_titulo"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <Button
+                android:id="@+id/btn_preparacao"
+                style="@style/CartaoPainel"
+                android:layout_marginEnd="12dp" />
+
+            <Button
+                android:id="@+id/btn_expedicao"
+                style="@style/CartaoPainel" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="20dp">
+
+            <Button
+                android:id="@+id/btn_vespera"
+                style="@style/CartaoPainel"
+                android:layout_marginEnd="12dp" />
+
+            <Button
+                android:id="@+id/btn_dia"
+                style="@style/CartaoPainel" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/escolhido"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#4F7DFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/config_token"
+            android:textColor="#A0A0C0"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/campo_token"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textCapCharacters"
+            android:maxLength="8"
+            android:textSize="30sp"
+            android:letterSpacing="0.25"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#4F7DFF"
+            android:importantForAutofill="no"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/config_zona"
+            android:textColor="#A0A0C0"
+            android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/campo_zona"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btn_salvar"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:text="@string/salvar"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:background="#2E7D52" />
+
+        <TextView
+            android:id="@+id/rodape"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#6A6A8A"
+            android:textSize="14sp"
+            android:layout_marginTop="20dp" />
+    </LinearLayout>
+</ScrollView>
