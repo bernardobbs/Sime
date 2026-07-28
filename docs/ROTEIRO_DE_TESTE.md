@@ -3,9 +3,22 @@
 Validação ponta a ponta. Cada passo tem **ação**, **resultado esperado** e caixa
 de marcação. Marque `[x]` quando passar, ou anote a falha na coluna de observação.
 
-- **App:** https://sime-cyan.vercel.app
-- **Zonas:** 7ª (Campo Maior · 175 seções) e 94ª (Oeiras · 98 seções)
-- **Dia D:** 04/10/2026
+| | |
+|---|---|
+| **Repositório** | https://github.com/bernardobbs/Sime |
+| **App em produção** | https://sime-cyan.vercel.app |
+| **Projeto Vercel** | `sime` |
+| **Projeto Supabase** | `sime-eleicao` (`unjhnlcmxbrlonppchux`) |
+| **Zonas** | 7ª (Campo Maior · 175 seções) e 94ª (Oeiras · 98 seções) |
+| **Dia D** | 04/10/2026 |
+
+> **Sobre as URLs de pré-visualização.** O Vercel gera endereços com o nome da
+> **conta**, não do projeto — por exemplo
+> `sime-git-...-bernardo-borges-silvas-projects.vercel.app`. Esse trecho é o
+> nome do titular da conta e aparece igual em todos os projetos dela; **não
+> indica ligação com outro sistema**. O SIME é um projeto Vercel separado, com
+> repositório, banco e domínio próprios. Para testar, use sempre
+> `sime-cyan.vercel.app`.
 
 > Legenda de sync: 🟢 sincronizado · 🟡 salvo offline (fila) — nunca deve travar a ação.
 
