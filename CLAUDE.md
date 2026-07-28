@@ -259,6 +259,19 @@ Ainda só em `localStorage`:
 - **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
   escrito pelos módulos e lido pelas TVs.
 
+### Pânico — propagação de volta ao campo (parcial)
+
+O `SIME_mesario.html` assina o Realtime da própria seção e relê o estado ao
+abrir e a cada volta de tela, então a resolução feita pelo Admin chega ao
+aparelho. Além disso, **os campos de pânico só entram no payload quando o
+toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
+ação pode desfazer a resolução (vale offline também).
+
+Os outros cinco módulos de campo (motorista, conferente, instalador, mídias,
+acessibilidade) **ainda só escrevem**. O caso real é o pânico da
+acessibilidade: se a equipe resolver pelo Admin, aquele aparelho não fica
+sabendo. Instrução operacional até lá: resolver naquele aparelho.
+
 ### Operação — antes de 4 de outubro
 
 - **94ª Zona zerada**: 0 tokens e 0 atores. Precisa importar os atores e gerar
