@@ -168,13 +168,17 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
+
+// PIN suprimido pela operação: esconde o teclado de 4 dígitos. Quem valida é
+// o servidor — o flag do cliente só controla o que aparece na tela.
+window.PIN_SUPRIMIDO = aplicarSupressaoPin(SIME_CONFIG);
 
 let campoClient = null;
 let eleicaoId = null;
@@ -529,8 +533,14 @@ function erroPin(msg){
 }
 
 async function loginWithPIN(){
-  const pin = [0,1,2,3].map(i=>document.getElementById('pin-'+i).value).join('');
-  if(pin.length < 4){ showToast('⚠ Digite os 4 dígitos do PIN'); document.getElementById('pin-0').focus(); return; }
+  const pin = [0,1,2,3].map(i=>document.getElementById('pin-'+i)?.value || '').join('');
+  // Com o PIN suprimido, quem identifica o operador é só o token do QR Code —
+  // sem ele não há o que enviar ao servidor, e entrar seria entrar como ninguém.
+  if(window.PIN_SUPRIMIDO){
+    if(!TOKEN_URL){ showToast('⚠ Abra pelo QR Code do seu cartão'); return; }
+  } else if(pin.length < 4){
+    showToast('⚠ Digite os 4 dígitos do PIN'); document.getElementById('pin-0')?.focus(); return;
+  }
 
   // 1. Token local (computador do cartório) — mantém o login 100% offline.
   const t = findTokenByPIN(pin);

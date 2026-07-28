@@ -240,13 +240,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getRotas, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
+
+// PIN suprimido pela operação: esconde o teclado de 4 dígitos. Quem valida é
+// o servidor — o flag do cliente só controla o que aparece na tela.
+window.PIN_SUPRIMIDO = aplicarSupressaoPin(SIME_CONFIG);
 
 let campoClient = null;
 let eleicaoId = null;
@@ -590,17 +594,32 @@ function renderRotas(){
   const temFiltro   = minhasRotas.length > 0;
   const todasRotas  = Object.keys(ROTAS);
 
-  // Separar: minhas rotas primeiro, depois as demais
+  // Separar: minhas rotas primeiro, depois as demais.
+  //
+  // minhasRotas vem do TOKEN e todasRotas vem dos dados carregados — os dois
+  // podem divergir (rota renomeada, removida, ou rótulo do cartão diferente do
+  // que o servidor devolveu). Sem filtrar, ROTAS[nome] vinha undefined e a
+  // tela inteira quebrava no .secs, deixando o conferente sem nada na véspera.
+  // Agora a rota desconhecida é reportada, não derruba o resto.
+  const minhasConhecidas = minhasRotas.filter(r => ROTAS[r]);
+  const minhasOrfas      = minhasRotas.filter(r => !ROTAS[r]);
   const ordenadas = temFiltro
-    ? [...minhasRotas, ...todasRotas.filter(r => !minhasRotas.includes(r))]
+    ? [...minhasConhecidas, ...todasRotas.filter(r => !minhasConhecidas.includes(r))]
     : todasRotas;
 
   // Label separador "Minhas rotas"
   if(temFiltro){
     const lbl1 = document.createElement('div');
     lbl1.className = 'sec-label-rotas';
-    lbl1.textContent = `Suas rotas (${minhasRotas.length})`;
+    lbl1.textContent = `Suas rotas (${minhasConhecidas.length})`;
     list.appendChild(lbl1);
+    if(minhasOrfas.length){
+      const av = document.createElement('div');
+      av.className = 'sec-label-rotas';
+      av.style.cssText = 'color:#b45309';
+      av.textContent = `⚠ ${minhasOrfas.join(', ')} não está na lista de rotas — avise o cartório`;
+      list.appendChild(av);
+    }
   }
 
   let passouParaOutras = false;
@@ -1041,10 +1060,14 @@ function erroPin(msg){
 }
 
 async function loginWithPIN(){
-  const pin = [0,1,2,3].map(i => document.getElementById('pin-'+i).value).join('');
-  if(pin.length < 4){
+  const pin = [0,1,2,3].map(i => document.getElementById('pin-'+i)?.value || '').join('');
+  // Com o PIN suprimido, quem identifica o operador é só o token do QR Code —
+  // sem ele não há o que enviar ao servidor, e entrar seria entrar como ninguém.
+  if(window.PIN_SUPRIMIDO){
+    if(!TOKEN_URL){ showToast('⚠ Abra pelo QR Code do seu cartão'); return; }
+  } else if(pin.length < 4){
     showToast('⚠ Digite os 4 dígitos do PIN');
-    document.getElementById('pin-0').focus();
+    document.getElementById('pin-0')?.focus();
     return;
   }
 

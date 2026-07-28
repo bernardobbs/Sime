@@ -16,6 +16,17 @@ const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
+// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
+// quando o cartório quiser — então aqui a configuração é fixada, em vez de
+// deixar a suíte seguir um flag de produção que muda debaixo dela.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 // Entrou no app = a tela de login não é a que está visível.
 async function estadoDaTela(p) {
   return p.evaluate(() => {
@@ -50,15 +61,36 @@ for (const [nome, url] of CENARIOS) {
 }
 
 // PIN chutado na tela de login, sem token conhecido, também não pode passar.
+//
+// A operação suprimiu o PIN (acesso só pelo QR), então este bloco roda contra
+// a configuração COM PIN, fixada no stub: o caminho continua no código e volta
+// quando o cartório quiser. Os cenários acima, ao contrário, rodam de
+// propósito contra o sime_config.js REAL — é a configuração que vai ao ar que
+// precisa provar que ninguém entra sem token.
 {
   const p = await b.newPage();
+  await p.route('**/sime_config.js**', (r) => r.fulfill({
+    status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   await p.goto(`${BASE}/SIME_conferente.html`, { waitUntil: 'load' });
-  await p.waitForTimeout(300);
+  await p.waitForTimeout(400);
   for (let i = 0; i < 4; i++) await p.fill(`#pin-${i}`, String(i + 1));
   await p.click('.btn-login');
   await p.waitForTimeout(600);
   const { entrouNoApp } = await estadoDaTela(p);
   check('conferente: PIN chutado sem token não entra', !entrouNoApp);
+  await p.close();
+}
+
+// Com o PIN suprimido (configuração real de hoje), tocar em Entrar sem token
+// também não pode passar — é a garantia que sobra quando o segundo fator sai.
+{
+  const p = await b.newPage();
+  await p.goto(`${BASE}/SIME_conferente.html`, { waitUntil: 'load' });
+  await p.waitForTimeout(400);
+  await p.click('.btn-login');
+  await p.waitForTimeout(600);
+  const { entrouNoApp } = await estadoDaTela(p);
+  check('conferente: sem PIN e sem token, Entrar não abre o app', !entrouNoApp);
   await p.close();
 }
 

@@ -219,7 +219,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
-import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
+import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva, getRotas } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -281,6 +281,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const pin = document.getElementById('login-pin').value.trim();
   const erroEl = document.getElementById('login-erro');
   erroEl.textContent = '';
+  // Sem token não há o que autenticar — com o PIN suprimido, ele é a única
+  // identificação do operador. Barrar aqui evita um erro de rede confuso.
+  if (!token) { erroEl.textContent = 'Escaneie o QR Code do seu cartão.'; return; }
   const { client, rotas } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
@@ -294,6 +297,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.
 preencherTokenDaUrl();
+// PIN suprimido pela operação: esconde o campo. Quem valida é o servidor.
+aplicarSupressaoPin(SIME_CONFIG);
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
 // pré-configurado"): login nunca é um bloqueio absoluto. O acesso por

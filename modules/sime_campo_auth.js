@@ -2,7 +2,10 @@
 // Bootstrap de sessão para os módulos de campo (mesário, conferente,
 // motorista, instalador, mídias, acessibilidade). Diferente das TVs
 // (sime_tv_auth.js): sessão de campo é de UM TURNO só (sessionStorage, não
-// localStorage) e sempre exige {token, pin} — nunca pula a checagem de PIN.
+// localStorage). O PIN é o segundo fator e é exigido por padrão; a operação
+// pode suprimi-lo temporariamente (SIME_CONFIG.exigirPin=false no cliente e
+// SIME_EXIGIR_PIN=false na Edge Function). Quem valida é sempre o servidor —
+// esconder o campo aqui não abre nada sozinho.
 //
 // Cada módulo já tem sua própria UI/validação de token+PIN local (via
 // sime_tokens_v1 em localStorage) para dar feedback instantâneo mesmo
@@ -37,6 +40,27 @@ async function trocarToken(supabaseUrl, token, pin) {
 // caso. `rotas`/`localId`/`secoes` são o escopo do token (conferente/motorista
 // usam rotas; acessibilidade usa localId; mesário/instalador/mídias usam
 // secoes) — vêm sempre da sessão, nunca de um valor hardcoded no client.
+// Esconde o campo/teclado de PIN quando a operação optou por suprimi-lo.
+// Fica aqui, e não em cada módulo, porque são SEIS telas de campo com duas UIs
+// de login diferentes — espalhar a regra é como elas divergem.
+//
+// Devolve true quando o PIN está suprimido, para o chamador ajustar o texto.
+export function aplicarSupressaoPin(config, { campoPin = 'login-pin' } = {}) {
+  if (config?.exigirPin !== false) return false;
+
+  // UI de campo único (mesário, instalador, motorista, mídias)
+  const el = document.getElementById(campoPin);
+  if (el) { el.value = ''; el.style.display = 'none'; el.removeAttribute('required'); }
+
+  // UI de teclado de 4 dígitos (conferente, acessibilidade)
+  const teclado = document.querySelector('.pin-input-wrap');
+  if (teclado) teclado.style.display = 'none';
+  document.querySelectorAll('[data-pin-texto]').forEach((n) => {
+    n.textContent = n.getAttribute('data-pin-texto-sem') || 'Escaneie o QR Code do cartão para entrar.';
+  });
+  return true;
+}
+
 export async function bootstrapCampoSession({ supabaseUrl, supabaseAnonKey, token, pin }) {
   let sessao = lerSessao();
 

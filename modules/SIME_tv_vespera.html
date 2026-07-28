@@ -403,6 +403,10 @@ function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3
 // localStorage exatamente como antes (offline-first).
 function loadInst() { if(window.__instRemota) return window.__instRemota; try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
 
+// Massa de demonstração SÓ com ?demo=1 na URL. Sem isso, seção sem dado
+// exibia estado inventado — num telão de parede no dia 4, dado fictício é
+// pior que tela vazia: alguém age em cima de um número que não existe.
+const MODO_DEMO = new URLSearchParams(location.search).has('demo');
 function demoSt(n){
   const v=((parseInt(n)*2654435761)>>>0)/4294967296;
   if(v<.50) return {saiu:true, chegou:true, inst:true, prob:false};
@@ -421,7 +425,7 @@ function getSt(n, lacre, inst){
     prob:   !!(fi?.prob && !fi?.probResolvido),  // problema ativo
     real:   true,
   };
-  return {...demoSt(n), real:false};
+  return MODO_DEMO ? {...demoSt(n), real:false} : {saiu:false,chegou:false,inst:false,prob:false,real:false,semDados:true};
 }
 
 // ══════════════════════════════════════════════════
