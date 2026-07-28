@@ -101,6 +101,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="tab active" id="tab-lista-btn" onclick="goTab('lista',this)">📋 Lista</div>
   <div class="tab"        id="tab-guerra-btn" onclick="goTab('guerra',this)">⚡ Modo Guerra</div>
   <div class="tab"        id="tab-import-btn" onclick="goTab('import',this)">📥 Importar CSV</div>
+  <div class="tab"        id="tab-externos-btn" onclick="goTab('externos',this)">☎️ Contatos externos</div>
 </div>
 
 <div class="content" id="content"></div>
@@ -130,6 +131,22 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
   initSimeDados(supabase);
+  window.supabaseAtores = supabase;
+
+  // Contatos externos (Equatorial e afins). Vivem numa tabela própria e não em
+  // sime_atores porque não são pessoas de uma seção: são organizações com
+  // abrangência por MUNICÍPIO, e entrariam contando como "ator" nos números da
+  // zona e nas campanhas de confirmação de mesário. O cadastro, porém, é aqui
+  // — é onde a equipe procura telefone.
+  window.recarregarExternos = async () => {
+    const { data } = await supabase.from('sime_contatos_externos')
+      .select('id,tipo,nome,municipio,telefone,whatsapp,observacao,ativo')
+      .eq('ativo', true).order('tipo');
+    window.EXTERNOS_REAIS = data || [];
+    if (window.render) window.render();
+  };
+  await window.recarregarExternos();
+
   const atores = await getAtores({ fallback: null });
   if (!atores) return;
   window.ATORES_REAIS = atores;
@@ -201,6 +218,7 @@ function render(){
   const atores=loadAtores();
   document.getElementById('h-sub').textContent=`${atores.length} ator${atores.length!==1?'es':''} cadastrado${atores.length!==1?'s':''}`;
 
+  if(curTab==='externos'){ renderExternos(); return; }
   if(curTab==='import'){ renderImport(); return; }
   if(curTab==='guerra'){ renderGuerra(atores); return; }
   renderLista(atores);
@@ -385,6 +403,139 @@ function downloadTemplate(){
   const csv='nome,telefone,secao,funcao\nMaria Silva,86900000000,0063,mesario\nJoão Souza,86900000001,0063,tecnico\n';
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download='sime_atores_modelo.csv'; a.click();
+}
+
+// ══════════════════════════════════════════════════
+// CONTATOS EXTERNOS — Equatorial e afins
+// ══════════════════════════════════════════════════
+// Quem o painel de problemas aciona quando o problema não é de gente da
+// eleição: faltou luz é a concessionária, não o mesário. Ficam aqui porque é
+// nesta tela que a equipe procura telefone, mas em tabela própria: são
+// organizações com abrangência por MUNICÍPIO, e entrariam contando como ator
+// nos números da zona e nas campanhas de confirmação de mesário.
+const EXT_TIPOS = ['energia','telefonia','pm','bombeiros','prefeitura','tre','outro'];
+const EXT_LABEL = { energia:'Energia (Equatorial)', telefonia:'Telefonia', pm:'Polícia Militar',
+  bombeiros:'Bombeiros', prefeitura:'Prefeitura', tre:'TRE', outro:'Outro' };
+const EXT_EMOJI = { energia:'⚡', telefonia:'📡', pm:'🚓', bombeiros:'🚒', prefeitura:'🏢', tre:'⚖️', outro:'☎️' };
+
+function loadExternos(){ return window.EXTERNOS_REAIS || []; }
+
+function renderExternos(){
+  const lista = loadExternos();
+  const c = document.getElementById('content');
+  const semSessao = !window.supabaseAtores;
+
+  c.innerHTML = `
+    <div class="import-card">
+      <div class="ic-title">☎️ Contatos externos</div>
+      <div class="ic-sub">Quem o <b>Painel de Problemas</b> aciona quando o problema não é de gente da eleição.
+        Faltou luz, o botão oferece a <b>Equatorial</b> do município da seção.<br>
+        Deixe o município em branco para valer na zona inteira.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para cadastrar contatos externos.</div>'
+                  : '<button class="btn btn-dark" onclick="abrirModalExterno(null)">+ Novo contato</button>'}
+    </div>
+    ${lista.length ? lista.map(c2=>`
+      <div class="ator-card">
+        <div class="ac-av" style="background:#8a5c20">${EXT_EMOJI[c2.tipo]||'☎️'}</div>
+        <div class="ac-info">
+          <div class="ac-name">${c2.nome}</div>
+          <div class="ac-detail">${EXT_LABEL[c2.tipo]||c2.tipo} · ${c2.municipio || 'toda a zona'} · ${fmtTel(c2.telefone)}</div>
+          ${c2.whatsapp===false ? '<span class="ac-badge" style="background:#556070;color:#fff">só telefone</span>' : ''}
+        </div>
+        <button class="btn btn-out" style="flex-shrink:0" onclick="abrirModalExterno('${c2.id}')">Editar</button>
+      </div>`).join('')
+      : `<div class="import-card" style="text-align:center;color:var(--text2);font-size:.82rem">
+           Nenhum contato externo cadastrado.<br>
+           <b>Sem a Equatorial aqui, o botão de energia não aparece no painel de problemas.</b>
+         </div>`}`;
+}
+
+function abrirModalExterno(id){
+  const c = id ? loadExternos().find(x=>x.id===id) : null;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">${c?'Editar contato externo':'Novo contato externo'}</div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="form-group"><label>Tipo</label>
+        <select id="x-tipo">
+          ${EXT_TIPOS.map(t=>`<option value="${t}" ${c?.tipo===t?'selected':''}>${EXT_EMOJI[t]} ${EXT_LABEL[t]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Nome / identificação</label>
+        <input type="text" id="x-nome" value="${c?.nome||''}" placeholder="Equatorial — plantão Campo Maior"></div>
+      <div class="form-group"><label>Município <span style="font-weight:400">(vazio = toda a zona)</span></label>
+        <input type="text" id="x-mun" value="${c?.municipio||''}" placeholder="Campo Maior"></div>
+      <div class="form-group"><label>Telefone (com DDD)</label>
+        <input type="tel" id="x-tel" value="${c?.telefone||''}" placeholder="86999998888"></div>
+      <div class="form-group"><label>
+        <input type="checkbox" id="x-wa" style="width:auto;margin-right:6px" ${c?.whatsapp===false?'':'checked'}>
+        Atende no WhatsApp</label>
+        <div style="font-size:.68rem;color:var(--text3)">Desmarcado, o botão vira ligação em vez de conversa.</div>
+      </div>
+      <div class="form-group"><label>Observação</label>
+        <input type="text" id="x-obs" value="${c?.observacao||''}" placeholder="Plantão 24h"></div>
+    </div>
+    <div class="m-foot">
+      ${c?`<button class="btn btn-red" onclick="removerExterno('${id}')">🗑 Remover</button>`:''}
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="salvarExterno('${id||''}')">💾 Salvar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function salvarExterno(id){
+  const sb = window.supabaseAtores;
+  if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
+  const nome = document.getElementById('x-nome').value.trim();
+  const tel  = (document.getElementById('x-tel').value||'').replace(/\D/g,'');
+  if(!nome){ showToast('⚠ Informe o nome'); return; }
+  // 8 dígitos aceita 0800 e telefone fixo antigo — não é celular, mas é
+  // exatamente o tipo de número que a concessionária publica.
+  if(tel.length < 8){ showToast('⚠ Telefone inválido'); return; }
+
+  const zonaId = await zonaDoUsuario();
+  if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
+
+  const payload = {
+    zona_id: zonaId,
+    tipo: document.getElementById('x-tipo').value,
+    nome,
+    municipio: document.getElementById('x-mun').value.trim() || null,
+    telefone: tel,
+    whatsapp: document.getElementById('x-wa').checked,
+    observacao: document.getElementById('x-obs').value.trim() || null,
+  };
+
+  const { error } = id
+    ? await sb.from('sime_contatos_externos').update(payload).eq('id', id)
+    : await sb.from('sime_contatos_externos').insert(payload);
+  if(error){ showToast('⚠ ' + (error.message||'Falhou ao salvar')); return; }
+
+  closeModal(); showToast('✓ Contato salvo');
+  await window.recarregarExternos();
+}
+
+async function removerExterno(id){
+  if(!confirm('Remover este contato?')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_contatos_externos').update({ ativo:false }).eq('id', id);
+  if(error){ showToast('⚠ ' + error.message); return; }
+  closeModal(); showToast('✓ Removido');
+  await window.recarregarExternos();
+}
+
+// A zona vem do usuário logado, nunca de um campo na tela: cadastrar contato
+// na zona errada seria oferecer o telefone de outra comarca no dia D.
+let _zonaCache = null;
+async function zonaDoUsuario(){
+  if(_zonaCache) return _zonaCache;
+  const sb = window.supabaseAtores;
+  const { data:{ user } } = await sb.auth.getUser();
+  const { data } = await sb.from('sime_usuarios').select('zona_id').eq('auth_user_id', user?.id).maybeSingle();
+  _zonaCache = data?.zona_id || null;
+  return _zonaCache;
 }
 
 // MODAL CRUD

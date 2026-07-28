@@ -240,6 +240,15 @@ Deliberadamente genérica: no dia da eleição a lista de "quem eu ligo" nunca �
 só a concessionária de energia. Um telefone fixo entra com `whatsapp = false`
 e o botão vira `tel:` em vez de `wa.me`.
 
+**Onde se cadastra:** aba **☎️ Contatos externos** em `SIME_atores.html` — é
+onde a equipe já procura telefone. Ficam em tabela própria, e não em
+`sime_atores`, porque não são pessoas de uma seção: são organizações com
+abrangência por município, e entrariam contando como "ator" nos números da
+zona e nas campanhas de confirmação de mesário.
+
+A zona vem do usuário logado, nunca de um campo na tela — cadastrar na zona
+errada seria oferecer o telefone de outra comarca no dia D.
+
 > **Isto é cadastro, não código.** Os números da Equatorial precisam vir do
 > cartório — é a única parte deste projeto que não posso levantar sozinho.
 
