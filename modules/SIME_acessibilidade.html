@@ -169,6 +169,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { bootstrapCampoSession, aplicarSupressaoPin } from './sime_campo_auth.js';
+import { subscribeMesaEstadoSecoes } from './sime_realtime.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -183,19 +184,66 @@ window.PIN_SUPRIMIDO = aplicarSupressaoPin(SIME_CONFIG);
 let campoClient = null;
 let eleicaoId = null;
 const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+const numeroPorSecaoId = {}; // UUID -> '0063', para traduzir o que vem do canal
+window.numeroPorSecaoId = numeroPorSecaoId;
 
 async function resolverEscopo() {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
-  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+  if (secoes) for (const s of secoes) {
+    secaoIdPorNumero[s.numero] = s.id;
+    numeroPorSecaoId[s.id] = String(s.numero).padStart(4, '0');
+  }
 }
 
 async function syncQueueFn(acao, dados) {
   if (!campoClient) throw new Error('sem sessão de campo');
   const { error } = await campoClient.rpc('sime_acao_acessibilidade', dados);
   if (error) throw error;
+}
+
+// Escritas em voo. Enquanto houver uma, ignoramos o que chega pelo canal: um
+// evento disparado ANTES do toque, chegando depois dele, pisaria no estado que
+// o coordenador acabou de definir.
+let escritasEmVoo = 0;
+
+// Sem isto, o pânico levantado aqui e resolvido pela equipe no Admin deixava
+// ESTE aparelho vermelho para sempre — era o caso 8.7 do roteiro, e o motivo
+// da instrução operacional de resolver no próprio aparelho.
+function assinarPanicoRemoto() {
+  if (!campoClient || !window.secoesDoLocalIds) return;
+  const ids = window.secoesDoLocalIds();
+  if (!ids.length) return;
+  subscribeMesaEstadoSecoes(campoClient, ids, (row) => {
+    if (!row || escritasEmVoo > 0) return;
+    if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(row);
+  });
+  lerPanicoAtual();
+
+  // O canal só entrega o que acontece enquanto está de pé. O celular do
+  // coordenador passa boa parte do dia bloqueado no bolso — sem reler ao
+  // voltar, ele acorda com o estado de quando saiu.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lerPanicoAtual();
+  });
+}
+
+async function lerPanicoAtual() {
+  if (!campoClient || escritasEmVoo > 0 || !window.secoesDoLocalIds) return;
+  const ids = window.secoesDoLocalIds();
+  if (!ids.length) return;
+  try {
+    const { data, error } = await campoClient
+      .from('sime_mesa_estado')
+      .select('secao_id, panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido')
+      .in('secao_id', ids);
+    if (error || !data) return;
+    for (const row of data) {
+      if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(row);
+    }
+  } catch (e) { /* offline — o estado local segue valendo */ }
 }
 
 // Exposto pro <script> clássico (adjFila/togglePanico). secaoNumero é a
@@ -207,7 +255,10 @@ window.simeCampo = {
     const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
     if (!secaoId) return;
     const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial };
-    syncQueueFn('acessibilidade', dados).catch(() => enqueue('acessibilidade', dados));
+    escritasEmVoo++;
+    syncQueueFn('acessibilidade', dados)
+      .catch(() => enqueue('acessibilidade', dados))
+      .finally(() => { escritasEmVoo--; });
   },
 };
 
@@ -229,6 +280,9 @@ window.tentarLoginCampo = async function(token, pin) {
   campoClient = client;
   await resolverEscopo();
   iniciarRetryPeriodico(syncQueueFn);
+  // Depois do escopo: o local só é conhecido aqui, e é ele que define quais
+  // seções assinar.
+  setTimeout(assinarPanicoRemoto, 0);
   return { ok: true, localNome: localNome || null };
 };
 </script>
@@ -304,6 +358,54 @@ function secoesVisiveis(){
   const alvo = localFiltro.toLowerCase();
   return SECOES.filter(s => s.local.toLowerCase() === alvo);
 }
+
+// ══════════════════════════════════════════════════════════════
+// ESTADO VINDO DO SERVIDOR
+// ══════════════════════════════════════════════════════════════
+// UUIDs das seções deste local — é o que o canal Realtime filtra. Fica aqui
+// porque só o script clássico sabe qual é o local do coordenador (localFiltro).
+window.secoesDoLocalIds = function(){
+  const mapa = window.numeroPorSecaoId || {};
+  const visiveis = new Set(secoesVisiveis().map(s => s.n));
+  return Object.keys(mapa).filter(id => visiveis.has(mapa[id]));
+};
+
+// Aplica o pânico que veio do servidor. Só o pânico: fila é contagem local do
+// coordenador, e sobrescrevê-la com um número de outro aparelho seria pior que
+// não sincronizar.
+//
+// O sime_mesa_estado usa `panico_urna`; aqui o campo se chama `urna` (o mesário
+// chama de `urnaprob`). A tradução acontece neste ponto, de propósito: é o
+// único lugar do módulo que fala com o shape do banco.
+window.aplicarPanicoRemoto = function(row){
+  const mapa = window.numeroPorSecaoId || {};
+  const n = mapa[row.secao_id];
+  if(!n) return;
+  const s = ensureSecao(n);
+  if(!s) return;
+
+  const remoto = {
+    panico:    { energia: !!row.panico_energia,            urna: !!row.panico_urna },
+    resolvido: { energia: !!row.panico_energia_resolvido,  urna: !!row.panico_urna_resolvido },
+  };
+
+  let mudou = false, resolvidoDeFora = false;
+  for(const tipo of ['energia','urna']){
+    if(s.panico[tipo] === remoto.panico[tipo] && s.panico_resolved[tipo] === remoto.resolvido[tipo]) continue;
+    if(s.panico[tipo] && !remoto.panico[tipo] && remoto.resolvido[tipo]) resolvidoDeFora = true;
+    s.panico[tipo] = remoto.panico[tipo];
+    s.panico_resolved[tipo] = remoto.resolvido[tipo];
+    mudou = true;
+  }
+  if(!mudou) return;
+
+  // saveSecao (só localStorage), e NÃO o caminho que chama simeCampo: o
+  // servidor é a ORIGEM desta mudança; reenviar devolveria o que acabou de
+  // chegar.
+  saveSecao(n);
+  renderAll();
+  if(resolvidoDeFora){ showToast('✓ Problema resolvido pela equipe'); }
+};
 
 // ══════════════════════════════════════════════════════════════
 // AÇÕES

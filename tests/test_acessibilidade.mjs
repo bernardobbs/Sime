@@ -32,6 +32,11 @@ class QB {
 }
 export function createClient(url, key, opts) {
   return {
+    // A acessibilidade assina as seções do local pra saber quando a equipe
+    // resolve um pânico pelo Admin (caso 8.7). Sem estes dois o módulo quebra
+    // logo depois do login.
+    channel(nome) { const c = { on() { return c; }, subscribe() { return c; } }; return c; },
+    removeChannel() {},
     __authHeader: opts?.global?.headers?.Authorization || null,
     from(table) { return new QB(table); },
     rpc(name, params) {

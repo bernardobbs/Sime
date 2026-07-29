@@ -286,10 +286,15 @@ aparelho. Além disso, **os campos de pânico só entram no payload quando o
 toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
 ação pode desfazer a resolução (vale offline também).
 
-Os outros cinco módulos de campo (motorista, conferente, instalador, mídias,
-acessibilidade) **ainda só escrevem**. O caso real é o pânico da
-acessibilidade: se a equipe resolver pelo Admin, aquele aparelho não fica
-sabendo. Instrução operacional até lá: resolver naquele aparelho.
+O `SIME_acessibilidade.html` também recebe — assina as seções do **local** do
+coordenador (`secao_id=in.(...)`, não a zona inteira) e relê ao entrar e a cada
+volta de tela. Só o pânico vem do servidor: a fila é contagem local do
+coordenador, e sobrescrevê-la com o número de outro aparelho seria pior que não
+sincronizar.
+
+Motorista, conferente, instalador e mídias **continuam só escrevendo** — são os
+quatro em que ninguém de fora altera o estado durante a operação. Mesário e
+acessibilidade, os dois que a equipe altera à distância (pânico), já recebem.
 
 ### Operação — antes de 4 de outubro
 

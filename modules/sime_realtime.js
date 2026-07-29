@@ -35,6 +35,25 @@ export function subscribeMesaEstadoSecao(client, secaoId, onChange) {
 export function subscribeRotasEstado(client, onChange) { return subscribeTable(client, 'sime_rotas_estado', onChange); }
 export function subscribeRotasUrnas(client, onChange) { return subscribeTable(client, 'sime_rotas_urnas', onChange); }
 
+// Variante para um CONJUNTO de seções — acessibilidade (as seções de um local),
+// motorista e instalador (as da rota). O filtro `in` evita que o celular do
+// operador receba os eventos das outras ~170 seções da zona no Dia D, que é o
+// mesmo motivo do filtro por seção única acima.
+//
+// Sem seções conhecidas devolve null: assinar tudo "por precaução" seria trocar
+// um filtro por um firehose justamente no aparelho mais fraco da operação.
+export function subscribeMesaEstadoSecoes(client, secaoIds, onChange) {
+  const ids = (secaoIds || []).filter(Boolean);
+  if (!ids.length) return null;
+  return client
+    .channel(`sime_mesa_estado_secoes_${ids.length}_${ids[0]}`)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'sime_mesa_estado',
+      filter: `secao_id=in.(${ids.join(',')})`,
+    }, (payload) => onChange(payload.new, payload.eventType))
+    .subscribe();
+}
+
 // Painel de problemas: a lista precisa refletir o que outra pessoa da equipe
 // acabou de fazer (assumir, delegar, resolver) sem ninguém apertar F5 — é o
 // que impede duas pessoas de ligarem para a mesma seção ao mesmo tempo.
