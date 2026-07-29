@@ -4,9 +4,9 @@ Exibe os quatro painéis do SIME num telão. Projeto e justificativas em
 [`docs/APP_TV_BOX.md`](../docs/APP_TV_BOX.md).
 
 > **Estado: código-fonte completo, ainda não compilado nem testado em aparelho.**
-> O ambiente onde foi escrito não tem Android SDK e não pode baixá-lo. O passo
-> seguinte é abrir no Android Studio, gerar o APK e rodar num MXQ Pro 4K real —
-> é lá que se descobre se as premissas de hardware se confirmam.
+> O wrapper do Gradle já está commitado; falta compilar numa máquina com
+> internet normal (ver "Compilar" abaixo) e rodar num MXQ Pro 4K real — é lá
+> que se descobre se as premissas de hardware se confirmam.
 
 ## O que ele faz
 
@@ -22,7 +22,34 @@ Exibe os quatro painéis do SIME num telão. Projeto e justificativas em
 
 ## Compilar
 
-Precisa de Android Studio (ou o SDK por linha de comando) e JDK 17+.
+Precisa de Android Studio (mais simples) **ou** do SDK por linha de comando
+(abaixo) e JDK 17+. O wrapper do Gradle (`gradlew`) já está commitado — não
+precisa instalar Gradle à parte.
+
+Importante: isso não compila dentro do Claude Code on the web — o proxy de
+saída do ambiente bloqueia `dl.google.com`/`maven.google.com` (Android Gradle
+Plugin) e `maven.mozilla.org` (GeckoView). Rode numa máquina com internet
+normal (seu computador, ou um Codespace).
+
+### Sem Android Studio — SDK por linha de comando
+
+```bash
+# 1. Baixar as command-line tools (link "Command line tools only" em
+#    https://developer.android.com/studio) e extrair assim:
+mkdir -p ~/Android/cmdline-tools
+unzip commandlinetools-*.zip -d ~/Android/cmdline-tools
+mv ~/Android/cmdline-tools/cmdline-tools ~/Android/cmdline-tools/latest
+
+export ANDROID_HOME=~/Android
+export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+
+# 2. Aceitar as licenças e instalar o que o projeto pede
+#    (compileSdk 34 — ver app/build.gradle.kts)
+sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+```
+
+### Rodar o build
 
 ```bash
 cd android-tv
