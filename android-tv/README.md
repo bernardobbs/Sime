@@ -8,6 +8,10 @@ Exibe os quatro painéis do SIME num telão. Projeto e justificativas em
 > internet normal (ver "Compilar" abaixo) e rodar num MXQ Pro 4K real — é lá
 > que se descobre se as premissas de hardware se confirmam.
 
+> **Usando o Android Studio?** Cole [`GEMINI.md`](GEMINI.md) no chat do
+> Gemini antes de pedir ajuda com o build — dá o contexto do projeto e o que
+> não deve ser mudado sem perguntar.
+
 ## O que ele faz
 
 | | |
