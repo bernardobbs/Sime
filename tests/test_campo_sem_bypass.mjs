@@ -16,10 +16,11 @@ const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 
 const b = await chromium.launch();
 
-// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
-// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
-// quando o cartório quiser — então aqui a configuração é fixada, em vez de
-// deixar a suíte seguir um flag de produção que muda debaixo dela.
+// Estas suítes exercitam o fluxo COM PIN, com a configuração fixada no stub
+// em vez de seguir o sime_config.js real — a supressão do PIN
+// (SIME_CONFIG.exigirPin=false) é uma opção operacional que já ligou e
+// desligou uma vez, e o caminho com PIN precisa continuar coberto nos dois
+// estados.
 const STUB_CONFIG = `export const SIME_CONFIG = {
   exigirPin: true,
   supabaseUrl: 'https://exemplo.supabase.co',
@@ -62,11 +63,12 @@ for (const [nome, url] of CENARIOS) {
 
 // PIN chutado na tela de login, sem token conhecido, também não pode passar.
 //
-// A operação suprimiu o PIN (acesso só pelo QR), então este bloco roda contra
-// a configuração COM PIN, fixada no stub: o caminho continua no código e volta
-// quando o cartório quiser. Os cenários acima, ao contrário, rodam de
-// propósito contra o sime_config.js REAL — é a configuração que vai ao ar que
-// precisa provar que ninguém entra sem token.
+// Este bloco fixa a configuração COM PIN no stub, independente do que estiver
+// no sime_config.js real no momento — a supressão (exigirPin=false) é uma
+// opção operacional que liga e desliga, e o caminho com PIN precisa continuar
+// coberto mesmo quando ela estiver desligada. Os cenários acima, ao contrário,
+// rodam de propósito contra o sime_config.js REAL — é a configuração que vai
+// ao ar que precisa provar que ninguém entra sem token.
 {
   const p = await b.newPage();
   await p.route('**/sime_config.js**', (r) => r.fulfill({
@@ -81,8 +83,9 @@ for (const [nome, url] of CENARIOS) {
   await p.close();
 }
 
-// Com o PIN suprimido (configuração real de hoje), tocar em Entrar sem token
-// também não pode passar — é a garantia que sobra quando o segundo fator sai.
+// Contra a configuração real (com ou sem PIN suprimido), tocar em Entrar sem
+// token também não pode passar — token é a única credencial que não pode
+// faltar em nenhum dos dois modos.
 {
   const p = await b.newPage();
   await p.goto(`${BASE}/SIME_conferente.html`, { waitUntil: 'load' });
