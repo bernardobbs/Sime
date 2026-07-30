@@ -22,7 +22,7 @@ export function createClient(){
   function tbl(t){
     let pending=null;
     const api={
-      select(){ return api; }, eq(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; },
+      select(){ return api; }, eq(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; }, in(){ return api; },
       maybeSingle(){
         if(t==='sime_usuarios') return Promise.resolve({data:USER,error:null});
         return Promise.resolve({data:null,error:null});

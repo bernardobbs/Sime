@@ -218,7 +218,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('dash',this)">📊 Dashboard</button>
   <button class="nav-tab"        onclick="goTab('secoes',this)">📋 Seções</button>
-  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="goTab('problemas',this)">🚨 Problemas <span id="prob-count-badge"></span></button>
+  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="window.open('SIME_problemas.html','_blank')">🚨 Problemas <span id="prob-count-badge"></span></button>
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
@@ -278,18 +278,6 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <tbody id="sec-tbody"></tbody>
     </table>
   </div>
-</div>
-
-<!-- ══════ PROBLEMAS ══════ -->
-<div id="tab-problemas" class="tab-panel">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-    <div>
-      <div style="font-weight:800;font-size:.95rem;">Alertas ativos</div>
-      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="prob-subtitle">Carregando...</div>
-    </div>
-    <button class="btn btn-out" onclick="renderProblemas()">↺ Atualizar</button>
-  </div>
-  <div id="prob-list"></div>
 </div>
 
 <!-- ══════ EQUIPE ══════ -->
@@ -416,6 +404,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa } from './sime_dados.js';
+import { subscribeOcorrencias } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -485,6 +474,33 @@ async function carregarIdentidade(){
     }
   }
   if (window.aplicarIdentidade) window.aplicarIdentidade();
+  await atualizarBadgeProblemas();
+  iniciarRealtimeProblemas();
+}
+
+// Contagem real de ocorrências em aberto (aberta|assumida) — RLS já restringe
+// à zona de quem logou. Substitui o badge antigo, que contava pânico direto
+// do localStorage e nunca batia com o que o mesário de fato registrava.
+// É só indicativo — uma falha aqui não pode travar o resto do login.
+async function atualizarBadgeProblemas(){
+  try {
+    const { count } = await supabase
+      .from('sime_ocorrencias')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['aberta', 'assumida']);
+    const badge = document.getElementById('prob-count-badge');
+    if (badge) badge.textContent = count ? `(${count})` : '';
+  } catch (e) {}
+}
+
+// Realtime em vez de polling: qualquer INSERT/UPDATE em sime_ocorrencias
+// (nova ocorrência, assumida, resolvida...) refaz a contagem na hora. Um
+// canal só por sessão de Admin.
+let canalProblemasAberto = false;
+function iniciarRealtimeProblemas(){
+  if (canalProblemasAberto) return;
+  canalProblemasAberto = true;
+  try { subscribeOcorrencias(supabase, () => atualizarBadgeProblemas()); } catch (e) {}
 }
 
 // Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
@@ -626,7 +642,7 @@ function hasPerm(p){ return PERFIS[curUser.perfil]?.perms.includes(p); }
 function switchUser(uid){
   const team = loadTeam();
   const u = team.find(m=>m.id===uid);
-  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); renderProblemas(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
+  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
 }
 function applyUser(){
   document.getElementById('u-av').textContent   = curUser.iniciais;
@@ -653,7 +669,7 @@ window.aplicarIdentidade = function(){
   const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
   curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
   applyUser();
-  renderDash(); renderTable(); renderProblemas();
+  renderDash(); renderTable();
   const btnSair = document.getElementById('btn-logout');
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
@@ -860,67 +876,9 @@ function filterTable(){
     </tr>`).join('');
 }
 
-// ══════════════════════════════════════════════
-// PROBLEMAS
-// ══════════════════════════════════════════════
-function renderProblemas(){
-  const mesa = loadMesa(); const acess = loadAcess(); const items=[];
-  secoesDoUsuario().forEach(s=>{
-    const uni=estadoSecao(s.n, mesa[s.n], acess[s.n]);
-    if(!uni.panico) return;
-    const origem = uni.origem.join(' + ');
-    if(uni.energia) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',origem});
-    if(uni.urna)    items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',origem});
-  });
-
-  document.getElementById('prob-subtitle').textContent = items.length
-    ? `${items.length} alerta${items.length>1?'s':''} ativo${items.length>1?'s':''}` : 'Nenhum problema ativo';
-
-  const list = document.getElementById('prob-list');
-  if(!items.length){
-    list.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text3)"><div style="font-size:2rem;margin-bottom:8px">✅</div><div>Nenhum problema ativo</div></div>';
-    return;
-  }
-  list.innerHTML = items.map(p=>{
-    const tipos = {energia:'⚡ Falta de energia',urna:'🖥️ Problema na urna'};
-    const cls   = {energia:'pt-energia',urna:'pt-urna'};
-    const canResolve = hasPerm('resolver_panico');
-    return `<div class="prob-card">
-      <div class="pc-icon">${p.tipo==='energia'?'⚡':'🖥️'}</div>
-      <div class="pc-info">
-        <div class="pc-sec">Seção ${parseInt(p.n)}</div>
-        <div class="pc-loc">${p.loc} · ${p.city}</div>
-        <span class="pc-tipo ${cls[p.tipo]}">${tipos[p.tipo]}</span>
-        <div class="pc-ts">Reportado por: ${p.origem||'monitoramento'}</div>
-      </div>
-      <div class="pc-actions">
-        ${canResolve?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${p.n}','${p.tipo}')">✓ Resolver</button>`:''}
-        <button class="btn btn-blue btn-sm" onclick="openEditSec('${p.n}')">Detalhes</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function resolverPanico(n,tipo){
-  if(!hasPerm('resolver_panico')){ showToast('⚠ Sem permissão'); return; }
-  // Resolve nas duas fontes: Mesário (sime_mesa_v1) e Acessibilidade (sime_acess_v1)
-  const mesa=loadMesa();
-  if(!mesa[n]) mesa[n]={};
-  if(!mesa[n].panico_resolved) mesa[n].panico_resolved={};
-  if(tipo==='energia') mesa[n].panico_resolved.energia=true;
-  if(tipo==='urna')    mesa[n].panico_resolved.urnaprob=true;
-  localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
-
-  const acess=loadAcess();
-  if(acess[n]){
-    if(!acess[n].panico_resolved) acess[n].panico_resolved={};
-    if(tipo==='energia') acess[n].panico_resolved.energia=true;
-    if(tipo==='urna')    acess[n].panico_resolved.urna=true;
-    localStorage.setItem('sime_acess_v1',JSON.stringify(acess));
-  }
-  showToast(`✓ Pânico resolvido — Seção ${parseInt(n)}`);
-  renderProblemas(); renderDash(); renderTable();
-}
+// Aba PROBLEMAS: removida daqui — virou SIME_problemas.html, com dado real
+// (sime_ocorrencias) em vez desta leitura de localStorage, que nunca refletia
+// o que o mesário grava no servidor. O botão da nav abre a tela nova.
 
 // ══════════════════════════════════════════════
 // MODAL EDITAR SEÇÃO
@@ -958,10 +916,7 @@ function openEditSec(n){
           </div>
         </div>
         ${canResolve?`
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${uni.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
-          ${uni.urna?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''}
-        </div>`:''}
+        <button class="btn btn-green btn-sm" onclick="window.open('SIME_problemas.html','_blank')">Resolver em Problemas →</button>`:''}
       </div>`:''}
 
       <!-- Chegada de membros -->
@@ -1056,7 +1011,7 @@ function salvarSec(n){
   saveMesaSec(n,patch);
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
-  renderDash(); renderTable(); renderProblemas();
+  renderDash(); renderTable();
 }
 
 // ══════════════════════════════════════════════
@@ -1136,7 +1091,7 @@ function salvarEvento(){
   st._editado_em=fmtNow();
   mesa[n]=st; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
-  renderDash();renderTable();renderProblemas();
+  renderDash();renderTable();
 }
 
 // ══════════════════════════════════════════════
@@ -1697,7 +1652,7 @@ function exportarDados(){
 }
 function resetarDados(){
   ['sime_mesa_v1'].forEach(k=>localStorage.removeItem(k));
-  showToast('✓ Dados resetados'); renderDash(); renderTable(); renderProblemas();
+  showToast('✓ Dados resetados'); renderDash(); renderTable();
 }
 
 // ══════════════════════════════════════════════
@@ -1709,7 +1664,6 @@ function goTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   btn.classList.add('active');
   if(id==='secoes') renderTable();
-  if(id==='problemas') renderProblemas();
   if(id==='equipe') renderTeam();
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
@@ -1750,7 +1704,7 @@ applyUser();
 renderDash();
 renderTable();
 renderConfig();
-setInterval(()=>{ renderDash(); renderProblemas(); },10000);
+setInterval(()=>{ renderDash(); },10000);
 
 // ══════════════════════════════════════════════
 // MÍDIAS
