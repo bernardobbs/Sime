@@ -61,7 +61,17 @@ Código-fonte completo, nunca compilado (foi escrito num sandbox sem acesso a
 
 - `minSdk = 21` e os `abiFilters` — são para o hardware real do box, não
   acidente de configuração.
-- A versão do GeckoView e o único `GeckoRuntime` por processo (já é
-  singleton em `PainelActivity.kt` — criar um segundo derruba o app).
+- O único `GeckoRuntime` por processo (já é singleton em
+  `PainelActivity.kt` — criar um segundo derruba o app).
 - Não adicionar dependências novas, refatorar Kotlin ou "modernizar" código só
   porque apareceu no caminho — o objetivo agora é só compilar e assinar.
+
+## Sobre a versão do GeckoView
+
+Se o sync falhar com 404 na coordenada `org.mozilla.geckoview:geckoview:<versão>`,
+**não troque para o artefato `geckoview-nightly`** — é o canal instável da
+Mozilla, e este app fica ligado sozinho o dia inteiro em campo, sem ninguém
+para reverter uma build que quebrar. A causa real costuma ser só a versão
+estar desatualizada (o GeckoView é lançado a cada poucas semanas). Para achar
+a versão de release atual: `https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml`
+— o campo `<release>` traz a versão certa para usar.

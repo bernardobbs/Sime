@@ -45,5 +45,12 @@ dependencies {
 
     // GeckoView: motor próprio, independente do System WebView do box.
     // Ver docs/APP_TV_BOX.md §2 — é a decisão central do projeto.
-    implementation("org.mozilla.geckoview:geckoview:127.0.20240613141014")
+    //
+    // Versão confirmada em maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/
+    // maven-metadata.xml (canal RELEASE, não nightly — este app fica ligado
+    // sozinho o dia inteiro em campo, sem ninguém para reverter uma build
+    // instável). A versão anterior (127.0.20240613141014, jun/2024) nunca
+    // tinha sido verificada contra o repositório real — foi escrita num
+    // ambiente sem acesso a maven.mozilla.org.
+    implementation("org.mozilla.geckoview:geckoview:153.0.20260727124451")
 }
