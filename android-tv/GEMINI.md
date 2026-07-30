@@ -75,3 +75,13 @@ para reverter uma build que quebrar. A causa real costuma ser só a versão
 estar desatualizada (o GeckoView é lançado a cada poucas semanas). Para achar
 a versão de release atual: `https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml`
 — o campo `<release>` traz a versão certa para usar.
+
+**Cuidado ao pular pra versão mais nova: o requisito mínimo de Android do
+GeckoView sobe com o tempo.** A versão de release mais recente pode exigir
+uma API do Android maior que 25 (Android 7.1) — que é o que o MXQ Pro 4K real
+roda. Isso não é um ajuste de `minSdk` no `build.gradle.kts`: se o motor em si
+exige API 26+, o box físico simplesmente não roda essa versão, não importa o
+que o Gradle declare. Se o Manifest Merger reclamar de `minSdk` depois de
+trocar a versão, a saída é achar a versão de release **anterior** mais recente
+que ainda aceite API 25 — testando o build, não assumindo. Cada nova versão
+do GeckoView pode ter subido esse piso de novo.
