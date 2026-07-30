@@ -403,8 +403,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa } from './sime_dados.js';
-import { subscribeOcorrencias } from './sime_realtime.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
+import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -425,8 +425,10 @@ async function carregarDadosReais(){
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
     window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
+    window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
+    await iniciarMesaEstadoReal(secoesReais);
   }
   // Coord. de Motoristas: escopo real via sime_empresas.rotas, em vez da
   // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
@@ -446,7 +448,69 @@ async function carregarDadosReais(){
     const emp = (window.EMPRESAS || []).find(e => e.id === empresaId);
     return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
   };
+
+  // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
+  // o login real via sime-admin-user, mas o roster exibido nunca lia
+  // sime_usuarios de volta. Cada navegador via uma lista diferente (a demo
+  // ou o que foi digitado ali). "Token <tipo> (...)" são usuários fantasma
+  // criados pela sime-login pra QR de campo — não são gente da equipe.
+  const { data: equipeReal } = await supabase.from('sime_usuarios')
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo');
+  window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
+  if (window.renderTeam) window.renderTeam();
+
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
+}
+
+// A aba Seções (dashboard/tabela/modal) e a aba Mídias liam SÓ localStorage
+// (sime_mesa_v1/sime_acess_v1/sime_midias_v1) — nunca o que mesário/coletor
+// de mídias gravam de verdade no Supabase (cada um no PRÓPRIO aparelho, nunca
+// visto pelo navegador do Admin). Mesmo padrão já usado pela TV Dia:
+// snapshot inicial + Realtime, sem polling.
+let canalMesaAberto = false;
+let rerenderMesaTimer = null;
+function agendarRerenderMesaEstado(){
+  clearTimeout(rerenderMesaTimer);
+  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); }, 250);
+}
+let rerenderMidiasTimer = null;
+function agendarRerenderMidias(){
+  clearTimeout(rerenderMidiasTimer);
+  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); }, 250);
+}
+async function iniciarMesaEstadoReal(secoesReais){
+  if (canalMesaAberto) return; // evita canal duplicado se carregarDadosReais() rodar de novo
+  canalMesaAberto = true;
+
+  const numeroPorSecaoId = new Map(secoesReais.map(s => [s.id, s.numero]));
+
+  const elecAtiva = await getEleicaoAtiva({ fallback: null });
+  window.ELEICAO_ID = elecAtiva?.id || null;
+  window.ELEICAO_ATIVA = elecAtiva || null;
+  if (window.renderConfig) window.renderConfig();
+
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  window.MESA_ESTADO_MAP = mesaInicial || {};
+  const midiasInicial = await getMidiasMap({ fallback: null });
+  window.MIDIAS_MAP = midiasInicial || {};
+  // Só pro botão "Exportar dados" (snapshot pontual) — não precisa de
+  // Realtime, ninguém fica olhando pra essa tela esperando ela mudar.
+  window.ROTAS_ESTADO_MAP = await getRotasEstadoMap({ fallback: {} });
+  agendarRerenderMesaEstado();
+  agendarRerenderMidias();
+
+  subscribeMesaEstado(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MESA_ESTADO_MAP[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    agendarRerenderMesaEstado();
+  });
+  subscribeMidias(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MIDIAS_MAP[String(numero).padStart(4, '0')] = mapMidiaRow(row);
+    agendarRerenderMidias();
+  });
 }
 
 // Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
@@ -620,7 +684,33 @@ function escopoLabel(){
   return null;
 }
 
-function loadTeam(){ try{return JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');}catch(e){return[];} }
+// window.EQUIPE_REAL (sime_usuarios, carregarDadosReais() no <script type=
+// "module">) é a fonte de identidade (nome/e-mail/perfil/ativo) — sem ela
+// (ainda sem sessão), cai no cache local puro, como antes. Campos sem coluna
+// no banco (cor/iniciais/seções de coleta/substituto) continuam vindo do
+// cache local, casados por id e, pros que ainda têm o id fantasma antigo
+// ('uNNN', de antes desta correção), por e-mail.
+function loadTeam(){
+  let local; try{ local=JSON.parse(localStorage.getItem(TEAM_KEY)||'[]'); }catch(e){ local=[]; }
+  const real = window.EQUIPE_REAL;
+  if(!real) return local;
+  const porId = new Map(local.map(m=>[m.id,m]));
+  const porEmail = new Map(local.filter(m=>m.email).map(m=>[m.email,m]));
+  return real.map(u=>{
+    const extra = porId.get(u.id) || porEmail.get(u.email) || {};
+    return {
+      id: u.id, nome: u.nome, email: u.email||'', perfil: u.perfil,
+      iniciais: extra.iniciais || (u.nome||'?').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase(),
+      cor: extra.cor || '#2a2a2a',
+      local: extra.local || '',
+      empresa_id: u.empresa_id || extra.empresa_id || '',
+      empresa: extra.empresa || (window.EMPRESAS||[]).find(e=>e.id===u.empresa_id)?.nome || '',
+      secoes: extra.secoes || [],
+      substituto: extra.substituto || '',
+      substituto_tel: extra.substituto_tel || '',
+    };
+  });
+}
 function saveTeam(d){ localStorage.setItem(TEAM_KEY,JSON.stringify(d)); }
 
 // Equipe padrão
@@ -699,32 +789,27 @@ function renderZonas(){
 }
 
 // ── DADOS DA ELEIÇÃO ──────────────────────────────────────
-function loadMesa(){ try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
-function saveMesaSec(n,st){ const d=loadMesa(); d[n]={...d[n],...st}; localStorage.setItem('sime_mesa_v1',JSON.stringify(d)); }
+// window.MESA_ESTADO_MAP vem de sime_mesa_estado (Supabase) via
+// iniciarMesaEstadoReal() no <script type="module"> do topo — snapshot +
+// Realtime, mesmo padrão da TV Dia (mesmo fallback: sem remoto ainda, cai no
+// localStorage — nunca mostra menos do que o navegador já sabia).
+function loadMesa(){ if(window.MESA_ESTADO_MAP) return window.MESA_ESTADO_MAP; try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
 
-// Dados reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade).
-// Usa panico.urna (o Mesário usa panico.urnaprob) — normalizado aqui.
-function loadAcess(){ try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}} }
+// sime_acao_acessibilidade grava na MESMA linha/colunas de sime_mesa_estado
+// que o mesário usa (não é tabela separada) — não existe mais um "loadAcess"
+// distinto; o pânico do coordenador de acessibilidade já chega unificado
+// dentro do próprio loadMesa().
 
-// Estado unificado de pânico/fila de uma seção, combinando Mesário
-// (sime_mesa_v1) e Coordenador de Acessibilidade (sime_acess_v1).
-// origem: de onde veio cada pânico ativo (para exibição no painel).
-function estadoSecao(n, st, ac){
-  st = st || loadMesa()[n]; ac = ac || loadAcess()[n];
-  const mesaEnergia = !!(st?.panico?.energia   && !st?.panico_resolved?.energia);
-  const mesaUrna    = !!(st?.panico?.urnaprob  && !st?.panico_resolved?.urnaprob);
-  const acEnergia   = !!(ac?.panico?.energia   && !ac?.panico_resolved?.energia);
-  const acUrna      = !!(ac?.panico?.urna      && !ac?.panico_resolved?.urna);
-  const origem = [];
-  if(mesaEnergia||mesaUrna) origem.push('mesário');
-  if(acEnergia||acUrna)     origem.push('acessibilidade');
-  return {
-    energia: mesaEnergia || acEnergia,
-    urna:    mesaUrna    || acUrna,
-    panico:  mesaEnergia || mesaUrna || acEnergia || acUrna,
-    fila:    Math.max(st?.fila>0?st.fila:0, ac?.fila>0?ac.fila:0) || 0,
-    origem,
-  };
+// Estado de pânico/fila de uma seção, direto de sime_mesa_estado.
+// origem: quem gravou por último (updated_by_origem) — aproximação, já que a
+// tabela não guarda "quem setou cada campo", só o último autor da linha.
+function estadoSecao(n, st){
+  st = st || loadMesa()[n];
+  const energia = !!(st?.panico?.energia  && !st?.panico_resolved?.energia);
+  const urna    = !!(st?.panico?.urnaprob && !st?.panico_resolved?.urnaprob);
+  const panico = energia || urna;
+  const origem = panico && st?.origem ? [st.origem === 'coord_acessibilidade' ? 'acessibilidade' : 'mesário'] : [];
+  return { energia, urna, panico, fila: st?.fila>0?st.fila:0, origem };
 }
 
 // fmtNow() vem de sime_ui_utils.js
@@ -748,13 +833,13 @@ function getStatus(st,uni){
 // DASHBOARD
 // ══════════════════════════════════════════════
 function renderDash(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   const escopoSecs = secoesDoUsuario();
   let tot=escopoSecs.length,vot=0,enc=0,urna=0,car=0,prob=0;
   const evts=[];
   escopoSecs.forEach(s=>{
     const st=mesa[s.n];
-    const uni=estadoSecao(s.n, st, acess[s.n]);
+    const uni=estadoSecao(s.n, st);
     if(st){
       if(st.vot)  vot++;
       if(st.enc||st.urna||st.urna_cartorio)  enc++;
@@ -817,9 +902,9 @@ function renderDash(){
       </div>
     </div>`;
   }).join('');
-
-  // Badge tab problemas
-  document.getElementById('prob-count-badge').textContent = prob ? `(${prob})` : '';
+  // Badge da aba Problemas: não daqui — atualizarBadgeProblemas() (topo do
+  // arquivo) conta sime_ocorrencias de verdade, que cobre tipos que este
+  // dashboard nem enxerga (mesa incompleta, instalação, "outro").
 }
 
 // ══════════════════════════════════════════════
@@ -827,10 +912,10 @@ function renderDash(){
 // ══════════════════════════════════════════════
 let allRows = [];
 function renderTable(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   allRows = secoesDoUsuario().map(s=>{
     const st = mesa[s.n]||null;
-    const uni = estadoSecao(s.n, st, acess[s.n]);
+    const uni = estadoSecao(s.n, st);
     const panic = uni.panico;
     const status = getStatus(st, uni);
     const mv = st?Object.values(st.mesa||{}):[]; const chegou=mv.filter(v=>v>=1).length;
@@ -844,7 +929,6 @@ function filterTable(){
   const q   = document.getElementById('sec-search').value.toLowerCase();
   const sf  = document.getElementById('sec-filter-status').value;
   const cf  = document.getElementById('sec-filter-cidade').value;
-  const mesa= loadMesa();
 
   const filtered = allRows.filter(r=>{
     const {s,st,panic,status} = r;
@@ -887,7 +971,7 @@ function openEditSec(n){
   const sec = SECTIONS.find(s=>s.n===n);
   if(!sec) return;
   const mesa=loadMesa(); const st=mesa[n]||{};
-  const uni=estadoSecao(n, st, loadAcess()[n]);
+  const uni=estadoSecao(n, st);
   const mv=Object.values(st.mesa||{}); const chegou=mv.filter(v=>v>=1).length;
   const canEdit = hasPerm('editar_secoes') || hasPerm('lancar_telefone');
   const canResolve = hasPerm('resolver_panico');
@@ -989,29 +1073,30 @@ function openEditSec(n){
   document.getElementById('overlay').classList.add('open');
 }
 
-function salvarSec(n){
+async function salvarSec(n){
   if(!hasPerm('editar_secoes')&&!hasPerm('lancar_telefone')){ showToast('⚠ Sem permissão'); return; }
-  const patch = {
-    mesa:{
-      pres:+document.getElementById('mesa-pres').value,
-      m1:  +document.getElementById('mesa-m1').value,
-      m2:  +document.getElementById('mesa-m2').value,
-      sec: +document.getElementById('mesa-sec').value,
-    },
-    zero:document.getElementById('f-zero').checked,
-    vot: document.getElementById('f-vot').checked,
-    enc: document.getElementById('f-enc').checked,
-    urna:document.getElementById('f-urna').checked,
-    urna_cartorio:document.getElementById('f-car').checked,
-    fila:+document.getElementById('f-fila').value,
-    obs: document.getElementById('f-obs').value,
-    _editado_por: curUser.nome,
-    _editado_em:  fmtNow(),
-  };
-  saveMesaSec(n,patch);
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para salvar'); return; }
+  const { error } = await supabase.rpc('sime_acao_mesa', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_mesa_pres: +document.getElementById('mesa-pres').value,
+    p_mesa_m1:   +document.getElementById('mesa-m1').value,
+    p_mesa_m2:   +document.getElementById('mesa-m2').value,
+    p_mesa_sec:  +document.getElementById('mesa-sec').value,
+    p_zeresima:  document.getElementById('f-zero').checked,
+    p_votacao:   document.getElementById('f-vot').checked,
+    p_encerrada: document.getElementById('f-enc').checked,
+    p_urna_recolhida: document.getElementById('f-urna').checked,
+    p_urna_cartorio:  document.getElementById('f-car').checked,
+    p_fila: +document.getElementById('f-fila').value,
+    p_observacao: document.getElementById('f-obs').value,
+    p_origem: 'admin',
+  });
+  if(error){ showToast('⚠ Falha ao salvar: '+error.message); return; }
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
-  renderDash(); renderTable();
+  // Sem renderDash()/renderTable() manual: o Realtime (iniciarMesaEstadoReal,
+  // topo do arquivo) já vai receber o UPDATE e re-renderizar sozinho.
 }
 
 // ══════════════════════════════════════════════
@@ -1070,28 +1155,31 @@ function updateEvForm(){
   } else { extra.innerHTML=''; }
 }
 
-function salvarEvento(){
+async function salvarEvento(){
   const n   = document.getElementById('ev-sec').value; if(!n){ showToast('⚠ Selecione a seção'); return; }
   const tipo= document.getElementById('ev-tipo').value;
-  const mesa= loadMesa(); if(!mesa[n]) mesa[n]={};
-  const st  = mesa[n];
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
 
-  if(tipo==='panico_energia'){ if(!st.panico)st.panico={};st.panico.energia=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.energia=false; }
-  else if(tipo==='panico_urna'){if(!st.panico)st.panico={};st.panico.urnaprob=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.urnaprob=false;}
-  else if(tipo==='fila'){ st.fila=+document.getElementById('ev-val').value; }
+  // sime_acao_mesa trata NULL como "não mexe" — só entra no payload o campo
+  // que este tipo de ocorrência de fato muda. O gatilho do banco cria a
+  // ocorrência em sime_ocorrencias sozinho quando é pânico (mesmo caminho do
+  // mesário), então não precisa duplicar essa lógica aqui.
+  const payload = { p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_origem: 'admin_telefone' };
+  if(tipo==='panico_energia'){ payload.p_panico_energia = true; payload.p_panico_energia_resolvido = false; }
+  else if(tipo==='panico_urna'){ payload.p_panico_urna = true; payload.p_panico_urna_resolvido = false; }
+  else if(tipo==='fila'){ payload.p_fila = +document.getElementById('ev-val').value; }
   else if(tipo==='status'){
     const val=document.getElementById('ev-val').value;
-    if(val==='vot')     st.vot=true;
-    if(val==='enc')     {st.enc=true;st.vot=true;}
-    if(val==='urna')    {st.urna=true;st.enc=true;}
-    if(val==='cartorio'){st.urna_cartorio=true;st.urna=true;st.enc=true;}
-  } else if(tipo==='obs'){ st.obs=document.getElementById('ev-val').value; }
+    if(val==='vot')          payload.p_votacao = true;
+    else if(val==='enc')      { payload.p_encerrada = true; payload.p_votacao = true; }
+    else if(val==='urna')     { payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+    else if(val==='cartorio') { payload.p_urna_cartorio = true; payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+  } else if(tipo==='obs'){ payload.p_observacao = document.getElementById('ev-val').value; }
 
-  st._editado_por=document.getElementById('ev-recv').value;
-  st._editado_em=fmtNow();
-  mesa[n]=st; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+  const { error } = await supabase.rpc('sime_acao_mesa', payload);
+  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
-  renderDash();renderTable();
 }
 
 // ══════════════════════════════════════════════
@@ -1308,8 +1396,21 @@ async function saveMember(id){
   if(id){
     const idx=team.findIndex(m=>m.id===id);
     if(idx>-1) team[idx]={...team[idx],...base};
+    // Editando gente real (id vindo de sime_usuarios via loadTeam()): nome e
+    // perfil também precisam mudar lá, senão a edição "salva" mas some no
+    // próximo carregamento — loadTeam() sempre prioriza o banco pra esses
+    // dois campos.
+    if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
+      const { error } = await supabase.from('sime_usuarios').update({ nome, perfil }).eq('id', id);
+      if(error){ showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
+      const u = window.EQUIPE_REAL.find(u=>u.id===id);
+      if(u && !error){ u.nome = nome; u.perfil = perfil; }
+    }
   } else {
-    team.push({id:'u'+Date.now(),...base});
+    // usuario_id: o real sime_usuarios.id, quando saveMember() acabou de criar
+    // o login (acima). Sem e-mail (perfil sem login, ex.: preposto offline),
+    // fica no id local mesmo — não tem como ligar a uma linha real ainda.
+    team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
   saveTeam(team); closeModal(); renderTeam();
   // Se o usuário atual foi editado, reaplica o escopo
@@ -1395,8 +1496,17 @@ async function confirmarTrocaSenha(){
     closeModal(); showToast('✓ Senha definida');
   }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
 }
-function deleteMember(id){
+async function deleteMember(id){
   if(!confirm('Remover este membro?')) return;
+  // Gente real (id de sime_usuarios): loadTeam() sempre reconstrói a lista a
+  // partir de window.EQUIPE_REAL, então só apagar do cache local não
+  // removeria nada de verdade — a pessoa reapareceria no próximo carregamento.
+  const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
+  if(eraReal){
+    const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
+    if(error){ showToast('⚠ Falha ao remover: '+error.message); return; }
+    window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
+  }
   saveTeam(loadTeam().filter(m=>m.id!==id));
   closeModal(); renderTeam(); showToast('✓ Membro removido');
 }
@@ -1628,15 +1738,32 @@ async function setConfirmacao(id, status){
 // CONFIG
 // ══════════════════════════════════════════════
 function renderConfig(){
-  try{
-    const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
-    const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
-    document.getElementById('eleicao-info').innerHTML=`
-      <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
-      <strong>Turno ativo:</strong> ${ta}º turno<br>
-      <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
-      <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
-  }catch(e){ document.getElementById('eleicao-info').textContent='Não configurada'; }
+  const alvo = document.getElementById('eleicao-info');
+  if(!alvo) return; // aba ainda não montada quando iniciarMesaEstadoReal() chama isto
+  // sime_eleicoes (Supabase) é a fonte — antes esta aba só lia sime_eleicao_v1
+  // do localStorage, que só existe no navegador de quem abriu o Principal.
+  // "Nome da eleição" não tem coluna ainda (pendência conhecida), então
+  // continua vindo do local, como cópia melhor que nada.
+  let nomeLocal = '';
+  try{ nomeLocal = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')?.nome || ''; }catch(e){}
+  const real = window.ELEICAO_ATIVA;
+  if(real){
+    alvo.innerHTML=`
+      <strong>Eleição:</strong> ${nomeLocal||'Não configurada'}<br>
+      <strong>Turno ativo:</strong> ${real.turno}º turno<br>
+      <strong>Dia D:</strong> ${real.data_d?new Date(real.data_d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+      <strong>Abertura:</strong> ${(real.horario_ab||'').slice(0,5)||'—'} · <strong>Encerramento:</strong> ${(real.horario_enc||'').slice(0,5)||'—'}`;
+  } else {
+    try{
+      const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
+      const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
+      alvo.innerHTML=`
+        <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
+        <strong>Turno ativo:</strong> ${ta}º turno<br>
+        <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+        <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
+    }catch(e){ alvo.textContent='Não configurada'; }
+  }
 
   const links=[
     {icon:'📺',label:'TV Dia',href:'SIME_tv_dia.html'},{icon:'🗳️',label:'Mesário',href:'SIME_mesario.html'},{icon:'🔧',label:'Instalador',href:'SIME_instalador.html'},{icon:'🚚',label:'Conferente',href:'SIME_conferente.html'},{icon:'🚐',label:'Motorista',href:'SIME_motorista.html'},{icon:'📋',label:'Coordenador',href:'SIME_coordenador_preparacao.html'},{icon:'🖥️',label:'TV Véspera',href:'SIME_tv_vespera.html'},{icon:'⚙️',label:'Principal',href:'SIME_principal.html'}
@@ -1645,14 +1772,21 @@ function renderConfig(){
 }
 
 function exportarDados(){
-  const data={mesa:loadMesa(),dist:JSON.parse(localStorage.getItem('sime_dist_v1')||'{}')||'{}',lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
+  // mesa e rotas vêm do Supabase de verdade (sime_mesa_estado/sime_rotas_estado);
+  // lacre continua só local — não existe tabela pra carga/preparação/lacre
+  // ainda (pendência conhecida, ver CLAUDE.md).
+  const data={mesa:loadMesa(),rotas:window.ROTAS_ESTADO_MAP||{},lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sime_snapshot_'+Date.now()+'.json'; a.click();
   showToast('✓ Snapshot exportado');
 }
+// "Resetar dados de teste" apagava um cache local morto — não tinha efeito
+// nenhum nos dados reais. Zerar sime_mesa_estado de verdade é uma operação
+// destrutiva em produção (apaga o Dia D de todo mundo), então este botão não
+// tenta fazer isso sozinho: quem precisar zerar de verdade usa o SQL direto
+// no Supabase, com as mesmas cautelas de qualquer DELETE em produção.
 function resetarDados(){
-  ['sime_mesa_v1'].forEach(k=>localStorage.removeItem(k));
-  showToast('✓ Dados resetados'); renderDash(); renderTable();
+  showToast('ℹ Os dados agora vêm do servidor — não há mais "dados de teste" locais para resetar aqui.');
 }
 
 // ══════════════════════════════════════════════
@@ -1728,14 +1862,17 @@ const MIDIA_STATUS_COLOR = {
 
 function renderMidias(){
   renderColetores();
-  const midias = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
+  // window.MIDIAS_MAP vem de sime_midias (Supabase) via iniciarMesaEstadoReal()
+  // no <script type="module"> — antes lia sime_midias_v1 do localStorage, que
+  // nunca via o que o coletor de campo grava no próprio aparelho dele.
+  const midias = window.MIDIAS_MAP || {};
   const counts = {};
   Object.values(midias).forEach(m=>{
     const s=m.status||'aguardando_encerramento';
     counts[s]=(counts[s]||0)+1;
   });
   const total = Object.keys(midias).length;
-  document.getElementById('midias-sub').textContent = total + ' de 174 com registro';
+  document.getElementById('midias-sub').textContent = total + ' de ' + (SECTIONS?.length||0) + ' com registro';
 
   // Stats cards
   const stats = document.getElementById('midias-stats');
@@ -1788,12 +1925,17 @@ function renderColetores(){
   }).join('');
 }
 
-function coletarMidia(n){
-  const d = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
-  d[n]={...d[n],status:'coletada',coletada_ts:Date.now(),tipo_coleta:'dedicada',updated_at:Date.now()};
-  localStorage.setItem('sime_midias_v1',JSON.stringify(d));
+async function coletarMidia(n){
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+  const { error } = await supabase.rpc('sime_acao_midia', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_status: 'coletada', p_tipo: 'dedicada',
+  });
+  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
-  renderMidias();
+  // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o
+  // UPDATE via Realtime e re-renderiza sozinho.
 }
 
 // ══════════════════════════════════════════════

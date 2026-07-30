@@ -165,7 +165,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
-import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, getAtores } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Expostas pro <script> clássico abaixo (mesmo padrão de window.simeCampoMidia
@@ -189,6 +189,18 @@ async function resolverEscopo() {
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+
+  // window.MESA_ESTADO_MAP (status votando/encerrada por seção) e
+  // window.ATORES_REAIS (pra achar motorista/técnico na coleta dedicada) —
+  // antes liam sime_mesa_v1/sime_atores_v1 do localStorage, que no aparelho
+  // do coletor nunca tinham nada (quem grava é o mesário/admin, em OUTRO
+  // aparelho). Snapshot único (não Realtime): ninguém de fora altera esse
+  // estado durante a coleta, mesmo padrão já decidido pros outros 4 módulos
+  // que só escrevem.
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  if (mesaInicial) window.MESA_ESTADO_MAP = mesaInicial;
+  const atoresReais = await getAtores({ fallback: null });
+  if (atoresReais) window.ATORES_REAIS = atoresReais;
 }
 
 // Exposto pro <script> clássico — chamado de dentro de syncAction() (a fila
@@ -204,6 +216,26 @@ window.simeCampoMidia = {
       p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_status: dados.status, p_tipo: dados.tipo ?? null, p_obs: dados.obs ?? null,
     });
     if (error) throw error;
+  },
+  // Confirmar coleta também marca a urna como recolhida — antes isso só
+  // gravava sime_mesa_v1 local, sem passar pela RPC que mesário/motorista já
+  // usam pra essa mesma coluna (urna_recolhida).
+  async syncMesa(n, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_acao_mesa', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'midias', ...partial,
+    });
+    if (error) throw error;
+  },
+  // sime_logs (Supabase) é a fonte real, lida por SIME_relatorios.html —
+  // antes o log deste módulo só ia pro sime_logs_v1 local, e nenhuma ação do
+  // coletor de mídias (nem o WhatsApp disparado) aparecia na auditoria.
+  async log(acao, secao, payload) {
+    if (!campoClient) return;
+    const secaoId = secao ? (secaoIdPorNumero[parseInt(secao, 10)] || null) : null;
+    await campoClient.from('sime_logs').insert({ acao, modulo: 'midias', secao_id: secaoId, payload });
   },
 };
 
@@ -343,7 +375,11 @@ const LOG_KEY   = 'sime_logs_v1';
 
 function loadMidias()  { try{return JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}')}catch(e){return{}} }
 function saveMidias(d) { localStorage.setItem(MIDIA_KEY, JSON.stringify(d)); }
-function loadMesa()    { try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
+// window.MESA_ESTADO_MAP vem de sime_mesa_estado (Supabase, resolverEscopo()
+// no <script type="module"> acima) — antes lia sime_mesa_v1 do localStorage,
+// que no aparelho do coletor nunca tinha nada (quem grava é o mesário, em
+// outro aparelho), então toda seção aparecia "aguardando" sempre.
+function loadMesa()    { return window.MESA_ESTADO_MAP || {}; }
 
 function getStatusFromMesa(n) {
   const mesa = loadMesa()[n];
@@ -372,6 +408,7 @@ function log(acao, modulo, secao, payload) {
   logs.unshift({ acao, modulo, secao, payload, ts: serverTs() });
   if (logs.length > 500) logs.splice(400);
   localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+  if (window.simeCampoMidia) window.simeCampoMidia.log(acao, secao, payload).catch(()=>{});
 }
 
 function applyLocalAction(acao, dados) {
@@ -534,10 +571,6 @@ function abrirColeta(n, tipo) {
 async function confirmarColeta(n, tipo) {
   const obs = document.getElementById('sh-obs')?.value||'';
   const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: serverTs() };
-  
-  // Atualiza mesa (urna recolhida) também
-  const mesa = loadMesa();
-  if (mesa[n]) { mesa[n].urna = true; localStorage.setItem('sime_mesa_v1', JSON.stringify(mesa)); }
 
   closeSheet();
   try {
@@ -547,6 +580,9 @@ async function confirmarColeta(n, tipo) {
     await window.simeEnqueue('midia_coletada', dados);
     showToast('🟡 Coletada — sincronizará em breve');
   }
+  // Urna recolhida: melhor esforço, à parte da fila de mídia — antes só
+  // gravava sime_mesa_v1 local (ninguém via). Não bloqueia a coleta se falhar.
+  if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
   render();
 }
 
@@ -720,8 +756,11 @@ function abrirDesignarResponsavel(n){
   const sec = SECOES.find(s=>s.n===n);
   if(!sec) return;
 
-  // Busca atores cadastrados
-  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]').filter(a=>a.ativo!==false);
+  // Busca atores cadastrados — window.ATORES_REAIS (Supabase, resolverEscopo()
+  // no <script type="module">) antes era sime_atores_v1 do localStorage, que
+  // no aparelho do coletor está sempre vazio (quem cadastra é o Admin, em
+  // outro aparelho) — o seletor sempre caía em "Nenhum ator cadastrado".
+  const atores = (window.ATORES_REAIS || []).filter(a=>a.ativo!==false);
   const motAtores = atores.filter(a=>['motorista','tecnico','cartorio'].includes(a.funcao));
 
   // Busca coletor original da rota
@@ -802,20 +841,20 @@ async function confirmarDedicada(n){
   const dados = { n, status:'coleta_dedicada', tipo:'dedicada',
     obs, responsavel: respId, responsavel_nome: respNome, ts };
 
-  // Atualiza mesa (urna recolhida) também
-  const mesa = loadMesa();
-  if(mesa[n]){ mesa[n].urna=true; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa)); }
-
   try{
     await syncAction('midia_dedicada', dados);
   }catch(e){
     await window.simeEnqueue('midia_dedicada', dados);
   }
+  // Urna recolhida: melhor esforço, à parte da fila de mídia (mesmo padrão
+  // de confirmarColeta()).
+  if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
 
   closeSheet();
 
-  // Busca responsável original da rota
-  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]');
+  // Busca responsável original da rota — window.ATORES_REAIS (Supabase),
+  // mesmo motivo do abrirDesignarResponsavel() acima.
+  const atores = window.ATORES_REAIS || [];
   const rotaId = sec?.rota;
   const respOriginal = atores.find(a=>a.funcao==='motorista' && a.rota===rotaId);
 

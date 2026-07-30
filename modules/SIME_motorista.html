@@ -237,6 +237,8 @@ async function resolverEscopo(rotasToken) {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  window.ELEICAO_ATIVA = eleicao || null;
+  if (window.recalcularFase) window.recalcularFase();
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
   // Itinerário oficial + total de urnas por rota (planilha de distribuição) —
@@ -423,6 +425,16 @@ function patchRotaState(rota,patch){
 // FASE — entrega (D-1) ou recolhimento (Dia D)
 // ══════════════════════════════════════════════
 function getFase(){
+  // sime_eleicoes (Supabase) primeiro — window.ELEICAO_ATIVA só existe depois
+  // do login (resolverEscopo, no <script type="module">), então na primeira
+  // chamada (antes de logar) ainda cai no fallback local/horário; ver
+  // window.recalcularFase() logo abaixo, chamado assim que o dado real chega.
+  const real = window.ELEICAO_ATIVA;
+  if(real){
+    const hoje=new Date().toISOString().slice(0,10);
+    if(real.data_d  && hoje>=real.data_d)  return 'recolhimento';
+    if(real.data_d1 && hoje>=real.data_d1) return 'entrega';
+  }
   try{
     const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
     const t=el['turno'+(el.turno_ativo||1)]||{};
@@ -435,6 +447,14 @@ function getFase(){
   // Fallback: detectar pelo horário — antes das 12h = entrega, depois = recolhimento
   return new Date().getHours() < 12 ? 'entrega' : 'recolhimento';
 }
+// Chamado pelo <script type="module"> assim que window.ELEICAO_ATIVA chega
+// (login já resolvido) — a fase inicial (calculada no init(), antes do login)
+// pode ter usado o fallback; isto corrige e re-renderiza se já houver rota
+// selecionada em tela.
+window.recalcularFase = function(){
+  fase = getFase();
+  if (curRota) showMain();
+};
 
 // ══════════════════════════════════════════════
 // ESTADO ATUAL DA ROTA

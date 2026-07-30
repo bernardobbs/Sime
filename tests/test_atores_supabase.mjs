@@ -44,7 +44,10 @@ export function createClient(){
     async getSession(){ return { data:{ session: ${comSessao ? "{ user:{ id:'u1' } }" : 'null'} } }; },
     async getUser(){ return { data:{ user:{ id:'u1' } } }; },
     async signInWithPassword(){ return { error:null }; },
-  }};
+  },
+  channel(){ return { on(){ return this; }, subscribe(){ return this; } }; },
+  removeChannel(){},
+  };
 }
 `;
 

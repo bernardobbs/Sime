@@ -122,7 +122,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 // Sem sessão (aberto direto, sem login) nada acontece e o módulo segue no
 // localStorage — o cadastro/edição local continua funcionando como antes.
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getAtores } from './sime_dados.js';
+import { initSimeDados, getAtores, getSecoes } from './sime_dados.js';
 import { SIME_CONFIG } from './sime_config.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
@@ -132,6 +132,10 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   if (!session) return;
   initSimeDados(supabase);
   window.supabaseAtores = supabase;
+
+  // Pra log() (Modo Guerra) resolver numero -> secao_id ao gravar em sime_logs.
+  const secoesReais = await getSecoes({ fallback: null });
+  if (secoesReais) window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
 
   // Contatos externos (Equatorial e afins). Vivem numa tabela própria e não em
   // sime_atores porque não são pessoas de uma seção: são organizações com
@@ -195,11 +199,22 @@ function telLocal(t)   { const d=String(t||'').replace(/\D/g,''); return d.start
 function fmtTel(t)     { const d=telLocal(t); return d.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')||t; }
 function waLink(t)     { return 'https://wa.me/55'+telLocal(t); }
 function serverTs()    { return Date.now(); }
-function log(acao,secao,payload) {
+// sime_logs (Supabase) é a fonte real, lida por SIME_relatorios.html — antes
+// isto gravava só em sime_logs_v1, um log que nunca saía do navegador de
+// quem clicou "CONTATAR" no Modo Guerra, e a auditoria do cartório nunca via
+// esses acionamentos. Mantém o espelho local como fallback se a rede falhar.
+async function log(acao,secao,payload) {
   const logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
   logs.unshift({acao,modulo:'atores',secao,payload,ts:serverTs()});
   if(logs.length>500) logs.splice(400);
   localStorage.setItem(LOG_KEY,JSON.stringify(logs));
+
+  const sb = window.supabaseAtores;
+  if (!sb) return; // sem sessão — fica só o local, como antes
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[secao] || null;
+  try {
+    await sb.from('sime_logs').insert({ acao, modulo: 'atores', secao_id: secaoId, payload });
+  } catch (e) { /* já ficou no espelho local acima */ }
 }
 
 let curTab='lista';

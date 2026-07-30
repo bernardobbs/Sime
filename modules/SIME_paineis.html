@@ -319,13 +319,15 @@ body{display:flex;flex-direction:column;}
 
 <script type="module">
 import { bootstrapTvSession, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes } from './sime_dados.js';
+import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst } from './sime_dados.js';
+import { subscribeMesaEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
 
-// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES` — basta
-// reatribuir a variável (sem reload) que o próximo tick já usa o dado real.
+// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES`/loadInst() —
+// basta reatribuir as variáveis (sem reload) que o próximo tick já usa o
+// dado real.
 (async () => {
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
@@ -335,6 +337,20 @@ import { SIME_CONFIG } from './sime_config.js';
     window.CITIES = agruparSecoesPorCidade(secoes);
     if (window.recalcularDerivadosDeCities) window.recalcularDerivadosDeCities();
   }
+
+  // Instalador (chegou/posicionada/instalada) — antes só localStorage
+  // (sime_inst_v1), que nunca via o que o instalador grava de verdade no
+  // próprio celular dele. "Lacre" (Coordenador de Preparação) continua só
+  // local — não existe tabela real pra isso ainda.
+  const numeroPorSecaoId = new Map((secoes || []).map((s) => [s.id, s.numero]));
+  const instInicial = await getInstMap({ fallback: null });
+  if (instInicial) window.__instRemota = instInicial;
+  subscribeMesaEstado(client, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    if (!window.__instRemota) window.__instRemota = {};
+    window.__instRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
+  });
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -443,7 +459,7 @@ function genId(){ return 'p' + Date.now().toString(36); }
 //   sime_inst_v1    → instalador (chegou=s1, posicionada=s2, instalada=s3, prob)
 // ══════════════════════════════════════════════════════
 function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
-function loadInst() { try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
+function loadInst() { if(window.__instRemota) return window.__instRemota; try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
 
 // Conta quantas seções têm dados reais
 function countRealData(lacre, inst){

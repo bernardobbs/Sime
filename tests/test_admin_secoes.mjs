@@ -80,6 +80,12 @@ await p.route('**/modules/sime_dados.js', async (route) => {
     export async function getAtores(){ return null; }
     export async function getZonaInfo(){ return null; }
     export function secoesDaEmpresa(){ return []; }
+    export async function getEleicaoAtiva(){ return null; }
+    export function mapMesaEstadoRow(){ return {}; }
+    export async function getMesaEstadoMap(){ return null; }
+    export function mapMidiaRow(){ return {}; }
+    export async function getMidiasMap(){ return null; }
+    export async function getRotasEstadoMap(){ return {}; }
   `});
 });
 await p.goto('http://localhost:8917/modules/SIME_admin.html');

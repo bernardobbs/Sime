@@ -590,6 +590,7 @@ CREATE OR REPLACE FUNCTION sime_acao_mesa(
   p_urna_instalada   BOOLEAN DEFAULT NULL,
   p_problema_instalacao           BOOLEAN DEFAULT NULL,
   p_problema_instalacao_resolvido BOOLEAN DEFAULT NULL,
+  p_observacao  TEXT DEFAULT NULL,
   p_origem      TEXT DEFAULT NULL
 ) RETURNS sime_mesa_estado AS $$
 DECLARE
@@ -603,7 +604,7 @@ BEGIN
     urna_entregue, urna_entregue_ts, urna_recolhida, urna_recolhida_ts,
     urna_cartorio, urna_cartorio_ts, urna_chegou, urna_chegou_ts,
     urna_posicionada, urna_posicionada_ts, urna_instalada, urna_instalada_ts,
-    problema_instalacao, problema_instalacao_resolvido,
+    problema_instalacao, problema_instalacao_resolvido, observacao,
     updated_at, updated_by_origem
   ) VALUES (
     p_eleicao_id, p_secao_id,
@@ -618,7 +619,7 @@ BEGIN
     COALESCE(p_urna_chegou,false),      CASE WHEN p_urna_chegou      THEN v_now END,
     COALESCE(p_urna_posicionada,false), CASE WHEN p_urna_posicionada THEN v_now END,
     COALESCE(p_urna_instalada,false),   CASE WHEN p_urna_instalada   THEN v_now END,
-    COALESCE(p_problema_instalacao,false), COALESCE(p_problema_instalacao_resolvido,false),
+    COALESCE(p_problema_instalacao,false), COALESCE(p_problema_instalacao_resolvido,false), p_observacao,
     v_now, p_origem
   )
   ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
@@ -650,6 +651,7 @@ BEGIN
     urna_instalada_ts = CASE WHEN p_urna_instalada AND sime_mesa_estado.urna_instalada_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_instalada_ts END,
     problema_instalacao = COALESCE(p_problema_instalacao, sime_mesa_estado.problema_instalacao),
     problema_instalacao_resolvido = COALESCE(p_problema_instalacao_resolvido, sime_mesa_estado.problema_instalacao_resolvido),
+    observacao = COALESCE(p_observacao, sime_mesa_estado.observacao),
     updated_at = v_now,
     updated_by_origem = COALESCE(p_origem, sime_mesa_estado.updated_by_origem)
   RETURNING * INTO v_row;

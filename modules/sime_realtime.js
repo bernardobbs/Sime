@@ -35,6 +35,10 @@ export function subscribeMesaEstadoSecao(client, secaoId, onChange) {
 export function subscribeRotasEstado(client, onChange) { return subscribeTable(client, 'sime_rotas_estado', onChange); }
 export function subscribeRotasUrnas(client, onChange) { return subscribeTable(client, 'sime_rotas_urnas', onChange); }
 
+// Mídias eleitorais (aba Mídias do Admin) — mesmo padrão das demais: dado
+// zona-scoped pela RLS, sem filtro de seção porque o Admin vê a zona toda.
+export function subscribeMidias(client, onChange) { return subscribeTable(client, 'sime_midias', onChange); }
+
 // Variante para um CONJUNTO de seções — acessibilidade (as seções de um local),
 // motorista e instalador (as da rota). O filtro `in` evita que o celular do
 // operador receba os eventos das outras ~170 seções da zona no Dia D, que é o
