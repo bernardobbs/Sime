@@ -85,3 +85,22 @@ que o Gradle declare. Se o Manifest Merger reclamar de `minSdk` depois de
 trocar a versão, a saída é achar a versão de release **anterior** mais recente
 que ainda aceite API 25 — testando o build, não assumindo. Cada nova versão
 do GeckoView pode ter subido esse piso de novo.
+
+## Kotlin 2.0.21 (necessário para o GeckoView 143+)
+
+O `.aar` do GeckoView 143 embute metadados de biblioteca Kotlin 2.x. O plugin
+`org.jetbrains.kotlin.android` do projeto já está em `2.0.21` (raiz
+`build.gradle.kts`) por causa disso — é compatível com o AGP 8.5.2, não
+precisa mexer em mais nada. Se o sync reclamar de "metadata version
+X.Y.Z, expected version Z.Y.X" ao ler uma classe do GeckoView, é sinal de
+que o plugin Kotlin caiu de novo para 1.9.x (verificar `build.gradle.kts` da
+raiz) ou de cache de Gradle desatualizado (`./gradlew --stop` e tentar de
+novo costuma resolver).
+
+## `onLoadRequest` mudou de assinatura
+
+Em versões antigas do GeckoView, `NavigationDelegate.onLoadRequest` podia
+retornar `GeckoResult<Boolean>`. Na 143 (e em toda a linha atual) o retorno é
+`GeckoResult<AllowOrDeny>` — `AllowOrDeny` é um enum (`ALLOW`/`DENY`) de
+`org.mozilla.geckoview.AllowOrDeny`. Já corrigido em `PainelActivity.kt`; se
+aparecer o mesmo erro de tipo em outro lugar, é o mesmo motivo.

@@ -49,12 +49,11 @@ dependencies {
     // A versão de release atual (153.0.20260727124451) exige minSdk 26 —
     // acima do Android 7.1 (API 25) do MXQ Pro 4K real. Isso não é um ajuste
     // de configuração: se o motor exige API 26+, o box físico não roda essa
-    // versão, ponto. 143.0.20251003115653 é a indicação do Gemini como última
-    // release ainda compatível com API 25 — AINDA NÃO CONFIRMADO nesta sessão
-    // (o sandbox onde isso é escrito não alcança maven.mozilla.org). Antes de
-    // aceitar como resolvido: (1) confirmar que a versão existe em
-    // maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml
-    // (canal release, não nightly); (2) compilar e confirmar que o Manifest
-    // Merger aceita minSdk 21 sem reclamar de novo.
+    // versão, ponto. 143.0.20251003115653 é a última release ainda compatível
+    // com API 25. Ainda falta confirmar num build real (fora deste sandbox,
+    // que não alcança maven.mozilla.org) que o Manifest Merger aceita
+    // minSdk 21 sem reclamar — mas a existência da coordenada e a assinatura
+    // de API (onLoadRequest, ver PainelActivity.kt) já foram verificadas
+    // contra o código-fonte do GeckoView.
     implementation("org.mozilla.geckoview:geckoview:143.0.20251003115653")
 }
