@@ -165,8 +165,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
     <div class="phase-pill" id="phase-pill" style="background:var(--bg2);color:var(--text2);border-color:var(--border)">Carregando...</div>
     <div class="clock-pill" id="clock">--:--</div>
     <div class="user-pill">
-      <div class="user-avatar">RA</div>
-      <div><div class="user-name">Rafael A.</div><div class="user-role">Super Admin</div></div>
+      <div class="user-avatar" id="topbar-avatar">--</div>
+      <div><div class="user-name" id="topbar-nome">Offline</div><div class="user-role" id="topbar-perfil">—</div></div>
     </div>
   </div>
 </div>
@@ -414,6 +414,15 @@ async function carregarZonas(){
 
   window.SIME_PERFIL = meu.perfil;
   window.MINHA_ZONA_ID = meu.zona_id || null;
+
+  // Topbar mostrava "Rafael A." fixo no HTML — sobrevivência de antes do login
+  // real existir. Agora reflete quem de fato autenticou.
+  const nomeEl = document.getElementById('topbar-nome');
+  const perfilEl = document.getElementById('topbar-perfil');
+  const avatarEl = document.getElementById('topbar-avatar');
+  if (nomeEl) nomeEl.textContent = meu.nome || user.email || 'Sem nome';
+  if (perfilEl) perfilEl.textContent = (window.PERFIL_LABEL && window.PERFIL_LABEL[meu.perfil]) || meu.perfil;
+  if (avatarEl && window.iniciais) avatarEl.textContent = window.iniciais(meu.nome);
 
   // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
   // só opera a sua. Mesma regra já usada em SIME_admin.html.
@@ -840,6 +849,9 @@ const PERFIL_LABEL = {
   coord_motoristas:'Coord. de Motoristas', coord_acessibilidade:'Coord. de Acessibilidade',
   coletor_midias:'Coletor de Mídias', observador:'Observador',
 };
+// const não vira propriedade de window sozinho — a topbar (script type="module",
+// carregarZonas()) precisa ler este mapa para mostrar o perfil de quem logou.
+window.PERFIL_LABEL = PERFIL_LABEL;
 const RCLS={super_admin:'role-super',coordenador:'role-admin',monitor:'role-coord',
   gestor_prob:'role-coord',gestor_dist:'role-inst',observador:'role-motor'};
 
