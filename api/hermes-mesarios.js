@@ -4,8 +4,11 @@
 //
 // Espelha api/hermes-update.js (mesma auth por zona via Bearer, mesmo
 // service_role), mas opera sobre PESSOAS (sime_atores), não sobre seções:
-//   - acao='listar'    → devolve as pessoas da zona (nome, telefone, seção, status)
-//   - acao='consultar' → autoatendimento: 1 telefone → convocação + seção pronta pro WhatsApp
+//   - acao='listar'      → devolve as pessoas da zona (nome, telefone, seção, status)
+//   - acao='consultar'   → autoatendimento: 1 telefone → convocação + seção pronta pro WhatsApp
+//   - acao='buscar_nome' → autoatendimento por nome (substring, case-insensitive) →
+//                          mesmo formato de resposta do 'consultar', pra quem não
+//                          está mandando do próprio telefone cadastrado
 //   - acao='atualizar' → guarda um recado livre da pessoa (observacao) pro cartório revisar
 //   - acao='confirmar' → marca sime_atores.confirmacao='confirmado' (permanece)
 //   - acao='recusar'   → 'recusou'     (+ ativo=false — não vai atuar)
@@ -137,8 +140,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { acao, secao, status, telefone, mensagem } = req.body || {};
-  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|atualizar|confirmar|recusar|substituir)' });
+  const { acao, secao, status, telefone, mensagem, nome } = req.body || {};
+  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|buscar_nome|atualizar|confirmar|recusar|substituir)' });
 
   const zonaId = await buscarZonaId(zona.numeroZona);
   if (!zonaId) {
@@ -203,6 +206,66 @@ export default async function handler(req, res) {
           confirmacao: p.confirmacao,
         })),
         mensagem_wa: mensagemConsulta(alvos, secoesPorId),
+      });
+    }
+
+    // ── BUSCAR_NOME — autoatendimento por nome (quem não manda do próprio telefone) ──
+    if (acao === 'buscar_nome') {
+      if (!nome) return res.status(400).json({ error: 'nome é obrigatório para buscar_nome' });
+      const alvo = nome.trim().toLowerCase();
+      if (alvo.length < 3) {
+        return res.status(400).json({ error: 'nome muito curto para buscar (mínimo 3 caracteres)' });
+      }
+      const alvos = pessoas.filter(p => (p.nome_completo || '').toLowerCase().includes(alvo));
+
+      if (alvos.length === 0) {
+        return res.status(404).json({
+          ok: false,
+          encontrado: 0,
+          mensagem_wa: `Não encontrei ninguém chamado "${nome}" na lista de convocados desta zona. Confira a grafia ou fale com o cartório.`,
+        });
+      }
+
+      // Agrupa por nome completo — a mesma pessoa pode ter mais de uma
+      // convocação (ex.: mesário e apoio logístico), não deve virar "gente
+      // diferente" na resposta. Nomes completos distintos que batem no
+      // mesmo pedaço de texto (ex.: dois "José da Silva") ficam separados.
+      const porNome = new Map();
+      for (const p of alvos) {
+        if (!porNome.has(p.nome_completo)) porNome.set(p.nome_completo, []);
+        porNome.get(p.nome_completo).push(p);
+      }
+
+      if (porNome.size > 8) {
+        return res.status(200).json({
+          ok: true,
+          encontrado: alvos.length,
+          mensagem_wa: `Encontrei ${porNome.size} pessoas com "${nome}" — manda o nome completo pra eu achar certo.`,
+        });
+      }
+
+      if (porNome.size === 1) {
+        const [pessoaUnica] = [...porNome.values()];
+        return res.status(200).json({
+          ok: true,
+          encontrado: pessoaUnica.length,
+          pessoas: pessoaUnica.map(p => ({
+            nome: p.nome_completo, funcao: p.funcao, funcao_mesa: p.funcao_mesa,
+            secao: secaoDetalhe(p, secoesPorId), confirmacao: p.confirmacao,
+          })),
+          mensagem_wa: mensagemConsulta(pessoaUnica, secoesPorId),
+        });
+      }
+
+      const linhas = [...porNome.entries()].map(([nomeCompleto, ps]) => {
+        const p = ps[0];
+        const sec = secaoDetalhe(p, secoesPorId);
+        return `• ${nomeCompleto} — ${rotuloFuncao(p)}${sec ? ` (Seção ${sec.numero})` : ''} — ${p.confirmacao}`;
+      });
+      return res.status(200).json({
+        ok: true,
+        encontrado: alvos.length,
+        mensagem_wa: `Encontrei ${porNome.size} pessoas com "${nome}":\n${linhas.join('\n')}\n\nManda o nome completo se quiser o detalhe de uma pessoa específica.`,
       });
     }
 
