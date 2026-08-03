@@ -232,6 +232,14 @@ ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_instalada_ts TIMESTAM
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao BOOLEAN DEFAULT false;
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao_resolvido BOOLEAN DEFAULT false;
 
+-- SOS: pânico genérico do mesário, para qualquer problema que não seja
+-- energia nem urna (conflito de fiscais, conflito entre eleitores, fila
+-- descontrolada etc.) — o toque não carrega motivo, só o alerta; quem
+-- recebe liga pra seção pra entender o que é. Mesmo mecanismo de
+-- panico_energia/panico_urna.
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS panico_sos BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS panico_sos_resolvido BOOLEAN DEFAULT false;
+
 -- ------------------------------------------------------------
 -- 2. ESTADO DE EMBARQUE DE ROTA (Conferente, D-1)
 -- ------------------------------------------------------------
@@ -524,6 +532,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Transmissão de resultados (JE-Connect): distinto da entrega FÍSICA da mídia
+-- (status = 'entregue_transmissao' acima). Aqui rastreamos quem é o técnico
+-- responsável por transmitir cada seção (matriz nominal, definida antes do
+-- dia D) e se a transmissão DIGITAL em si deu certo — a lacuna real de 2024
+-- foi não saber quem tinha essa seção e não perceber uma falha de conexão
+-- até alguém mandar mensagem avulsa no grupo.
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS tecnico_responsavel_id UUID REFERENCES sime_atores(id);
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_status TEXT NOT NULL DEFAULT 'pendente';
+DO $$ BEGIN
+  ALTER TABLE sime_midias ADD CONSTRAINT sime_midias_transmissao_status_chk
+    CHECK (transmissao_status IN ('pendente','em_andamento','transmitido','falhou'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_ts  TIMESTAMPTZ;
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_obs TEXT;
+CREATE INDEX IF NOT EXISTS idx_midias_transmissao_status ON sime_midias(transmissao_status);
+CREATE INDEX IF NOT EXISTS idx_midias_tecnico ON sime_midias(tecnico_responsavel_id);
+
+-- RPC: atribuir técnico e/ou atualizar status de transmissão. Separada de
+-- sime_acao_midia de propósito — não altera a assinatura da RPC de coleta
+-- física, que já está em produção.
+CREATE OR REPLACE FUNCTION sime_midia_transmissao_upsert(
+  p_secao_id    UUID,
+  p_eleicao_id  UUID,
+  p_tecnico_id         UUID DEFAULT NULL,
+  p_transmissao_status TEXT DEFAULT NULL,
+  p_transmissao_obs    TEXT DEFAULT NULL
+) RETURNS sime_midias AS $$
+DECLARE
+  v_row sime_midias;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_midias(eleicao_id, secao_id, tecnico_responsavel_id, transmissao_status,
+    transmissao_obs, transmissao_ts, updated_at)
+  VALUES (p_eleicao_id, p_secao_id, p_tecnico_id, COALESCE(p_transmissao_status,'pendente'),
+    p_transmissao_obs, CASE WHEN p_transmissao_status IS NOT NULL THEN v_now END, v_now)
+  ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
+    tecnico_responsavel_id = COALESCE(p_tecnico_id, sime_midias.tecnico_responsavel_id),
+    transmissao_status = COALESCE(p_transmissao_status, sime_midias.transmissao_status),
+    transmissao_obs = COALESCE(p_transmissao_obs, sime_midias.transmissao_obs),
+    -- reflete a ÚLTIMA mudança de status (o status oscila falhou→em_andamento
+    -- →transmitido; diferente do padrão "primeira vez" usado em urna_*_ts).
+    transmissao_ts = CASE WHEN p_transmissao_status IS NOT NULL THEN v_now ELSE sime_midias.transmissao_ts END,
+    updated_at = v_now
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
 -- RPC: ação do Coord. de Acessibilidade (fila/pânico de energia/urna) — Fase 4.
 -- Sem RPC dedicada até agora (SIME_acessibilidade.html só gravava em
 -- localStorage); parâmetros opcionais (NULL = não mexe) porque a UI sempre
@@ -582,6 +638,8 @@ CREATE OR REPLACE FUNCTION sime_acao_mesa(
   p_panico_urna     BOOLEAN DEFAULT NULL,
   p_panico_energia_resolvido BOOLEAN DEFAULT NULL,
   p_panico_urna_resolvido    BOOLEAN DEFAULT NULL,
+  p_panico_sos      BOOLEAN DEFAULT NULL,
+  p_panico_sos_resolvido     BOOLEAN DEFAULT NULL,
   p_urna_entregue    BOOLEAN DEFAULT NULL,
   p_urna_recolhida   BOOLEAN DEFAULT NULL,
   p_urna_cartorio    BOOLEAN DEFAULT NULL,
@@ -601,6 +659,7 @@ BEGIN
     eleicao_id, secao_id, mesa_pres, mesa_m1, mesa_m2, mesa_sec,
     zeresima, votacao, encerrada, bu_impresso, material_recolhido, fila,
     panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido,
+    panico_sos, panico_sos_resolvido,
     urna_entregue, urna_entregue_ts, urna_recolhida, urna_recolhida_ts,
     urna_cartorio, urna_cartorio_ts, urna_chegou, urna_chegou_ts,
     urna_posicionada, urna_posicionada_ts, urna_instalada, urna_instalada_ts,
@@ -613,6 +672,7 @@ BEGIN
     COALESCE(p_material_recolhido,false), COALESCE(p_fila,0),
     COALESCE(p_panico_energia,false), COALESCE(p_panico_urna,false),
     COALESCE(p_panico_energia_resolvido,false), COALESCE(p_panico_urna_resolvido,false),
+    COALESCE(p_panico_sos,false), COALESCE(p_panico_sos_resolvido,false),
     COALESCE(p_urna_entregue,false),    CASE WHEN p_urna_entregue    THEN v_now END,
     COALESCE(p_urna_recolhida,false),   CASE WHEN p_urna_recolhida   THEN v_now END,
     COALESCE(p_urna_cartorio,false),    CASE WHEN p_urna_cartorio    THEN v_now END,
@@ -637,6 +697,8 @@ BEGIN
     panico_urna    = COALESCE(p_panico_urna, sime_mesa_estado.panico_urna),
     panico_energia_resolvido = COALESCE(p_panico_energia_resolvido, sime_mesa_estado.panico_energia_resolvido),
     panico_urna_resolvido    = COALESCE(p_panico_urna_resolvido, sime_mesa_estado.panico_urna_resolvido),
+    panico_sos = COALESCE(p_panico_sos, sime_mesa_estado.panico_sos),
+    panico_sos_resolvido = COALESCE(p_panico_sos_resolvido, sime_mesa_estado.panico_sos_resolvido),
     urna_entregue    = COALESCE(p_urna_entregue, sime_mesa_estado.urna_entregue),
     urna_entregue_ts = CASE WHEN p_urna_entregue AND sime_mesa_estado.urna_entregue_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_entregue_ts END,
     urna_recolhida    = COALESCE(p_urna_recolhida, sime_mesa_estado.urna_recolhida),

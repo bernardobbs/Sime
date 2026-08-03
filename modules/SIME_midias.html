@@ -229,6 +229,17 @@ window.simeCampoMidia = {
     });
     if (error) throw error;
   },
+  // Transmissão digital (JE-Connect) — RPC separada de sime_acao_midia, não
+  // mexe na fila de coleta física.
+  async syncTransmissao(dados) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_midia_transmissao_upsert', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_transmissao_status: dados.status,
+    });
+    if (error) throw error;
+  },
   // sime_logs (Supabase) é a fonte real, lida por SIME_relatorios.html —
   // antes o log deste módulo só ia pro sime_logs_v1 local, e nenhuma ação do
   // coletor de mídias (nem o WhatsApp disparado) aparecia na auditoria.
@@ -290,7 +301,9 @@ function updateSyncBadge(pending) {
 // e quem chama syncAction() já trata isso enfileirando de novo.
 async function syncAction(acao, dados) {
   applyLocalAction(acao, dados);
-  if (window.simeCampoMidia) await window.simeCampoMidia.sync(dados);
+  if (!window.simeCampoMidia) return;
+  if (acao === 'midia_transmissao') await window.simeCampoMidia.syncTransmissao(dados);
+  else await window.simeCampoMidia.sync(dados);
 }
 
 // ══════════════════════════════════════
@@ -412,6 +425,7 @@ function log(acao, modulo, secao, payload) {
 }
 
 function applyLocalAction(acao, dados) {
+  if (acao === 'midia_transmissao') { saveTransmissaoLocal(dados.n, dados.status); return; }
   const { n, status, tipo, obs, resp } = dados;
   saveMidiaLocal(n, { status, tipo_coleta: tipo, observacao: obs, responsavel: resp });
 }
@@ -462,7 +476,6 @@ function render() {
 
   if (curTab === 'trans') {
     renderTransmissao(co, en, tot, recolhidas);
-    list.innerHTML = '';
     return;
   }
 
@@ -533,10 +546,17 @@ function render() {
   }
 }
 
+// Transmissão DIGITAL (JE-Connect) — distinta da entrega FÍSICA da mídia
+// acima (status='entregue_transmissao'). É o técnico responsável quem marca
+// se a transmissão da seção deu certo ou falhou; sem isso, uma falha só
+// aparecia por mensagem avulsa no grupo de WhatsApp (risco real de 2024).
+const TX_LABEL = { pendente:'Pendente', em_andamento:'Em andamento', transmitido:'Transmitido', falhou:'Falhou' };
+const TX_CLS   = { pendente:'ag', em_andamento:'pr', transmitido:'en', falhou:'err' };
+
 function renderTransmissao(co, en, tot, recolh) {
   const list = document.getElementById('main-list');
+  const midias = loadMidias();
   const prontas = co;
-  const pct = Math.round(prontas/tot*100);
   list.innerHTML = `
     <div class="transmissao-panel">
       <div class="tp-title">📡 Entrega na Transmissão</div>
@@ -548,7 +568,48 @@ function renderTransmissao(co, en, tot, recolh) {
       </div>
       ${prontas > 0 ? `<button class="btn-transmissao ready" onclick="confirmarEntregaTransmissao()">✅ Confirmar entrega de ${prontas} mídias na transmissão</button>` :
         `<button class="btn-transmissao" disabled>🔒 Nenhuma mídia coletada ainda</button>`}
-    </div>`;
+    </div>
+    <div class="tp-title" style="margin-top:18px">🆘 Status da transmissão digital (JE-Connect)</div>
+    <div id="tx-list"></div>`;
+
+  const txList = document.getElementById('tx-list');
+  SECOES.forEach(sec => {
+    const m = midias[sec.n] || {};
+    const st = m.transmissao_status || 'pendente';
+    const card = document.createElement('div');
+    card.className = 'section-card status-' + TX_CLS[st];
+    card.innerHTML = `
+      <div class="sc-icon ${TX_CLS[st]}">${st==='transmitido'?'✅':st==='falhou'?'❌':'📡'}</div>
+      <div class="sc-info">
+        <div class="sc-num">Seção ${parseInt(sec.n)}</div>
+        <div class="sc-loc">${sec.loc} · ${sec.city}</div>
+        <div class="sc-status ${TX_CLS[st]}">${TX_LABEL[st]}${m.transmissao_ts ? ' • ' + fmtTs(m.transmissao_ts, '--:--') : ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="sc-btn btn-done" onclick="marcarTransmissao('${sec.n}','transmitido')">✅ Transmitido</button>
+        <button class="sc-btn" onclick="marcarTransmissao('${sec.n}','falhou')">❌ Falhou</button>
+      </div>`;
+    txList.appendChild(card);
+  });
+}
+
+function saveTransmissaoLocal(n, status) {
+  const d = loadMidias();
+  d[n] = { ...getMidia(n), transmissao_status: status, transmissao_ts: Date.now() };
+  saveMidias(d);
+  log('midia_transmissao_'+status, 'midias', n, { status });
+}
+
+async function marcarTransmissao(n, status) {
+  const dados = { n, status };
+  try {
+    await syncAction('midia_transmissao', dados);
+    showToast(status==='transmitido' ? '📡 Seção ' + parseInt(n) + ' transmitida' : '⚠ Seção ' + parseInt(n) + ' — falha registrada');
+  } catch(e) {
+    await window.simeEnqueue('midia_transmissao', dados);
+    showToast('🟡 Salvo — sincronizará em breve');
+  }
+  render();
 }
 
 // ══════════════════════════════════════

@@ -215,8 +215,8 @@ export function mapMesaEstadoRow(row) {
     bu: !!row.bu_impresso, mat: !!row.material_recolhido,
     urna: !!row.urna_recolhida, urna_cartorio: !!row.urna_cartorio,
     fila: row.fila ?? 0, obs: row.observacao || '',
-    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
-    panico_resolved: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna, sos: !!row.panico_sos },
+    panico_resolved: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido, sos: !!row.panico_sos_resolvido },
     origem: row.updated_by_origem || '',
     ts: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
@@ -279,6 +279,10 @@ export function mapMidiaRow(row) {
     entregue_ts: row.entregue_ts ? new Date(row.entregue_ts).getTime() : null,
     observacao: row.observacao || '',
     updated_at: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+    tecnico_responsavel_id: row.tecnico_responsavel_id || null,
+    transmissao_status: row.transmissao_status || 'pendente',
+    transmissao_ts: row.transmissao_ts ? new Date(row.transmissao_ts).getTime() : null,
+    transmissao_obs: row.transmissao_obs || '',
   };
 }
 

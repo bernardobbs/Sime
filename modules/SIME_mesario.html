@@ -381,6 +381,15 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <span class="rbadge" id="badge-urnaprob"></span>
   </button>
 
+  <button class="rbtn c-red wide" id="btn-sos" onclick="togglePanico('sos')">
+    <span class="ricon" id="icon-sos">🆘</span>
+    <div>
+      <div class="rlabel" id="lbl-sos">SOS</div>
+      <div class="rsub" id="sub-sos">outro problema (fiscais, eleitores, fila) — toque para acionar</div>
+    </div>
+    <span class="rbadge" id="badge-sos"></span>
+  </button>
+
 
   <!-- MÍDIA — sempre visível, muda de estado.
        Ficava FORA do .remote, como filho direto do body. Como o body é flex,
@@ -482,7 +491,7 @@ async function lerPanicoAtual() {
   try {
     let q = campoClient
       .from('sime_mesa_estado')
-      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido')
+      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido, panico_sos, panico_sos_resolvido')
       .eq('secao_id', secaoId);
     if (eleicaoId) q = q.eq('eleicao_id', eleicaoId);
     const { data, error } = await q.maybeSingle();
@@ -560,8 +569,8 @@ document.getElementById('login-offline').addEventListener('click', () => {
 const S = {
   mesa: { pres:0, m1:0, m2:0, sec:0 }, // 0=ausente 1=chegou 2=problema
   zero:false, vot:false, enc:false, bu:false, mat:false, urna:false, fila:null,
-  panico: { energia:false, urnaprob:false },
-  panico_resolved: { energia:false, urnaprob:false },
+  panico: { energia:false, urnaprob:false, sos:false },
+  panico_resolved: { energia:false, urnaprob:false, sos:false },
 };
 
 const MESA_CFG = {
@@ -755,7 +764,7 @@ function togglePanico(id) {
     S.panico[id] = true;
     S.panico_resolved[id] = false;
     applyPanico(id, 'active');
-    const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!'};
+    const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!', sos:'🆘 SOS acionado!'};
     showToast(labels[id]);
     vib([100,50,100,50,100]);
   } else {
@@ -763,7 +772,7 @@ function togglePanico(id) {
     S.panico[id] = false;
     S.panico_resolved[id] = true;
     applyPanico(id, 'resolved');
-    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓'};
+    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
     showToast(labels[id]);
     vib([60,30,60]);
   }
@@ -802,8 +811,8 @@ function applyPanico(id, state) {
 // escreve, então não há terceiro para divergir dele.
 window.aplicarPanicoRemoto = function(row) {
   const remoto = {
-    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
-    resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna, sos: !!row.panico_sos },
+    resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido, sos: !!row.panico_sos_resolvido },
   };
 
   let mudou = false;
@@ -867,6 +876,8 @@ function buildMesaPayload({ incluirPanico = false } = {}) {
     p.p_panico_urna = S.panico.urnaprob;
     p.p_panico_energia_resolvido = S.panico_resolved.energia;
     p.p_panico_urna_resolvido = S.panico_resolved.urnaprob;
+    p.p_panico_sos = S.panico.sos;
+    p.p_panico_sos_resolvido = S.panico_resolved.sos;
   }
   return p;
 }

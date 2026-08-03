@@ -273,7 +273,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <table class="data-table">
       <thead><tr>
         <th>Seção</th><th>Local</th><th>Cidade</th>
-        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th></th>
+        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th>Transmissão</th><th></th>
       </tr></thead>
       <tbody id="sec-tbody"></tbody>
     </table>
@@ -341,6 +341,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <button class="btn btn-out" onclick="renderMidias()">↺ Atualizar</button>
   </div>
   <div class="grid4" style="margin-bottom:16px;" id="midias-stats"></div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">📡 Atribuir transmissão</div>
+    <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;">Matriz nominal técnico↔seção — defina antes do dia D quem transmite cada seção via JE-Connect.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <select id="tx-mun" onchange="renderAtribuicaoTransmissao()"><option value="">Todos os municípios</option></select>
+      <select id="tx-tecnico"><option value="">— selecionar técnico —</option></select>
+      <button class="btn btn-dark btn-sm" onclick="atribuirTransmissao()">Atribuir às seções selecionadas</button>
+    </div>
+    <div id="tx-secoes" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
+    <div id="tx-por-tecnico" style="margin-top:14px;"></div>
+  </div>
   <div class="card" style="margin-bottom:16px;">
     <div class="sec-title">Coletores de mídia</div>
     <div id="midias-coletores"></div>
@@ -641,6 +652,35 @@ const SECTIONS_FALLBACK = [
 ];
 var SECTIONS = SECTIONS_FALLBACK;
 
+// Declarados aqui em cima (não perto de renderMidias()/filterTable(), onde
+// ficavam antes) porque essas duas funções podem rodar cedo no carregamento
+// da página — um `const` mais abaixo no arquivo cai em TDZ (ReferenceError
+// "before initialization") se for referenciado antes da própria linha
+// executar, mesmo a função em si só sendo declarada (não chamada) depois.
+const MIDIA_STATUS_LABEL = {
+  aguardando_encerramento:'⏳ Aguardando',
+  pronta_para_coleta:'📦 Pronta',
+  em_coleta_rota:'🚗 Em coleta',
+  coleta_dedicada:'⚡ Dedicada',
+  coletada:'✅ Coletada',
+  entregue_transmissao:'📡 Entregue',
+};
+const MIDIA_STATUS_COLOR = {
+  aguardando_encerramento:'var(--text3)',
+  pronta_para_coleta:'var(--yellow)',
+  em_coleta_rota:'var(--blue)',
+  coleta_dedicada:'var(--purple,#6040a0)',
+  coletada:'var(--green)',
+  entregue_transmissao:'#15803d',
+};
+// Transmissão DIGITAL (JE-Connect) — distinta da entrega física acima.
+const TX_STATUS_BADGE = {
+  pendente:     {label:'Pendente',     cls:'b-off'},
+  em_andamento: {label:'Em andamento', cls:'b-warn'},
+  transmitido:  {label:'Transmitido',  cls:'b-ok'},
+  falhou:       {label:'Falhou',       cls:'b-err'},
+};
+
 // ── MEMBROS DA EQUIPE ──────────────────────────────────────
 const TEAM_KEY = 'sime_equipe_v1';
 const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
@@ -807,16 +847,17 @@ function estadoSecao(n, st){
   st = st || loadMesa()[n];
   const energia = !!(st?.panico?.energia  && !st?.panico_resolved?.energia);
   const urna    = !!(st?.panico?.urnaprob && !st?.panico_resolved?.urnaprob);
-  const panico = energia || urna;
+  const sos     = !!(st?.panico?.sos      && !st?.panico_resolved?.sos);
+  const panico = energia || urna || sos;
   const origem = panico && st?.origem ? [st.origem === 'coord_acessibilidade' ? 'acessibilidade' : 'mesário'] : [];
-  return { energia, urna, panico, fila: st?.fila>0?st.fila:0, origem };
+  return { energia, urna, sos, panico, fila: st?.fila>0?st.fila:0, origem };
 }
 
 // fmtNow() vem de sime_ui_utils.js
 
 function getStatus(st,uni){
   if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
-  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)));
+  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)||(st.panico?.sos&&!st.panico_resolved?.sos)));
   if(panic)           return {label:'⚠ Problema',cls:'b-err'};
   if(!st)             return {label:'⚠ Problema',cls:'b-err'};
   if(st.urna_cartorio)return {label:'📦 Cartório',cls:'b-ok'};
@@ -850,6 +891,7 @@ function renderDash(){
       const tag = uni.origem.includes('acessibilidade') && !uni.origem.includes('mesário') ? ' (acessib.)' : '';
       if(uni.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia${tag}`,ts:'—'});
       if(uni.urna)    evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna${tag}`,ts:'—'});
+      if(uni.sos)     evts.push({tipo:'ev-prob',icon:'🆘',msg:`Seção ${parseInt(s.n)} — SOS${tag}`,ts:'—'});
     }
     if(st?.enc&&!st?.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
     if(st?.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
@@ -946,7 +988,10 @@ function filterTable(){
   });
 
   const tbody = document.getElementById('sec-tbody');
-  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>`
+  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>{
+    const tx = (window.MIDIAS_MAP?.[s.n]?.transmissao_status) || 'pendente';
+    const txB = TX_STATUS_BADGE[tx] || TX_STATUS_BADGE.pendente;
+    return `
     <tr class="${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
       <td><strong>${parseInt(s.n)}</strong></td>
       <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.loc}</td>
@@ -956,8 +1001,10 @@ function filterTable(){
       <td>${fila!==null?`<span style="background:var(--yellow-bg);color:var(--yellow);padding:1px 7px;border-radius:99px;font-weight:700">${fila}</span>`:`<span style="color:var(--text3)">—</span>`}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>${st?.urna_cartorio?'📦':st?.urna?'🚗':'<span style="color:var(--text3)">—</span>'}</td>
+      <td><span class="badge ${txB.cls}">${txB.label}</span></td>
       <td><button class="btn btn-out btn-xs" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 // Aba PROBLEMAS: removida daqui — virou SIME_problemas.html, com dado real
@@ -1122,6 +1169,7 @@ function openNewEvent(){
           <option value="fila">Fila de votação</option>
           <option value="panico_energia">⚡ Falta de energia</option>
           <option value="panico_urna">🖥️ Problema na urna</option>
+          <option value="panico_sos">🆘 SOS (outro problema)</option>
           <option value="obs">Observação livre</option>
         </select>
       </div>
@@ -1168,6 +1216,7 @@ async function salvarEvento(){
   const payload = { p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_origem: 'admin_telefone' };
   if(tipo==='panico_energia'){ payload.p_panico_energia = true; payload.p_panico_energia_resolvido = false; }
   else if(tipo==='panico_urna'){ payload.p_panico_urna = true; payload.p_panico_urna_resolvido = false; }
+  else if(tipo==='panico_sos'){ payload.p_panico_sos = true; payload.p_panico_sos_resolvido = false; }
   else if(tipo==='fila'){ payload.p_fila = +document.getElementById('ev-val').value; }
   else if(tipo==='status'){
     const val=document.getElementById('ev-val').value;
@@ -1843,25 +1892,12 @@ setInterval(()=>{ renderDash(); },10000);
 // ══════════════════════════════════════════════
 // MÍDIAS
 // ══════════════════════════════════════════════
-const MIDIA_STATUS_LABEL = {
-  aguardando_encerramento:'⏳ Aguardando',
-  pronta_para_coleta:'📦 Pronta',
-  em_coleta_rota:'🚗 Em coleta',
-  coleta_dedicada:'⚡ Dedicada',
-  coletada:'✅ Coletada',
-  entregue_transmissao:'📡 Entregue',
-};
-const MIDIA_STATUS_COLOR = {
-  aguardando_encerramento:'var(--text3)',
-  pronta_para_coleta:'var(--yellow)',
-  em_coleta_rota:'var(--blue)',
-  coleta_dedicada:'var(--purple,#6040a0)',
-  coletada:'var(--green)',
-  entregue_transmissao:'#15803d',
-};
+// MIDIA_STATUS_LABEL/MIDIA_STATUS_COLOR/TX_STATUS_BADGE: declarados perto do
+// topo do arquivo (ver comentário lá) — renderTable() já roda antes daqui.
 
 function renderMidias(){
   renderColetores();
+  renderAtribuicaoTransmissao();
   // window.MIDIAS_MAP vem de sime_midias (Supabase) via iniciarMesaEstadoReal()
   // no <script type="module"> — antes lia sime_midias_v1 do localStorage, que
   // nunca via o que o coletor de campo grava no próprio aparelho dele.
@@ -1936,6 +1972,81 @@ async function coletarMidia(n){
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
   // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o
   // UPDATE via Realtime e re-renderiza sozinho.
+}
+
+// Matriz nominal técnico↔seção (transmissão de resultados) — resolve a
+// ambiguidade de 2024: quem é responsável por transmitir cada seção, definida
+// e publicada antes do dia D, não descoberta reativamente por mensagem avulsa.
+function renderAtribuicaoTransmissao(){
+  const munSel = document.getElementById('tx-mun');
+  const tecSel = document.getElementById('tx-tecnico');
+  if(!munSel || !tecSel) return;
+
+  if(!munSel.dataset.filled){
+    munSel.innerHTML = '<option value="">Todos os municípios</option>' +
+      (window.cities||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+    munSel.dataset.filled = '1';
+  }
+  const tecnicos = (window.ATORES_REAIS||[]).filter(a=>a.funcao==='tecnico' && a.ativo);
+  tecSel.innerHTML = '<option value="">— selecionar técnico —</option>' +
+    tecnicos.map(t=>`<option value="${t.id}">${t.nome}</option>`).join('');
+
+  const mun = munSel.value;
+  const secs = (window.SECTIONS||[]).filter(s=>!mun || s.city===mun);
+  const midias = window.MIDIAS_MAP||{};
+  const box = document.getElementById('tx-secoes');
+  if(!secs.length){
+    box.innerHTML = '<div style="color:var(--text3);font-size:.78rem;padding:8px">Nenhuma seção neste filtro.</div>';
+  } else {
+    box.innerHTML = secs.map(s=>{
+      const m = midias[s.n]||{};
+      const tecAtual = (window.ATORES_REAIS||[]).find(a=>a.id===m.tecnico_responsavel_id);
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:.8rem;border-bottom:1px solid var(--border)">
+        <input type="checkbox" class="tx-check" value="${s.n}">
+        <span style="flex:1">Seção ${parseInt(s.n)} — ${s.loc}</span>
+        <span style="color:var(--text3)">${tecAtual?tecAtual.nome:'sem técnico'}</span>
+      </label>`;
+    }).join('');
+  }
+
+  // Lista "quem faz o quê" — pra consulta/impressão no dia D.
+  const porTecnico = {};
+  Object.entries(midias).forEach(([n,m])=>{
+    if(!m.tecnico_responsavel_id) return;
+    (porTecnico[m.tecnico_responsavel_id] ||= []).push(n);
+  });
+  const resumo = Object.entries(porTecnico);
+  const resumoEl = document.getElementById('tx-por-tecnico');
+  if(!resumo.length){
+    resumoEl.innerHTML = '';
+  } else {
+    resumoEl.innerHTML = '<div style="font-weight:700;font-size:.8rem;margin-bottom:6px;">Quem transmite o quê</div>' +
+      resumo.map(([tecId,ns])=>{
+        const t = (window.ATORES_REAIS||[]).find(a=>a.id===tecId);
+        const nums = ns.map(n=>parseInt(n)).sort((a,b)=>a-b).join(', ');
+        return `<div style="font-size:.78rem;padding:3px 0"><strong>${t?t.nome:'(técnico removido)'}</strong> — seções ${nums}</div>`;
+      }).join('');
+  }
+}
+
+async function atribuirTransmissao(){
+  const tecId = document.getElementById('tx-tecnico').value;
+  if(!tecId){ showToast('⚠ Selecione o técnico'); return; }
+  const marcadas = [...document.querySelectorAll('.tx-check:checked')].map(c=>c.value);
+  if(!marcadas.length){ showToast('⚠ Selecione ao menos uma seção'); return; }
+  if(!window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+
+  let ok=0, falhas=0;
+  await Promise.all(marcadas.map(async n=>{
+    const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+    if(!secaoId) { falhas++; return; }
+    const { error } = await supabase.rpc('sime_midia_transmissao_upsert', {
+      p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_tecnico_id: tecId,
+    });
+    if(error) falhas++; else ok++;
+  }));
+  showToast(falhas ? `⚠ ${ok} atribuídas, ${falhas} falharam` : `✓ ${ok} seções atribuídas`);
+  // Sem renderMidias() manual: subscribeMidias recebe o UPDATE via Realtime.
 }
 
 // ══════════════════════════════════════════════

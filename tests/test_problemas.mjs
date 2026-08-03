@@ -77,6 +77,7 @@ function baseMock({ tipo = 'energia', responsavel = null, nivel = 0, externos = 
     sime_contatos_externos: externos ? [
       { tipo:'energia', nome:'Equatorial — plantão Campo Maior', municipio:'Campo Maior', telefone:'8632221111', whatsapp:true, ativo:true },
       { tipo:'energia', nome:'Equatorial — geral da zona', municipio:null, telefone:'0800111222', whatsapp:false, ativo:true },
+      { tipo:'pm', nome:'PM — 3º Pelotão Campo Maior', municipio:'Campo Maior', telefone:'8632223333', whatsapp:false, ativo:true },
     ] : [],
     sime_ocorrencias: [
       { id:'oc-1', secao_id:SEC_63, tipo, status: responsavel ? 'assumida' : 'aberta',
@@ -136,6 +137,25 @@ async function abrir(ctx, mock) {
   check('urna: link do auxiliar é WhatsApp sem 55 duplicado',
     href.includes('wa.me/5586933332222'), href);
   check('urna: auxiliar foi achado pelo LOCAL (está cadastrado na seção 99)', !!href);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2b. SOS (genérico) → mesa primeiro, PM como opção secundária ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'sos' }));
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+
+  const papeis = await p.locator('.ct-papel').allTextContents();
+  check('sos: mesa é o primeiro contato (toque não carrega motivo)',
+    papeis[0] === 'Presidente', papeis.join(' | '));
+  check('sos: Polícia Militar aparece como opção secundária',
+    papeis.includes('Polícia Militar'), papeis.join(' | '));
+
+  const href = await p.locator('.ct-papel:text("Polícia Militar")').locator('xpath=ancestor::a').getAttribute('href');
+  check('sos: contato da PM é do município da seção', href?.includes('8632223333'), href);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

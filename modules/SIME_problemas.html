@@ -210,6 +210,7 @@ const TIPOS = {
   votacao_atrasada: { ico:'⏱',  nome:'Votação não iniciada' },
   instalacao:       { ico:'🔧',  nome:'Problema na instalação' },
   acessibilidade:   { ico:'♿',  nome:'Acessibilidade' },
+  sos:              { ico:'🆘',  nome:'SOS' },
   outro:            { ico:'⚠️',  nome:'Outro' },
 };
 
@@ -230,6 +231,10 @@ const CONTATO_POR_TIPO = {
   votacao_atrasada: ['mesario', 'auxiliar'],
   instalacao:       ['auxiliar', 'mesario'],
   acessibilidade:   ['acessibilidade', 'mesario'],
+  // Mesa primeiro: o toque de SOS não carrega motivo, então quem recebe
+  // precisa ligar pra seção pra entender o que é. PM fica como opção
+  // secundária, já visível se o cartório precisar escalar direto.
+  sos:              ['mesario', 'pm'],
   outro:            ['mesario', 'auxiliar', 'acessibilidade', 'energia'],
 };
 
@@ -277,6 +282,13 @@ function contatosPara(oc){
       const c = EXTERNOS.find(x => x.tipo==='energia' && x.municipio === sec?.municipio)
              || EXTERNOS.find(x => x.tipo==='energia' && !x.municipio);
       if(c) out.push({ papel:'Equatorial', nome:c.nome, telefone:c.telefone, ico:'⚡', whatsapp:c.whatsapp });
+    }
+    else if(chave === 'pm'){
+      // Mesmo padrão de energia: contato por município, com fallback pra
+      // zona inteira quando não houver um específico.
+      const c = EXTERNOS.find(x => x.tipo==='pm' && x.municipio === sec?.municipio)
+             || EXTERNOS.find(x => x.tipo==='pm' && !x.municipio);
+      if(c) out.push({ papel:'Polícia Militar', nome:c.nome, telefone:c.telefone, ico:'🚔', whatsapp:c.whatsapp });
     }
   }
   return out;

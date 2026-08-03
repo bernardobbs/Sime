@@ -121,6 +121,13 @@ check('insert enviado ao supabase', opsInsert.length === 1 && opsInsert[0].p.num
 const linhas2 = await p.locator('.modal-body table tbody tr').count();
 check('lista recarrega com 3 seções', linhas2 === 3, 'n=' + linhas2);
 
+// coluna nova "Transmissão" na tabela de Seções (por trás do modal do
+// gerenciador — não precisa fechá-lo, a tabela principal continua no DOM)
+const temColuna = await p.locator('table:has(#sec-tbody) thead th', { hasText: 'Transmissão' }).count();
+check('tabela de Seções ganhou a coluna Transmissão', temColuna === 1, 'n=' + temColuna);
+const badgeTx = await p.locator('#sec-tbody tr:first-child span.badge').last().textContent();
+check('linha da seção mostra status de transmissão (default Pendente)', badgeTx === 'Pendente', badgeTx);
+
 // exclui a primeira
 p.on('dialog', d => d.accept());
 await p.click('.modal-body table tbody tr:first-child button[onclick^="excluirSecao"]');

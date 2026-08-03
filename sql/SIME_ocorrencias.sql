@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS sime_ocorrencias (
   -- mesário; acessibilidade → coordenador do local.
   tipo          TEXT NOT NULL CHECK (tipo IN (
                   'energia','urna','mesa_incompleta','votacao_atrasada',
-                  'instalacao','acessibilidade','outro')),
+                  'instalacao','acessibilidade','sos','outro')),
   origem        TEXT NOT NULL DEFAULT 'admin',
   descricao     TEXT,
 
@@ -81,6 +81,13 @@ CREATE INDEX IF NOT EXISTS idx_ocor_secao ON sime_ocorrencias(secao_id);
 -- o ON CONFLICT do gatilho funcionar sem bloquear o histórico de resolvidas.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ocor_aberta_unica
   ON sime_ocorrencias(secao_id, tipo) WHERE status IN ('aberta','assumida');
+
+-- Migração idempotente p/ bancos existentes: acrescenta 'sos' ao CHECK de tipo
+-- (o CREATE TABLE acima só roda em instalação nova).
+ALTER TABLE sime_ocorrencias DROP CONSTRAINT IF EXISTS sime_ocorrencias_tipo_check;
+ALTER TABLE sime_ocorrencias ADD CONSTRAINT sime_ocorrencias_tipo_check CHECK (tipo IN (
+  'energia','urna','mesa_incompleta','votacao_atrasada',
+  'instalacao','acessibilidade','sos','outro'));
 
 -- ------------------------------------------------------------
 -- 3. HISTÓRICO (append-only, mesmo espírito de sime_logs)
@@ -131,6 +138,17 @@ BEGIN
     UPDATE sime_ocorrencias SET status='resolvida', resolvida_em=v_now,
            resolucao=COALESCE(resolucao,'Resolvido no aparelho do campo')
      WHERE secao_id=NEW.secao_id AND tipo='urna' AND status IN ('aberta','assumida');
+  END IF;
+
+  -- sos (genérico: conflito de fiscais, conflito entre eleitores, fila etc.)
+  IF COALESCE(NEW.panico_sos,false) AND NOT COALESCE(NEW.panico_sos_resolvido,false) THEN
+    INSERT INTO sime_ocorrencias(zona_id, eleicao_id, secao_id, tipo, origem, aberta_em)
+    VALUES (v_zona, NEW.eleicao_id, NEW.secao_id, 'sos', COALESCE(NEW.updated_by_origem,'campo'), v_now)
+    ON CONFLICT (secao_id, tipo) WHERE status IN ('aberta','assumida') DO NOTHING;
+  ELSIF COALESCE(NEW.panico_sos_resolvido,false) THEN
+    UPDATE sime_ocorrencias SET status='resolvida', resolvida_em=v_now,
+           resolucao=COALESCE(resolucao,'Resolvido no aparelho do campo')
+     WHERE secao_id=NEW.secao_id AND tipo='sos' AND status IN ('aberta','assumida');
   END IF;
 
   -- instalação (véspera)
@@ -237,6 +255,9 @@ BEGIN
     ELSIF v_row.tipo = 'instalacao' THEN
       PERFORM sime_acao_mesa(p_secao_id => v_row.secao_id, p_eleicao_id => v_row.eleicao_id,
         p_problema_instalacao => false, p_problema_instalacao_resolvido => true, p_origem => 'cartorio');
+    ELSIF v_row.tipo = 'sos' THEN
+      PERFORM sime_acao_mesa(p_secao_id => v_row.secao_id, p_eleicao_id => v_row.eleicao_id,
+        p_panico_sos => false, p_panico_sos_resolvido => true, p_origem => 'cartorio');
     END IF;
   END IF;
 
