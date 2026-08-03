@@ -194,6 +194,7 @@ sime_logs           -- auditoria append-only
 sime_ocorrencias    -- problemas como registro (dono, relógio, escalonamento)
 sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
 sime_contatos_externos  -- Equatorial e afins, por zona/município
+sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
 ```
 
 ### Painel de Problemas (`SIME_problemas.html`)
@@ -315,6 +316,19 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 - `sime_updater` — persiste eventos de seção via `/api/hermes-update` (só escrita)
 - `sime_mesarios` — consulta mesários e registra confirmação de permanência na
   função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
+
+### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
+
+O SIME popula `sime_campanhas_confirmacao` (telefone, `ator_id`, `zona_id`,
+`mensagem_enviada`, `status='pendente'`); o Hermes é quem lê essa fila e envia,
+respeitando 5 msgs/min. A zona vem do usuário logado (`zonaDoUsuario()`),
+nunca de campo na tela. Tem um modelo pronto de alerta anti-golpe e um modo de
+mensagem livre; filtro por função decide quem recebe (default: todos os
+ativos com telefone).
+
+**O envio de fato depende do Hermes estar com `DISPATCH_ATIVO=true`** — isso é
+decisão de quem opera o Raspberry Pi, fora deste repo. Popular a fila não
+garante que a mensagem saia.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 

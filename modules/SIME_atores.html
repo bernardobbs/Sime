@@ -102,6 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="tab"        id="tab-guerra-btn" onclick="goTab('guerra',this)">⚡ Modo Guerra</div>
   <div class="tab"        id="tab-import-btn" onclick="goTab('import',this)">📥 Importar CSV</div>
   <div class="tab"        id="tab-externos-btn" onclick="goTab('externos',this)">☎️ Contatos externos</div>
+  <div class="tab"        id="tab-disparo-btn" onclick="goTab('disparo',this)">📢 Disparo em massa</div>
 </div>
 
 <div class="content" id="content"></div>
@@ -236,6 +237,7 @@ function render(){
   if(curTab==='externos'){ renderExternos(); return; }
   if(curTab==='import'){ renderImport(); return; }
   if(curTab==='guerra'){ renderGuerra(atores); return; }
+  if(curTab==='disparo'){ renderDisparo(atores); return; }
   renderLista(atores);
 }
 
@@ -551,6 +553,102 @@ async function zonaDoUsuario(){
   const { data } = await sb.from('sime_usuarios').select('zona_id').eq('auth_user_id', user?.id).maybeSingle();
   _zonaCache = data?.zona_id || null;
   return _zonaCache;
+}
+
+// ══════════════════════════════════════
+// DISPARO EM MASSA — enfileira em sime_campanhas_confirmacao
+// ══════════════════════════════════════
+// Quem envia de fato é o Hermes Agent (bot WhatsApp, roda fora deste repo,
+// num Raspberry Pi): ele já lê essa fila e envia respeitando 5 msgs/min —
+// mas só se DISPATCH_ATIVO=true no .env dele. Aqui só populamos a fila,
+// nunca garantimos o envio.
+const TEMPLATE_GOLPE = `🚨 *AVISO IMPORTANTE — SIME* 🚨
+
+Golpistas têm se passado por integrantes do cartório eleitoral pedindo dados pessoais, PIX ou "confirmação de cadastro" por WhatsApp.
+
+O cartório NUNCA pede dinheiro, senha ou dado bancário por aqui. Em caso de dúvida, ligue direto pro cartório pelo número oficial.
+
+Por favor, repasse este aviso.`;
+
+let dispTipo = 'golpe';
+let dispFuncao = '';
+
+function dispMensagemPadrao(){ return dispTipo==='golpe' ? TEMPLATE_GOLPE : ''; }
+
+function atoresParaDisparo(atores){
+  return atores.filter(a => a.ativo && a.telefone && (!dispFuncao || a.funcao===dispFuncao));
+}
+
+function renderDisparo(atores){
+  const c = document.getElementById('content');
+  const semSessao = !window.supabaseAtores;
+  const destinatarios = atoresParaDisparo(atores);
+  const n = destinatarios.length;
+  c.innerHTML = `
+    <div class="import-card">
+      <div class="ic-title">📢 Disparo em massa</div>
+      <div class="ic-sub">Enfileira em <code>sime_campanhas_confirmacao</code> — quem envia de fato é o
+        <b>Hermes Agent</b> (respeitando 5 msgs/min). O envio só sai do papel se o disparo estiver ligado
+        no Hermes; aqui só garantimos que a mensagem entrou na fila.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para disparar mensagens.</div>' : ''}
+      <div class="form-group"><label>Modelo</label>
+        <select id="dp-tipo" onchange="mudarTipoDisparo(this.value)">
+          <option value="golpe" ${dispTipo==='golpe'?'selected':''}>🚨 Alerta anti-golpe</option>
+          <option value="livre" ${dispTipo==='livre'?'selected':''}>✍️ Mensagem livre</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Mensagem</label>
+        <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical">${dispMensagemPadrao()}</textarea>
+      </div>
+      <div class="form-group"><label>Destinatários</label>
+        <select id="dp-funcao" onchange="mudarFuncaoDisparo(this.value)">
+          <option value="">Todos os ativos com WhatsApp cadastrado</option>
+          ${FUNCOES.map(f=>`<option value="${f}" ${dispFuncao===f?'selected':''}>${FUNC_EMOJI[f]||''} ${FUNC_LABEL[f]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ic-sub" id="dp-contagem"><b>${n}</b> pessoa${n!==1?'s':''} vão receber esta mensagem.</div>
+      ${!semSessao ? `<button class="btn btn-dark" id="dp-btn-enviar" onclick="confirmarDisparo()" ${n?'':'disabled'}>📢 Enviar para ${n} pessoa${n!==1?'s':''}</button>` : ''}
+    </div>`;
+}
+
+// Muda só a contagem/botão — não chama render() de novo pra não perder o
+// que a pessoa já digitou na mensagem.
+function mudarFuncaoDisparo(v){
+  dispFuncao = v;
+  const n = atoresParaDisparo(loadAtores()).length;
+  const contagem = document.getElementById('dp-contagem');
+  if(contagem) contagem.innerHTML = `<b>${n}</b> pessoa${n!==1?'s':''} vão receber esta mensagem.`;
+  const btn = document.getElementById('dp-btn-enviar');
+  if(btn){ btn.textContent = `📢 Enviar para ${n} pessoa${n!==1?'s':''}`; btn.disabled = !n; }
+}
+
+// Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela.
+function mudarTipoDisparo(v){ dispTipo = v; render(); }
+
+async function confirmarDisparo(){
+  const sb = window.supabaseAtores;
+  if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
+  const msg = (document.getElementById('dp-msg')?.value||'').trim();
+  if(!msg){ showToast('⚠ Escreva a mensagem'); return; }
+  const destinatarios = atoresParaDisparo(loadAtores());
+  if(!destinatarios.length){ showToast('⚠ Nenhum destinatário nesse filtro'); return; }
+  if(!confirm(`Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`)) return;
+
+  const zonaId = await zonaDoUsuario();
+  if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
+
+  const linhas = destinatarios.map(a => ({
+    ator_id: a.id,
+    telefone_whatsapp: a.telefone,
+    zona_id: zonaId,
+    mensagem_enviada: msg,
+    status: 'pendente',
+  }));
+  const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
+  if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
+
+  await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos' });
+  showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
 }
 
 // MODAL CRUD
