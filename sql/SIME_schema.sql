@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS sime_atores (
   zona_id           UUID REFERENCES sime_zonas(id),
   eleicao_id        UUID REFERENCES sime_eleicoes(id),
   nome_completo     TEXT NOT NULL,
-  telefone_whatsapp VARCHAR(20) NOT NULL,
+  telefone_whatsapp VARCHAR(20), -- pode faltar no cadastro oficial (TRE); nunca bloquear por isso
   secao_id          UUID REFERENCES sime_secoes(id),
   local_id          UUID,
   funcao            sime_ator_funcao NOT NULL,
@@ -383,6 +383,10 @@ CREATE TABLE IF NOT EXISTS sime_atores (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by        UUID REFERENCES sime_usuarios(id)
 );
+
+-- Idempotente para instalações que já criaram sime_atores com telefone_whatsapp NOT NULL:
+-- o cadastro oficial do TRE às vezes não tem telefone algum (pessoal nem comercial).
+ALTER TABLE sime_atores ALTER COLUMN telefone_whatsapp DROP NOT NULL;
 
 -- Idempotente para instalações que já criaram sime_atores antes desta coluna.
 ALTER TABLE sime_atores
