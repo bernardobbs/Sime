@@ -299,10 +299,15 @@ Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 Ainda só em `localStorage`:
 - **Nome da eleição, início da distribuição e intervalo entre saídas** — não
   têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
-- **Cadastro/edição de ator** em `SIME_atores.html` — a *leitura* vem do banco,
-  mas criar e editar ainda grava local.
 - **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
   escrito pelos módulos e lido pelas TVs.
+
+Cadastro/edição de ator em `SIME_atores.html` grava direto em `sime_atores`
+com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravava
+`localStorage`, então uma edição "sumia" ao abrir em outra máquina. Como
+`getAtores()` fica cacheado pela sessão (`sime_dados.js`), o salvar aplica a
+mudança na cópia local (`window.ATORES_REAIS`) em vez de rebuscar — rebuscar
+devolveria a lista antiga do cache.
 
 ### Pânico — propagação de volta ao campo (parcial)
 

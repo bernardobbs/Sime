@@ -123,7 +123,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 // Sem sessão (aberto direto, sem login) nada acontece e o módulo segue no
 // localStorage — o cadastro/edição local continua funcionando como antes.
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getAtores, getSecoes } from './sime_dados.js';
+import { initSimeDados, getAtores, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { SIME_CONFIG } from './sime_config.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
@@ -156,6 +156,10 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   if (!atores) return;
   window.ATORES_REAIS = atores;
   if (window.render) window.render();
+
+  // Pra resolver a eleição ativa da zona na hora de criar um ator novo
+  // (salvarAtor(), script normal, sem acesso a import).
+  window.getEleicaoAtivaDaZona = (zonaId) => getEleicaoAtiva({ fallback: null, zonaId });
 })();
 </script>
 <script>
@@ -679,7 +683,7 @@ function abrirModal(id){
   document.getElementById('overlay').classList.add('open');
 }
 
-function salvarAtor(id){
+async function salvarAtor(id){
   const nome=document.getElementById('m-nome').value.trim();
   const tel=(document.getElementById('m-tel').value||'').replace(/\D/g,'');
   const sec=(document.getElementById('m-sec').value||'').toString().padStart(4,'0');
@@ -687,6 +691,38 @@ function salvarAtor(id){
   const obs=document.getElementById('m-obs').value;
   if(!nome){ showToast('⚠ Nome obrigatório'); return; }
   if(tel.length<10||tel.length>11){ showToast('⚠ Telefone inválido'); return; }
+
+  // Com sessão: grava direto em sime_atores (banco é a fonte real). Sem
+  // sessão: mantém o comportamento antigo (só localStorage).
+  const sb = window.supabaseAtores;
+  if (sb) {
+    const secaoId = window.SECAO_ID_POR_NUMERO?.[sec] || null;
+    try {
+      if (id) {
+        const { error } = await sb.from('sime_atores')
+          .update({ nome_completo: nome, telefone_whatsapp: tel, secao_id: secaoId, funcao: func, observacao: obs })
+          .eq('id', id);
+        if (error) throw error;
+        // getAtores() fica cacheado pela sessão (sime_dados.js) — buscar de
+        // novo devolveria a lista antiga. Aplica a mudança direto na cópia
+        // local, que é o que o render() lê.
+        const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
+        if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],nome,telefone:tel,secao:secaoId?sec:'',funcao:func};
+      } else {
+        const zonaId = await zonaDoUsuario();
+        if (!zonaId) throw new Error('não foi possível resolver sua zona');
+        const eleicao = await window.getEleicaoAtivaDaZona(zonaId);
+        const { data, error } = await sb.from('sime_atores').insert({
+          zona_id: zonaId, eleicao_id: eleicao?.id || null, nome_completo: nome,
+          telefone_whatsapp: tel, secao_id: secaoId, funcao: func, observacao: obs, ativo: true,
+        }).select('id').single();
+        if (error) throw error;
+        window.ATORES_REAIS=[...(window.ATORES_REAIS||[]),{id:data.id,nome,telefone:tel,funcao:func,funcao_mesa:'',secao:secaoId?sec:'',confirmacao:'pendente',ativo:true}];
+      }
+    } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao salvar')); return; }
+    closeModal(); showToast('✓ Ator salvo'); render(); return;
+  }
+
   const atores=loadAtores();
   if(id){
     const idx=atores.findIndex(a=>a.id===id);
@@ -697,8 +733,20 @@ function salvarAtor(id){
   saveAtores(atores); closeModal(); showToast('✓ Ator salvo'); render();
 }
 
-function removerAtor(id){
+async function removerAtor(id){
   if(!confirm('Remover este ator?')) return;
+
+  const sb = window.supabaseAtores;
+  if (sb) {
+    try {
+      const { error } = await sb.from('sime_atores').update({ ativo: false }).eq('id', id);
+      if (error) throw error;
+      const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
+      if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],ativo:false};
+    } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao remover')); return; }
+    closeModal(); showToast('✓ Removido'); render(); return;
+  }
+
   const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
   saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
 }

@@ -364,6 +364,7 @@ ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_acessibilidade';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_motoristas';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coletor_midias';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'preposto';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'junta_eleitoral';
 
 CREATE TABLE IF NOT EXISTS sime_atores (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
