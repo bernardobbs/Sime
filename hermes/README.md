@@ -12,6 +12,7 @@ conexão — tanto para escrever no SIME quanto para buscar notificações a env
 Hermes ──POST──▶ /api/hermes-update        escreve eventos de seção
 Hermes ──POST──▶ /api/hermes-mesarios      lê mesários, grava confirmação
 Hermes ──POST──▶ /api/hermes-notificacoes  busca a fila de notificações
+Hermes ──POST──▶ /api/hermes-campanhas     busca a fila de disparo em massa
 ```
 
 Conexão de saída passa por qualquer internet residencial. Por isso o Hermes
@@ -62,13 +63,14 @@ Os passos são os mesmos do script; muda só como o serviço fica de pé.
    HERMES_SECRET_ZONA_7=<o segredo da zona 7>
    SIME_POLL_INTERVALO=30
    ```
-3. Copiar as quatro skills (`SIME_hermes_skill_*.md`) para
+3. Copiar as cinco skills (`SIME_hermes_skill_*.md`) para
    `%USERPROFILE%\.hermes\skills\sime\`.
 4. Apontar os endpoints:
    ```
    hermes config set sime.endpoint_update       https://sime-cyan.vercel.app/api/hermes-update
    hermes config set sime.endpoint_mesarios     https://sime-cyan.vercel.app/api/hermes-mesarios
    hermes config set sime.endpoint_notificacoes https://sime-cyan.vercel.app/api/hermes-notificacoes
+   hermes config set sime.endpoint_campanhas    https://sime-cyan.vercel.app/api/hermes-campanhas
    hermes config set sime.secret                <o segredo da zona>
    hermes config set sime.poll_intervalo        30
    ```
@@ -90,6 +92,15 @@ curl -sS -X POST https://sime-cyan.vercel.app/api/hermes-notificacoes \
 - `401` → o segredo não bate com o da Vercel
 - Erro de rede → confira o `SIME_VERCEL_URL`
 
+O mesmo vale para a fila de disparo em massa:
+
+```bash
+curl -sS -X POST https://sime-cyan.vercel.app/api/hermes-campanhas \
+  -H "Authorization: Bearer <SEU_SEGREDO>" \
+  -H 'Content-Type: application/json' \
+  -d '{"acao":"pendentes"}'
+```
+
 ## O que esperar no dia da eleição
 
 - **O PC precisa ficar ligado**, com internet e o WhatsApp pareado. Se cair,
@@ -106,5 +117,6 @@ curl -sS -X POST https://sime-cyan.vercel.app/api/hermes-notificacoes \
 |---|---|
 | `SIME_hermes_skill_monitor.md` | Detecta 12 tipos de evento em linguagem natural |
 | `SIME_hermes_skill_updater.md` | Persiste os eventos via `/api/hermes-update` |
-| `SIME_hermes_skill_mesarios.md` | Consulta mesários e grava a confirmação |
-| `SIME_hermes_skill_notificar.md` | Drena a fila e envia os WhatsApps |
+| `SIME_hermes_skill_mesarios.md` | Consulta mesários, autoatendimento ("oi") e grava confirmação |
+| `SIME_hermes_skill_notificar.md` | Drena a fila de notificações (eventos/pânico) e envia os WhatsApps |
+| `SIME_hermes_skill_campanha.md` | Drena a fila de disparo em massa (confirmação, avisos) e envia os WhatsApps |

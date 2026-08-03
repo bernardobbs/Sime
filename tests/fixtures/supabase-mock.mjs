@@ -57,12 +57,18 @@ class QB {
           if (this._filtra([n]).length) Object.assign(n, this._payload);
         }
       }
+      if (this.t === 'sime_campanhas_confirmacao') {
+        for (const c of S.campanhas || []) {
+          if (this._filtra([c]).length) Object.assign(c, this._payload);
+        }
+      }
       return resolve({ error: null });
     }
     // Consultas de lista (não-single), filtradas pelos .eq/.in acumulados.
     if (this.t === 'sime_atores')       return resolve({ data: this._filtra(S.atores), error: null });
     if (this.t === 'sime_notificacoes') return resolve({ data: this._filtra(S.notificacoes), error: null });
     if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
+    if (this.t === 'sime_campanhas_confirmacao') return resolve({ data: this._filtra(S.campanhas), error: null });
     return resolve({ data: null, error: null });
   }
   _read() {

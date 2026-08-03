@@ -240,7 +240,8 @@ Para eventos críticos (panico_*):
 - Aguardar resposta do coordenador em até 10 minutos
 - Sem resposta → reenviar com escalada:
   "⚠️ Sem confirmação — Seção {secao} ainda com problema ativo"
-- Após 30 minutos sem resposta → notificar juiz eleitoral
+- Após 30 minutos sem resposta → escalar para o Chefe de Cartório (nunca para
+  o juiz eleitoral — regra do SIME, ver CLAUDE.md)
 
 ## Log de envios
 

@@ -91,8 +91,9 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   └── SIME_paineis.html                 Todos
 ├── api/
 │   ├── hermes-update.js               ← escrita de eventos de seção
-│   ├── hermes-mesarios.js             ← leitura + confirmação de mesários
-│   └── hermes-notificacoes.js         ← fila que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
+│   ├── hermes-notificacoes.js         ← fila de notificações que o Hermes consulta (SIME → Hermes)
+│   └── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
@@ -345,20 +346,28 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 - `sime_notificar` — envia WhatsApp com 8 templates
 - `sime_updater` — persiste eventos de seção via `/api/hermes-update` (só escrita)
 - `sime_mesarios` — consulta mesários e registra confirmação de permanência na
-  função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
+  função via `/api/hermes-mesarios` (leitura + autoatendimento + `sime_atores.confirmacao`)
+- `sime_campanha` — drena a fila de disparo em massa via `/api/hermes-campanhas`
+  (leitura + `sime_campanhas_confirmacao.status`)
 
 ### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
 
 O SIME popula `sime_campanhas_confirmacao` (telefone, `ator_id`, `zona_id`,
-`mensagem_enviada`, `status='pendente'`); o Hermes é quem lê essa fila e envia,
-respeitando 5 msgs/min. A zona vem do usuário logado (`zonaDoUsuario()`),
-nunca de campo na tela. Tem um modelo pronto de alerta anti-golpe e um modo de
-mensagem livre; filtro por função decide quem recebe (default: todos os
-ativos com telefone).
+`mensagem_enviada`, `status='pendente'`); o Hermes é quem lê essa fila (via
+`/api/hermes-campanhas`, mesmo padrão pendentes/confirmar/erro de
+`hermes-notificacoes`) e envia, respeitando 5 msgs/min. A zona vem do usuário
+logado (`zonaDoUsuario()`), nunca de campo na tela. Tem um modelo pronto de
+alerta anti-golpe e um modo de mensagem livre; filtro por função decide quem
+recebe (default: todos os ativos com telefone).
 
 **O envio de fato depende do Hermes estar com `DISPATCH_ATIVO=true`** — isso é
 decisão de quem opera o Raspberry Pi, fora deste repo. Popular a fila não
 garante que a mensagem saia.
+
+Ainda não implementado: capturar a resposta de quem recebeu a campanha
+(`sime_campanhas_confirmacao.resposta_recebida`/`decisao_detectada`) — hoje
+uma resposta cai no fluxo de sempre (`sime_mesarios` confirmar/recusar/
+substituir/atualizar), não fica associada à campanha específica que a gerou.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
@@ -375,6 +384,15 @@ O gatilho de pânico/mídia **enfileira** em `sime_notificacoes`; o POST direto
 para o Hermes virou aceleração opcional, só quando `app.hermes_url` existe.
 Cada notificação traz `idade_s` (relógio do servidor) — é com ela que o Hermes
 decide o nível de escalonamento, sem depender do horário do PC.
+
+A fila de disparo em massa segue o mesmo formato, endpoint próprio:
+```
+POST /api/hermes-campanhas  { "acao": "pendentes" }   → fila da zona
+POST /api/hermes-campanhas  { "acao": "confirmar", "ids": [...], "whatsapp_existe"?: bool }
+POST /api/hermes-campanhas  { "acao": "erro", "ids": [...], "erro_msg": "...", "whatsapp_existe"?: bool }
+```
+Item sem `mensagem_enviada` preenchida já não aparece em `pendentes` — evita o
+Hermes gastar um ciclo só para dar erro num item vazio.
 
 Atraso: até um ciclo. Para um pânico que escala em 10 min, irrelevante.
 
