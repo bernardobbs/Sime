@@ -201,6 +201,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="brand-sub" id="cur-fase">Dia da Eleição</div>
   </div>
   <div class="t-right">
+    <a href="SIME_principal.html" title="Voltar ao Painel Principal"
+      style="padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">⚙️ Principal</a>
     <div class="user-chip">
       <div class="user-av" id="u-av">RA</div>
       <div>
@@ -366,7 +368,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:800;font-size:.95rem;">Atores operacionais</div>
       <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="atores-sub">Carregando...</div>
     </div>
+    <a href="SIME_atores.html" target="_blank" class="btn btn-out" style="text-decoration:none;font-size:.74rem;padding:6px 12px;">✏️ Editar no módulo Atores</a>
   </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">Esta lista é só consulta — para editar nome, telefone ou remover, use o módulo Atores.</div>
   <div class="filter-bar">
     <input type="text" id="atores-search" placeholder="Buscar nome, seção ou telefone..." oninput="renderAtores()">
     <select id="atores-funcao" onchange="renderAtores()">
