@@ -408,6 +408,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_unique
   ON sime_atores(eleicao_id, secao_id, telefone_whatsapp, funcao)
   WHERE ativo = true;
 
+-- Chave estável por pessoa+função: permite UPSERT em vez de delete+reinsert a
+-- cada nova exportação do TRE. Uma mesma pessoa pode legitimamente ter duas
+-- linhas (ex.: mesário E apoio logístico na mesma eleição) — por isso a chave
+-- é (inscricao_eleitoral, funcao), não só inscricao_eleitoral. Parcial porque
+-- atores fora do fluxo TRE (motorista, técnico, cartório) não têm inscrição.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_inscricao_funcao
+  ON sime_atores(inscricao_eleitoral, funcao)
+  WHERE inscricao_eleitoral IS NOT NULL;
+
 -- sime_midias.responsavel_coleta referencia sime_atores (não sime_usuarios):
 -- quem coleta mídia em campo é sempre um ator externo (motorista/técnico
 -- convocado), nunca um admin do cartório. Corrigido aqui (não na definição da
@@ -824,6 +833,113 @@ BEGIN
   RETURN v_row;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Sincroniza sime_atores a partir de sime_mesarios_raw (staging, recarregável
+-- a qualquer momento) via UPSERT por inscricao_eleitoral+funcao — substitui o
+-- padrão anterior de "DELETE da zona + INSERT do zero", que recriava UUIDs a
+-- cada carga e quebraria referências (sime_campanhas_confirmacao.ator_id,
+-- sime_notificacoes) assim que existissem. Preserva sempre confirmacao/
+-- status_convocacao/whatsapp_* — não fazem parte do SET do upsert. Quem sai
+-- da nova exportação (substituído de verdade) vira ativo=false, não é
+-- apagado — mantém histórico e não quebra FK.
+CREATE OR REPLACE FUNCTION sime_sync_atores_from_raw(p_zona_numero INT, p_uf TEXT DEFAULT 'PI')
+RETURNS TABLE(atualizados INT, inativados INT) AS $$
+DECLARE
+  v_zona_id UUID;
+  v_eleicao_id UUID;
+  v_atualizados INT;
+  v_inativados INT;
+BEGIN
+  SELECT id INTO v_zona_id FROM sime_zonas WHERE numero = p_zona_numero AND estado = p_uf;
+  IF v_zona_id IS NULL THEN
+    RAISE EXCEPTION 'Zona % / % não encontrada em sime_zonas', p_zona_numero, p_uf;
+  END IF;
+  SELECT id INTO v_eleicao_id FROM sime_eleicoes WHERE zona_id = v_zona_id AND turno = 1 LIMIT 1;
+
+  WITH fonte AS (
+    -- dedup defensivo: se a exportação do TRE algum dia trouxer a mesma
+    -- pessoa+função duas vezes no mesmo arquivo, o upsert não pode processar
+    -- o mesmo conflito 2x numa única instrução (erro do Postgres) — fica só
+    -- a primeira ocorrência.
+    SELECT r.*,
+      CASE
+        WHEN r.tipo_registro = 'MRV' THEN 'mesario'::sime_ator_funcao
+        WHEN r.tipo_registro = 'AL' AND r.descricao_funcao_eleitoral = 'Coordenador de Acessibilidade' THEN 'coord_acessibilidade'::sime_ator_funcao
+        ELSE 'auxiliar_eleicao'::sime_ator_funcao
+      END AS funcao_calc,
+      ROW_NUMBER() OVER (
+        PARTITION BY r.inscricao,
+          CASE
+            WHEN r.tipo_registro = 'MRV' THEN 'mesario'
+            WHEN r.tipo_registro = 'AL' AND r.descricao_funcao_eleitoral = 'Coordenador de Acessibilidade' THEN 'coord_acessibilidade'
+            ELSE 'auxiliar_eleicao'
+          END
+        ORDER BY r.id
+      ) AS rn
+    FROM sime_mesarios_raw r
+    WHERE r.zona_eleitoral_trabalho = p_zona_numero::text
+      AND r.uf_trabalho = p_uf
+      AND r.tipo_registro IN ('MRV', 'AL')
+  ),
+  upsert AS (
+    INSERT INTO sime_atores (
+      zona_id, eleicao_id, nome_completo, telefone_whatsapp, secao_id,
+      funcao, funcao_mesa, inscricao_eleitoral, fonte_contato, ativo
+    )
+    SELECT
+      v_zona_id, v_eleicao_id, f.nome_civil,
+      COALESCE(
+        NULLIF(regexp_replace(f.telefone_pessoal_mesario, '\D', '', 'g'), ''),
+        NULLIF(regexp_replace(f.telefone_1_eleitor, '\D', '', 'g'), ''),
+        NULLIF(regexp_replace(f.telefone_2_eleitor, '\D', '', 'g'), ''),
+        NULLIF(regexp_replace(f.telefone_contato_eleitor, '\D', '', 'g'), '')
+      ),
+      s.id,
+      f.funcao_calc,
+      CASE WHEN f.tipo_registro = 'MRV' THEN f.descricao_funcao_eleitoral ELSE NULL END,
+      f.inscricao,
+      'sistema_2026',
+      true
+    FROM fonte f
+    LEFT JOIN sime_secoes s
+      ON s.zona_id = v_zona_id
+      AND s.numero = NULLIF(f.secao_local_trabalho, '')::int
+      AND s.municipio = initcap(f.nome_municipio_local_trabalho)
+    WHERE f.rn = 1
+    ON CONFLICT (inscricao_eleitoral, funcao) WHERE inscricao_eleitoral IS NOT NULL
+    DO UPDATE SET
+      nome_completo     = EXCLUDED.nome_completo,
+      telefone_whatsapp = EXCLUDED.telefone_whatsapp,
+      secao_id          = EXCLUDED.secao_id,
+      funcao_mesa       = EXCLUDED.funcao_mesa,
+      zona_id           = EXCLUDED.zona_id,
+      eleicao_id        = EXCLUDED.eleicao_id,
+      ativo             = true
+    RETURNING sime_atores.id
+  )
+  SELECT count(*) INTO v_atualizados FROM upsert;
+
+  WITH inativados AS (
+    UPDATE sime_atores a
+    SET ativo = false
+    WHERE a.zona_id = v_zona_id
+      AND a.funcao IN ('mesario', 'coord_acessibilidade', 'auxiliar_eleicao')
+      AND a.inscricao_eleitoral IS NOT NULL
+      AND a.ativo = true
+      AND NOT EXISTS (
+        SELECT 1 FROM sime_mesarios_raw r
+        WHERE r.inscricao = a.inscricao_eleitoral
+          AND r.zona_eleitoral_trabalho = p_zona_numero::text
+          AND r.uf_trabalho = p_uf
+          AND r.tipo_registro IN ('MRV', 'AL')
+      )
+    RETURNING a.id
+  )
+  SELECT count(*) INTO v_inativados FROM inativados;
+
+  RETURN QUERY SELECT v_atualizados, v_inativados;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ------------------------------------------------------------
 -- 8. RLS (Row Level Security) — produção

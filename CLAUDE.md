@@ -215,9 +215,34 @@ fácil de não ser escalado seria clicar em "Assumir" e esquecer.
 
 ### RPCs críticas
 ```sql
-sime_now()                -- server timestamp — SEMPRE usar
-sime_acao_midia()         -- atualiza mídia com server ts
-sime_importar_ator()      -- importa ator validando duplicatas
+sime_now()                    -- server timestamp — SEMPRE usar
+sime_acao_midia()             -- atualiza mídia com server ts
+sime_importar_ator()          -- importa 1 ator manual (cadastro avulso, valida telefone)
+sime_sync_atores_from_raw()   -- UPSERT em massa de mesário/apoio logístico a partir de
+                               -- sime_mesarios_raw (ver "Atualização de mesários" abaixo)
+```
+
+### Atualização de mesários e apoio logístico (recarga do TRE)
+
+`sime_mesarios_raw` é staging descartável — pode ser truncada e recarregada a
+qualquer momento com uma nova exportação ELO do TRE (`parse_mesarios.py` em
+`scripts/`, ou onde tiver sido salvo, gera o SQL de INSERT a partir do
+`.md` bruto, nunca digitado à mão — ver commit da carga inicial da 7ª Zona).
+
+A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
+— UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
+`id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
+histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`/
+`whatsapp_*`. Quem sai da nova exportação vira `ativo=false`, não é apagado.
+
+```sql
+-- 1. truncar e recarregar o staging com a exportação nova
+truncate sime_mesarios_raw;
+-- rodar o INSERT gerado pelo parser (gera o .sql a partir do .md, nunca à mão)
+
+-- 2. sincronizar (idempotente — pode rodar quantas vezes precisar)
+select * from sime_sync_atores_from_raw(7, 'PI');  -- 7ª Zona
+select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 ```
 
 ---
