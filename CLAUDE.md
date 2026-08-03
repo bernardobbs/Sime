@@ -396,16 +396,24 @@ Eventos suportados:
   panico_resolvido, urna, midia_pronta, mesa_completa
 ```
 
-### Endpoint Vercel — mesários (leitura + confirmação)
+### Endpoint Vercel — mesários (leitura + autoatendimento + confirmação)
 ```
 POST /api/hermes-mesarios
 Authorization: Bearer HERMES_SECRET_ZONA_<numero>
-Body: { acao, secao?, status?, telefone? }
+Body: { acao, secao?, status?, telefone?, mensagem? }
 
 Ações:
-  listar                          → lista mesários da zona (nome, telefone, seção, status)
+  listar                           → lista mesários + apoio logístico da zona (nome, telefone, seção, status)
+  consultar                        → autoatendimento: telefone → função + seção (se MRV), pronto pra WhatsApp
+  atualizar                        → anexa recado livre da pessoa em observacao (nunca sobrescreve dado do TRE)
   confirmar | recusar | substituir → grava sime_atores.confirmacao (por telefone)
 ```
+
+`consultar` é o que responde quando alguém da base manda "oi" pela primeira
+vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E apoio
+logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
+(número/local/município, via `secao_id`). Termina convidando a mandar correção,
+que vai pra `atualizar` — ver `hermes/SIME_hermes_skill_mesarios.md`.
 
 ---
 
