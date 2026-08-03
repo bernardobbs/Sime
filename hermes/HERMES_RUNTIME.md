@@ -110,10 +110,19 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 GEMINI_API_KEY=...
 DISPATCH_ATIVO=false
+SIME_VERCEL_URL=https://sime-cyan.vercel.app
+HERMES_SECRET_ZONA_7=...
+SIME_POLL_INTERVALO=30
 ```
 
 O Supabase migrou para o formato novo de chaves: a service key começa com
 `sb_secret_`, não é mais um JWT `eyJ...`.
+
+`SUPABASE_URL`/`SUPABASE_SERVICE_KEY` continuam no `.env` porque `telegram.js`
+pode usá-las, mas **`index.js` não fala mais com o Supabase direto** (ver
+seção 5) — desde 03/08/2026 ele grava confirmação de mesário e drena a fila
+de pânico através dos endpoints Vercel, com `HERMES_SECRET_ZONA_7` (o mesmo
+segredo cadastrado na Vercel — ver `README.md`) como Bearer.
 
 ---
 
@@ -128,20 +137,23 @@ mensagem chega
 ├─ contato específico (Daniella)? ───► resposta automática, return
 ├─ é grupo?
 │   ├─ grupo não monitorado ────────► ignora
-│   ├─ detecta eventos (regex)
-│   │   └─ falhou ou sem seção ────► fallback IA (Gemini)
-│   │       └─ propõe no Telegram (NÃO grava)
 │   └─ detecta confirmação/recusa
 │       ├─ keyword matching (rápido, sem custo)
 │       └─ não achou ──────────────► fallback IA
 │           └─ aprende keyword nova + notifica
+│       → grava no SIME via POST /api/hermes-mesarios (confirmar/recusar)
 └─ conversa individual → comandos
     ├─ status
     ├─ velocidade / speedtest
-    ├─ fila
-    ├─ pausar envio / retomar envio   (admin)
     └─ reiniciar raspberry            (admin, com confirmação)
 ```
+
+> **Não existe detecção de eventos de seção (`enc`, `zeresima`, `panico_*`,
+> etc.) no `index.js` auditado em 03/08/2026.** O `eventos.js` listado na
+> seção 3 não é `require`ado por `index.js` — a versão em produção só
+> processa confirmação/recusa de convocação de mesário, não eventos de dia D.
+> Se `eventos.js` existir no Pi, ele ainda não está ligado ao fluxo de
+> mensagens. Fica como pendência para antes de 04/10 (ver `CLAUDE.md`).
 
 Um efeito já observado dessa ordem: enquanto o filtro de contato pessoal estava
 com um JID errado, ele interceptava o comando `status` e respondia a mensagem
@@ -152,42 +164,49 @@ entra na cadeia.
 
 ## 5. O que já está funcionando
 
-Verificado em produção:
+Verificado em produção (checagens de 02/08) e reconciliado contra o código
+real de `index.js` em 03/08/2026 — algumas linhas da tabela antiga não bateram
+com o arquivo revisado; ficam marcadas abaixo.
 
 | Função | Estado |
 |---|---|
 | Sessão WhatsApp (Baileys) | ✅ conectada, reconexão automática |
-| Bot Telegram | ✅ online, `/status` e `/ajuda`, menu de comandos registrado |
-| Conexão Supabase | ✅ `sime_atores` acessível (548 registros lidos no teste) |
+| Bot Telegram | ✅ online, envia texto e QR Code (foto) |
 | Fallback IA (Gemini Flash) | ✅ configurado e ativo |
 | Keywords + aprendizado | ✅ 13 confirmações / 17 recusas, cresce sozinho |
-| Detecção de eventos véspera/dia D | ✅ regex + fallback IA, **modo proposta** |
+| Confirmação/recusa de mesário → grava no SIME | ✅ desde 03/08/2026, via `POST /api/hermes-mesarios` |
+| Fila de notificações (pânico, mídia pronta) | ✅ desde 03/08/2026, loop drena `POST /api/hermes-notificacoes` a cada `SIME_POLL_INTERVALO`s |
+| Detecção de eventos de seção (`enc`, `zeresima`, `panico_*`, dia D) | ❌ não implementada em `index.js` — ver nota na seção 4 |
 | Comando `status` | ✅ PM2, temperatura, CPU, RAM, swap, disco, uptime |
 | Comando `velocidade` | ✅ speedtest real (download/upload/ping) |
-| Comando `fila` | ✅ contagem por status |
+| Comando `fila` / `pausar envio` / `retomar envio` | ⚠️ não encontrados em `index.js` — pode ter existido numa versão anterior, ou nunca foi implementado |
+| Autoatendimento ("oi" → `hermes-mesarios acao=consultar`) | ❌ não implementado — só grupo monitorado dispara confirmação/recusa, DM não tem esse fluxo |
+| Disparo em massa (`DISPATCH_ATIVO=true` → `/api/hermes-campanhas`) | ❌ não implementado — a trava no `.env` existe, mas não há nada no código pra ela liberar |
 | Monitor de temperatura | ✅ alerta ≥75 °C a cada 3 min, WhatsApp + Telegram |
 | Reboot remoto via WhatsApp | ⚠️ implementado, **não confirmado em teste** |
 | Persistência pós-reboot | ✅ validado com reboot real |
 
-### Modo proposta
+### Modo proposta — só se aplica ao que ainda não existe
 
-Detecção de confirmação e de eventos **não grava no banco**. Ambas só notificam
-no Telegram para validação humana.
+Confirmação/recusa de mesário **não está mais em modo proposta**: grava
+direto em `sime_atores.confirmacao` via `/api/hermes-mesarios`, com aviso no
+Telegram como trilha de auditoria (não como aprovação prévia). A decisão de
+tirar do modo proposta foi consciente — é dado pré-eleição (convocação, não
+evento de dia D), já passa por keyword matching + fallback de IA, e o Telegram
+continua recebendo cada gravação para revisão.
 
-Isso é deliberado, não é implementação pela metade. Interpretar errado uma
-mensagem ambígua em dia de eleição significa gravar dado oficial incorreto. A
-gravação automática só deve ser ligada depois de medir a taxa de acerto com
-tráfego real.
+**Detecção de eventos de seção continua sem existir no código**, então "modo
+proposta" não se aplica a ela — não há o que ligar, precisa ser escrito. Até
+lá, notificações de urna/pânico continuam dependendo de alguém do cartório
+lançar manualmente no Admin ou por telefone.
 
-Para ligar a gravação de confirmações, trocar em `index.js`:
-
-```js
-notifyPendingValidation(phoneDigits, status, text, groupName, viaIA);
-// por:
-await updateMesarioStatus(phoneDigits, status, text, groupName);
-```
-
-O dispatch queue tem trava equivalente: `DISPATCH_ATIVO=false` no `.env`.
+A fila de notificações (`/api/hermes-notificacoes`) agora é drenada
+automaticamente — todo item pendente vira WhatsApp para `ADMIN_NUMBERS` **e**
+Telegram. O escalonamento por papel (Monitor de Campo → Gestor de Problemas →
+Chefe de Cartório, conforme `CLAUDE.md`) ainda não é feito por destinatário
+diferente — falta um endpoint que resolva telefone por papel; hoje todo mundo
+em `ADMIN_NUMBERS` recebe tudo, só o texto muda pra indicar o nível de
+escalonamento esperado.
 
 ---
 

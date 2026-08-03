@@ -336,9 +336,21 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   legal, é decisão de cada cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
-- **Hermes em modo proposta**: detecção de eventos/confirmações da 7ª Zona
-  ainda não grava sozinha no banco (ver seção HERMES AGENT). Decidir se liga
-  a gravação automática antes do dia 4, e com que taxa de acerto mínima.
+- **Detecção de eventos de seção não existe no Hermes ainda** (`enc`,
+  `zeresima`, `panico_*`, `urna`, `midia_pronta`, `mesa_completa` — o domínio
+  de dia D). Confirmação/recusa de convocação de mesário já grava sozinha via
+  `/api/hermes-mesarios` (ligado em 03/08/2026); a fila de pânico
+  (`/api/hermes-notificacoes`) já é drenada automaticamente. Falta escrever a
+  detecção de eventos de seção em si — sem ela, "seção 63 encerrada" dito no
+  grupo continua exigindo lançamento manual no Admin ou por telefone.
+- **Escalonamento por papel ainda não differencia destinatário**: a fila de
+  notificações drenada manda pra todos os `ADMIN_NUMBERS` do Hermes,
+  independente do nível (Monitor de Campo/Gestor de Problemas/Chefe de
+  Cartório) — falta um endpoint que resolva telefone por papel.
+- **Autoatendimento ("oi" → função + seção) e disparo em massa não estão
+  ligados no Hermes** — os endpoints (`/api/hermes-mesarios acao=consultar`,
+  `/api/hermes-campanhas`) existem e funcionam, mas nada no `index.js` os
+  chama ainda.
 - **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
@@ -363,11 +375,14 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 > As skills acima descrevem o **contrato de dados** com o SIME (schema dos
 > endpoints, templates). A instância da 7ª Zona não roda o CLI genérico que
 > `hermes/setup.sh` instala — é um app Node.js sob medida (Baileys + PM2 num
-> Raspberry Pi), documentado em `hermes/HERMES_RUNTIME.md`. Nela, detecção de
-> eventos e confirmações está em **modo proposta**: só notifica um Telegram de
-> validação humana, ainda não grava sozinha em `sime_mesa_estado`/`sime_atores`
-> — ligar a gravação automática depende de medir a taxa de acerto com tráfego
-> real primeiro. A 94ª Zona ainda não tem instância nenhuma.
+> Raspberry Pi), documentado em `hermes/HERMES_RUNTIME.md`. Desde 03/08/2026,
+> confirmação/recusa de mesário (`sime_mesarios`) e a fila de pânico
+> (`sime_notificar`) já gravam/enviam automaticamente. `sime_updater`
+> (eventos de seção — `enc`, `panico_*`, `urna`...) ainda não tem detecção
+> nenhuma no código do Hermes; `sime_campanha` (disparo em massa) e o
+> autoatendimento de `sime_mesarios` (`consultar`, alguém manda "oi") têm
+> endpoint pronto do lado do SIME mas nada no Hermes que os chame ainda. A
+> 94ª Zona ainda não tem instância nenhuma.
 
 ### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
 
