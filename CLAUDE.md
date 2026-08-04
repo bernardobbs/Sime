@@ -49,7 +49,9 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 - Banco: Supabase (PostgreSQL + Realtime + Auth + Edge Functions)
 - Hospedagem: Vercel (Hobby — gratuito)
 - Fila: Upstash QStash (Free — 500 msg/dia)
-- IA + WhatsApp: Hermes Agent (PC do cartório — sem túnel, ver hermes/README.md)
+- WhatsApp: Hermes Agent — Node.js + Baileys num Raspberry Pi 3B (rede
+  doméstica, atrás de NAT, sem túnel), com fallback de IA (Gemini) só para os
+  casos que o regex não cobre. Ver `hermes/README.md` e `hermes/HERMES_RUNTIME.md`.
 - Custo total: **R$ 0,00/mês**
 
 ### Variáveis de ambiente necessárias (Vercel)
@@ -145,7 +147,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ### Autônomo
 | Papel | Tecnologia | Função |
 |---|---|---|
-| **Hermes Agent** | IA (PC do cartório ou VPS) | Monitora grupos WhatsApp + envia notificações |
+| **Hermes Agent** | Node.js + Baileys (Raspberry Pi) | Monitora grupos WhatsApp + drena filas de envio |
 
 ### Regras críticas de escalonamento de pânico
 ```
@@ -336,6 +338,29 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   legal, é decisão de cada cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
+- **Detecção de eventos de seção (`eventos.js`) só propõe, não grava**
+  (`enc`, `zeresima`, `panico_*`, `urna`, `midia_pronta`, `mesa_completa` — o
+  domínio de dia D). Regex + fallback IA identificam e mandam pro Telegram
+  pra validação humana, mas nada chama `/api/hermes-update` — decisão
+  deliberada (modo proposta), não escrever automaticamente sem medir taxa de
+  acerto primeiro. Sem isso, "seção 63 encerrada" dito no grupo continua
+  exigindo lançamento manual no Admin ou por telefone.
+- **Escalonamento por papel ainda não differencia destinatário**: a fila de
+  notificações drenada manda pra todos os `ADMIN_NUMBERS` do Hermes,
+  independente do nível (Monitor de Campo/Gestor de Problemas/Chefe de
+  Cartório) — falta um endpoint que resolva telefone por papel.
+- **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
+  Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
+  funciona, mas nada no `index.js` o chama ainda. Buscar convocação por
+  **nome** já funciona (`acao=buscar_nome`, quem manda 2+ palavras no
+  privado do Hermes recebe a convocação de volta).
+- **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
+- **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
+  interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
+  bloqueia confirmação automática para essas mensagens. Medir a frequência.
+- **Ponto único de falha do Hermes**: Pi 3B doméstico, Wi-Fi, sem redundância —
+  se cair no dia da eleição, não há monitoramento por WhatsApp (a fila offline
+  do SIME em si continua funcionando).
 
 ---
 
@@ -390,6 +415,23 @@ de trazer o código real do Pi pra dentro do repo — pendente, ver acima).
 - `sime_campanha` — drena a fila de disparo em massa via `/api/hermes-campanhas`
   (leitura + `sime_campanhas_confirmacao.status`)
 
+> As skills acima descrevem o **contrato de dados** com o SIME (schema dos
+> endpoints, templates), não um agente de IA com skills de verdade — a
+> instância da 7ª Zona é um app Node.js + Baileys sob medida num Raspberry
+> Pi, documentado em `hermes/HERMES_RUNTIME.md` (não o CLI genérico que
+> `hermes/setup.sh` instala). Regex cobre a maior parte da detecção; Gemini
+> só entra como fallback nos casos que o regex não resolve. Estado de cada
+> contrato, desde 03/08/2026:
+>
+> | Skill | Estado real no Pi |
+> |---|---|
+> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; busca por nome (`buscar_nome`) funciona; autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
+> | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
+> | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
+> | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
+>
+> A 94ª Zona ainda não tem instância nenhuma.
+
 ### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
 
 O SIME popula `sime_campanhas_confirmacao` (telefone, `ator_id`, `zona_id`,
@@ -411,8 +453,9 @@ substituir/atualizar), não fica associada à campanha específica que a gerou.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
-O Hermes roda atrás de NAT (PC do cartório), sem endereço público — o Supabase
-não consegue chamá-lo. Então **o Hermes é quem pergunta**, a cada ~30s:
+O Hermes roda atrás de NAT (Raspberry Pi em rede doméstica), sem endereço
+público — o Supabase não consegue chamá-lo. Então **o Hermes é quem
+pergunta**, a cada ~30s:
 
 ```
 POST /api/hermes-notificacoes  { "acao": "pendentes" }   → fila da zona

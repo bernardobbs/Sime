@@ -75,7 +75,25 @@ Resposta:
 Telefone não encontrado → HTTP 404 com `mensagem_wa` orientando falar com o
 cartório (mesmo padrão do `confirmar`).
 
-### 3. `atualizar` — a pessoa manda uma correção/observação
+### 3. `buscar_nome` — autoatendimento por nome
+```json
+{ "acao": "buscar_nome", "nome": "Ana Sousa" }
+```
+Mesmo espírito do `consultar`, mas pra quando quem pergunta não está mandando
+do próprio telefone cadastrado — o cartório checando por alguém, ou o mesário
+mandando de um número diferente do que está no TRE. Casa por substring
+(case-insensitive) em `nome_completo`, dentro da zona autenticada.
+
+- **1 pessoa encontrada** (mesmo nome completo, possivelmente mais de uma
+  convocação — mesário e apoio logístico) → mesma `mensagem_wa` pronta do
+  `consultar`.
+- **Nenhuma** → HTTP 404, `mensagem_wa` orientando conferir a grafia ou falar
+  com o cartório.
+- **Várias pessoas diferentes batendo no texto** (até 8) → lista cada uma com
+  função, seção e status, pedindo o nome completo pra desambiguar.
+- **Mais de 8** → não lista, só avisa a quantidade e pede o nome completo.
+
+### 4. `atualizar` — a pessoa manda uma correção/observação
 ```json
 { "acao": "atualizar", "telefone": "5586999990001", "mensagem": "meu telefone mudou, esse aqui que uso agora" }
 ```
@@ -88,7 +106,7 @@ revisar manualmente — mesmo espírito do log append-only.
 
 Resposta: `{ "ok": true, "encontrado": 1, "mensagem_wa": "Anotado! Vou repassar pro cartório. Obrigado por avisar." }`
 
-### 4. `confirmar` / `recusar` / `substituir` — registrar a resposta
+### 5. `confirmar` / `recusar` / `substituir` — registrar a resposta
 Identifica a pessoa pelo **telefone** (o número que respondeu no WhatsApp). Casa
 por dígitos exatos ou pelos últimos 8 dígitos (tolera variação de DDI/DDD).
 ```json

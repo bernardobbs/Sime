@@ -3,6 +3,18 @@
 O Hermes é o agente de IA que lê os grupos e DMs do WhatsApp, atualiza o SIME
 com o que detecta e envia as notificações de pânico.
 
+> **A instância em produção (7ª Zona) não usa a instalação via CLI descrita
+> abaixo.** É um app Node.js sob medida (Baileys + PM2, rodando num Raspberry
+> Pi), e hoje opera em **modo proposta**: detecção de eventos/confirmações só
+> notifica um Telegram de validação, ainda não grava sozinha no Supabase. Ver
+> `HERMES_RUNTIME.md` para o runtime real — ambiente, arquivos, fluxo de
+> mensagem, armadilhas e limites conhecidos. Este README e as skills
+> (`SIME_hermes_skill_*.md`) continuam valendo como **contrato de dados**: o
+> schema dos endpoints e os templates de mensagem abaixo são o que qualquer
+> implementação do Hermes (CLI genérico ou app próprio) precisa respeitar.
+> `setup.sh` descreve uma instalação via CLI que não é a que está no ar — não
+> rodar sem adaptar à zona 94ª, que ainda vai precisar de uma instância.
+
 ## O ponto que define toda a configuração
 
 **O Hermes nunca precisa ser alcançado de fora.** Ele é sempre quem inicia a
@@ -110,6 +122,13 @@ curl -sS -X POST https://sime-cyan.vercel.app/api/hermes-campanhas \
   escalonamento que começa em 10 minutos, é irrelevante.
 - **Considere um número dedicado** para o Hermes, em vez do WhatsApp pessoal de
   alguém do cartório.
+
+## Runtime
+
+`HERMES_RUNTIME.md` documenta como a instância da 7ª Zona roda de fato:
+ambiente do Raspberry Pi, processos PM2, fluxo de mensagem em `index.js`,
+o que já está verificado em produção e os limites conhecidos (JID `@lid`,
+rate limit do Gemini, ponto único de falha).
 
 ## Skills
 
