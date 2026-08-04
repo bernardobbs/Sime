@@ -39,6 +39,10 @@ export function subscribeRotasUrnas(client, onChange) { return subscribeTable(cl
 // zona-scoped pela RLS, sem filtro de seção porque o Admin vê a zona toda.
 export function subscribeMidias(client, onChange) { return subscribeTable(client, 'sime_midias', onChange); }
 
+// Heartbeat do Hermes (aba Hermes do Admin) — o Hermes faz UPSERT direto
+// nesta tabela a cada ciclo; sem isso o painel só atualizaria no refresh manual.
+export function subscribeHeartbeat(client, onChange) { return subscribeTable(client, 'sime_heartbeat', onChange); }
+
 // Variante para um CONJUNTO de seções — acessibilidade (as seções de um local),
 // motorista e instalador (as da rota). O filtro `in` evita que o celular do
 // operador receba os eventos das outras ~170 seções da zona no Dia D, que é o

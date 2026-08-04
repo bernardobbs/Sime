@@ -341,6 +341,46 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 
 ## HERMES AGENT
 
+> **Discrepância conhecida, ainda não resolvida**: os endpoints e skills
+> abaixo descrevem uma arquitetura "Hermes pergunta via HTTP" que foi
+> documentada aqui, mas o runtime real do Raspberry Pi (Node + Baileys + PM2,
+> visto em produção 02/08/2026) conecta **direto no Supabase** com
+> `SUPABASE_SERVICE_KEY` — não fala com nenhum destes endpoints `/api/hermes-*`.
+> O código real (`index.js`/`telegram.js`/`eventos.js`/`keywords.js`) não está
+> neste repositório. Ver "Proposta de Evolução do Hermes Agent" (04/08/2026) —
+> a seção **Gestão do Hermes** abaixo já foi desenhada para a realidade
+> confirmada (Supabase direto), não para o padrão HTTP legado. Antes de
+> investir mais nos endpoints `/api/hermes-mesarios`/`hermes-campanhas`,
+> confirmar se eles têm consumidor real ou se são caminho morto (mesmo caso já
+> documentado de `sime_campanhas_confirmacao`, ver `sql/SIME_campanhas_confirmacao.sql`).
+
+### Gestão do Hermes (versão + heartbeat) — `sql/SIME_hermes_gestao_schema.sql`
+
+Primeiro passo da evolução proposta pelo usuário: dar ao SIME visibilidade e
+controle remoto sobre o Hermes, sem reescrever o runtime ainda (isso depende
+de trazer o código real do Pi pra dentro do repo — pendente, ver acima).
+
+- `sime_componentes` (por zona): `versao_instalada`/`commit_instalado`
+  (o que o Hermes reportou), `versao_desejada`/`atualizar_agora` (o que o
+  admin pediu). SIME nunca empurra comando — o mesmo problema de NAT de
+  sempre — então pedir atualização é só marcar a linha; o Hermes decide se
+  atende no próprio ciclo.
+- `sime_heartbeat` (por zona): pulso de vida + telemetria (versão, uptime,
+  CPU/RAM/temperatura, disco, status WhatsApp/Telegram, última sincronização).
+  "Online" é derivado no cliente (heartbeat < 5 min), não guardado.
+- **Sem endpoint Vercel novo** — decisão deliberada: o Hermes real já fala
+  direto com o Supabase (é como ele lê `sime_atores` hoje), então heartbeat e
+  checagem de versão são UPSERT/SELECT direto nas tabelas acima, mesmo
+  caminho. Um endpoint HTTP a mais só repetiria o que o client Supabase já
+  faz.
+- Aba "🤖 Hermes" no Admin (`SIME_admin.html`) lê as duas tabelas (RLS por
+  zona) e tem o botão "Solicitar atualização", que faz upsert com
+  `atualizar_agora=true` + `versao_desejada`. Realtime em `sime_heartbeat`
+  (`subscribeHeartbeat` em `sime_realtime.js`) atualiza a tela sozinha.
+- **O Hermes real ainda não escreve nessas tabelas** — o painel funciona e
+  mostra "Nenhum heartbeat ainda" até que o runtime do Pi seja atualizado pra
+  fazer o UPSERT. Essa é a próxima peça que falta.
+
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
 - `sime_notificar` — envia WhatsApp com 8 templates

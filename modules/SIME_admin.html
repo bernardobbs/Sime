@@ -225,6 +225,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
   <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
+  <button class="nav-tab"        onclick="goTab('hermes',this)">🤖 Hermes</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
 </div>
 
@@ -395,6 +396,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 </div>
 
+<!-- ══════ HERMES (status + atualização remota) ══════ -->
+<div id="tab-hermes" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Hermes Agent</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Heartbeat e versão do bot de WhatsApp/Telegram (Raspberry Pi).</div>
+    </div>
+    <button class="btn btn-out" onclick="renderHermes()">↺ Atualizar</button>
+  </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">
+    "Solicitar atualização" só marca o pedido — o Hermes decide se atende no
+    próprio ciclo de heartbeat. Sem confirmação, não sabemos se ele viu.
+  </div>
+  <div class="grid2" style="gap:16px;" id="hermes-grid"><div class="hint">Carregando…</div></div>
+</div>
+
 <!-- ══════ ZONAS (só super_admin) ══════ -->
 <div id="tab-zonas" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -419,7 +436,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
-import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
+import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias, subscribeHeartbeat } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -535,10 +552,11 @@ async function iniciarMesaEstadoReal(secoesReais){
 async function carregarIdentidade(){
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
+  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('id,nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
   if (!meuUsuario) return;
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
+  window.MEU_USUARIO_ID = meuUsuario.id || null;
   if (meuUsuario.perfil === 'super_admin') {
     const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
       supabase.from('sime_zonas').select('*').order('numero'),
@@ -555,6 +573,7 @@ async function carregarIdentidade(){
   if (window.aplicarIdentidade) window.aplicarIdentidade();
   await atualizarBadgeProblemas();
   iniciarRealtimeProblemas();
+  iniciarRealtimeHermes();
 }
 
 // Contagem real de ocorrências em aberto (aberta|assumida) — RLS já restringe
@@ -580,6 +599,17 @@ function iniciarRealtimeProblemas(){
   if (canalProblemasAberto) return;
   canalProblemasAberto = true;
   try { subscribeOcorrencias(supabase, () => atualizarBadgeProblemas()); } catch (e) {}
+}
+
+// Heartbeat do Hermes muda a cada ciclo dele (minutos) — Realtime evita que o
+// admin fique olhando pra um card parado achando que travou. Só redesenha se
+// a aba estiver de fato aberta (renderHermes escreve no próprio elemento;
+// chamar com a aba fechada é barato e inofensivo, então não checamos antes).
+let canalHermesAberto = false;
+function iniciarRealtimeHermes(){
+  if (canalHermesAberto) return;
+  canalHermesAberto = true;
+  try { subscribeHeartbeat(supabase, () => { if (window.renderHermes) window.renderHermes(); }); } catch (e) {}
 }
 
 // Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
@@ -808,6 +838,74 @@ window.aplicarIdentidade = function(){
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
 };
+
+// ── HERMES (heartbeat + versão) ──────────────────────────────────────────
+// Lê direto de sime_heartbeat/sime_componentes: são as tabelas que o Hermes
+// grava com o service key dele, sem passar por nenhum endpoint Vercel — ver
+// comentário no topo de sql/SIME_hermes_gestao_schema.sql. RLS por zona já
+// garante que quem não é super_admin só vê a própria.
+async function renderHermes(){
+  const el = document.getElementById('hermes-grid');
+  if (!el) return;
+  const [{ data: zonas, error: e0 }, { data: componentes, error: e1 }, { data: heartbeats, error: e2 }, { data: agoraStr }] = await Promise.all([
+    supabase.from('sime_zonas').select('id,numero,municipio'),
+    supabase.from('sime_componentes').select('*'),
+    supabase.from('sime_heartbeat').select('*'),
+    supabase.rpc('sime_now'),
+  ]);
+  if (e0 || e1 || e2) {
+    el.innerHTML = '<div class="hint">Não foi possível carregar — tabelas do Hermes ainda não existem nesta base? (sql/SIME_hermes_gestao_schema.sql)</div>';
+    return;
+  }
+  const zonaPorId = {}; (zonas || []).forEach(z => { zonaPorId[z.id] = z; });
+  const porZona = {};
+  (heartbeats || []).forEach(h => { porZona[h.zona_id] = { ...(porZona[h.zona_id]||{}), hb: h, zona: zonaPorId[h.zona_id] }; });
+  (componentes || []).forEach(c => { porZona[c.zona_id] = { ...(porZona[c.zona_id]||{}), comp: c, zona: porZona[c.zona_id]?.zona || zonaPorId[c.zona_id] }; });
+  const zonaIds = Object.keys(porZona);
+  if (!zonaIds.length) { el.innerHTML = '<div class="hint">Nenhum heartbeat ainda — o Hermes desta zona nunca gravou status.</div>'; return; }
+  const agoraMs = agoraStr ? new Date(agoraStr).getTime() : Date.now();
+  el.innerHTML = zonaIds.map(zid => {
+    const { hb, comp, zona } = porZona[zid];
+    const online = hb ? (agoraMs - new Date(hb.ultimo_heartbeat).getTime()) < 5 * 60 * 1000 : false;
+    const idadeMin = hb ? Math.round((agoraMs - new Date(hb.ultimo_heartbeat).getTime()) / 60000) : null;
+    return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:.88rem;">${zona ? zona.numero + 'ª Zona' : 'Zona ' + zid.slice(0,8)}</div>
+        <div style="font-size:.72rem;font-weight:700;color:${online?'#1ea672':'#b23'}">${online?'🟢 online':'⚪ sem sinal'}${idadeMin!==null?` · há ${idadeMin} min`:''}</div>
+      </div>
+      ${hb ? `
+      <div style="font-size:.78rem;color:var(--text2);line-height:1.9;">
+        <div>Versão: <b>${hb.versao || '—'}</b>${hb.commit_hash ? ` (${hb.commit_hash.slice(0,7)})` : ''}</div>
+        <div>Uptime: ${hb.uptime_s ? Math.round(hb.uptime_s/3600)+'h' : '—'} · CPU ${hb.cpu_pct ?? '—'}% · RAM ${hb.mem_mb ?? '—'}MB${hb.temperatura_c!=null?` · ${hb.temperatura_c}°C`:''}</div>
+        <div>WhatsApp: ${hb.whatsapp_status || '—'} · Telegram: ${hb.telegram_status || '—'}</div>
+      </div>` : '<div class="hint" style="margin:8px 0;">Sem heartbeat registrado.</div>'}
+      ${comp ? `
+      <div style="font-size:.72rem;color:var(--text3);margin-top:8px;">
+        ${comp.atualizar_agora ? '🔄 Atualização pendente' + (comp.versao_desejada?` → ${comp.versao_desejada}`:'') : (comp.ultimo_resultado==='erro' ? `⚠ Última atualização falhou: ${comp.ultimo_erro||'sem detalhe'}` : '')}
+      </div>` : ''}
+      <button class="btn btn-out" style="margin-top:10px;font-size:.74rem;" onclick="solicitarAtualizacaoHermes('${zid}','${(comp && comp.componente) || 'hermes'}')">⬆️ Solicitar atualização</button>
+    </div>`;
+  }).join('');
+}
+window.renderHermes = renderHermes;
+
+async function solicitarAtualizacaoHermes(zonaId, componente){
+  const versao = prompt('Versão desejada (ex.: v1.2.0). Deixe em branco para a mais recente publicada:', '');
+  if (versao === null) return;
+  const { data: ts } = await supabase.rpc('sime_now');
+  const payload = {
+    zona_id: zonaId, componente,
+    versao_desejada: versao.trim() || null,
+    atualizar_agora: true,
+    solicitado_por: window.MEU_USUARIO_ID || null,
+    solicitado_em: ts,
+  };
+  const { error } = await supabase.from('sime_componentes').upsert(payload, { onConflict: 'zona_id,componente' });
+  if (error) { showToast('⚠ Falha ao solicitar'); return; }
+  showToast('✓ Atualização solicitada — o Hermes atende no próximo heartbeat');
+  renderHermes();
+}
 
 function renderZonas(){
   const el = document.getElementById('zonas-grid');
@@ -1855,6 +1953,7 @@ function goTab(id,btn){
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
   if(id==='atores') renderAtores();
+  if(id==='hermes') renderHermes();
 }
 
 function closeModal(e){
