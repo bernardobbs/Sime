@@ -33,6 +33,12 @@ class QB {
     S.ops.push({ op: 'upsert', t: this.t, payload: o, onConflict: opt && opt.onConflict });
     if (this.t === 'sime_mesa_estado') S.mesa[o.secao_id] = { ...S.mesa[o.secao_id], ...o };
     if (this.t === 'sime_midias') S.midias[o.secao_id] = { ...S.midias[o.secao_id], ...o };
+    if (this.t === 'sime_componentes' || this.t === 'sime_heartbeat') {
+      const key = this.t === 'sime_componentes' ? 'componentes' : 'heartbeats';
+      S[key] = S[key] || [];
+      const i = S[key].findIndex((r) => r.zona_id === o.zona_id && r.componente === o.componente);
+      if (i > -1) S[key][i] = { ...S[key][i], ...o }; else S[key].push({ ...o });
+    }
     return Promise.resolve({ error: null });
   }
   insert(o) {
@@ -81,6 +87,10 @@ class QB {
     if (this.t === 'sime_mesa_estado') { return { data: S.mesa[this.f.secao_id] || null, error: null }; }
     if (this.t === 'sime_eleicoes') {
       const r = (S.eleicoes || []).find(e => e.zona_id === this.f.zona_id && e.ativa === true) || null;
+      return { data: r, error: null };
+    }
+    if (this.t === 'sime_componentes') {
+      const r = (S.componentes || []).find(c => c.zona_id === this.f.zona_id && c.componente === this.f.componente) || null;
       return { data: r, error: null };
     }
     return { data: null, error: null };

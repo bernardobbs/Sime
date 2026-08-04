@@ -5,14 +5,15 @@
 -- trazer o runtime do Raspberry Pi para dentro do repo, com heartbeat e
 -- atualização controlada pelo SIME.
 --
--- Decisão de design: NÃO criamos endpoint Vercel novo para isso. O Hermes já
--- fala direto com o Supabase usando SUPABASE_SERVICE_KEY (é assim que ele lê
--- sime_atores e drena sime_campanhas_confirmacao hoje — ver comentário em
--- SIME_campanhas_confirmacao.sql). Heartbeat e checagem de versão seguem o
--- mesmo padrão: o Hermes faz UPSERT direto em sime_heartbeat a cada ciclo, e
--- lê sime_componentes pra saber se alguém pediu atualização. Um endpoint
--- HTTP a mais só repetiria o que o cliente Supabase já faz, e arrisca virar
--- mais um caminho sem consumidor real (ver hermes-campanhas.js).
+-- Decisão de design (revisada 04/08/2026): o Hermes fala com estas tabelas
+-- só através de api/hermes-heartbeat.js, nunca com UPSERT direto usando
+-- SUPABASE_SERVICE_KEY. Motivo: desde 03/08/2026 index.js não fala mais com
+-- o Supabase direto (ver hermes/HERMES_RUNTIME.md, seção 3) — foi corrigido
+-- depois de um bug real de escrita com coluna errada quando o Hermes escrevia
+-- em sime_atores sem passar pelo endpoint. Este schema foi desenhado
+-- originalmente para acesso direto (primeira versão deste comentário), antes
+-- dessa correção ficar documentada; manter aqui o porquê da mudança, para não
+-- reintroduzirem o mesmo erro.
 --
 -- O SIME nunca EMPURRA comando pro Hermes (mesmo problema de sempre: Pi atrás
 -- de NAT, sem endereço público). Pedir atualização é: o admin marca
