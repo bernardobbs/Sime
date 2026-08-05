@@ -86,17 +86,46 @@ pm2 restart hermes hermes-telegram --update-env
 
 ## 3. Arquivos
 
+Desde a reestruturação de 04-05/08/2026, `index.js` é só um bootstrap de 4
+linhas — toda a lógica mora em `core/`, `services/` e `modules/`:
+
 ```
 /home/admin/hermes-agent/
-├── index.js         # processo hermes: WhatsApp, dispatch, temperatura
-├── telegram.js      # processo hermes-telegram: bot Telegram
-├── status.js        # métricas do Pi (PM2 + /proc)
-├── keywords.js       # lógica de confirmação/recusa
-├── keywords.json     # dados das keywords — cresce sozinho via IA
-├── eventos.js        # regex de eventos de véspera/dia D
-├── .env               # segredos e flags
-└── auth_info/         # sessão WhatsApp persistida (Baileys)
+├── index.js                    # bootstrap: só chama core/bootstrap.js
+├── config.js                   # constantes compartilhadas (grupos, limites)
+├── core/
+│   ├── bootstrap.js            # sobe a sessão Baileys, liga os módulos
+│   └── scheduler.js            # agendar(nome, ms, fn) — wrapper de setInterval
+├── services/
+│   ├── logger.js                # Telegram (texto/foto)
+│   ├── simeApi.js                # cliente único dos endpoints /api/hermes-*
+│   ├── monitor.js                # temperatura do Pi
+│   ├── telemetria.js             # heartbeat/telemetria + aviso de atualização (ver seção 5)
+│   ├── heartbeat.js              # agrega health() de cada módulo pro comando "status"
+│   └── speedtest.js              # teste de velocidade sob demanda
+├── modules/
+│   ├── whatsapp/
+│   │   ├── router.js             # despacha mensagem recebida pros módulos certos
+│   │   ├── confirmacao.js        # confirmação/recusa de mesário + busca por nome
+│   │   ├── eventosDiaD.js        # wrapper de eventos.js (no-op se o arquivo não existir)
+│   │   ├── comandos.js           # status/fila/velocidade/reiniciar (DM)
+│   │   └── notificacoes.js       # drena fila de pânico/mídia
+│   └── campanhas/
+│       ├── dispatch.js           # drena fila de disparo em massa + resumo horário
+│       └── identidade.js         # classifica resposta SIM/NÃO da verificação de identidade
+├── telegram.js                 # processo hermes-telegram: bot Telegram (separado)
+├── status.js                   # métricas do Pi (PM2 + /proc) — root, não fez parte do refactor
+├── keywords.js                  # lógica de confirmação/recusa — idem
+├── keywords.json                 # dados das keywords — cresce sozinho via IA
+├── eventos.js                    # regex de eventos de véspera/dia D — idem
+├── .env                         # segredos e flags
+└── auth_info/                    # sessão WhatsApp persistida (Baileys)
 ```
+
+`status.js`/`keywords.js`/`keywords.json`/`eventos.js` continuam na raiz — não
+fizeram parte da reestruturação porque o conteúdo deles nunca foi repassado
+pra fora do Pi; os módulos novos só os importam (`require('../../status')`
+etc.), sem reescrevê-los.
 
 **`auth_info/` é a sessão do WhatsApp.** Apagar essa pasta desloga o número e
 exige escanear QR Code de novo. Não versionar, não limpar em manutenção.
@@ -192,11 +221,33 @@ mesclado em 03/08/2026.
 | Comandos `fila` / `pausar envio` / `retomar envio` | ✅ controlam o disparo em massa (admin) |
 | Detecção de eventos de seção (`eventos.js`) | ⚠️ detecta e propõe no Telegram — **modo proposta, não grava** |
 | Autoatendimento por telefone ("oi" → `hermes-mesarios acao=consultar`) | ❌ não implementado — busca por nome cobre parte do caso de uso |
+| Heartbeat/telemetria pro SIME (`POST /api/hermes-heartbeat`) | ✅ `services/telemetria.js`, a cada `SIME_POLL_INTERVALO`s — ver nota abaixo |
 | Comando `status` | ✅ PM2, temperatura, CPU, RAM, swap, disco, uptime |
 | Comando `velocidade` | ✅ speedtest real (download/upload/ping) |
 | Monitor de temperatura | ✅ alerta ≥75 °C a cada 3 min, WhatsApp + Telegram |
 | Reboot remoto via WhatsApp | ⚠️ implementado, **não confirmado em teste** |
 | Persistência pós-reboot | ✅ validado com reboot real |
+
+### Heartbeat/telemetria — sem atualização automática, de propósito
+
+`services/telemetria.js` manda telemetria (`versao`, `commit_hash`, `uptime_s`,
+`mem_mb`, `cpu_pct`, `temperatura_c`, `disco_livre_mb`, `ip`, `node_version`,
+status de WhatsApp/Telegram) a cada `SIME_POLL_INTERVALO`s via `acao:'enviar'`
+— alimenta `sime_heartbeat`, visível na aba de gestão do Hermes em
+`SIME_admin.html`. `versao`/`commit_hash` tendem a vir `null`: a instalação
+hoje é `scp`+`unzip`, não um clone git, e não existe `package.json` versionado
+neste diretório — os dois `try/catch` ficam prontos pra funcionar assim que
+(se) isso mudar, sem exigir alteração no código.
+
+Quando o cartório marca "Solicitar atualização" na aba de gestão
+(`sime_componentes.atualizar_agora=true`), a resposta do `enviar` já
+carrega isso — o Hermes manda **um aviso no Telegram** (não repete a cada
+ciclo enquanto o pedido seguir pendente) e para por aí. **Não existe
+`git pull`/`npm install`/`pm2 reload` automático em lugar nenhum do código** —
+decisão deliberada, documentada em `SIME_hermes_skill_heartbeat.md`: perto da
+eleição (04/10/2026), uma sessão Baileys que precisa de novo QR Code no meio
+da operação é pior que rodar uma versão atrasada. Aplicar a atualização
+continua manual, na mão de quem cuida do Raspberry Pi.
 
 ### Modo proposta — só se aplica ao que ainda não existe
 
