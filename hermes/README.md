@@ -139,3 +139,4 @@ rate limit do Gemini, ponto único de falha).
 | `SIME_hermes_skill_mesarios.md` | Consulta mesários, autoatendimento ("oi") e grava confirmação |
 | `SIME_hermes_skill_notificar.md` | Drena a fila de notificações (eventos/pânico) e envia os WhatsApps |
 | `SIME_hermes_skill_campanha.md` | Drena a fila de disparo em massa (confirmação, avisos) e envia os WhatsApps |
+| `SIME_hermes_skill_heartbeat.md` | Reporta telemetria e verifica pedido de atualização remota |

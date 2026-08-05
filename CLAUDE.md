@@ -366,6 +366,39 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 
 ## HERMES AGENT
 
+### Gestão do Hermes (versão + heartbeat) — `sql/SIME_hermes_gestao_schema.sql` + `/api/hermes-heartbeat`
+
+Primeiro passo da "Proposta de Evolução do Hermes Agent": dar ao SIME
+visibilidade e controle remoto sobre o Hermes, sem reescrever o runtime
+inteiro ainda.
+
+- `sime_componentes` (por zona): `versao_instalada`/`commit_instalado`
+  (o que o Hermes reportou), `versao_desejada`/`atualizar_agora` (o que o
+  admin pediu). SIME nunca empurra comando — o mesmo problema de NAT de
+  sempre — então pedir atualização é só marcar a linha; o Hermes decide se
+  atende no próprio ciclo.
+- `sime_heartbeat` (por zona): pulso de vida + telemetria (versão, uptime,
+  CPU/RAM/temperatura, disco, status WhatsApp/Telegram, última sincronização).
+  "Online" é derivado no cliente (heartbeat < 5 min), não guardado.
+- **Via endpoint, não Supabase direto** — `/api/hermes-heartbeat`
+  (`enviar`/`confirmar_atualizacao`/`erro_atualizacao`, ver
+  `hermes/SIME_hermes_skill_heartbeat.md`), mesmo Bearer por zona dos demais.
+  `index.js` não fala mais com o Supabase direto desde 03/08/2026 (ver
+  `hermes/HERMES_RUNTIME.md`), então esta é a única gravação válida — nada de
+  service key no Hermes pra estas tabelas.
+- Aba "🤖 Hermes" no Admin (`SIME_admin.html`) **lê as tabelas direto** (RLS
+  por zona) — isso é o padrão normal do SIME, o frontend sempre fala com o
+  Supabase com a anon key; só o Hermes é que passa por endpoint. Tem o botão
+  "Solicitar atualização", que faz upsert com `atualizar_agora=true` +
+  `versao_desejada`. Realtime em `sime_heartbeat` (`subscribeHeartbeat` em
+  `sime_realtime.js`) atualiza a tela sozinha.
+- **Não automatizar a aplicação da atualização perto da eleição** (04/10) —
+  o botão do Admin só marca o pedido; o próprio skill doc já registra isso
+  como critério deliberado, não esquecimento.
+- **O Hermes real ainda não chama este endpoint** — o painel funciona e
+  mostra "Nenhum heartbeat ainda" até o runtime do Pi ser atualizado pra
+  reportar. Essa é a próxima peça que falta.
+
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
 - `sime_notificar` — envia WhatsApp com 8 templates
@@ -374,6 +407,8 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   função via `/api/hermes-mesarios` (leitura + autoatendimento + `sime_atores.confirmacao`)
 - `sime_campanha` — drena a fila de disparo em massa via `/api/hermes-campanhas`
   (leitura + `sime_campanhas_confirmacao.status`)
+- `sime_heartbeat` — reporta telemetria e verifica pedido de atualização via
+  `/api/hermes-heartbeat` (escrita em `sime_heartbeat`/`sime_componentes`)
 
 > As skills acima descrevem o **contrato de dados** com o SIME (schema dos
 > endpoints, templates), não um agente de IA com skills de verdade — a
@@ -389,6 +424,7 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
+> | `sime_heartbeat` | endpoint pronto (`/api/hermes-heartbeat`), **o Pi ainda não chama** — próxima peça a ligar no runtime |
 >
 > A 94ª Zona ainda não tem instância nenhuma.
 
