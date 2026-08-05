@@ -612,6 +612,11 @@ let dispFuncao = '';
 let dispBusca = '';
 let dispImagemUrl = '';
 let dispSelecionados = null; // Set<id> — null até o primeiro filtro rodar
+// null = ainda não editado pelo usuário nesta sessão de modelo — usa o
+// template padrão. Trocar função/busca/seleção reconstrói a tela (render())
+// mas NÃO deve apagar o que o cartório já escreveu; só trocar de modelo reseta.
+let dispMsg = null;
+let dispMsgConvocacao = null;
 
 function dispMensagemPadrao(){
   if(dispTipo==='golpe') return TEMPLATE_GOLPE;
@@ -621,6 +626,8 @@ function dispMensagemPadrao(){
 function dispMensagemConvocacaoPadrao(){
   return dispTipo==='convocacao' ? TEMPLATE_CONVOCACAO_TEXTO : '';
 }
+function dispMensagemAtual(){ return dispMsg !== null ? dispMsg : dispMensagemPadrao(); }
+function dispMensagemConvocacaoAtual(){ return dispMsgConvocacao !== null ? dispMsgConvocacao : dispMensagemConvocacaoPadrao(); }
 
 // Pool elegível pro filtro atual (função + ativo + tem WhatsApp). É sobre
 // este conjunto que a seleção por checkbox opera.
@@ -669,12 +676,12 @@ function renderDisparo(atores){
         </select>
       </div>
       <div class="form-group"><label>${dispTipo==='convocacao' ? '1ª mensagem — confirmação de identidade' : 'Mensagem'}</label>
-        <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical">${dispMensagemPadrao()}</textarea>
+        <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsg=this.value">${dispMensagemAtual()}</textarea>
         ${dispTipo==='convocacao' ? '<div class="ic-sub" style="margin-top:4px">Enviada primeiro, sozinha. Só depois que a pessoa responder SIM é que a 2ª mensagem (abaixo) sai — quem responder NÃO não recebe mais nada desta campanha.</div>' : ''}
       </div>
       ${dispTipo==='convocacao' ? `
       <div class="form-group"><label>2ª mensagem — convocação (só após confirmar)</label>
-        <textarea id="dp-msg-convocacao" rows="6" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical">${dispMensagemConvocacaoPadrao()}</textarea>
+        <textarea id="dp-msg-convocacao" rows="6" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsgConvocacao=this.value">${dispMensagemConvocacaoAtual()}</textarea>
         <div class="ic-sub" style="margin-top:4px">Os textos entre chaves — {nome}, {funcao}, {secao}, {local}, {municipio} — são trocados pelos dados de cada pessoa. A imagem abaixo vai junto desta mensagem, não da primeira.</div>
       </div>` : ''}
       <div class="form-group"><label>Imagem${dispTipo==='convocacao' ? ' (vai com a 2ª mensagem)' : ' (opcional)'}</label>
@@ -746,8 +753,9 @@ function marcarExibidosDisparo(marcar){
   render();
 }
 
-// Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela.
-function mudarTipoDisparo(v){ dispTipo = v; render(); }
+// Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela e
+// voltar ao template do novo modelo (edição do modelo anterior não se aplica).
+function mudarTipoDisparo(v){ dispTipo = v; dispMsg = null; dispMsgConvocacao = null; render(); }
 
 // Troca {nome}/{funcao}/{secao}/{local}/{municipio} pelos dados da pessoa.
 // Inofensivo pros outros modelos (golpe/livre) — se o texto não tiver esses
