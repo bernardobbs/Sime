@@ -137,6 +137,8 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   // Pra log() (Modo Guerra) resolver numero -> secao_id ao gravar em sime_logs.
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
+  // Pro disparo em massa (modelo "Convocação") personalizar {local}/{municipio} por pessoa.
+  if (secoesReais) window.SECAO_INFO_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), { local_nome: s.local_nome, municipio: s.municipio }]));
 
   // Contatos externos (Equatorial e afins). Vivem numa tabela própria e não em
   // sime_atores porque não são pessoas de uma seção: são organizações com
@@ -574,20 +576,84 @@ O cartório NUNCA pede dinheiro, senha ou dado bancário por aqui. Em caso de d�
 
 Por favor, repasse este aviso.`;
 
+// Placeholders {nome}/{funcao}/{secao}/{local}/{municipio} são substituídos
+// por pessoa em confirmarDisparo() — cada destinatário recebe o texto com
+// os próprios dados, não uma mensagem igual pra todo mundo (diferente dos
+// outros dois modelos, que são literais).
+//
+// Modelo "Convocação com confirmação" manda DUAS mensagens, não uma: esta
+// primeira só confirma que o número ainda é da pessoa (o Hermes espera a
+// resposta SIM/NÃO antes de seguir) — a convocação de verdade só sai depois,
+// em TEMPLATE_CONVOCACAO_TEXTO. Ver hermes/SIME_hermes_skill_campanha.md.
+const TEMPLATE_VERIFICACAO = `Olá! 👋
+
+Meu nome é Bernardo e trabalho no Cartório Eleitoral da 7ª Zona Eleitoral de Campo Maior/PI.
+
+Estamos atualizando nossos cadastros para as Eleições 2026.
+
+Este telefone ainda pertence a *{nome}*?
+
+Por gentileza, responda apenas com:
+
+1️⃣ SIM
+
+2️⃣ NÃO`;
+
+// Só é enviada depois que a pessoa confirmar (SIM) na mensagem de
+// verificação acima — nunca antes disso.
+const TEMPLATE_CONVOCACAO_TEXTO = `Olá, {nome}.
+
+A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleições 2026, como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Na próxima mensagem encaminharemos a imagem oficial com o passo a passo. Pedimos que leia atentamente e confirme sua participação também no site do TRE, conforme indicado na imagem.`;
+
 let dispTipo = 'golpe';
 let dispFuncao = '';
+let dispBusca = '';
+let dispImagemUrl = '';
+let dispSelecionados = null; // Set<id> — null até o primeiro filtro rodar
 
-function dispMensagemPadrao(){ return dispTipo==='golpe' ? TEMPLATE_GOLPE : ''; }
+function dispMensagemPadrao(){
+  if(dispTipo==='golpe') return TEMPLATE_GOLPE;
+  if(dispTipo==='convocacao') return TEMPLATE_VERIFICACAO;
+  return '';
+}
+function dispMensagemConvocacaoPadrao(){
+  return dispTipo==='convocacao' ? TEMPLATE_CONVOCACAO_TEXTO : '';
+}
 
+// Pool elegível pro filtro atual (função + ativo + tem WhatsApp). É sobre
+// este conjunto que a seleção por checkbox opera.
 function atoresParaDisparo(atores){
   return atores.filter(a => a.ativo && a.telefone && (!dispFuncao || a.funcao===dispFuncao));
+}
+
+// Só pra exibição da lista — não afeta quem está selecionado, então buscar
+// um nome pra conferir não desmarca ninguém que já estava marcado.
+function atoresExibidos(atores){
+  const pool = atoresParaDisparo(atores);
+  const q = dispBusca.trim().toLowerCase();
+  return q ? pool.filter(a => a.nome.toLowerCase().includes(q)) : pool;
+}
+
+const DISP_MAX_LISTA = 300;
+
+function rotuloFuncaoDisp(a){
+  if(a.funcao==='mesario') return a.funcao_mesa || 'Mesário(a)';
+  return FUNC_LABEL[a.funcao] || a.funcao;
 }
 
 function renderDisparo(atores){
   const c = document.getElementById('content');
   const semSessao = !window.supabaseAtores;
-  const destinatarios = atoresParaDisparo(atores);
-  const n = destinatarios.length;
+  // Ao entrar na aba (ou trocar função), a seleção começa com todo mundo do
+  // filtro marcado — preserva o comportamento antigo (filtro = quem recebe)
+  // por padrão; desmarcar é que é a exceção, não o contrário.
+  if(dispSelecionados===null) dispSelecionados = new Set(atoresParaDisparo(atores).map(a=>a.id));
+  const selecionaveis = atoresParaDisparo(atores);
+  const exibidos = atoresExibidos(atores);
+  const n = selecionaveis.filter(a=>dispSelecionados.has(a.id)).length;
+  const truncado = exibidos.length > DISP_MAX_LISTA;
   c.innerHTML = `
     <div class="import-card">
       <div class="ic-title">📢 Disparo em massa</div>
@@ -598,60 +664,136 @@ function renderDisparo(atores){
       <div class="form-group"><label>Modelo</label>
         <select id="dp-tipo" onchange="mudarTipoDisparo(this.value)">
           <option value="golpe" ${dispTipo==='golpe'?'selected':''}>🚨 Alerta anti-golpe</option>
+          <option value="convocacao" ${dispTipo==='convocacao'?'selected':''}>📋 Convocação com confirmação</option>
           <option value="livre" ${dispTipo==='livre'?'selected':''}>✍️ Mensagem livre</option>
         </select>
       </div>
-      <div class="form-group"><label>Mensagem</label>
+      <div class="form-group"><label>${dispTipo==='convocacao' ? '1ª mensagem — confirmação de identidade' : 'Mensagem'}</label>
         <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical">${dispMensagemPadrao()}</textarea>
+        ${dispTipo==='convocacao' ? '<div class="ic-sub" style="margin-top:4px">Enviada primeiro, sozinha. Só depois que a pessoa responder SIM é que a 2ª mensagem (abaixo) sai — quem responder NÃO não recebe mais nada desta campanha.</div>' : ''}
       </div>
-      <div class="form-group"><label>Destinatários</label>
+      ${dispTipo==='convocacao' ? `
+      <div class="form-group"><label>2ª mensagem — convocação (só após confirmar)</label>
+        <textarea id="dp-msg-convocacao" rows="6" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical">${dispMensagemConvocacaoPadrao()}</textarea>
+        <div class="ic-sub" style="margin-top:4px">Os textos entre chaves — {nome}, {funcao}, {secao}, {local}, {municipio} — são trocados pelos dados de cada pessoa. A imagem abaixo vai junto desta mensagem, não da primeira.</div>
+      </div>` : ''}
+      <div class="form-group"><label>Imagem${dispTipo==='convocacao' ? ' (vai com a 2ª mensagem)' : ' (opcional)'}</label>
+        <input type="url" id="dp-imagem" value="${dispImagemUrl}" placeholder="https://... (URL pública de uma imagem, ex.: passo a passo de confirmação no site do TRE)" oninput="dispImagemUrl=this.value">
+        <div class="ic-sub" style="margin-top:4px">O Hermes manda essa imagem junto com a mensagem. Precisa ser um link público (não é upload aqui — hospede em algum lugar e cole a URL).</div>
+      </div>
+      <div class="form-group"><label>Filtrar por função</label>
         <select id="dp-funcao" onchange="mudarFuncaoDisparo(this.value)">
           <option value="">Todos os ativos com WhatsApp cadastrado</option>
           ${FUNCOES.map(f=>`<option value="${f}" ${dispFuncao===f?'selected':''}>${FUNC_EMOJI[f]||''} ${FUNC_LABEL[f]}</option>`).join('')}
         </select>
       </div>
-      <div class="ic-sub" id="dp-contagem"><b>${n}</b> pessoa${n!==1?'s':''} vão receber esta mensagem.</div>
+      <div class="form-group"><label>Selecionar destinatários</label>
+        <input type="text" id="dp-busca" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
+        <div style="display:flex;gap:8px;margin:6px 0">
+          <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(true)">☑ Marcar exibidos</button>
+          <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(false)">☐ Desmarcar exibidos</button>
+        </div>
+        <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border2);border-radius:7px;padding:4px">
+          ${exibidos.slice(0,DISP_MAX_LISTA).map(a=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:.85rem;cursor:pointer;border-radius:5px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+              <input type="checkbox" ${dispSelecionados.has(a.id)?'checked':''} onchange="toggleSelecaoDisparo('${a.id}',this.checked)">
+              <span>${a.nome} <span style="opacity:.6">— ${rotuloFuncaoDisp(a)}${a.secao?' · Seção '+a.secao:''}</span></span>
+            </label>`).join('') || '<div class="ic-sub" style="padding:8px">Ninguém encontrado com esse filtro/busca.</div>'}
+        </div>
+        ${truncado ? `<div class="ic-sub" style="margin-top:4px">Mostrando ${DISP_MAX_LISTA} de ${exibidos.length} — refine a busca pra ver o resto (a seleção de quem não aparece continua valendo).</div>` : ''}
+      </div>
+      <div class="ic-sub" id="dp-contagem"><b>${n}</b> pessoa${n!==1?'s':''} selecionada${n!==1?'s':''} vão receber esta mensagem.</div>
       ${!semSessao ? `<button class="btn btn-dark" id="dp-btn-enviar" onclick="confirmarDisparo()" ${n?'':'disabled'}>📢 Enviar para ${n} pessoa${n!==1?'s':''}</button>` : ''}
     </div>`;
 }
 
-// Muda só a contagem/botão — não chama render() de novo pra não perder o
-// que a pessoa já digitou na mensagem.
-function mudarFuncaoDisparo(v){
-  dispFuncao = v;
-  const n = atoresParaDisparo(loadAtores()).length;
+function atualizarContagemDisparo(){
+  const n = atoresParaDisparo(loadAtores()).filter(a=>dispSelecionados.has(a.id)).length;
   const contagem = document.getElementById('dp-contagem');
-  if(contagem) contagem.innerHTML = `<b>${n}</b> pessoa${n!==1?'s':''} vão receber esta mensagem.`;
+  if(contagem) contagem.innerHTML = `<b>${n}</b> pessoa${n!==1?'s':''} selecionada${n!==1?'s':''} vão receber esta mensagem.`;
   const btn = document.getElementById('dp-btn-enviar');
   if(btn){ btn.textContent = `📢 Enviar para ${n} pessoa${n!==1?'s':''}`; btn.disabled = !n; }
 }
 
+// Trocar de função reseta a seleção pro novo filtro inteiro (mesmo
+// comportamento de antes) — só recarrega a tela pra reconstruir a lista.
+function mudarFuncaoDisparo(v){ dispFuncao = v; dispSelecionados = null; render(); }
+
+// Buscar só muda o que é EXIBIDO na lista, não desmarca ninguém — por isso
+// não recarrega a tela inteira, só a lista + contagem.
+function buscarDisparo(v){
+  dispBusca = v;
+  const atores = loadAtores();
+  const exibidos = atoresExibidos(atores);
+  const lista = document.querySelector('#dp-busca')?.closest('.form-group')?.querySelector('div[style*="overflow-y"]');
+  if(lista){
+    lista.innerHTML = exibidos.slice(0,DISP_MAX_LISTA).map(a=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:.85rem;cursor:pointer;border-radius:5px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+        <input type="checkbox" ${dispSelecionados.has(a.id)?'checked':''} onchange="toggleSelecaoDisparo('${a.id}',this.checked)">
+        <span>${a.nome} <span style="opacity:.6">— ${rotuloFuncaoDisp(a)}${a.secao?' · Seção '+a.secao:''}</span></span>
+      </label>`).join('') || '<div class="ic-sub" style="padding:8px">Ninguém encontrado com esse filtro/busca.</div>';
+  }
+}
+
+function toggleSelecaoDisparo(id, marcado){
+  if(marcado) dispSelecionados.add(id); else dispSelecionados.delete(id);
+  atualizarContagemDisparo();
+}
+
+function marcarExibidosDisparo(marcar){
+  const exibidos = atoresExibidos(loadAtores());
+  for(const a of exibidos){ if(marcar) dispSelecionados.add(a.id); else dispSelecionados.delete(a.id); }
+  render();
+}
+
 // Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela.
 function mudarTipoDisparo(v){ dispTipo = v; render(); }
+
+// Troca {nome}/{funcao}/{secao}/{local}/{municipio} pelos dados da pessoa.
+// Inofensivo pros outros modelos (golpe/livre) — se o texto não tiver esses
+// tokens, não muda nada.
+function personalizarMensagem(msg, a){
+  const info = window.SECAO_INFO_POR_NUMERO?.[a.secao] || {};
+  return msg
+    .replaceAll('{nome}', a.nome || '')
+    .replaceAll('{funcao}', rotuloFuncaoDisp(a))
+    .replaceAll('{secao}', a.secao || '')
+    .replaceAll('{local}', info.local_nome || 'local a confirmar')
+    .replaceAll('{municipio}', info.municipio || '');
+}
 
 async function confirmarDisparo(){
   const sb = window.supabaseAtores;
   if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
   const msg = (document.getElementById('dp-msg')?.value||'').trim();
   if(!msg){ showToast('⚠ Escreva a mensagem'); return; }
-  const destinatarios = atoresParaDisparo(loadAtores());
-  if(!destinatarios.length){ showToast('⚠ Nenhum destinatário nesse filtro'); return; }
-  if(!confirm(`Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`)) return;
+  const ehConvocacao = dispTipo==='convocacao';
+  const msgConvocacao = ehConvocacao ? (document.getElementById('dp-msg-convocacao')?.value||'').trim() : '';
+  if(ehConvocacao && !msgConvocacao){ showToast('⚠ Escreva a 2ª mensagem (convocação)'); return; }
+  const destinatarios = atoresParaDisparo(loadAtores()).filter(a=>dispSelecionados.has(a.id));
+  if(!destinatarios.length){ showToast('⚠ Nenhum destinatário selecionado'); return; }
+  const aviso = ehConvocacao
+    ? `Enfileirar a confirmação de identidade para ${destinatarios.length} pessoa(s)?\n\nA convocação (2ª mensagem + imagem) só sai pra quem responder SIM à primeira. O envio de fato depende do Hermes estar com o disparo ligado.`
+    : `Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`;
+  if(!confirm(aviso)) return;
 
   const zonaId = await zonaDoUsuario();
   if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
 
+  const imagemUrl = (dispImagemUrl||'').trim() || null;
   const linhas = destinatarios.map(a => ({
     ator_id: a.id,
     telefone_whatsapp: a.telefone,
     zona_id: zonaId,
-    mensagem_enviada: msg,
+    mensagem_enviada: personalizarMensagem(msg, a),
+    mensagem_convocacao: ehConvocacao ? personalizarMensagem(msgConvocacao, a) : null,
+    imagem_url: imagemUrl,
     status: 'pendente',
   }));
   const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
   if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
 
-  await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos' });
+  await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao });
   showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
 }
 
