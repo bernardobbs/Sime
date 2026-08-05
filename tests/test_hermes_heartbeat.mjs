@@ -111,6 +111,43 @@ const { default: handler } = await import(_H);
   check('erro_atualizacao: grava ultimo_erro', comp.ultimo_resultado === 'erro' && comp.ultimo_erro.includes('ENOSPC'), JSON.stringify(comp));
 }
 
+// ── componentes: idade do heartbeat de cada um, calculada no servidor ──
+{
+  resetDB();
+  globalThis.__SUPA.heartbeats.push(
+    { zona_id: 'zona-7', componente: 'hermes', ultimo_heartbeat: '2026-08-04T17:29:00.000Z' },      // 60s atrás de AGORA
+    { zona_id: 'zona-7', componente: 'hermes-backup', ultimo_heartbeat: '2026-08-04T17:00:00.000Z' }, // 1800s atrás
+    { zona_id: 'zona-94', componente: 'hermes', ultimo_heartbeat: AGORA },                            // outra zona — não deve aparecer
+  );
+  const r = res();
+  await handler(req({ acao: 'componentes' }, 'Bearer segredo7'), r);
+  check('componentes: 200 ok', r._status === 200 && r._json.ok === true, JSON.stringify(r._json));
+  const lista = r._json.componentes || [];
+  check('componentes: só os da zona autenticada', lista.length === 2, JSON.stringify(lista));
+  const principal = lista.find(c => c.componente === 'hermes');
+  const backup = lista.find(c => c.componente === 'hermes-backup');
+  check('componentes: idade_s calculada com o relógio do servidor', principal?.idade_s === 60, JSON.stringify(principal));
+  check('componentes: cada componente com a própria idade', backup?.idade_s === 1800, JSON.stringify(backup));
+}
+
+// ── componentes: nunca reportou heartbeat → idade_s null, não erro ──
+{
+  resetDB();
+  globalThis.__SUPA.heartbeats.push({ zona_id: 'zona-7', componente: 'hermes', ultimo_heartbeat: null });
+  const r = res();
+  await handler(req({ acao: 'componentes' }, 'Bearer segredo7'), r);
+  const item = (r._json.componentes || [])[0];
+  check('componentes: sem heartbeat ainda → idade_s null', item?.idade_s === null, JSON.stringify(item));
+}
+
+// ── componentes: zona sem nenhum heartbeat → lista vazia, não erro ──
+{
+  resetDB();
+  const r = res();
+  await handler(req({ acao: 'componentes' }, 'Bearer segredo94'), r);
+  check('componentes: zona sem heartbeat → 200 com lista vazia', r._status === 200 && Array.isArray(r._json.componentes) && r._json.componentes.length === 0, JSON.stringify(r._json));
+}
+
 // ── ação desconhecida ──
 {
   resetDB();

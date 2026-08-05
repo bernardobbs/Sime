@@ -83,6 +83,7 @@ class QB {
     if (this.t === 'sime_notificacoes') return resolve({ data: this._filtra(S.notificacoes), error: null });
     if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
     if (this.t === 'sime_campanhas_confirmacao') return resolve({ data: this._filtra(S.campanhas), error: null });
+    if (this.t === 'sime_heartbeat') return resolve({ data: this._filtra(S.heartbeats), error: null });
     return resolve({ data: null, error: null });
   }
   _read() {

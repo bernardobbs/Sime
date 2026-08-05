@@ -21,6 +21,16 @@
 //   erro_atualizacao      → Hermes tentou e falhou: grava o erro, zera o
 //                           pedido (não fica tentando pra sempre sem
 //                           intervenção de quem opera o Pi)
+//   componentes           → lista os componentes da zona com a idade do
+//                           heartbeat de cada um (idade_s, calculada com o
+//                           relógio do servidor — nunca o do Pi). Usado por
+//                           uma segunda instância de Hermes (número de
+//                           WhatsApp backup) pra decidir se o principal
+//                           parou de reportar e assumir a monitoria de
+//                           grupo — mesmo padrão de idade_s já usado em
+//                           hermes-notificacoes.js pro escalonamento de
+//                           pânico, pelo mesmo motivo (não confiar no
+//                           horário local do Pi).
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -134,6 +144,22 @@ export default async function handler(req, res) {
     if (error) return res.status(500).json({ error: error.message });
 
     return res.status(200).json({ ok: true });
+  }
+
+  // ── COMPONENTES — idade do heartbeat de cada componente da zona ──
+  if (acao === 'componentes') {
+    const ts = await serverTs();
+    const { data, error } = await supabase
+      .from('sime_heartbeat')
+      .select('componente, ultimo_heartbeat')
+      .eq('zona_id', zonaId);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const componentes = (data || []).map((c) => ({
+      componente: c.componente,
+      idade_s: c.ultimo_heartbeat ? Math.round((new Date(ts) - new Date(c.ultimo_heartbeat)) / 1000) : null,
+    }));
+    return res.status(200).json({ ok: true, zona: zona.numeroZona, componentes });
   }
 
   return res.status(400).json({ error: `Ação desconhecida: ${acao}` });
