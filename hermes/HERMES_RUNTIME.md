@@ -101,6 +101,7 @@ linhas — toda a lógica mora em `core/`, `services/` e `modules/`:
 │   ├── simeApi.js                # cliente único dos endpoints /api/hermes-*
 │   ├── monitor.js                # temperatura do Pi
 │   ├── telemetria.js             # heartbeat/telemetria + aviso de atualização (ver seção 5)
+│   ├── papel.js                   # papel principal/backup + failover de monitoria de grupo (ver seção 5)
 │   ├── heartbeat.js              # agrega health() de cada módulo pro comando "status"
 │   └── speedtest.js              # teste de velocidade sob demanda
 ├── modules/
@@ -222,6 +223,7 @@ mesclado em 03/08/2026.
 | Detecção de eventos de seção (`eventos.js`) | ⚠️ detecta e propõe no Telegram — **modo proposta, não grava** |
 | Autoatendimento por telefone ("oi" → `hermes-mesarios acao=consultar`) | ❌ não implementado — busca por nome cobre parte do caso de uso |
 | Heartbeat/telemetria pro SIME (`POST /api/hermes-heartbeat`) | ✅ `services/telemetria.js`, a cada `SIME_POLL_INTERVALO`s — ver nota abaixo |
+| Failover de número backup (monitoria de grupo) | ✅ `services/papel.js` — opcional, só ativa com `HERMES_PAPEL=backup` numa segunda instalação — ver nota abaixo |
 | Comando `status` | ✅ PM2, temperatura, CPU, RAM, swap, disco, uptime |
 | Comando `velocidade` | ✅ speedtest real (download/upload/ping) |
 | Monitor de temperatura | ✅ alerta ≥75 °C a cada 3 min, WhatsApp + Telegram |
@@ -248,6 +250,39 @@ decisão deliberada, documentada em `SIME_hermes_skill_heartbeat.md`: perto da
 eleição (04/10/2026), uma sessão Baileys que precisa de novo QR Code no meio
 da operação é pior que rodar uma versão atrasada. Aplicar a atualização
 continua manual, na mão de quem cuida do Raspberry Pi.
+
+### Failover de número backup — ponto único de falha, mitigado só na monitoria de grupo
+
+Resposta à pendência "Ponto único de falha do Hermes" do `CLAUDE.md`:
+`services/papel.js` permite ligar uma **segunda instalação** (outro número
+de WhatsApp, outro Raspberry Pi ou processo, `HERMES_PAPEL=backup` no
+`.env`) que assume a monitoria de grupo (detecção de eventos de dia D +
+confirmação/recusa de mesário) quando o principal para de mandar heartbeat
+por mais de 3 minutos — decisão via `POST /api/hermes-heartbeat
+acao=componentes`, comparando a idade do heartbeat do principal com o
+relógio do **servidor**, nunca o do Pi. Volta a standby sozinho quando o
+principal reaparece. Detalhe completo do contrato (mensagens, limiar,
+"o que NÃO faz"): `hermes/SIME_hermes_skill_heartbeat.md`.
+
+**Nada disso está ligado por padrão** — sem `HERMES_PAPEL=backup` numa
+segunda instalação, o comportamento é idêntico a hoje (`papel.souBackup()`
+sempre `false`, `ativoParaGrupos()` sempre `true`). Setup manual necessário
+pra usar de verdade:
+1. Segunda instalação completa (outro diretório/Pi/processo PM2, próprio
+   `auth_info/`, próprio QR Code escaneado — número de WhatsApp diferente
+   do principal).
+2. `.env` da segunda instalação: mesmo `HERMES_SECRET`/`SIME_API_URL` da
+   zona (mesmo Bearer — é a mesma zona), mais `HERMES_PAPEL=backup`.
+3. **Adicionar o número backup em cada grupo monitorado no WhatsApp** —
+   sem isso, mesmo promovido ele não recebe nenhuma mensagem de grupo pra
+   processar. Isso é ação manual, fora do código.
+
+**Escopo deliberadamente restrito à monitoria de grupo** — fila de pânico
+e disparo em massa nunca rodam no backup, nem em failover (ver
+`core/bootstrap.js`: `dispatch.iniciar`/`notificacoes.iniciar` só chamados
+quando `!papel.souBackup()`). Se o principal cair de vez, essas duas filas
+ficam paradas até intervenção manual — trade-off aceito conscientemente
+pra não arriscar duas notificações da mesma fila saindo de dois números.
 
 ### Modo proposta — só se aplica ao que ainda não existe
 

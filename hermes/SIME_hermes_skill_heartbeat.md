@@ -51,8 +51,9 @@ Content-Type: application/json
 ```
 Todos os campos de `telemetria` são opcionais — manda o que o `status.js`
 já calcula, sem inventar campo novo só pra preencher. `componente` é
-opcional, default `"hermes"` (existe pra quando `hermes-telegram` também
-quiser reportar heartbeat próprio, no futuro).
+opcional, default `"hermes"` — usado também pelo número **backup** (ver
+seção "Failover de número backup" abaixo), que manda `componente:
+"hermes-backup"` pra não pisar no heartbeat do principal.
 
 Resposta — já vem com a resposta de "tem atualização pedida?" no mesmo
 request, pra não gastar uma chamada a mais no ciclo:
@@ -76,6 +77,53 @@ volta a `false`).
 Zera o pedido pendente (não fica tentando pra sempre sozinho) e grava o erro
 pro cartório ver no painel — precisa de intervenção humana antes de pedir de
 novo.
+
+### 4. `componentes` — idade do heartbeat de cada componente da zona
+```json
+{ "acao": "componentes" }
+```
+```json
+{ "ok": true, "zona": "7", "componentes": [
+  { "componente": "hermes", "idade_s": 12 },
+  { "componente": "hermes-backup", "idade_s": 3600 }
+]}
+```
+Só leitura, não grava nada. `idade_s` é calculado com o relógio do
+**servidor** (nunca o do Pi que pergunta) — segundos desde o último
+`ultimo_heartbeat` daquele componente. `idade_s: null` = esse componente
+nunca mandou heartbeat. É esta ação que o número **backup** usa pra decidir
+se o principal caiu — ver próxima seção.
+
+## Failover de número backup — monitoria de grupo, só isso
+
+Cenário: duas instâncias de Hermes (dois números de WhatsApp, duas
+instalações/Raspberry Pi) atendendo a **mesma zona**, uma `HERMES_PAPEL=
+principal` (padrão) e outra `HERMES_PAPEL=backup` no `.env`. As duas mandam
+heartbeat normalmente (`componente` diferente: `hermes` vs
+`hermes-backup`), então as duas aparecem na aba de gestão do Admin.
+
+O backup, a cada ciclo (mesmo timer do `enviar`), chama `componentes` e
+olha a idade do heartbeat do `hermes` (principal):
+
+```
+idade_s do principal > 180  →  backup assume a MONITORIA DE GRUPO
+idade_s do principal ≤ 180  →  backup fica em standby (ou devolve, se já
+                                 tinha assumido)
+```
+
+**Escopo deliberadamente restrito**: o backup só liga a detecção de
+eventos/confirmação de mesário nos grupos monitorados. Ele **nunca** drena
+a fila de pânico nem a de disparo em massa, nem antes nem depois de
+assumir — essas duas continuam só no principal. Se o principal cair de
+vez, essas filas ficam paradas até alguém notar e agir na mão. Decisão
+consciente: rodar as duas filas em dois números ao mesmo tempo mandaria a
+mesma notificação em duplicidade pra quem recebe — pior que a fila parada
+por um tempo.
+
+**Prático**: o número backup precisa estar **manualmente adicionado a cada
+grupo monitorado** — WhatsApp não propaga participação de grupo entre
+números diferentes. Sem isso, mesmo promovido, o backup não vê nenhuma
+mensagem de grupo pra processar.
 
 ## Fluxo de um ciclo normal
 
