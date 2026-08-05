@@ -49,6 +49,13 @@ ALTER TABLE sime_campanhas_confirmacao ADD COLUMN IF NOT EXISTS zona_id UUID REF
 CREATE INDEX IF NOT EXISTS idx_campanhas_zona   ON sime_campanhas_confirmacao(zona_id);
 CREATE INDEX IF NOT EXISTS idx_campanhas_status ON sime_campanhas_confirmacao(status);
 
+-- imagem_url: campanha de convocação manda a mensagem + uma imagem (ex.:
+-- passo a passo de como confirmar no site do TRE). Nullable — campanhas de
+-- texto puro (alerta anti-golpe, mensagem livre) continuam sem imagem.
+-- URL pública (Supabase Storage ou qualquer host de imagem); o Hermes só
+-- baixa e reenvia, não faz upload nem hospeda nada.
+ALTER TABLE sime_campanhas_confirmacao ADD COLUMN IF NOT EXISTS imagem_url TEXT;
+
 ALTER TABLE sime_campanhas_confirmacao ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS campanhas_zona_policy ON sime_campanhas_confirmacao;
 CREATE POLICY campanhas_zona_policy ON sime_campanhas_confirmacao
