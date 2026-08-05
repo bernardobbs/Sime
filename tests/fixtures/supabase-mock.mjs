@@ -13,19 +13,27 @@ export function createClient() {
 }
 
 class QB {
-  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._op = null; }
+  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._gte = {}; this._lt = {}; this._op = null; }
   select(c) { this._sel = c; return this; }
   eq(c, v) { this.f[c] = v; return this; }
   // .in(coluna, [valores]) — usado por api/hermes-notificacoes.js para filtrar
   // as notificações pelas seções da zona.
   in(c, vals) { this._in[c] = new Set(vals); return this; }
+  // .gte()/.lt() — usados por api/hermes-campanhas.js na auto-expiração de
+  // quem estourou tentativas e passou da janela de retry. Comparação de
+  // string funciona porque os valores são sempre ISO 8601 (mesma ordem
+  // lexicográfica e cronológica).
+  gte(c, v) { this._gte[c] = v; return this; }
+  lt(c, v) { this._lt[c] = v; return this; }
   order() { return this; }
   limit() { return this; }
-  // Aplica os .eq e .in acumulados a uma lista de linhas.
+  // Aplica os .eq/.in/.gte/.lt acumulados a uma lista de linhas.
   _filtra(rows) {
     return (rows || []).filter((r) =>
       Object.entries(this.f).every(([k, v]) => r[k] === v) &&
-      Object.entries(this._in).every(([k, set]) => set.has(r[k])));
+      Object.entries(this._in).every(([k, set]) => set.has(r[k])) &&
+      Object.entries(this._gte).every(([k, v]) => r[k] != null && r[k] >= v) &&
+      Object.entries(this._lt).every(([k, v]) => r[k] != null && r[k] < v));
   }
   update(p) { this._op = 'update'; this._payload = p; return this; }
   upsert(o, opt) {

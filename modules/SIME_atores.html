@@ -716,8 +716,20 @@ function atualizarContagemDisparo(){
 }
 
 // Trocar de função reseta a seleção pro novo filtro inteiro (mesmo
-// comportamento de antes) — só recarrega a tela pra reconstruir a lista.
-function mudarFuncaoDisparo(v){ dispFuncao = v; dispSelecionados = null; render(); }
+// comportamento de antes) — recarrega a tela pra reconstruir a lista, mas
+// preserva o que já foi digitado nas mensagens: render() reconstrói os
+// textareas com dispMensagemPadrao()/dispMensagemConvocacaoPadrao(), que
+// não sabem nada sobre edição manual — sem isso, trocar o filtro apagava
+// a mensagem customizada (regressão real, coberta por teste).
+function mudarFuncaoDisparo(v){
+  const msgAtual = document.getElementById('dp-msg')?.value;
+  const msgConvAtual = document.getElementById('dp-msg-convocacao')?.value;
+  dispFuncao = v;
+  dispSelecionados = null;
+  render();
+  if(msgAtual !== undefined){ const el = document.getElementById('dp-msg'); if(el) el.value = msgAtual; }
+  if(msgConvAtual !== undefined){ const el = document.getElementById('dp-msg-convocacao'); if(el) el.value = msgConvAtual; }
+}
 
 // Buscar só muda o que é EXIBIDO na lista, não desmarca ninguém — por isso
 // não recarrega a tela inteira, só a lista + contagem.
@@ -743,7 +755,13 @@ function toggleSelecaoDisparo(id, marcado){
 function marcarExibidosDisparo(marcar){
   const exibidos = atoresExibidos(loadAtores());
   for(const a of exibidos){ if(marcar) dispSelecionados.add(a.id); else dispSelecionados.delete(a.id); }
+  // Mesmo cuidado de mudarFuncaoDisparo: render() reconstrói os textareas
+  // com o texto padrão, então preserva o que já foi editado.
+  const msgAtual = document.getElementById('dp-msg')?.value;
+  const msgConvAtual = document.getElementById('dp-msg-convocacao')?.value;
   render();
+  if(msgAtual !== undefined){ const el = document.getElementById('dp-msg'); if(el) el.value = msgAtual; }
+  if(msgConvAtual !== undefined){ const el = document.getElementById('dp-msg-convocacao'); if(el) el.value = msgConvAtual; }
 }
 
 // Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela.
