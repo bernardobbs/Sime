@@ -94,7 +94,18 @@ async function buscarZonaId(numeroZona) {
     // não é segredo (aparece na URL do dashboard), então dá pra logar.
     let host = '(SUPABASE_URL ausente ou inválida)';
     try { host = new URL(process.env.SUPABASE_URL).hostname; } catch {}
-    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL host:', host, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length);
+    // sime_zonas tem RLS (zonas_zona_policy, via sime_zona_visivel()) —
+    // "query OK, 0 linhas" sem erro é exatamente o que acontece quando quem
+    // roda a query NÃO é o role service_role (que tem BYPASSRLS) e não há
+    // usuário autenticado casando a zona. Decodificar só o campo "role" do
+    // JWT (payload público, não é a assinatura/segredo em si) confirma se a
+    // env var realmente contém uma chave service_role ou outra coisa.
+    let jwtRole = '(não decodificável)';
+    try {
+      const payload = process.env.SUPABASE_SERVICE_ROLE_KEY.split('.')[1];
+      jwtRole = JSON.parse(Buffer.from(payload, 'base64').toString('utf8')).role;
+    } catch {}
+    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL host:', host, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length, '| role no JWT:', jwtRole);
   }
   return data?.id || null;
 }
