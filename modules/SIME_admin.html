@@ -328,7 +328,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Dados operacionais</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-out" onclick="exportarDados()">📥 Exportar snapshot (JSON)</button>
-        <button class="btn btn-red" onclick="resetarProblemas()">🗑 Resetar Problemas (zona)</button>
+        <button class="btn btn-red" onclick="resetarProblemas()">🗑 Resetar dados de teste (Problemas + Dia D)</button>
       </div>
     </div>
   </div>
@@ -1936,32 +1936,54 @@ function exportarDados(){
   showToast('✓ Snapshot exportado');
 }
 // "Resetar dados de teste" virou um no-op depois da migração pro Supabase
-// (o cache local que ele apagava já estava morto) — só que isso deixou os
-// Problemas de teste presos na tela pra sempre, sem nenhuma forma de limpar
-// antes da operação real. Reimplementado com escopo estreito de propósito:
-// só sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) da
-// zona do usuário — NUNCA sime_mesa_estado, que é o estado do Dia D de todo
-// mundo e apagar isso de verdade destruiria a operação real. Ação
-// irreversível: confirmação mostra a contagem antes de apagar.
+// (o cache local que ele apagava já estava morto) — só que isso deixou
+// Problemas de teste E estado de Dia D de teste presos na tela pra sempre,
+// sem nenhuma forma de limpar antes da operação real.
+//
+// Cobre sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) e
+// sime_mesa_estado (chegada de mesário, votação, urna, pânico) — as duas
+// únicas tabelas que um ciclo de teste normalmente suja. Escopo continua
+// restrito à zona do usuário (sime_mesa_estado não tem zona_id direto — filtra
+// pelas seções da zona). Ação irreversível: confirmação mostra a contagem de
+// cada tabela antes de apagar.
+//
+// ⚠️ Isso é seguro só ENQUANTO sime_mesa_estado só tem dado de teste — a
+// partir do Dia D real (04/10), essa tabela vira a operação de verdade e este
+// botão não deve mais ser usado (fica registrado em sime_logs quem/quando
+// apagou, pra rastrear se alguém clicar por engano depois disso).
 async function resetarProblemas(){
   const sb = window.supabase;
   const zonaId = window.MINHA_ZONA_ID;
   if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
 
-  const { count, error: e1 } = await sb.from('sime_ocorrencias')
-    .select('id', { count: 'exact', head: true }).eq('zona_id', zonaId);
+  const { data: secoes, error: e0 } = await sb.from('sime_secoes').select('id').eq('zona_id', zonaId);
+  if(e0){ showToast('⚠ Falha ao carregar seções: ' + e0.message); return; }
+  const secaoIds = (secoes || []).map(s => s.id);
+
+  const [{ count: countProb, error: e1 }, { count: countMesa, error: e2 }] = await Promise.all([
+    sb.from('sime_ocorrencias').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId),
+    secaoIds.length
+      ? sb.from('sime_mesa_estado').select('secao_id', { count: 'exact', head: true }).in('secao_id', secaoIds)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
   if(e1){ showToast('⚠ Falha ao contar ocorrências: ' + e1.message); return; }
-  if(!count){ showToast('ℹ Nenhum problema pra apagar nesta zona'); return; }
+  if(e2){ showToast('⚠ Falha ao contar estado de Dia D: ' + e2.message); return; }
+  const totalProb = countProb || 0, totalMesa = countMesa || 0;
+  if(!totalProb && !totalMesa){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
 
-  if(!confirm(`Apagar PERMANENTEMENTE ${count} problema${count!==1?'s':''} (aberto, assumido ou resolvido) desta zona?\n\nIsso NÃO pode ser desfeito. Não afeta seções, mesários, nem o estado do Dia D — só os registros de sime_ocorrencias.`)) return;
+  if(!confirm(`Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`)) return;
 
-  const { error: e2 } = await sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId);
-  if(e2){ showToast('⚠ Falha ao apagar: ' + e2.message); return; }
+  const ops = [];
+  if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
+  if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
+  const resultados = await Promise.all(ops);
+  const falhou = resultados.find(r => r.error);
+  if(falhou){ showToast('⚠ Falha ao apagar: ' + falhou.error.message); return; }
 
   const { data: ts } = await sb.rpc('sime_now');
-  await sb.from('sime_logs').insert({ acao: 'reset_problemas', modulo: 'admin', payload: { zona_id: zonaId, quantidade: count }, ts });
+  await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
 
-  showToast(`✓ ${count} problema${count!==1?'s':''} apagado${count!==1?'s':''}`);
+  showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
   await atualizarBadgeProblemas();
 }
 
