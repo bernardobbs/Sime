@@ -77,11 +77,18 @@ function resolverZonaPorAuth(authHeader) {
   return null;
 }
 async function buscarZonaId(numeroZona) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('sime_zonas')
     .select('id')
     .eq('numero', parseInt(numeroZona))
     .maybeSingle();
+  // Diagnóstico temporário — mesma investigação do 401: "Zona não
+  // encontrada" pode ser a zona genuinamente ausente, OU o client Supabase
+  // falhando silenciosamente (chave inválida/vazia) — buscarZonaId nunca
+  // olhava pro erro antes. Remover junto com o resto do log de diagnóstico.
+  if (!data) {
+    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL definida:', !!process.env.SUPABASE_URL, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length);
+  }
   return data?.id || null;
 }
 async function serverTs() {
