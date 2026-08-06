@@ -190,16 +190,34 @@ mensagem chega
 │       └─ não achou ──────────────► fallback IA
 │           └─ aprende keyword nova + notifica
 │       → grava no SIME via POST /api/hermes-mesarios (confirmar/recusar)
-└─ conversa individual → comandos
+└─ conversa individual → comandos (TODOS exigem ADMIN_NUMBERS, ver nota abaixo)
     ├─ status
-    ├─ pausar envio / retomar envio   (admin — disparo em massa)
+    ├─ pausar envio / retomar envio   (disparo em massa)
     ├─ fila                           (status da fila de disparo em massa)
     ├─ velocidade / speedtest
-    ├─ reiniciar raspberry            (admin, com confirmação)
-    ├─ trocar papel                   (admin, com confirmação — troca principal↔backup)
-    └─ nenhum comando bateu + 2+ palavras → busca por nome
-       (POST /api/hermes-mesarios acao=buscar_nome)
+    ├─ reiniciar raspberry            (com confirmação)
+    └─ trocar papel                   (com confirmação — troca principal↔backup)
 ```
+
+> **DM restrita a ADMIN_NUMBERS (06/08/2026)**: `status` e `fila` respondiam
+> a qualquer remetente antes disso — só os comandos administrativos
+> (pausar/reiniciar/trocar papel) exigiam estar na lista. Depois do
+> incidente da busca por nome (nota abaixo) respondendo estranho, o canal de
+> DM inteiro passou a exigir `ADMIN_NUMBERS`: quem não está na lista não
+> recebe nenhuma resposta, nem "sem permissão" — silêncio total. Toda DM
+> ainda é logada (`[comando] ... | isAdmin=...`) só no `pm2 logs`, nunca
+> respondida, o que ajuda a pegar um admin legítimo bloqueado por JID `@lid`
+> não cadastrado (ver nota sobre `@lid` no `CLAUDE.md`).
+
+> **Busca por nome suprimida (06/08/2026)**: existia um fallback — nenhum
+> comando bateu + 2+ palavras → `POST /api/hermes-mesarios acao=buscar_nome`
+> — que disparava em cima de conversa comum ("Bom dia", "É Bernardo do
+> cartório", qualquer frase) e respondia "não encontrei ninguém chamado
+> <frase>" pra qualquer mensagem que não fosse um comando reconhecido.
+> Flagrado em campo confundindo quem mandava mensagem normal pro número.
+> Removido de `modules/whatsapp/comandos.js` — `buscarConvocacaoPorNome`
+> continua em `modules/whatsapp/confirmacao.js`, só não é mais chamado
+> automaticamente por texto solto.
 
 > **Histórico:** em 03/08/2026 duas sessões do Claude Code trabalharam em
 > paralelo, sem saber uma da outra, em cima do mesmo `index.js` — uma corrigiu

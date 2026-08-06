@@ -351,9 +351,22 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   Cartório) — falta um endpoint que resolva telefone por papel.
 - **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
   Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
-  funciona, mas nada no `index.js` o chama ainda. Buscar convocação por
-  **nome** já funciona (`acao=buscar_nome`, quem manda 2+ palavras no
-  privado do Hermes recebe a convocação de volta).
+  funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
+  (`acao=buscar_nome`) também existe no endpoint, mas o gatilho automático
+  no WhatsApp (qualquer DM não reconhecida como comando, com 2+ palavras,
+  era tratada como nome de convocação) foi **suprimido em 06/08/2026** —
+  disparava em cima de conversa comum ("Bom dia", "É Bernardo do cartório")
+  e respondia "não encontrei ninguém chamado <frase>" pra qualquer coisa que
+  não fosse um comando, confundindo quem mandava mensagem normal pro número
+  (flagrado em campo). `buscarConvocacaoPorNome` continua disponível em
+  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente.
+- **Canal de DM (individual) restrito a `ADMIN_NUMBERS`, desde 06/08/2026**
+  — mesmo incidente do item acima. Antes, `status` e `fila` respondiam a
+  qualquer remetente; agora todo o `modules/whatsapp/comandos.js` retorna
+  sem responder nada pra quem não está na lista (nem "sem permissão" — só a
+  DM chegando, sem nenhuma resposta visível). Toda DM é logada no `pm2 logs`
+  (nunca no WhatsApp) pra ainda dar pra achar um admin legítimo bloqueado
+  por JID `@lid` fora da lista.
 - **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
@@ -409,9 +422,13 @@ inteiro ainda.
 - **Não automatizar a aplicação da atualização perto da eleição** (04/10) —
   o botão do Admin só marca o pedido; o próprio skill doc já registra isso
   como critério deliberado, não esquecimento.
-- **O Hermes real ainda não chama este endpoint** — o painel funciona e
-  mostra "Nenhum heartbeat ainda" até o runtime do Pi ser atualizado pra
-  reportar. Essa é a próxima peça que falta.
+- **Em produção desde 06/08/2026** — o Hermes da 7ª Zona chama o endpoint a
+  cada ciclo (`services/telemetria.js`) e recebe `200`. Causa raiz de um 401
+  e depois um 400 (`Zona não encontrada`) que bloquearam isso por um tempo:
+  duas env vars do Vercel (`HERMES_SECRET_ZONA_7`, depois
+  `SUPABASE_SERVICE_ROLE_KEY`) tinham valor vazio/errado apesar de aparecerem
+  "configuradas" no painel — editar não persistia o novo valor; só deletar e
+  recriar a variável resolveu as duas vezes.
 
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
@@ -434,11 +451,11 @@ inteiro ainda.
 >
 > | Skill | Estado real no Pi |
 > |---|---|
-> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; busca por nome (`buscar_nome`) funciona; autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
+> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; gatilho automático de busca por nome (`buscar_nome`) suprimido em 06/08/2026 (disparava em cima de conversa comum); autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
-> | `sime_heartbeat` | endpoint pronto (`/api/hermes-heartbeat`), **o Pi ainda não chama** — próxima peça a ligar no runtime |
+> | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
 >
 > A 94ª Zona ainda não tem instância nenhuma.
 
