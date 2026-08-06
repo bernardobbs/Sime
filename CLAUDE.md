@@ -285,6 +285,18 @@ supabase
   .subscribe();
 ```
 
+> **Armadilha real, já mordeu em produção (06/08/2026)**: assinar a tabela no
+> JS não basta — ela também precisa estar na publicação `supabase_realtime`
+> do Postgres (`ALTER PUBLICATION supabase_realtime ADD TABLE ...`), senão o
+> canal nunca dispara e ninguém percebe (não dá erro; a tela só nunca
+> atualiza sozinha). `sime_mesa_estado` ficou sem isso desde sempre — só
+> `sime_ocorrencias` tinha sido adicionada — e o sintoma foi "TV Dia não
+> atualiza depois que o cartório resolve um problema" (um celular disfarça
+> o mesmo bug porque relê o estado a cada volta de tela; um TV box ligado o
+> dia inteiro não tem esse reforço). Corrigido e formalizado em
+> `sql/SIME_realtime_publicacao.sql` — ao criar uma `subscribeX()` nova em
+> `sime_realtime.js`, adicionar a tabela lá também.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
