@@ -409,9 +409,13 @@ inteiro ainda.
 - **Não automatizar a aplicação da atualização perto da eleição** (04/10) —
   o botão do Admin só marca o pedido; o próprio skill doc já registra isso
   como critério deliberado, não esquecimento.
-- **O Hermes real ainda não chama este endpoint** — o painel funciona e
-  mostra "Nenhum heartbeat ainda" até o runtime do Pi ser atualizado pra
-  reportar. Essa é a próxima peça que falta.
+- **Em produção desde 06/08/2026** — o Hermes da 7ª Zona chama o endpoint a
+  cada ciclo (`services/telemetria.js`) e recebe `200`. Causa raiz de um 401
+  e depois um 400 (`Zona não encontrada`) que bloquearam isso por um tempo:
+  duas env vars do Vercel (`HERMES_SECRET_ZONA_7`, depois
+  `SUPABASE_SERVICE_ROLE_KEY`) tinham valor vazio/errado apesar de aparecerem
+  "configuradas" no painel — editar não persistia o novo valor; só deletar e
+  recriar a variável resolveu as duas vezes.
 
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
@@ -438,7 +442,7 @@ inteiro ainda.
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
-> | `sime_heartbeat` | endpoint pronto (`/api/hermes-heartbeat`), **o Pi ainda não chama** — próxima peça a ligar no runtime |
+> | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
 >
 > A 94ª Zona ainda não tem instância nenhuma.
 

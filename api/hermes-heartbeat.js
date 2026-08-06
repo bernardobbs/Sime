@@ -33,7 +33,6 @@
 //                           horário local do Pi).
 
 import { createClient } from '@supabase/supabase-js';
-import { createHash } from 'crypto';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -50,63 +49,19 @@ function secretsPorZona() {
   }
   return mapa;
 }
-// Diagnóstico temporário do 401 persistente reportado em produção — nunca
-// loga o valor em si, só um hash de 12 caracteres + tamanho, o suficiente
-// pra provar (ou descartar) se o Bearer recebido bate byte a byte com
-// algum HERMES_SECRET_ZONA_* configurado. Remover depois de resolvido.
-function fingerprint(s) {
-  return `len=${String(s).length} hash=${createHash('sha256').update(String(s)).digest('hex').slice(0, 12)}`;
-}
 function resolverZonaPorAuth(authHeader) {
   const secrets = secretsPorZona();
   for (const [numeroZona, secret] of Object.entries(secrets)) {
     if (authHeader === `Bearer ${secret}`) return { numeroZona, secret };
   }
-  const recebido = (authHeader || '').replace(/^Bearer\s*/, '');
-  // Quando não acha NENHUM HERMES_SECRET_ZONA_*, lista os NOMES (nunca
-  // valores) de toda env var que contenha "HERMES" ou "SUPABASE" — prova se
-  // a variável não está sendo injetada de verdade, ou se está lá com um
-  // nome levemente diferente do esperado (typo, maiúscula/minúscula etc.).
-  const chavesRelevantes = Object.keys(process.env).filter((k) => /HERMES|SUPABASE/i.test(k));
-  console.error(
-    '[hermes-heartbeat] 401 — recebido:', fingerprint(recebido),
-    '| configurados:', Object.entries(secrets).map(([z, s]) => `zona${z}:${fingerprint(s)}`).join(' , ') || '(nenhum HERMES_SECRET_ZONA_* nas env vars)',
-    '| chaves HERMES/SUPABASE vistas:', JSON.stringify(chavesRelevantes),
-    '| total de env vars:', Object.keys(process.env).length
-  );
   return null;
 }
 async function buscarZonaId(numeroZona) {
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('sime_zonas')
     .select('id')
     .eq('numero', parseInt(numeroZona))
     .maybeSingle();
-  // Diagnóstico temporário — mesma investigação do 401: "Zona não
-  // encontrada" pode ser a zona genuinamente ausente, OU o client Supabase
-  // falhando silenciosamente (chave inválida/vazia) — buscarZonaId nunca
-  // olhava pro erro antes. Remover junto com o resto do log de diagnóstico.
-  if (!data) {
-    // A zona 7 existe confirmadamente em sime_zonas (checado via SQL direto)
-    // e a query aqui não retorna erro — se for mesmo "query OK, 0 linhas",
-    // a explicação mais provável é SUPABASE_URL apontando pra outro projeto
-    // (mesma classe de bug do secret que estava vazio). Hostname de projeto
-    // não é segredo (aparece na URL do dashboard), então dá pra logar.
-    let host = '(SUPABASE_URL ausente ou inválida)';
-    try { host = new URL(process.env.SUPABASE_URL).hostname; } catch {}
-    // sime_zonas tem RLS (zonas_zona_policy, via sime_zona_visivel()) —
-    // "query OK, 0 linhas" sem erro é exatamente o que acontece quando quem
-    // roda a query NÃO é o role service_role (que tem BYPASSRLS) e não há
-    // usuário autenticado casando a zona. Decodificar só o campo "role" do
-    // JWT (payload público, não é a assinatura/segredo em si) confirma se a
-    // env var realmente contém uma chave service_role ou outra coisa.
-    let jwtRole = '(não decodificável)';
-    try {
-      const payload = process.env.SUPABASE_SERVICE_ROLE_KEY.split('.')[1];
-      jwtRole = JSON.parse(Buffer.from(payload, 'base64').toString('utf8')).role;
-    } catch {}
-    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL host:', host, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length, '| role no JWT:', jwtRole);
-  }
   return data?.id || null;
 }
 async function serverTs() {
