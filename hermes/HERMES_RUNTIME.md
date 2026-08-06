@@ -196,10 +196,18 @@ mensagem chega
     ├─ fila                           (status da fila de disparo em massa)
     ├─ velocidade / speedtest
     ├─ reiniciar raspberry            (admin, com confirmação)
-    ├─ trocar papel                   (admin, com confirmação — troca principal↔backup)
-    └─ nenhum comando bateu + 2+ palavras → busca por nome
-       (POST /api/hermes-mesarios acao=buscar_nome)
+    └─ trocar papel                   (admin, com confirmação — troca principal↔backup)
 ```
+
+> **Busca por nome suprimida (06/08/2026)**: existia um fallback — nenhum
+> comando bateu + 2+ palavras → `POST /api/hermes-mesarios acao=buscar_nome`
+> — que disparava em cima de conversa comum ("Bom dia", "É Bernardo do
+> cartório", qualquer frase) e respondia "não encontrei ninguém chamado
+> <frase>" pra qualquer mensagem que não fosse um comando reconhecido.
+> Flagrado em campo confundindo quem mandava mensagem normal pro número.
+> Removido de `modules/whatsapp/comandos.js` — `buscarConvocacaoPorNome`
+> continua em `modules/whatsapp/confirmacao.js`, só não é mais chamado
+> automaticamente por texto solto.
 
 > **Histórico:** em 03/08/2026 duas sessões do Claude Code trabalharam em
 > paralelo, sem saber uma da outra, em cima do mesmo `index.js` — uma corrigiu

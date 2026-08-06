@@ -351,9 +351,15 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   Cartório) — falta um endpoint que resolva telefone por papel.
 - **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
   Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
-  funciona, mas nada no `index.js` o chama ainda. Buscar convocação por
-  **nome** já funciona (`acao=buscar_nome`, quem manda 2+ palavras no
-  privado do Hermes recebe a convocação de volta).
+  funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
+  (`acao=buscar_nome`) também existe no endpoint, mas o gatilho automático
+  no WhatsApp (qualquer DM não reconhecida como comando, com 2+ palavras,
+  era tratada como nome de convocação) foi **suprimido em 06/08/2026** —
+  disparava em cima de conversa comum ("Bom dia", "É Bernardo do cartório")
+  e respondia "não encontrei ninguém chamado <frase>" pra qualquer coisa que
+  não fosse um comando, confundindo quem mandava mensagem normal pro número
+  (flagrado em campo). `buscarConvocacaoPorNome` continua disponível em
+  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente.
 - **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
@@ -438,7 +444,7 @@ inteiro ainda.
 >
 > | Skill | Estado real no Pi |
 > |---|---|
-> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; busca por nome (`buscar_nome`) funciona; autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
+> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; gatilho automático de busca por nome (`buscar_nome`) suprimido em 06/08/2026 (disparava em cima de conversa comum); autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
