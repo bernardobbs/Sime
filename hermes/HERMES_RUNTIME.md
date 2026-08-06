@@ -196,6 +196,7 @@ mensagem chega
     ├─ fila                           (status da fila de disparo em massa)
     ├─ velocidade / speedtest
     ├─ reiniciar raspberry            (admin, com confirmação)
+    ├─ trocar papel                   (admin, com confirmação — troca principal↔backup)
     └─ nenhum comando bateu + 2+ palavras → busca por nome
        (POST /api/hermes-mesarios acao=buscar_nome)
 ```
@@ -299,6 +300,19 @@ de sempre. Setup manual necessário pra usar de verdade:
 4. **Adicionar o número backup em cada grupo monitorado no WhatsApp** —
    sem isso, mesmo com o principal caído, o backup não recebe nenhuma
    mensagem de grupo pra processar. Ação manual, fora do código.
+
+**Qual número é qual, e como trocar**: o papel é definido só pela pasta de
+sessão (`auth_info/` = principal, `auth_info_backup/` = backup) — não tem
+nenhuma configuração por número de telefone. Toda vez que um socket
+conecta, o Telegram mostra o número físico junto do papel ("✅ Hermes Agent
+(PRINCIPAL) conectado... Número: +55869..."), então não precisa adivinhar
+qual é qual. Pra trocar os papéis sem re-parear nenhum dos dois números,
+manda **"trocar papel"** no privado do Hermes (admin) — mesmo fluxo de
+confirmação do "reiniciar raspberry" (`CONFIRMAR TROCA`, expira em 30s,
+bloqueado em período eleitoral crítico). Por baixo do capô, o comando só
+troca as duas pastas de lugar e reinicia o PM2 (`modules/whatsapp/comandos.js`)
+— equivalente a fazer `mv auth_info auth_info_backup` na mão, mas sem
+precisar de SSH.
 
 **Escopo deliberadamente restrito à monitoria de grupo** — fila de pânico
 e disparo em massa nunca rodam no backup, nem em failover (ver
