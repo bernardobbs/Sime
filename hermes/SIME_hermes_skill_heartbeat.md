@@ -51,9 +51,12 @@ Content-Type: application/json
 ```
 Todos os campos de `telemetria` são opcionais — manda o que o `status.js`
 já calcula, sem inventar campo novo só pra preencher. `componente` é
-opcional, default `"hermes"` — usado também pelo número **backup** (ver
-seção "Failover de número backup" abaixo), que manda `componente:
-"hermes-backup"` pra não pisar no heartbeat do principal.
+opcional, default `"hermes"` — usado também pelo socket **backup** (ver
+seção "Dois números de WhatsApp no mesmo Pi" abaixo), que manda
+`componente: "hermes-backup"` pra não pisar no heartbeat do principal.
+Como os dois rodam no mesmo Raspberry Pi, `cpu_pct`/`mem_mb`/
+`disco_livre_mb`/`temperatura_c`/`uptime_s` saem idênticos nos dois envios
+— só `whatsapp_status` muda entre eles.
 
 Resposta — já vem com a resposta de "tem atualização pedida?" no mesmo
 request, pra não gastar uma chamada a mais no ciclo:
@@ -91,39 +94,57 @@ novo.
 Só leitura, não grava nada. `idade_s` é calculado com o relógio do
 **servidor** (nunca o do Pi que pergunta) — segundos desde o último
 `ultimo_heartbeat` daquele componente. `idade_s: null` = esse componente
-nunca mandou heartbeat. É esta ação que o número **backup** usa pra decidir
-se o principal caiu — ver próxima seção.
+nunca mandou heartbeat. Serve pra visibilidade no Admin ("desde quando cada
+componente está quieto") — a decisão de failover em si (próxima seção) não
+depende mais desta ação, é local ao processo.
 
-## Failover de número backup — monitoria de grupo, só isso
+## Dois números de WhatsApp no mesmo Pi — monitoria de grupo, só isso
 
-Cenário: duas instâncias de Hermes (dois números de WhatsApp, duas
-instalações/Raspberry Pi) atendendo a **mesma zona**, uma `HERMES_PAPEL=
-principal` (padrão) e outra `HERMES_PAPEL=backup` no `.env`. As duas mandam
-heartbeat normalmente (`componente` diferente: `hermes` vs
-`hermes-backup`), então as duas aparecem na aba de gestão do Admin.
+**Só temos um Raspberry Pi disponível** (3 Model B, 1GB RAM) — não duas
+instalações físicas. O desenho é: **um processo só** (`core/bootstrap.js`),
+com **dois sockets Baileys** dentro dele — `principal` sempre sobe,
+`backup` só se `HERMES_BACKUP_ATIVO=true` no `.env`. Cada socket usa sua
+própria pasta de sessão (`auth_info/` vs `auth_info_backup/` — sessões
+Baileys sobre a mesma pasta desincronizam as chaves do Signal protocol e
+geram erro de decriptação, então isso não é opcional) e seu próprio número
+de WhatsApp, pareado via QR Code próprio (o Telegram rotula qual é qual:
+"PRINCIPAL" ou "BACKUP").
 
-O backup, a cada ciclo (mesmo timer do `enviar`), chama `componentes` e
-olha a idade do heartbeat do `hermes` (principal):
+Por estarem no **mesmo processo**, a decisão de qual socket processa
+mensagem de grupo é local e instantânea — nenhum round-trip pelo SIME:
 
 ```
-idade_s do principal > 180  →  backup assume a MONITORIA DE GRUPO
-idade_s do principal ≤ 180  →  backup fica em standby (ou devolve, se já
-                                 tinha assumido)
+principal conectado (connection.update === 'open')  →  só o principal processa grupo
+principal desconectado                                →  o backup assume a monitoria de grupo
 ```
+
+Isso muda de estado assim que o `connection.update` do socket principal
+reportar `close`/`open` — não tem limiar de minutos como numa checagem
+remota, porque não depende de rede pra saber.
+
+**O que isso protege, e o que não protege**: cobre a **sessão do WhatsApp**
+cair sozinha (número deslogado, banido, chave de sessão corrompida). **NÃO**
+cobre o **Pi inteiro** cair (energia, Wi-Fi, cartão SD corrompido, processo
+travado) — nesse caso os dois números caem juntos, porque são o mesmo
+processo/hardware. A pendência "ponto único de falha do Hermes" do
+`CLAUDE.md` continua parcialmente aberta; só a falha de sessão tem
+mitigação.
 
 **Escopo deliberadamente restrito**: o backup só liga a detecção de
 eventos/confirmação de mesário nos grupos monitorados. Ele **nunca** drena
-a fila de pânico nem a de disparo em massa, nem antes nem depois de
-assumir — essas duas continuam só no principal. Se o principal cair de
-vez, essas filas ficam paradas até alguém notar e agir na mão. Decisão
+a fila de pânico nem a de disparo em massa, mesmo com o principal
+desconectado — essas duas continuam só no socket principal
+(`dispatch.iniciar`/`notificacoes.iniciar` em `core/bootstrap.js` só são
+chamados na inicialização do socket principal). Se o principal ficar fora
+do ar, essas filas ficam paradas até alguém notar e agir na mão. Decisão
 consciente: rodar as duas filas em dois números ao mesmo tempo mandaria a
 mesma notificação em duplicidade pra quem recebe — pior que a fila parada
 por um tempo.
 
 **Prático**: o número backup precisa estar **manualmente adicionado a cada
 grupo monitorado** — WhatsApp não propaga participação de grupo entre
-números diferentes. Sem isso, mesmo promovido, o backup não vê nenhuma
-mensagem de grupo pra processar.
+números diferentes. Sem isso, mesmo com o principal caído, o backup não vê
+nenhuma mensagem de grupo pra processar.
 
 ## Fluxo de um ciclo normal
 

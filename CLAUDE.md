@@ -360,14 +360,21 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   bloqueia confirmação automática para essas mensagens. Medir a frequência.
 - **Ponto único de falha do Hermes**: Pi 3B doméstico, Wi-Fi, sem redundância —
   se cair no dia da eleição, não há monitoramento por WhatsApp (a fila offline
-  do SIME em si continua funcionando). Mitigação parcial disponível desde
-  05/08: `services/papel.js` permite uma segunda instalação
-  (`HERMES_PAPEL=backup`, outro número/Pi) assumir a **monitoria de grupo**
-  quando o principal para de reportar heartbeat — mas não a fila de pânico
-  nem o disparo em massa, que continuam de fato de ponto único (decisão
-  deliberada, ver `hermes/HERMES_RUNTIME.md`). Não ligado por padrão: exige
-  segunda instalação física + o número backup adicionado manualmente em
-  cada grupo monitorado.
+  do SIME em si continua funcionando). Só existe um Raspberry Pi disponível,
+  então não há como mitigar a queda do Pi em si — isso continua ponto único
+  de falha real, sem solução. Mitigação parcial disponível desde 05/08, e
+  restrita a um recorte menor do problema: `services/papel.js` +
+  `core/bootstrap.js` permitem um **segundo número de WhatsApp no mesmo Pi**
+  (`HERMES_BACKUP_ATIVO=true`, dois sockets Baileys no mesmo processo, cada
+  um com sua pasta de sessão) assumir a **monitoria de grupo** quando o
+  socket principal desconecta — decisão local e instantânea, não depende de
+  rede. Cobre a sessão do WhatsApp cair sozinha (deslogado, banido, chave
+  corrompida); **não cobre o Pi cair** (energia, Wi-Fi, SD, processo
+  travado), já que os dois números são o mesmo processo/hardware. Também não
+  cobre fila de pânico nem disparo em massa, que continuam só no principal
+  mesmo com o backup ativo (decisão deliberada, ver `hermes/HERMES_RUNTIME.md`).
+  Não ligado por padrão: exige um segundo número de WhatsApp + esse número
+  adicionado manualmente em cada grupo monitorado.
 
 ---
 

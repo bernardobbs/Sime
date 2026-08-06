@@ -101,8 +101,8 @@ linhas — toda a lógica mora em `core/`, `services/` e `modules/`:
 │   ├── simeApi.js                # cliente único dos endpoints /api/hermes-*
 │   ├── monitor.js                # temperatura do Pi
 │   ├── telemetria.js             # heartbeat/telemetria + aviso de atualização (ver seção 5)
-│   ├── papel.js                   # papel principal/backup + failover de monitoria de grupo (ver seção 5)
-│   ├── heartbeat.js              # agrega health() de cada módulo pro comando "status"
+│   ├── papel.js                   # HERMES_BACKUP_ATIVO — liga o 2º socket de WhatsApp (ver seção 5)
+│   ├── heartbeat.js              # conexão de cada socket + agrega health() pro comando "status"
 │   └── speedtest.js              # teste de velocidade sob demanda
 ├── modules/
 │   ├── whatsapp/
@@ -130,6 +130,10 @@ etc.), sem reescrevê-los.
 
 **`auth_info/` é a sessão do WhatsApp.** Apagar essa pasta desloga o número e
 exige escanear QR Code de novo. Não versionar, não limpar em manutenção.
+Mesmo cuidado vale pra `auth_info_backup/` quando `HERMES_BACKUP_ATIVO=true`
+(ver seção 5) — é a sessão do segundo número, pasta separada de propósito
+(sessões Baileys sobre a mesma pasta desincronizam as chaves do Signal
+protocol).
 
 ### `.env`
 
@@ -143,7 +147,13 @@ DISPATCH_ATIVO=false
 SIME_API_URL=https://sime-cyan.vercel.app
 HERMES_SECRET=...
 SIME_POLL_INTERVALO=30
+HERMES_BACKUP_ATIVO=false
 ```
+
+`HERMES_BACKUP_ATIVO=true` liga o segundo socket de WhatsApp (mesmo Pi,
+mesmo processo) — ver seção 5, "Dois números de WhatsApp no mesmo Pi".
+Default `false`: sem essa linha, o comportamento é idêntico ao de sempre
+(um socket só).
 
 `HERMES_SECRET` precisa ter o **mesmo valor** de `HERMES_SECRET_ZONA_7`
 cadastrado na Vercel (ver `README.md`) — o nome muda porque o Pi só atende
@@ -223,7 +233,7 @@ mesclado em 03/08/2026.
 | Detecção de eventos de seção (`eventos.js`) | ⚠️ detecta e propõe no Telegram — **modo proposta, não grava** |
 | Autoatendimento por telefone ("oi" → `hermes-mesarios acao=consultar`) | ❌ não implementado — busca por nome cobre parte do caso de uso |
 | Heartbeat/telemetria pro SIME (`POST /api/hermes-heartbeat`) | ✅ `services/telemetria.js`, a cada `SIME_POLL_INTERVALO`s — ver nota abaixo |
-| Failover de número backup (monitoria de grupo) | ✅ `services/papel.js` — opcional, só ativa com `HERMES_PAPEL=backup` numa segunda instalação — ver nota abaixo |
+| 2º número de WhatsApp no mesmo Pi (monitoria de grupo) | ✅ `services/papel.js`/`core/bootstrap.js` — opcional, `HERMES_BACKUP_ATIVO=true` — ver nota abaixo |
 | Comando `status` | ✅ PM2, temperatura, CPU, RAM, swap, disco, uptime |
 | Comando `velocidade` | ✅ speedtest real (download/upload/ping) |
 | Monitor de temperatura | ✅ alerta ≥75 °C a cada 3 min, WhatsApp + Telegram |
@@ -251,31 +261,44 @@ eleição (04/10/2026), uma sessão Baileys que precisa de novo QR Code no meio
 da operação é pior que rodar uma versão atrasada. Aplicar a atualização
 continua manual, na mão de quem cuida do Raspberry Pi.
 
-### Failover de número backup — ponto único de falha, mitigado só na monitoria de grupo
+### 2º número de WhatsApp no mesmo Pi — mitigação parcial, só sessão
 
-Resposta à pendência "Ponto único de falha do Hermes" do `CLAUDE.md`:
-`services/papel.js` permite ligar uma **segunda instalação** (outro número
-de WhatsApp, outro Raspberry Pi ou processo, `HERMES_PAPEL=backup` no
-`.env`) que assume a monitoria de grupo (detecção de eventos de dia D +
-confirmação/recusa de mesário) quando o principal para de mandar heartbeat
-por mais de 3 minutos — decisão via `POST /api/hermes-heartbeat
-acao=componentes`, comparando a idade do heartbeat do principal com o
-relógio do **servidor**, nunca o do Pi. Volta a standby sozinho quando o
-principal reaparece. Detalhe completo do contrato (mensagens, limiar,
-"o que NÃO faz"): `hermes/SIME_hermes_skill_heartbeat.md`.
+Resposta à pendência "Ponto único de falha do Hermes" do `CLAUDE.md` — com
+a ressalva de que só temos **um** Raspberry Pi disponível (3 Model B,
+1GB RAM), então o desenho não é duas instalações físicas: é **um processo
+só**, com **dois sockets Baileys** dentro dele. `core/bootstrap.js` sempre
+sobe o socket `principal` (`./auth_info`) e, se `HERMES_BACKUP_ATIVO=true`,
+também sobe o socket `backup` (`./auth_info_backup`, número de WhatsApp
+diferente, pareado por QR Code próprio — o Telegram rotula qual QR é qual).
 
-**Nada disso está ligado por padrão** — sem `HERMES_PAPEL=backup` numa
-segunda instalação, o comportamento é idêntico a hoje (`papel.souBackup()`
-sempre `false`, `ativoParaGrupos()` sempre `true`). Setup manual necessário
-pra usar de verdade:
-1. Segunda instalação completa (outro diretório/Pi/processo PM2, próprio
-   `auth_info/`, próprio QR Code escaneado — número de WhatsApp diferente
-   do principal).
-2. `.env` da segunda instalação: mesmo `HERMES_SECRET`/`SIME_API_URL` da
-   zona (mesmo Bearer — é a mesma zona), mais `HERMES_PAPEL=backup`.
-3. **Adicionar o número backup em cada grupo monitorado no WhatsApp** —
-   sem isso, mesmo promovido ele não recebe nenhuma mensagem de grupo pra
-   processar. Isso é ação manual, fora do código.
+Por estarem no mesmo processo, a decisão de qual socket processa mensagem
+de grupo é **local e instantânea** — `services/heartbeat.js.estaConectado
+('principal')`, sem round-trip pelo SIME: enquanto o principal está
+conectado, só ele processa grupo; assim que o `connection.update` dele
+reporta queda, o backup assume sozinho. Volta pro principal assim que ele
+reconectar. Detalhe completo do contrato: `hermes/SIME_hermes_skill_heartbeat.md`.
+
+**O que isso protege, e o que não**: cobre a sessão do WhatsApp caindo
+sozinha (deslogado, banido, chave de sessão corrompida) — **não** cobre o
+Pi inteiro cair (energia, Wi-Fi, cartão SD, processo travado), porque os
+dois sockets são o mesmo processo/hardware. Pra essa segunda falha, a
+pendência continua real e sem mitigação — exigiria um segundo dispositivo
+físico, que não existe hoje.
+
+**Nada disso está ligado por padrão** — sem `HERMES_BACKUP_ATIVO=true`,
+`core/bootstrap.js` só sobe o socket principal, comportamento idêntico ao
+de sempre. Setup manual necessário pra usar de verdade:
+1. Um segundo número de WhatsApp disponível (chip/linha diferente do
+   principal).
+2. `.env`: acrescentar `HERMES_BACKUP_ATIVO=true` (resto do `.env`
+   continua o mesmo — mesmo `HERMES_SECRET`/`SIME_API_URL`, é o mesmo
+   processo).
+3. Reiniciar o PM2 (`pm2 restart hermes --update-env`) — o Baileys vai
+   gerar um QR Code novo, rotulado "BACKUP" no Telegram. Escanear com o
+   segundo número.
+4. **Adicionar o número backup em cada grupo monitorado no WhatsApp** —
+   sem isso, mesmo com o principal caído, o backup não recebe nenhuma
+   mensagem de grupo pra processar. Ação manual, fora do código.
 
 **Escopo deliberadamente restrito à monitoria de grupo** — fila de pânico
 e disparo em massa nunca rodam no backup, nem em failover (ver
