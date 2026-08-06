@@ -63,9 +63,16 @@ function resolverZonaPorAuth(authHeader) {
     if (authHeader === `Bearer ${secret}`) return { numeroZona, secret };
   }
   const recebido = (authHeader || '').replace(/^Bearer\s*/, '');
+  // Quando não acha NENHUM HERMES_SECRET_ZONA_*, lista os NOMES (nunca
+  // valores) de toda env var que contenha "HERMES" ou "SUPABASE" — prova se
+  // a variável não está sendo injetada de verdade, ou se está lá com um
+  // nome levemente diferente do esperado (typo, maiúscula/minúscula etc.).
+  const chavesRelevantes = Object.keys(process.env).filter((k) => /HERMES|SUPABASE/i.test(k));
   console.error(
     '[hermes-heartbeat] 401 — recebido:', fingerprint(recebido),
-    '| configurados:', Object.entries(secrets).map(([z, s]) => `zona${z}:${fingerprint(s)}`).join(' , ') || '(nenhum HERMES_SECRET_ZONA_* nas env vars)'
+    '| configurados:', Object.entries(secrets).map(([z, s]) => `zona${z}:${fingerprint(s)}`).join(' , ') || '(nenhum HERMES_SECRET_ZONA_* nas env vars)',
+    '| chaves HERMES/SUPABASE vistas:', JSON.stringify(chavesRelevantes),
+    '| total de env vars:', Object.keys(process.env).length
   );
   return null;
 }
