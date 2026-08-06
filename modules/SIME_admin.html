@@ -328,7 +328,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Dados operacionais</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-out" onclick="exportarDados()">📥 Exportar snapshot (JSON)</button>
-        <button class="btn btn-red" onclick="if(confirm('Resetar dados de teste?')){resetarDados();}">🗑 Resetar dados de teste</button>
+        <button class="btn btn-red" onclick="resetarProblemas()">🗑 Resetar Problemas (zona)</button>
       </div>
     </div>
   </div>
@@ -590,6 +590,9 @@ async function atualizarBadgeProblemas(){
     if (badge) badge.textContent = count ? `(${count})` : '';
   } catch (e) {}
 }
+// Exposta pro <script> clássico — resetarProblemas() precisa refazer a
+// contagem do badge depois de apagar.
+window.atualizarBadgeProblemas = atualizarBadgeProblemas;
 
 // Realtime em vez de polling: qualquer INSERT/UPDATE em sime_ocorrencias
 // (nova ocorrência, assumida, resolvida...) refaz a contagem na hora. Um
@@ -1932,13 +1935,34 @@ function exportarDados(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sime_snapshot_'+Date.now()+'.json'; a.click();
   showToast('✓ Snapshot exportado');
 }
-// "Resetar dados de teste" apagava um cache local morto — não tinha efeito
-// nenhum nos dados reais. Zerar sime_mesa_estado de verdade é uma operação
-// destrutiva em produção (apaga o Dia D de todo mundo), então este botão não
-// tenta fazer isso sozinho: quem precisar zerar de verdade usa o SQL direto
-// no Supabase, com as mesmas cautelas de qualquer DELETE em produção.
-function resetarDados(){
-  showToast('ℹ Os dados agora vêm do servidor — não há mais "dados de teste" locais para resetar aqui.');
+// "Resetar dados de teste" virou um no-op depois da migração pro Supabase
+// (o cache local que ele apagava já estava morto) — só que isso deixou os
+// Problemas de teste presos na tela pra sempre, sem nenhuma forma de limpar
+// antes da operação real. Reimplementado com escopo estreito de propósito:
+// só sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) da
+// zona do usuário — NUNCA sime_mesa_estado, que é o estado do Dia D de todo
+// mundo e apagar isso de verdade destruiria a operação real. Ação
+// irreversível: confirmação mostra a contagem antes de apagar.
+async function resetarProblemas(){
+  const sb = window.supabase;
+  const zonaId = window.MINHA_ZONA_ID;
+  if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
+
+  const { count, error: e1 } = await sb.from('sime_ocorrencias')
+    .select('id', { count: 'exact', head: true }).eq('zona_id', zonaId);
+  if(e1){ showToast('⚠ Falha ao contar ocorrências: ' + e1.message); return; }
+  if(!count){ showToast('ℹ Nenhum problema pra apagar nesta zona'); return; }
+
+  if(!confirm(`Apagar PERMANENTEMENTE ${count} problema${count!==1?'s':''} (aberto, assumido ou resolvido) desta zona?\n\nIsso NÃO pode ser desfeito. Não afeta seções, mesários, nem o estado do Dia D — só os registros de sime_ocorrencias.`)) return;
+
+  const { error: e2 } = await sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId);
+  if(e2){ showToast('⚠ Falha ao apagar: ' + e2.message); return; }
+
+  const { data: ts } = await sb.rpc('sime_now');
+  await sb.from('sime_logs').insert({ acao: 'reset_problemas', modulo: 'admin', payload: { zona_id: zonaId, quantidade: count }, ts });
+
+  showToast(`✓ ${count} problema${count!==1?'s':''} apagado${count!==1?'s':''}`);
+  await atualizarBadgeProblemas();
 }
 
 // ══════════════════════════════════════════════
