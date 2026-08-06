@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Mesário</title>
 <link rel="stylesheet" href="./sime_theme_dark.css">
@@ -21,7 +21,7 @@
   --purple:#a855f7;--purple-d:#2d1248;--purple-s:#1a0a2a;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
+html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
 
 /* ── CORPO DO CONTROLE ── */
 .remote{
@@ -381,6 +381,28 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
     <span class="rbadge" id="badge-urnaprob"></span>
   </button>
 
+  <button class="rbtn c-red wide" id="btn-sos" onclick="togglePanico('sos')">
+    <span class="ricon" id="icon-sos">🆘</span>
+    <div>
+      <div class="rlabel" id="lbl-sos">SOS</div>
+      <div class="rsub" id="sub-sos">outro problema (fiscais, eleitores, fila) — toque para acionar</div>
+    </div>
+    <span class="rbadge" id="badge-sos"></span>
+  </button>
+
+
+  <!-- MÍDIA — sempre visível, muda de estado.
+       Ficava FORA do .remote, como filho direto do body. Como o body é flex,
+       os 158px dele somavam à largura do controle (365+158=523) e empurravam
+       a tela inteira para fora do viewport no celular — justamente o aparelho
+       para o qual esta tela foi desenhada. -->
+  <div class="midia-block" id="midia-block">
+    <div class="midia-hdr">📦 MÍDIA ELEITORAL</div>
+    <button class="midia-btn locked" id="midia-btn" onclick="marcarMidiaPronta()" disabled>
+      🔒 Disponível após encerramento
+    </button>
+    <div class="midia-tip" id="midia-tip">Aguardando encerramento da seção</div>
+  </div>
 </div><!-- /remote -->
 
 <!-- ── MODAL ── -->
@@ -404,7 +426,7 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
+import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 import { subscribeMesaEstadoSecao } from './sime_realtime.js';
@@ -469,7 +491,7 @@ async function lerPanicoAtual() {
   try {
     let q = campoClient
       .from('sime_mesa_estado')
-      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido')
+      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido, panico_sos, panico_sos_resolvido')
       .eq('secao_id', secaoId);
     if (eleicaoId) q = q.eq('eleicao_id', eleicaoId);
     const { data, error } = await q.maybeSingle();
@@ -517,6 +539,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const pin = document.getElementById('login-pin').value.trim();
   const erroEl = document.getElementById('login-erro');
   erroEl.textContent = '';
+  // Sem token não há o que autenticar — com o PIN suprimido, ele é a única
+  // identificação do operador. Barrar aqui evita um erro de rede confuso.
+  if (!token) { erroEl.textContent = 'Escaneie o QR Code do seu cartão.'; return; }
   const { client, secoes, erro } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
@@ -530,6 +555,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.
 preencherTokenDaUrl();
+// PIN suprimido pela operação: esconde o campo. Quem valida é o servidor.
+aplicarSupressaoPin(SIME_CONFIG);
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
 // pré-configurado"): login nunca é um bloqueio absoluto.
@@ -542,8 +569,8 @@ document.getElementById('login-offline').addEventListener('click', () => {
 const S = {
   mesa: { pres:0, m1:0, m2:0, sec:0 }, // 0=ausente 1=chegou 2=problema
   zero:false, vot:false, enc:false, bu:false, mat:false, urna:false, fila:null,
-  panico: { energia:false, urnaprob:false },
-  panico_resolved: { energia:false, urnaprob:false },
+  panico: { energia:false, urnaprob:false, sos:false },
+  panico_resolved: { energia:false, urnaprob:false, sos:false },
 };
 
 const MESA_CFG = {
@@ -737,7 +764,7 @@ function togglePanico(id) {
     S.panico[id] = true;
     S.panico_resolved[id] = false;
     applyPanico(id, 'active');
-    const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!'};
+    const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!', sos:'🆘 SOS acionado!'};
     showToast(labels[id]);
     vib([100,50,100,50,100]);
   } else {
@@ -745,7 +772,7 @@ function togglePanico(id) {
     S.panico[id] = false;
     S.panico_resolved[id] = true;
     applyPanico(id, 'resolved');
-    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓'};
+    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
     showToast(labels[id]);
     vib([60,30,60]);
   }
@@ -784,8 +811,8 @@ function applyPanico(id, state) {
 // escreve, então não há terceiro para divergir dele.
 window.aplicarPanicoRemoto = function(row) {
   const remoto = {
-    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
-    resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna, sos: !!row.panico_sos },
+    resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido, sos: !!row.panico_sos_resolvido },
   };
 
   let mudou = false;
@@ -849,6 +876,8 @@ function buildMesaPayload({ incluirPanico = false } = {}) {
     p.p_panico_urna = S.panico.urnaprob;
     p.p_panico_energia_resolvido = S.panico_resolved.energia;
     p.p_panico_urna_resolvido = S.panico_resolved.urnaprob;
+    p.p_panico_sos = S.panico.sos;
+    p.p_panico_sos_resolvido = S.panico_resolved.sos;
   }
   return p;
 }
@@ -1020,13 +1049,5 @@ setInterval(renderMidiaBtn, 3000);
 setTimeout(renderMidiaBtn, 400);
 </script>
 
-<!-- MÍDIA — sempre visível, muda de estado -->
-<div class="midia-block" id="midia-block">
-  <div class="midia-hdr">📦 MÍDIA ELEITORAL</div>
-  <button class="midia-btn locked" id="midia-btn" onclick="marcarMidiaPronta()" disabled>
-    🔒 Disponível após encerramento
-  </button>
-  <div class="midia-tip" id="midia-tip">Aguardando encerramento da seção</div>
-</div>
 </body>
 </html>

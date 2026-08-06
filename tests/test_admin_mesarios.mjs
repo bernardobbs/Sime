@@ -22,7 +22,7 @@ export function createClient(){
   function tbl(t){
     let pending=null;
     const api={
-      select(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; },
+      select(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; }, in(){ return api; },
       maybeSingle(){
         if(t==='sime_usuarios') return Promise.resolve({data:USER,error:null});
         return Promise.resolve({data:null,error:null});
@@ -80,6 +80,12 @@ await p.route('**/modules/sime_dados.js', async (route) => {
     export async function getAtores(){ return null; }
     export async function getZonaInfo(){ return null; }
     export function secoesDaEmpresa(){ return []; }
+    export async function getEleicaoAtiva(){ return null; }
+    export function mapMesaEstadoRow(){ return {}; }
+    export async function getMesaEstadoMap(){ return null; }
+    export function mapMidiaRow(){ return {}; }
+    export async function getMidiasMap(){ return null; }
+    export async function getRotasEstadoMap(){ return {}; }
   `});
 });
 await p.goto('http://localhost:8917/modules/SIME_admin.html');

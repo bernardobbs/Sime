@@ -7,6 +7,17 @@ const { chromium } = pw;
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
+// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
+// quando o cartório quiser — então aqui a configuração é fixada, em vez de
+// deixar a suíte seguir um flag de produção que muda debaixo dela.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 const STUB_SUPABASE_JS = `
 function rowsFor(table) { return (window.__mockConfig[table] || []); }
 function matchFilters(row, filters) { return Object.entries(filters).every(([k, v]) => row[k] === v); }
@@ -44,6 +55,7 @@ async function newPage(ctx, mockConfig) {
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
+  await p.route('**/sime_config.js**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   return p;
 }
 

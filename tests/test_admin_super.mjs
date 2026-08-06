@@ -36,7 +36,7 @@ export function createClient(url, key) {
     },
     from(t) {
       const qb = {
-        select(){ return qb; }, eq(){ return qb; }, order(){ return qb; }, not(){ return qb; }, limit(){ return qb; },
+        select(){ return qb; }, eq(){ return qb; }, order(){ return qb; }, not(){ return qb; }, limit(){ return qb; }, in(){ return qb; },
         maybeSingle(){
           if (t === 'sime_usuarios') return Promise.resolve({ data: ${JSON.stringify(meuUsuario) ?? 'null'}, error: null });
           return Promise.resolve({ data: null, error: null });
@@ -50,6 +50,8 @@ export function createClient(url, key) {
       };
       return qb;
     },
+    channel(){ return { on(){ return this; }, subscribe(){ return this; } }; },
+    removeChannel(){},
   };
 }
 `;

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Mídias</title>
 <link rel="stylesheet" href="./sime_theme_cream.css">
@@ -164,8 +164,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
-import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, getAtores } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Expostas pro <script> clássico abaixo (mesmo padrão de window.simeCampoMidia
@@ -189,6 +189,18 @@ async function resolverEscopo() {
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+
+  // window.MESA_ESTADO_MAP (status votando/encerrada por seção) e
+  // window.ATORES_REAIS (pra achar motorista/técnico na coleta dedicada) —
+  // antes liam sime_mesa_v1/sime_atores_v1 do localStorage, que no aparelho
+  // do coletor nunca tinham nada (quem grava é o mesário/admin, em OUTRO
+  // aparelho). Snapshot único (não Realtime): ninguém de fora altera esse
+  // estado durante a coleta, mesmo padrão já decidido pros outros 4 módulos
+  // que só escrevem.
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  if (mesaInicial) window.MESA_ESTADO_MAP = mesaInicial;
+  const atoresReais = await getAtores({ fallback: null });
+  if (atoresReais) window.ATORES_REAIS = atoresReais;
 }
 
 // Exposto pro <script> clássico — chamado de dentro de syncAction() (a fila
@@ -205,6 +217,37 @@ window.simeCampoMidia = {
     });
     if (error) throw error;
   },
+  // Confirmar coleta também marca a urna como recolhida — antes isso só
+  // gravava sime_mesa_v1 local, sem passar pela RPC que mesário/motorista já
+  // usam pra essa mesma coluna (urna_recolhida).
+  async syncMesa(n, partial) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_acao_mesa', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'midias', ...partial,
+    });
+    if (error) throw error;
+  },
+  // Transmissão digital (JE-Connect) — RPC separada de sime_acao_midia, não
+  // mexe na fila de coleta física.
+  async syncTransmissao(dados) {
+    if (!campoClient || !eleicaoId) return;
+    const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
+    if (!secaoId) return;
+    const { error } = await campoClient.rpc('sime_midia_transmissao_upsert', {
+      p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_transmissao_status: dados.status,
+    });
+    if (error) throw error;
+  },
+  // sime_logs (Supabase) é a fonte real, lida por SIME_relatorios.html —
+  // antes o log deste módulo só ia pro sime_logs_v1 local, e nenhuma ação do
+  // coletor de mídias (nem o WhatsApp disparado) aparecia na auditoria.
+  async log(acao, secao, payload) {
+    if (!campoClient) return;
+    const secaoId = secao ? (secaoIdPorNumero[parseInt(secao, 10)] || null) : null;
+    await campoClient.from('sime_logs').insert({ acao, modulo: 'midias', secao_id: secaoId, payload });
+  },
 };
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -213,6 +256,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const pin = document.getElementById('login-pin').value.trim();
   const erroEl = document.getElementById('login-erro');
   erroEl.textContent = '';
+  // Sem token não há o que autenticar — com o PIN suprimido, ele é a única
+  // identificação do operador. Barrar aqui evita um erro de rede confuso.
+  if (!token) { erroEl.textContent = 'Escaneie o QR Code do seu cartão.'; return; }
   const { client } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
@@ -225,6 +271,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.
 preencherTokenDaUrl();
+// PIN suprimido pela operação: esconde o campo. Quem valida é o servidor.
+aplicarSupressaoPin(SIME_CONFIG);
 
 document.getElementById('login-offline').addEventListener('click', () => {
   esconderLogin();
@@ -253,7 +301,9 @@ function updateSyncBadge(pending) {
 // e quem chama syncAction() já trata isso enfileirando de novo.
 async function syncAction(acao, dados) {
   applyLocalAction(acao, dados);
-  if (window.simeCampoMidia) await window.simeCampoMidia.sync(dados);
+  if (!window.simeCampoMidia) return;
+  if (acao === 'midia_transmissao') await window.simeCampoMidia.syncTransmissao(dados);
+  else await window.simeCampoMidia.sync(dados);
 }
 
 // ══════════════════════════════════════
@@ -338,7 +388,11 @@ const LOG_KEY   = 'sime_logs_v1';
 
 function loadMidias()  { try{return JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}')}catch(e){return{}} }
 function saveMidias(d) { localStorage.setItem(MIDIA_KEY, JSON.stringify(d)); }
-function loadMesa()    { try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
+// window.MESA_ESTADO_MAP vem de sime_mesa_estado (Supabase, resolverEscopo()
+// no <script type="module"> acima) — antes lia sime_mesa_v1 do localStorage,
+// que no aparelho do coletor nunca tinha nada (quem grava é o mesário, em
+// outro aparelho), então toda seção aparecia "aguardando" sempre.
+function loadMesa()    { return window.MESA_ESTADO_MAP || {}; }
 
 function getStatusFromMesa(n) {
   const mesa = loadMesa()[n];
@@ -367,9 +421,11 @@ function log(acao, modulo, secao, payload) {
   logs.unshift({ acao, modulo, secao, payload, ts: serverTs() });
   if (logs.length > 500) logs.splice(400);
   localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+  if (window.simeCampoMidia) window.simeCampoMidia.log(acao, secao, payload).catch(()=>{});
 }
 
 function applyLocalAction(acao, dados) {
+  if (acao === 'midia_transmissao') { saveTransmissaoLocal(dados.n, dados.status); return; }
   const { n, status, tipo, obs, resp } = dados;
   saveMidiaLocal(n, { status, tipo_coleta: tipo, observacao: obs, responsavel: resp });
 }
@@ -420,7 +476,6 @@ function render() {
 
   if (curTab === 'trans') {
     renderTransmissao(co, en, tot, recolhidas);
-    list.innerHTML = '';
     return;
   }
 
@@ -491,10 +546,17 @@ function render() {
   }
 }
 
+// Transmissão DIGITAL (JE-Connect) — distinta da entrega FÍSICA da mídia
+// acima (status='entregue_transmissao'). É o técnico responsável quem marca
+// se a transmissão da seção deu certo ou falhou; sem isso, uma falha só
+// aparecia por mensagem avulsa no grupo de WhatsApp (risco real de 2024).
+const TX_LABEL = { pendente:'Pendente', em_andamento:'Em andamento', transmitido:'Transmitido', falhou:'Falhou' };
+const TX_CLS   = { pendente:'ag', em_andamento:'pr', transmitido:'en', falhou:'err' };
+
 function renderTransmissao(co, en, tot, recolh) {
   const list = document.getElementById('main-list');
+  const midias = loadMidias();
   const prontas = co;
-  const pct = Math.round(prontas/tot*100);
   list.innerHTML = `
     <div class="transmissao-panel">
       <div class="tp-title">📡 Entrega na Transmissão</div>
@@ -506,7 +568,48 @@ function renderTransmissao(co, en, tot, recolh) {
       </div>
       ${prontas > 0 ? `<button class="btn-transmissao ready" onclick="confirmarEntregaTransmissao()">✅ Confirmar entrega de ${prontas} mídias na transmissão</button>` :
         `<button class="btn-transmissao" disabled>🔒 Nenhuma mídia coletada ainda</button>`}
-    </div>`;
+    </div>
+    <div class="tp-title" style="margin-top:18px">🆘 Status da transmissão digital (JE-Connect)</div>
+    <div id="tx-list"></div>`;
+
+  const txList = document.getElementById('tx-list');
+  SECOES.forEach(sec => {
+    const m = midias[sec.n] || {};
+    const st = m.transmissao_status || 'pendente';
+    const card = document.createElement('div');
+    card.className = 'section-card status-' + TX_CLS[st];
+    card.innerHTML = `
+      <div class="sc-icon ${TX_CLS[st]}">${st==='transmitido'?'✅':st==='falhou'?'❌':'📡'}</div>
+      <div class="sc-info">
+        <div class="sc-num">Seção ${parseInt(sec.n)}</div>
+        <div class="sc-loc">${sec.loc} · ${sec.city}</div>
+        <div class="sc-status ${TX_CLS[st]}">${TX_LABEL[st]}${m.transmissao_ts ? ' • ' + fmtTs(m.transmissao_ts, '--:--') : ''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="sc-btn btn-done" onclick="marcarTransmissao('${sec.n}','transmitido')">✅ Transmitido</button>
+        <button class="sc-btn" onclick="marcarTransmissao('${sec.n}','falhou')">❌ Falhou</button>
+      </div>`;
+    txList.appendChild(card);
+  });
+}
+
+function saveTransmissaoLocal(n, status) {
+  const d = loadMidias();
+  d[n] = { ...getMidia(n), transmissao_status: status, transmissao_ts: Date.now() };
+  saveMidias(d);
+  log('midia_transmissao_'+status, 'midias', n, { status });
+}
+
+async function marcarTransmissao(n, status) {
+  const dados = { n, status };
+  try {
+    await syncAction('midia_transmissao', dados);
+    showToast(status==='transmitido' ? '📡 Seção ' + parseInt(n) + ' transmitida' : '⚠ Seção ' + parseInt(n) + ' — falha registrada');
+  } catch(e) {
+    await window.simeEnqueue('midia_transmissao', dados);
+    showToast('🟡 Salvo — sincronizará em breve');
+  }
+  render();
 }
 
 // ══════════════════════════════════════
@@ -529,10 +632,6 @@ function abrirColeta(n, tipo) {
 async function confirmarColeta(n, tipo) {
   const obs = document.getElementById('sh-obs')?.value||'';
   const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: serverTs() };
-  
-  // Atualiza mesa (urna recolhida) também
-  const mesa = loadMesa();
-  if (mesa[n]) { mesa[n].urna = true; localStorage.setItem('sime_mesa_v1', JSON.stringify(mesa)); }
 
   closeSheet();
   try {
@@ -542,6 +641,9 @@ async function confirmarColeta(n, tipo) {
     await window.simeEnqueue('midia_coletada', dados);
     showToast('🟡 Coletada — sincronizará em breve');
   }
+  // Urna recolhida: melhor esforço, à parte da fila de mídia — antes só
+  // gravava sime_mesa_v1 local (ninguém via). Não bloqueia a coleta se falhar.
+  if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
   render();
 }
 
@@ -715,8 +817,11 @@ function abrirDesignarResponsavel(n){
   const sec = SECOES.find(s=>s.n===n);
   if(!sec) return;
 
-  // Busca atores cadastrados
-  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]').filter(a=>a.ativo!==false);
+  // Busca atores cadastrados — window.ATORES_REAIS (Supabase, resolverEscopo()
+  // no <script type="module">) antes era sime_atores_v1 do localStorage, que
+  // no aparelho do coletor está sempre vazio (quem cadastra é o Admin, em
+  // outro aparelho) — o seletor sempre caía em "Nenhum ator cadastrado".
+  const atores = (window.ATORES_REAIS || []).filter(a=>a.ativo!==false);
   const motAtores = atores.filter(a=>['motorista','tecnico','cartorio'].includes(a.funcao));
 
   // Busca coletor original da rota
@@ -797,20 +902,20 @@ async function confirmarDedicada(n){
   const dados = { n, status:'coleta_dedicada', tipo:'dedicada',
     obs, responsavel: respId, responsavel_nome: respNome, ts };
 
-  // Atualiza mesa (urna recolhida) também
-  const mesa = loadMesa();
-  if(mesa[n]){ mesa[n].urna=true; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa)); }
-
   try{
     await syncAction('midia_dedicada', dados);
   }catch(e){
     await window.simeEnqueue('midia_dedicada', dados);
   }
+  // Urna recolhida: melhor esforço, à parte da fila de mídia (mesmo padrão
+  // de confirmarColeta()).
+  if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
 
   closeSheet();
 
-  // Busca responsável original da rota
-  const atores = JSON.parse(localStorage.getItem('sime_atores_v1')||'[]');
+  // Busca responsável original da rota — window.ATORES_REAIS (Supabase),
+  // mesmo motivo do abrirDesignarResponsavel() acima.
+  const atores = window.ATORES_REAIS || [];
   const rotaId = sec?.rota;
   const respOriginal = atores.find(a=>a.funcao==='motorista' && a.rota===rotaId);
 

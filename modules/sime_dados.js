@@ -193,7 +193,7 @@ export async function getEleicaoAtiva({ fallback = null, zonaId = null } = {}) {
   return withFallback(`eleicaoAtiva:${zonaId || 'minha'}`, async (c) => {
     let q = c
       .from('sime_eleicoes')
-      .select('id, turno, zona_id')
+      .select('id, turno, zona_id, data_d, data_d1, horario_ab, horario_enc')
       .eq('ativa', true);
     if (zonaId) q = q.eq('zona_id', zonaId);
     const { data, error } = await q
@@ -214,9 +214,10 @@ export function mapMesaEstadoRow(row) {
     zero: !!row.zeresima, vot: !!row.votacao, enc: !!row.encerrada,
     bu: !!row.bu_impresso, mat: !!row.material_recolhido,
     urna: !!row.urna_recolhida, urna_cartorio: !!row.urna_cartorio,
-    fila: row.fila ?? 0,
-    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna },
-    panico_resolved: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido },
+    fila: row.fila ?? 0, obs: row.observacao || '',
+    panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna, sos: !!row.panico_sos },
+    panico_resolved: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido, sos: !!row.panico_sos_resolvido },
+    origem: row.updated_by_origem || '',
     ts: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
   };
 }
@@ -265,6 +266,43 @@ export async function getInstMap({ fallback = null } = {}) {
   const map = {};
   for (const { numero, row } of rows) map[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
   return map;
+}
+
+// Converte 1 linha de sime_midias pro shape que a aba Mídias do Admin já usa
+// (era o formato de localStorage['sime_midias_v1']).
+export function mapMidiaRow(row) {
+  return {
+    status: row.status, tipo_coleta: row.tipo_coleta || null,
+    pronta_ts: row.pronta_ts ? new Date(row.pronta_ts).getTime() : null,
+    em_coleta_ts: row.em_coleta_ts ? new Date(row.em_coleta_ts).getTime() : null,
+    coletada_ts: row.coletada_ts ? new Date(row.coletada_ts).getTime() : null,
+    entregue_ts: row.entregue_ts ? new Date(row.entregue_ts).getTime() : null,
+    observacao: row.observacao || '',
+    updated_at: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+    tecnico_responsavel_id: row.tecnico_responsavel_id || null,
+    transmissao_status: row.transmissao_status || 'pendente',
+    transmissao_ts: row.transmissao_ts ? new Date(row.transmissao_ts).getTime() : null,
+    transmissao_obs: row.transmissao_obs || '',
+  };
+}
+
+// -> {numero: {status, tipo_coleta, pronta_ts, ...}} — mesmo shape de
+// localStorage['sime_midias_v1']. Usado pela aba Mídias do Admin.
+export async function getMidiasMap({ fallback = null } = {}) {
+  return withFallback('midiasMap', async (c) => {
+    const secoes = await getSecoes({ fallback: null });
+    if (!secoes) throw new Error('sem seções pra mapear secao_id -> numero');
+    const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, s.numero]));
+    const { data, error } = await c.from('sime_midias').select('*');
+    if (error) throw error;
+    const map = {};
+    for (const row of data) {
+      const numero = numeroPorSecaoId.get(row.secao_id);
+      if (numero == null) continue;
+      map[String(numero).padStart(4, '0')] = mapMidiaRow(row);
+    }
+    return map;
+  }, fallback);
 }
 
 // -> {'Rota 001': {status, conferente, ts_aberta, ts_pronta, ts_saiu, alerta,

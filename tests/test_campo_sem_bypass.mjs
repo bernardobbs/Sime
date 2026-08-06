@@ -16,6 +16,18 @@ const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN, com a configuração fixada no stub
+// em vez de seguir o sime_config.js real — a supressão do PIN
+// (SIME_CONFIG.exigirPin=false) é uma opção operacional que já ligou e
+// desligou uma vez, e o caminho com PIN precisa continuar coberto nos dois
+// estados.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 // Entrou no app = a tela de login não é a que está visível.
 async function estadoDaTela(p) {
   return p.evaluate(() => {
@@ -50,15 +62,38 @@ for (const [nome, url] of CENARIOS) {
 }
 
 // PIN chutado na tela de login, sem token conhecido, também não pode passar.
+//
+// Este bloco fixa a configuração COM PIN no stub, independente do que estiver
+// no sime_config.js real no momento — a supressão (exigirPin=false) é uma
+// opção operacional que liga e desliga, e o caminho com PIN precisa continuar
+// coberto mesmo quando ela estiver desligada. Os cenários acima, ao contrário,
+// rodam de propósito contra o sime_config.js REAL — é a configuração que vai
+// ao ar que precisa provar que ninguém entra sem token.
 {
   const p = await b.newPage();
+  await p.route('**/sime_config.js**', (r) => r.fulfill({
+    status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   await p.goto(`${BASE}/SIME_conferente.html`, { waitUntil: 'load' });
-  await p.waitForTimeout(300);
+  await p.waitForTimeout(400);
   for (let i = 0; i < 4; i++) await p.fill(`#pin-${i}`, String(i + 1));
   await p.click('.btn-login');
   await p.waitForTimeout(600);
   const { entrouNoApp } = await estadoDaTela(p);
   check('conferente: PIN chutado sem token não entra', !entrouNoApp);
+  await p.close();
+}
+
+// Contra a configuração real (com ou sem PIN suprimido), tocar em Entrar sem
+// token também não pode passar — token é a única credencial que não pode
+// faltar em nenhum dos dois modos.
+{
+  const p = await b.newPage();
+  await p.goto(`${BASE}/SIME_conferente.html`, { waitUntil: 'load' });
+  await p.waitForTimeout(400);
+  await p.click('.btn-login');
+  await p.waitForTimeout(600);
+  const { entrouNoApp } = await estadoDaTela(p);
+  check('conferente: sem PIN e sem token, Entrar não abre o app', !entrouNoApp);
   await p.close();
 }
 

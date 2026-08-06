@@ -13,19 +13,27 @@ export function createClient() {
 }
 
 class QB {
-  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._op = null; }
+  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._gte = {}; this._lt = {}; this._op = null; }
   select(c) { this._sel = c; return this; }
   eq(c, v) { this.f[c] = v; return this; }
   // .in(coluna, [valores]) — usado por api/hermes-notificacoes.js para filtrar
   // as notificações pelas seções da zona.
   in(c, vals) { this._in[c] = new Set(vals); return this; }
+  // .gte()/.lt() — usados por api/hermes-campanhas.js na auto-expiração de
+  // quem estourou tentativas e passou da janela de retry. Comparação de
+  // string funciona porque os valores são sempre ISO 8601 (mesma ordem
+  // lexicográfica e cronológica).
+  gte(c, v) { this._gte[c] = v; return this; }
+  lt(c, v) { this._lt[c] = v; return this; }
   order() { return this; }
   limit() { return this; }
-  // Aplica os .eq e .in acumulados a uma lista de linhas.
+  // Aplica os .eq/.in/.gte/.lt acumulados a uma lista de linhas.
   _filtra(rows) {
     return (rows || []).filter((r) =>
       Object.entries(this.f).every(([k, v]) => r[k] === v) &&
-      Object.entries(this._in).every(([k, set]) => set.has(r[k])));
+      Object.entries(this._in).every(([k, set]) => set.has(r[k])) &&
+      Object.entries(this._gte).every(([k, v]) => r[k] != null && r[k] >= v) &&
+      Object.entries(this._lt).every(([k, v]) => r[k] != null && r[k] < v));
   }
   update(p) { this._op = 'update'; this._payload = p; return this; }
   upsert(o, opt) {
@@ -33,6 +41,12 @@ class QB {
     S.ops.push({ op: 'upsert', t: this.t, payload: o, onConflict: opt && opt.onConflict });
     if (this.t === 'sime_mesa_estado') S.mesa[o.secao_id] = { ...S.mesa[o.secao_id], ...o };
     if (this.t === 'sime_midias') S.midias[o.secao_id] = { ...S.midias[o.secao_id], ...o };
+    if (this.t === 'sime_componentes' || this.t === 'sime_heartbeat') {
+      const key = this.t === 'sime_componentes' ? 'componentes' : 'heartbeats';
+      S[key] = S[key] || [];
+      const i = S[key].findIndex((r) => r.zona_id === o.zona_id && r.componente === o.componente);
+      if (i > -1) S[key][i] = { ...S[key][i], ...o }; else S[key].push({ ...o });
+    }
     return Promise.resolve({ error: null });
   }
   insert(o) {
@@ -57,12 +71,19 @@ class QB {
           if (this._filtra([n]).length) Object.assign(n, this._payload);
         }
       }
+      if (this.t === 'sime_campanhas_confirmacao') {
+        for (const c of S.campanhas || []) {
+          if (this._filtra([c]).length) Object.assign(c, this._payload);
+        }
+      }
       return resolve({ error: null });
     }
     // Consultas de lista (não-single), filtradas pelos .eq/.in acumulados.
     if (this.t === 'sime_atores')       return resolve({ data: this._filtra(S.atores), error: null });
     if (this.t === 'sime_notificacoes') return resolve({ data: this._filtra(S.notificacoes), error: null });
     if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
+    if (this.t === 'sime_campanhas_confirmacao') return resolve({ data: this._filtra(S.campanhas), error: null });
+    if (this.t === 'sime_heartbeat') return resolve({ data: this._filtra(S.heartbeats), error: null });
     return resolve({ data: null, error: null });
   }
   _read() {
@@ -75,6 +96,10 @@ class QB {
     if (this.t === 'sime_mesa_estado') { return { data: S.mesa[this.f.secao_id] || null, error: null }; }
     if (this.t === 'sime_eleicoes') {
       const r = (S.eleicoes || []).find(e => e.zona_id === this.f.zona_id && e.ativa === true) || null;
+      return { data: r, error: null };
+    }
+    if (this.t === 'sime_componentes') {
+      const r = (S.componentes || []).find(c => c.zona_id === this.f.zona_id && c.componente === this.f.componente) || null;
       return { data: r, error: null };
     }
     return { data: null, error: null };

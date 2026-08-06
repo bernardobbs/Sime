@@ -10,3 +10,65 @@
 .overlay{position:fixed;inset:0;background:rgba(42,40,56,.5);display:flex;align-items:flex-end;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s;}
 .overlay.show{opacity:1;pointer-events:all;}
 .sheet{background:var(--card);border-radius:18px 18px 0 0;padding:20px 18px 36px;width:100%;max-width:460px;border-top:1px solid var(--border);}
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVIDADE DOS MÓDULOS DE CAMPO
+   ══════════════════════════════════════════════════════════
+   As seis telas de campo nasceram para o celular do operador e ficaram com
+   dois problemas opostos no monitor do cartório:
+
+   - mesário e acessibilidade usam .remote com max-width fixo em 390px, e
+     viravam uma tira estreita no meio de um monitor de 27";
+   - instalador, motorista, mídias e conferente esticavam de ponta a ponta,
+     com o cartão de uma seção ocupando 2000px de largura.
+
+   O alvo não é "encher a tela": é manter o alcance do polegar no celular e
+   dar corpo legível no monitor. Por isso a largura cresce por degraus, e
+   não com porcentagem livre.
+
+   Vale para telas grandes; abaixo de 600px nada aqui se aplica e o layout
+   original do celular continua exatamente como está.
+
+   O prefixo `body` não é enfeite: cada módulo declara .remote no próprio
+   <style>, que vem DEPOIS deste arquivo. Mesma especificidade com ordem
+   posterior faz o módulo vencer — subir um grau é o mínimo para esta camada
+   valer sem ter de editar os seis arquivos. */
+
+@media (min-width: 600px) {
+  /* Família "controle remoto" (mesário, acessibilidade) */
+  /* .remote é item flex do body: sem flex-grow ele encolhe até o conteúdo e
+     nunca alcança o max-width. O par grow+max-width é o que faz o controle
+     de fato ocupar a largura nova. */
+  body .remote { max-width: 460px; flex: 1 1 auto; }
+
+  /* Família "lista" (instalador, motorista, mídias, conferente): o conteúdo
+     passa a ter uma largura máxima e fica centrado, em vez de acompanhar a
+     janela. Sem isso, ler uma linha exige varrer a cabeça. */
+  body .list, body .route-list, body .main, body .content, body .sec-list,
+  body .view, body .login-view, body .view-sel, body .emb-header, body .emb-list,
+  body .header { max-width: 720px; margin-inline: auto; width: 100%; }
+  /* A faixa do cabeçalho continua de ponta a ponta; só o conteúdo dela é que
+     acompanha a coluna — barra cortada no meio da tela parece defeito. */
+  body .header { max-width: 100%; }
+}
+
+@media (min-width: 900px) {
+  body .remote { max-width: 520px; }
+  /* Botões e textos crescem junto — um controle grande com letra de celular
+     fica pior que o controle pequeno. */
+  .remote .ricon  { font-size: 1.75rem; }
+  .remote .rlabel { font-size: .78rem; }
+  .remote .rsub   { font-size: .64rem; }
+  .remote .d-sec  { font-size: 1.85rem; }
+  body .list, body .route-list, body .main, body .content, body .sec-list,
+  body .view, body .login-view, body .view-sel, body .emb-header, body .emb-list { max-width: 860px; }
+}
+
+/* Celular deitado: a altura é o recurso escasso, não a largura. Encolher o
+   respiro vertical evita que o operador role a tela para achar o botão que
+   estava à vista em pé. */
+@media (max-height: 480px) and (orientation: landscape) {
+  body .remote { padding-top: 10px; padding-bottom: 20px; gap: 8px; }
+  .remote .rbtn { padding-top: 10px; padding-bottom: 9px; }
+  .remote .sec-label { display: none; }
+}

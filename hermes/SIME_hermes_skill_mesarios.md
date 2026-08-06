@@ -1,18 +1,22 @@
 # SKILL: sime_mesarios
-description: Consulta a lista de mesários no SIME e registra se cada um confirma (ou não) que vai permanecer na função.
+description: Consulta a lista de mesários/apoio logístico no SIME, responde o autoatendimento quando alguém manda "oi", e registra confirmação (ou recusa) da convocação.
 triggers:
   - pergunta sobre quem é mesário de uma seção ("quem é o presidente da 63?")
   - campanha de verificação pré-eleição ("confirme os mesários da seção X")
   - resposta de um mesário no WhatsApp a um pedido de confirmação (SIM/NÃO/substituto)
+  - **primeiro contato espontâneo de alguém da base** — "oi", "bom dia", "quem
+    fala", ou qualquer mensagem que não seja claramente um evento de seção
+    (`sime_updater`) nem resposta a uma campanha em andamento
 
 ---
 
 ## Objetivo
 
-Dar ao Hermes um caminho de **leitura + confirmação** de mesários — complementar
-ao `sime_updater`, que só escreve eventos de seção. Espelha a mesma autenticação
-por zona (Bearer) e grava em `sime_atores.confirmacao`. O cartório vê o resultado
-na hora no painel "Confirmação de mesários" do `SIME_admin.html` e nos relatórios.
+Dar ao Hermes um caminho de **leitura + autoatendimento + confirmação** de
+mesários e apoio logístico — complementar ao `sime_updater`, que só escreve
+eventos de seção. Espelha a mesma autenticação por zona (Bearer) e grava em
+`sime_atores`. O cartório vê o resultado na hora no painel "Confirmação de
+mesários" do `SIME_admin.html` e nos relatórios.
 
 ## Endpoint alvo
 
@@ -46,7 +50,63 @@ Resposta:
 }
 ```
 
-### 2. `confirmar` / `recusar` / `substituir` — registrar a resposta
+### 2. `consultar` — autoatendimento (alguém manda "oi")
+```json
+{ "acao": "consultar", "telefone": "5586999990001" }
+```
+Identifica a pessoa pelo telefone (mesma regra de casamento do `confirmar`) e
+devolve, pronta em `mensagem_wa`, a convocação: função e — sendo mesário (MRV)
+— a seção (número, local e município, já resolvidos via `secao_id`). Quem é
+mesário **e também** apoio logístico (existe gente nas duas listas) recebe as
+duas convocações na mesma mensagem. Termina sempre convidando a pessoa a mandar
+uma atualização, se algo estiver errado ou ela não puder mais atuar.
+
+Resposta:
+```json
+{
+  "ok": true,
+  "encontrado": 1,
+  "pessoas": [{ "nome": "ANA SOUSA", "funcao": "mesario", "funcao_mesa": "Presidente",
+    "secao": { "numero": "0063", "local_nome": "Escola Municipal X", "municipio": "Campo Maior" },
+    "confirmacao": "pendente" }],
+  "mensagem_wa": "Olá, ANA SOUSA! Você está convocado(a) como Presidente na Seção 0063 — Escola Municipal X, Campo Maior para a eleição de 04/10. Se algum dado estiver errado, ou você não puder mais atuar, me manda a informação que eu repasso pro cartório."
+}
+```
+Telefone não encontrado → HTTP 404 com `mensagem_wa` orientando falar com o
+cartório (mesmo padrão do `confirmar`).
+
+### 3. `buscar_nome` — autoatendimento por nome
+```json
+{ "acao": "buscar_nome", "nome": "Ana Sousa" }
+```
+Mesmo espírito do `consultar`, mas pra quando quem pergunta não está mandando
+do próprio telefone cadastrado — o cartório checando por alguém, ou o mesário
+mandando de um número diferente do que está no TRE. Casa por substring
+(case-insensitive) em `nome_completo`, dentro da zona autenticada.
+
+- **1 pessoa encontrada** (mesmo nome completo, possivelmente mais de uma
+  convocação — mesário e apoio logístico) → mesma `mensagem_wa` pronta do
+  `consultar`.
+- **Nenhuma** → HTTP 404, `mensagem_wa` orientando conferir a grafia ou falar
+  com o cartório.
+- **Várias pessoas diferentes batendo no texto** (até 8) → lista cada uma com
+  função, seção e status, pedindo o nome completo pra desambiguar.
+- **Mais de 8** → não lista, só avisa a quantidade e pede o nome completo.
+
+### 4. `atualizar` — a pessoa manda uma correção/observação
+```json
+{ "acao": "atualizar", "telefone": "5586999990001", "mensagem": "meu telefone mudou, esse aqui que uso agora" }
+```
+Usado quando, depois do autoatendimento, a pessoa responde com algo que precisa
+de atenção humana (telefone errado, endereço, "não vou poder ir", etc.).
+**Nunca sobrescreve** nome/telefone/seção — esses são dado oficial do TRE,
+recarregado por `sime_sync_atores_from_raw()`. O recado só é **anexado** em
+`sime_atores.observacao` (com carimbo de data/hora do servidor) para o cartório
+revisar manualmente — mesmo espírito do log append-only.
+
+Resposta: `{ "ok": true, "encontrado": 1, "mensagem_wa": "Anotado! Vou repassar pro cartório. Obrigado por avisar." }`
+
+### 5. `confirmar` / `recusar` / `substituir` — registrar a resposta
 Identifica a pessoa pelo **telefone** (o número que respondeu no WhatsApp). Casa
 por dígitos exatos ou pelos últimos 8 dígitos (tolera variação de DDI/DDD).
 ```json
@@ -62,7 +122,26 @@ Resposta traz `mensagem_wa` pronta para devolver ao mesário, `encontrado` (quan
 casaram) e `nomes`. Se ninguém casar → HTTP 404 com `mensagem_wa` orientando falar
 com o cartório.
 
-## Fluxo de verificação pelo WhatsApp (uso típico)
+## Fluxo de autoatendimento (mesário/apoio logístico manda "oi")
+
+Este é o fluxo **espontâneo** — a pessoa que inicia o contato, não uma campanha
+do cartório. Cobre qualquer primeira mensagem que não seja claramente um evento
+de seção nem resposta a uma campanha em andamento.
+
+```
+1. Mesário manda "oi" / "bom dia" / "quem é?"
+2. sime_mesarios {acao:'consultar', telefone:<remetente>}
+3a. Encontrado  → Hermes devolve a mensagem_wa (função + seção, se MRV)
+3b. Não encontrado → Hermes devolve a mensagem_wa de 404 ("fale com o cartório")
+4. Se a pessoa responder com uma correção/observação (telefone errado,
+   "não vou poder ir", etc.):
+     sime_mesarios {acao:'atualizar', telefone:<remetente>, mensagem:<texto da pessoa>}
+5. Se em vez disso a pessoa responder confirmando/recusando a convocação,
+   segue o fluxo de confirmação abaixo normalmente (SIM/NÃO/substituto) —
+   os dois fluxos convergem no mesmo `confirmar`/`recusar`/`substituir`.
+```
+
+## Fluxo de verificação pelo WhatsApp (campanha do cartório)
 
 ```
 1. sime_mesarios {acao:'listar', status:'pendente'}  → pega telefones pendentes
@@ -77,8 +156,11 @@ com o cartório.
 ## CRÍTICO
 
 - Timestamp sempre do servidor (o endpoint chama `sime_now()`); nunca `Date.now()`.
-- Toda escrita registra log append-only (`modulo='hermes_mesarios'`).
+- Toda escrita registra log append-only (`modulo='hermes_mesarios'` ou, pra
+  `atualizar`, `hermes_atualizou_info`).
 - Nunca escalar para o juiz eleitoral; dúvidas → cartório.
-- O filtro por seção usa hoje o texto de `observacao` ("Seção votação: NNN")
-  enquanto o backfill de `secao_id` não roda; a confirmação por telefone não
-  depende disso.
+- `consultar`/`listar` resolvem a seção via `secao_id` (join com `sime_secoes`,
+  populado por `sime_sync_atores_from_raw()`) quando disponível; caem pro texto
+  de `observacao` ("Seção votação: NNN") só em registros antigos sem esse backfill.
+- `atualizar` **nunca** sobrescreve nome/telefone/seção — isso é dado oficial do
+  TRE. O recado vira anotação em `observacao` pro cartório decidir o que fazer.

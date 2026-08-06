@@ -1,7 +1,8 @@
-// Testa api/hermes-mesarios.js (leitura + confirmação de mesários pelo Hermes)
-// com Supabase mockado (fixtures/supabase-mock.mjs via globalThis.__SUPA).
-// Cobre auth por zona, isolamento entre zonas, listar/filtrar, e os writes
-// confirmar/recusar/substituir (incluindo o efeito em ativo e o log de auditoria).
+// Testa api/hermes-mesarios.js (leitura + autoatendimento + confirmação de
+// mesários/apoio logístico pelo Hermes) com Supabase mockado (fixtures/supabase-mock.mjs
+// via globalThis.__SUPA). Cobre auth por zona, isolamento entre zonas,
+// listar/filtrar, consultar (autoatendimento "oi"), atualizar (recado livre)
+// e os writes confirmar/recusar/substituir (incluindo ativo e log de auditoria).
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, dirname } from 'node:path';
@@ -20,13 +21,22 @@ process.env.HERMES_SECRET_ZONA_96 = 'segredo96';
 
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 
+// Zona 7: ANA (mesário, seção só em observacao — dado legado) + BRUNO (mesário,
+// já confirmado) + DIEGO (mesário COM secao_id/funcao_mesa reais, vindos da
+// carga do TRE, E também apoio logístico — mesma pessoa, duas convocações).
+// Zona 96: CARLA, só pra testar isolamento entre zonas.
 function resetDB() {
   globalThis.__SUPA = {
     zonas: [{ id: 'zona-7', numero: 7 }, { id: 'zona-96', numero: 96 }],
+    secoes: [
+      { id: 'sec-63', zona_id: 'zona-7', numero: 63, local_nome: 'Escola Municipal X', municipio: 'Campo Maior' },
+    ],
     atores: [
-      { id: 'm1', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'ANA SOUSA', telefone_whatsapp: '558611110001', observacao: 'Função: Presidente | Seção votação: 63 | Local: X', confirmacao: 'pendente', ativo: true, secao_id: null },
-      { id: 'm2', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'BRUNO LIMA', telefone_whatsapp: '558611110002', observacao: 'Função: 1º Mesário | Seção votação: 64 | Local: X', confirmacao: 'confirmado', ativo: true, secao_id: null },
-      { id: 'm3', zona_id: 'zona-96', funcao: 'mesario', nome_completo: 'CARLA ROCHA (outra zona)', telefone_whatsapp: '558611110003', observacao: 'Função: Presidente | Seção votação: 63 | Local: Z', confirmacao: 'pendente', ativo: true, secao_id: null },
+      { id: 'm1', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'ANA SOUSA', telefone_whatsapp: '558611110001', observacao: 'Função: Presidente | Seção votação: 63 | Local: X', confirmacao: 'pendente', ativo: true, secao_id: null, funcao_mesa: null },
+      { id: 'm2', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'BRUNO LIMA', telefone_whatsapp: '558611110002', observacao: 'Função: 1º Mesário | Seção votação: 64 | Local: X', confirmacao: 'confirmado', ativo: true, secao_id: null, funcao_mesa: null },
+      { id: 'm3', zona_id: 'zona-96', funcao: 'mesario', nome_completo: 'CARLA ROCHA (outra zona)', telefone_whatsapp: '558611110003', observacao: 'Função: Presidente | Seção votação: 63 | Local: Z', confirmacao: 'pendente', ativo: true, secao_id: null, funcao_mesa: null },
+      { id: 'm4', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'DIEGO ALVES', telefone_whatsapp: '558611110004', observacao: null, confirmacao: 'pendente', ativo: true, secao_id: 'sec-63', funcao_mesa: 'Presidente' },
+      { id: 'a1', zona_id: 'zona-7', funcao: 'auxiliar_eleicao', nome_completo: 'DIEGO ALVES', telefone_whatsapp: '558611110004', observacao: null, confirmacao: 'pendente', ativo: true, secao_id: null, funcao_mesa: null },
     ],
     logs: [], now: '2026-08-01T10:00:00.000Z', ops: [],
   };
@@ -49,8 +59,9 @@ check('sem acao → 400', (await call('POST', Z7, {})).code === 400);
 resetDB();
 let r = await call('POST', Z7, { acao: 'listar' });
 check('listar zona 7 → 200', r.code === 200);
-check('lista só os 2 mesários da zona 7', r.body.total === 2 && r.body.mesarios.every(m => m.nome !== 'CARLA ROCHA (outra zona)'), JSON.stringify(r.body.total));
-check('extrai seção do observacao', r.body.mesarios.find(m => m.nome === 'ANA SOUSA')?.secao === '0063');
+check('lista mesário + apoio logístico da zona 7 (4), não a de outra zona', r.body.total === 4 && r.body.mesarios.every(m => m.nome !== 'CARLA ROCHA (outra zona)'), JSON.stringify(r.body.total));
+check('extrai seção do observacao (dado legado, sem secao_id)', r.body.mesarios.find(m => m.nome === 'ANA SOUSA')?.secao === '0063');
+check('resolve seção via secao_id (dado novo, join com sime_secoes)', r.body.mesarios.find(m => m.nome === 'DIEGO ALVES' && m.secao === '0063'));
 
 r = await call('POST', Z96, { acao: 'listar' });
 check('zona 96 vê só a sua (isolamento)', r.body.total === 1 && r.body.mesarios[0].nome === 'CARLA ROCHA (outra zona)', JSON.stringify(r.body.total));
@@ -58,12 +69,59 @@ check('zona 96 vê só a sua (isolamento)', r.body.total === 1 && r.body.mesario
 // filtro por status
 resetDB();
 r = await call('POST', Z7, { acao: 'listar', status: 'pendente' });
-check('filtro status=pendente', r.body.total === 1 && r.body.mesarios[0].nome === 'ANA SOUSA', JSON.stringify(r.body));
+check('filtro status=pendente', r.body.total === 3 && r.body.mesarios.some(m => m.nome === 'ANA SOUSA'), JSON.stringify(r.body));
 
 // filtro por seção (via observacao, secao_id ainda null)
 resetDB();
 r = await call('POST', Z7, { acao: 'listar', secao: '64' });
 check('filtro por seção 64', r.body.total === 1 && r.body.mesarios[0].nome === 'BRUNO LIMA', JSON.stringify(r.body));
+
+// ── CONSULTAR — autoatendimento ("oi") ──
+resetDB();
+r = await call('POST', Z7, { acao: 'consultar', telefone: '558611110004' });
+check('consultar → 200, encontrado 2 (mesário + apoio logístico, mesma pessoa)', r.code === 200 && r.body.encontrado === 2, JSON.stringify(r.body));
+check('mensagem_wa cita seção com local/município (via secao_id)', r.body.mensagem_wa.includes('Seção 0063') && r.body.mensagem_wa.includes('Escola Municipal X') && r.body.mensagem_wa.includes('Campo Maior'), r.body.mensagem_wa);
+check('mensagem_wa junta os dois papéis ("e também")', r.body.mensagem_wa.includes('e também'), r.body.mensagem_wa);
+check('funcao_mesa aparece no rótulo (Presidente)', r.body.mensagem_wa.includes('Presidente'), r.body.mensagem_wa);
+check('convida a mandar atualização', /manda a informação/.test(r.body.mensagem_wa), r.body.mensagem_wa);
+
+resetDB();
+r = await call('POST', Z7, { acao: 'consultar', telefone: '558611110001' });
+check('consultar via fallback de observacao (secao_id null)', r.code === 200 && r.body.pessoas[0].secao.numero === '0063', JSON.stringify(r.body));
+
+resetDB();
+r = await call('POST', Z7, { acao: 'consultar', telefone: '558611110002' });
+check('mensagem_wa avisa quando já confirmou', /já confirmou/.test(r.body.mensagem_wa), r.body.mensagem_wa);
+
+resetDB();
+check('consultar sem telefone → 400', (await call('POST', Z7, { acao: 'consultar' })).code === 400);
+
+resetDB();
+r = await call('POST', Z7, { acao: 'consultar', telefone: '5599999999' });
+check('consultar telefone não encontrado → 404 com orientação', r.code === 404 && /cartório/.test(r.body.mensagem_wa), JSON.stringify(r.body));
+
+resetDB();
+r = await call('POST', Z7, { acao: 'consultar', telefone: '558611110003' });
+check('zona 7 não encontra convocado da zona 96 via consultar (isolamento)', r.code === 404);
+
+// ── ATUALIZAR — recado livre vira observação (nunca sobrescreve dado do TRE) ──
+resetDB();
+r = await call('POST', Z7, { acao: 'atualizar', telefone: '558611110001', mensagem: 'meu telefone mudou pra 86999998888' });
+check('atualizar → 200, encontrado 1', r.code === 200 && r.body.encontrado === 1, JSON.stringify(r.body));
+check('anexa recado em observacao sem apagar o que já tinha', globalThis.__SUPA.atores[0].observacao.includes('Recado via Hermes: meu telefone mudou') && globalThis.__SUPA.atores[0].observacao.includes('Seção votação: 63'), globalThis.__SUPA.atores[0].observacao);
+check('não mexe em nome/telefone (dado oficial do TRE)', globalThis.__SUPA.atores[0].nome_completo === 'ANA SOUSA' && globalThis.__SUPA.atores[0].telefone_whatsapp === '558611110001');
+check('atualizar registra log de auditoria', globalThis.__SUPA.logs.some(l => l.acao === 'hermes_atualizou_info'));
+
+resetDB();
+r = await call('POST', Z7, { acao: 'atualizar', telefone: '558611110004', mensagem: 'não vou poder ir' });
+check('atualizar em pessoa com 2 papéis anexa nas duas linhas', globalThis.__SUPA.atores[3].observacao?.includes('não vou poder ir') && globalThis.__SUPA.atores[4].observacao?.includes('não vou poder ir'), JSON.stringify([globalThis.__SUPA.atores[3].observacao, globalThis.__SUPA.atores[4].observacao]));
+
+resetDB();
+check('atualizar sem mensagem → 400', (await call('POST', Z7, { acao: 'atualizar', telefone: '558611110001' })).code === 400);
+resetDB();
+check('atualizar sem telefone → 400', (await call('POST', Z7, { acao: 'atualizar', mensagem: 'x' })).code === 400);
+resetDB();
+check('atualizar telefone não encontrado → 404', (await call('POST', Z7, { acao: 'atualizar', telefone: '5599999999', mensagem: 'x' })).code === 404);
 
 // ── CONFIRMAR ──
 resetDB();

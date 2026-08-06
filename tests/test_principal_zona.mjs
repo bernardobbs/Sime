@@ -21,7 +21,13 @@ const SECOES = [
   { zona_id:'z-7', eleitores:300 }, { zona_id:'z-7', eleitores:250 },
 ];
 const ROTAS = [{ zona_id:'z-7' }];
-const USUARIOS = [{ zona_id:'z-7' }, { zona_id:'z-94' }];
+const USUARIOS = [
+  { id:'u1', nome:'Maria Gomes',  perfil:'coordenador', zona_id:'z-7'  },
+  { id:'u2', nome:'João Silva',   perfil:'gestor_prob', zona_id:'z-7'  },
+  { id:'u3', nome:'Ana da 94',    perfil:'coordenador', zona_id:'z-94' },
+  // Token de TV: criado pela sime-login, não é gente da equipe.
+  { id:'u4', nome:'Token tv (ABC123)', perfil:'observador', zona_id:'z-7' },
+];
 const MEU = ${JSON.stringify(meu)};
 
 class QB {
@@ -113,6 +119,69 @@ async function abrir(meu) {
   check('7ª zona soma os eleitores reais', primeiro.includes('550'), '');
   check('94ª zona aparece como sem seções', texto.includes('Sem seções'));
   check('super_admin: sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
+// ══════════════════════════════════════════════════
+// ABA USUÁRIOS — era ficção, agora é a equipe da zona
+// ══════════════════════════════════════════════════
+// A aba listava SETE pessoas escritas no HTML ('Maria S.', 'João P.', …), com
+// um filtro de zona também fixo, e o botão "+ Novo usuário" abria um modal que
+// terminava em showToast('✓ Criado') sem criar nada. Alguém podia cadastrar a
+// equipe ali, ver o ✓, e descobrir no dia 4 que ninguém consegue entrar.
+
+async function entrar(p) {
+  await p.fill('#login-email', 'admin@sime.gov.br');
+  await p.fill('#login-pass', 'senha');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+}
+
+// ── Admin de zona vê só a própria equipe ──
+{
+  const { p, erros } = await abrir({ perfil: 'coordenador', zona_id: 'z-7' });
+  await entrar(p);
+  const txt = await p.textContent('#user-tbody');
+
+  check('usuários: mostra quem é da zona', txt.includes('Maria Gomes') && txt.includes('João Silva'), txt.slice(0, 160));
+  check('usuários: NÃO mostra a equipe da outra zona', !txt.includes('Ana da 94'), txt.slice(0, 160));
+  check('usuários: NÃO lista token de TV como pessoa', !txt.includes('Token tv'), txt.slice(0, 160));
+  check('usuários: sumiram os nomes inventados', !txt.includes('Maria S.') && !txt.includes('Rafael A.'), txt.slice(0, 160));
+
+  const escopo = await p.textContent('#usuarios-escopo');
+  check('usuários: diz de quantas pessoas e de que zona', escopo.includes('2 pessoas') && escopo.includes('7ª'), escopo);
+
+  check('usuários: não há mais filtro de zona escrito no HTML',
+    await p.$('#zona-filter') === null);
+  check('usuários: criar acesso aponta para o Admin, onde de fato acontece',
+    (await p.getAttribute('a.btn[href="SIME_admin.html"]', 'href')) === 'SIME_admin.html');
+  check('usuários: sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
+// ── Super admin vê as duas zonas ──
+{
+  const { p, erros } = await abrir({ perfil: 'super_admin', zona_id: 'z-7' });
+  await entrar(p);
+  const txt = await p.textContent('#user-tbody');
+  check('super_admin: vê a equipe das duas zonas',
+    txt.includes('Maria Gomes') && txt.includes('Ana da 94'), txt.slice(0, 160));
+  check('super_admin: mostra a zona de cada pessoa', txt.includes('7ª') && txt.includes('94ª'), txt.slice(0, 200));
+  check('super_admin: sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
+// ── Nenhum botão pode mais dizer "✓" para algo que não gravou ──
+{
+  const { p } = await abrir({ perfil: 'super_admin', zona_id: 'z-7' });
+  // Procura a CHAMADA, não o texto solto: os comentários do arquivo citam as
+  // mensagens antigas de propósito, para explicar por que saíram.
+  const html = await p.content();
+  for (const mentira of ['✓ Criado', '✓ Zona criada', '✓ Turno arquivado', '✓ Calendário importado']) {
+    const chamada = new RegExp(`showToast\\(["'\u0027]${mentira.replace(/[.*+?^$()|[\]\\]/g, '\\$&')}`);
+    check(`nenhum botão promete "${mentira}" sem gravar nada`, !chamada.test(html), 
+      (html.match(chamada) || [''])[0]);
+  }
   await p.close();
 }
 
