@@ -33,6 +33,7 @@
 //                           horário local do Pi).
 
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'crypto';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -49,10 +50,30 @@ function secretsPorZona() {
   }
   return mapa;
 }
+// Diagnóstico temporário do 401 persistente reportado em produção — nunca
+// loga o valor em si, só um hash de 12 caracteres + tamanho, o suficiente
+// pra provar (ou descartar) se o Bearer recebido bate byte a byte com
+// algum HERMES_SECRET_ZONA_* configurado. Remover depois de resolvido.
+function fingerprint(s) {
+  return `len=${String(s).length} hash=${createHash('sha256').update(String(s)).digest('hex').slice(0, 12)}`;
+}
 function resolverZonaPorAuth(authHeader) {
-  for (const [numeroZona, secret] of Object.entries(secretsPorZona())) {
+  const secrets = secretsPorZona();
+  for (const [numeroZona, secret] of Object.entries(secrets)) {
     if (authHeader === `Bearer ${secret}`) return { numeroZona, secret };
   }
+  const recebido = (authHeader || '').replace(/^Bearer\s*/, '');
+  // Quando não acha NENHUM HERMES_SECRET_ZONA_*, lista os NOMES (nunca
+  // valores) de toda env var que contenha "HERMES" ou "SUPABASE" — prova se
+  // a variável não está sendo injetada de verdade, ou se está lá com um
+  // nome levemente diferente do esperado (typo, maiúscula/minúscula etc.).
+  const chavesRelevantes = Object.keys(process.env).filter((k) => /HERMES|SUPABASE/i.test(k));
+  console.error(
+    '[hermes-heartbeat] 401 — recebido:', fingerprint(recebido),
+    '| configurados:', Object.entries(secrets).map(([z, s]) => `zona${z}:${fingerprint(s)}`).join(' , ') || '(nenhum HERMES_SECRET_ZONA_* nas env vars)',
+    '| chaves HERMES/SUPABASE vistas:', JSON.stringify(chavesRelevantes),
+    '| total de env vars:', Object.keys(process.env).length
+  );
   return null;
 }
 async function buscarZonaId(numeroZona) {
