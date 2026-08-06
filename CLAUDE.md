@@ -360,6 +360,13 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   não fosse um comando, confundindo quem mandava mensagem normal pro número
   (flagrado em campo). `buscarConvocacaoPorNome` continua disponível em
   `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente.
+- **Canal de DM (individual) restrito a `ADMIN_NUMBERS`, desde 06/08/2026**
+  — mesmo incidente do item acima. Antes, `status` e `fila` respondiam a
+  qualquer remetente; agora todo o `modules/whatsapp/comandos.js` retorna
+  sem responder nada pra quem não está na lista (nem "sem permissão" — só a
+  DM chegando, sem nenhuma resposta visível). Toda DM é logada no `pm2 logs`
+  (nunca no WhatsApp) pra ainda dar pra achar um admin legítimo bloqueado
+  por JID `@lid` fora da lista.
 - **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
