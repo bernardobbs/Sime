@@ -87,7 +87,14 @@ async function buscarZonaId(numeroZona) {
   // falhando silenciosamente (chave inválida/vazia) — buscarZonaId nunca
   // olhava pro erro antes. Remover junto com o resto do log de diagnóstico.
   if (!data) {
-    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL definida:', !!process.env.SUPABASE_URL, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length);
+    // A zona 7 existe confirmadamente em sime_zonas (checado via SQL direto)
+    // e a query aqui não retorna erro — se for mesmo "query OK, 0 linhas",
+    // a explicação mais provável é SUPABASE_URL apontando pra outro projeto
+    // (mesma classe de bug do secret que estava vazio). Hostname de projeto
+    // não é segredo (aparece na URL do dashboard), então dá pra logar.
+    let host = '(SUPABASE_URL ausente ou inválida)';
+    try { host = new URL(process.env.SUPABASE_URL).hostname; } catch {}
+    console.error('[hermes-heartbeat] zona não achada — numero:', numeroZona, '| erro supabase:', error?.message || '(nenhum erro, query OK, só não achou linha)', '| SUPABASE_URL host:', host, '| SUPABASE_SERVICE_ROLE_KEY definida:', !!process.env.SUPABASE_SERVICE_ROLE_KEY, 'len:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length);
   }
   return data?.id || null;
 }
