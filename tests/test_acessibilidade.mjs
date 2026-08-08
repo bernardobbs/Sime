@@ -164,6 +164,8 @@ async function loginPIN(p) {
     req.onerror = () => resolve(-1);
   }));
   check('rpc falhando enfileira no IndexedDB', pendentes >= 1, 'pendentes=' + pendentes);
+  const badgeTxt = await p.locator('#sync-badge').textContent();
+  check('badge NÃO mostra 🟢 quando a gravação real falhou (só localStorage salvou)', badgeTxt !== '🟢', badgeTxt);
   check('zero erros JS não tratados com rpc falhando', erros.length === 0, erros.join(';'));
   await ctx.close();
 }

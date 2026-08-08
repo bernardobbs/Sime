@@ -57,6 +57,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .logo{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.85rem;color:#fff;}
 .h-title{font-weight:700;font-size:.92rem;}
 .h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — a fila offline já
+   existia (enqueue), mas sem indicador visual nunca dava pra saber se um
+   toque chegou de fato ao cartório. Mesmo padrão do Mídias/Mesário. */
+.sync-badge{display:none;align-items:center;gap:4px;font-size:.6rem;font-weight:700;padding:3px 8px;border-radius:99px;margin-left:auto;flex-shrink:0;}
+.sync-badge.sync-ok  {background:#d8f0e4;color:#1a7a4c;}
+.sync-badge.sync-pend{background:#fdf0d0;color:#a4590c;}
 
 .prereq{display:flex;align-items:center;gap:5px;font-size:.67rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
 .prereq .arr{color:var(--text3);}
@@ -210,6 +216,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div class="h-title">SIME Instalador</div>
       <div class="h-sub">Véspera · <span id="h-tecnico">Técnico</span> · <span id="h-time">—</span></div>
     </div>
+    <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
   </div>
   <div class="prereq">
     <span class="step1">📍 Chegou</span>
@@ -321,8 +328,22 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   campoClient = client;
   await resolverEscopo(secoes);
   esconderLogin();
-  iniciarRetryPeriodico(syncQueueFn);
+  iniciarRetryPeriodico(syncQueueFn, (pendentes) => updateSyncBadge(pendentes));
+  document.getElementById('sync-badge').style.display = 'flex';
 });
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.style.display = 'flex';
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
 
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.

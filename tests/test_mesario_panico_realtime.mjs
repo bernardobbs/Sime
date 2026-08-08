@@ -223,6 +223,9 @@ const estadoPanico = (id) => ({
   check('acionar pânico envia p_panico_energia_resolvido=false', params.p_panico_energia_resolvido === false);
 
   await p.evaluate(() => { window.__mockConfig.rpcCalls.length = 0; });
+  // Resolver exige toque duplo (proteção contra cancelar um alerta real por
+  // engano) — o primeiro toque só avisa, o segundo confirma.
+  await p.click('#btn-energia');
   await p.click('#btn-energia');            // resolver no próprio aparelho
   await p.waitForTimeout(300);
   const p2 = (await p.evaluate(() => window.__mockConfig.rpcCalls.filter(c => c.name === 'sime_acao_mesa')))

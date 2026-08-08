@@ -102,6 +102,12 @@ async function login(p) {
   const call = calls.find(c => c.name === 'sime_acao_midia');
   check('confirmar coleta chama sime_acao_midia com p_status=coletada', call?.params?.p_status === 'coletada');
   check('payload usa secao_id/eleicao_id reais', call.params.p_secao_id === 'sec-uuid-1' && call.params.p_eleicao_id === 'ele-uuid-1');
+  // applyLocalAction() não gravava coletada_ts — o cartão mostrava "--:--"
+  // pra sempre, mesmo tendo o horário do servidor disponível (achado "alto").
+  const coletadaTs = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_midias_v1') || '{}')['0001']?.coletada_ts);
+  check('coletada_ts é salvo localmente após confirmar coleta', typeof coletadaTs === 'number' && coletadaTs > 0, String(coletadaTs));
+  const cardTxt = await p.locator('.status-coletada .sc-status').first().textContent();
+  check('cartão mostra o horário real, não "--:--"', !cardTxt.includes('--:--'), cardTxt);
   check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }

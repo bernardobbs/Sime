@@ -60,7 +60,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sc-num{font-weight:800;font-size:1rem;}
 .sc-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
 .sc-status{font-size:.64rem;font-weight:700;margin-top:3px;}
-.sc-status.ag {color:var(--text3);}
+/* "Aguardando encerramento" é o status mais comum durante boa parte do Dia D
+   — var(--text3) era a cor de menor contraste do tema (achado "alto"). */
+.sc-status.ag {color:var(--text2);}
 .sc-status.pr {color:var(--yellow);}
 .sc-status.co {color:var(--green);}
 .sc-status.en {color:#15803d;}
@@ -112,7 +114,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ri-info{flex:1;}
 .ri-name{font-size:.82rem;font-weight:700;}
 .ri-func{font-size:.68rem;color:var(--text2);}
-.ri-tel{font-size:.68rem;color:var(--text3);}
+.ri-tel{font-size:.68rem;color:var(--text2);}
 </style>
 </head>
 <body>
@@ -137,7 +139,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-title">SIME · Mídias</div>
     <div class="h-sub" id="h-sub">Recolhimento de Mídias</div>
   </div>
-  <button onclick="abrirConfigWA()" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;" title="Configurar WhatsApp">📲</button><div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
+  <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
 </div>
 
 <div class="tabs">
@@ -446,8 +448,13 @@ function log(acao, modulo, secao, payload) {
 
 function applyLocalAction(acao, dados) {
   if (acao === 'midia_transmissao') { saveTransmissaoLocal(dados.n, dados.status); return; }
-  const { n, status, tipo, obs, resp } = dados;
-  saveMidiaLocal(n, { status, tipo_coleta: tipo, observacao: obs, responsavel: resp });
+  const { n, status, tipo, obs, resp, ts } = dados;
+  const patch = { status, tipo_coleta: tipo, observacao: obs, responsavel: resp };
+  // coletada_ts nunca era salvo aqui — render() já lia m.coletada_ts (L525),
+  // então todo cartão coletado mostrava "--:--" pra sempre, mesmo com o
+  // horário do servidor disponível em dados.ts (achado "alto" da auditoria).
+  if (status === 'coletada' && ts) patch.coletada_ts = ts;
+  saveMidiaLocal(n, patch);
 }
 
 // ══════════════════════════════════════
@@ -584,7 +591,7 @@ function renderTransmissao(co, en, tot, recolh) {
       <div class="tp-stats">
         <div class="tps-item"><div class="tps-val" style="color:var(--green)">${prontas}</div><div class="tps-lbl">Mídias coletadas</div></div>
         <div class="tps-item"><div class="tps-val" style="color:var(--blue)">${en}</div><div class="tps-lbl">Já entregues</div></div>
-        <div class="tps-item"><div class="tps-val" style="color:var(--text3)">${tot-prontas-en}</div><div class="tps-lbl">Pendentes</div></div>
+        <div class="tps-item"><div class="tps-val" style="color:var(--text2)">${tot-prontas-en}</div><div class="tps-lbl">Pendentes</div></div>
       </div>
       ${prontas > 0 ? `<button class="btn-transmissao ready" onclick="confirmarEntregaTransmissao()">✅ Confirmar entrega de ${prontas} mídias na transmissão</button>` :
         `<button class="btn-transmissao" disabled>🔒 Nenhuma mídia coletada ainda</button>`}
@@ -901,8 +908,10 @@ function previewNovoResp(sel){
     </div>
   </div>`;
 
-  // Preview da mensagem WhatsApp
-  const msg = montarMsgNovoResponsavel('???', sec?.loc||'—', {nome, telefone:tel});
+  // Preview da mensagem WhatsApp — antes passava '???' fixo em vez do número
+  // real da seção, então o preview sempre mostrava "Seção NaN" (a mensagem
+  // enviada de fato estava certa; só este preview usava o placeholder).
+  const msg = montarMsgNovoResponsavel(sec?.n||'???', sec?.loc||'—', {nome, telefone:tel});
   waPrev.innerHTML = `<div style="font-size:.65rem;font-weight:700;color:var(--text3);margin-top:8px;margin-bottom:4px">Preview WhatsApp que será enviado:</div>
     <div class="wa-preview">${msg.replace(/</g,'&lt;').replace(/\*/g,'<b>').replace(/\*/g,'</b>')}</div>`;
 }
@@ -951,39 +960,12 @@ async function confirmarDedicada(n){
   render();
 }
 
-// Configuração Z-API (acessível do admin)
-function abrirConfigWA(){
-  const cfg = loadZapiCfg();
-  document.getElementById('sheet-body').innerHTML = `
-    <div class="sh-title">📲 Configurar WhatsApp (Z-API)</div>
-    <div class="sh-sub">Configure uma vez. As notificações são enviadas automaticamente.</div>
-    <label class="sh-label">Instance ID</label>
-    <input class="sh-input" type="text" id="cfg-inst" value="${cfg.instanceId||''}" placeholder="Ex: 3C4D5E6F7G8H">
-    <label class="sh-label">Token</label>
-    <input class="sh-input" type="text" id="cfg-tok" value="${cfg.token||''}" placeholder="Ex: ABCD1234...">
-    <label class="sh-label">Client Token (segurança)</label>
-    <input class="sh-input" type="text" id="cfg-cli" value="${cfg.clientToken||''}" placeholder="Ex: F5EE...">
-    <label class="sh-label">Edge Function URL (opcional, pós-Supabase)</label>
-    <input class="sh-input" type="text" id="cfg-edge" value="${cfg.edgeUrl||''}" placeholder="https://xxx.supabase.co/functions/v1">
-    <div class="sh-btns" style="margin-top:12px">
-      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
-      <button class="sbtn ok" onclick="salvarCfgWA()">💾 Salvar</button>
-    </div>`;
-  openSheet();
-}
-
-function salvarCfgWA(){
-  const cfg = {
-    instanceId:  document.getElementById('cfg-inst').value.trim(),
-    token:       document.getElementById('cfg-tok').value.trim(),
-    clientToken: document.getElementById('cfg-cli').value.trim(),
-    edgeUrl:     document.getElementById('cfg-edge').value.trim(),
-  };
-  localStorage.setItem(ZAPI_CONFIG_KEY, JSON.stringify(cfg));
-  closeSheet();
-  showToast('✓ Configuração WhatsApp salva');
-  render();
-}
+// A edição da configuração Z-API (legada, substituída pelo Hermes) saiu
+// deste módulo de campo — não tinha relação com o fluxo atual e ocupava
+// espaço no cabeçalho de uma tela usada em campo (achado "alto" da
+// auditoria). loadZapiCfg()/enviarWA() continuam aqui: ainda é o que
+// dispara as notificações de troca de responsável, só não se edita mais
+// a configuração por aqui.
 
 function fmtNow(){
   const n=new Date();

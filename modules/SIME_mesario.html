@@ -264,6 +264,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
       <span class="dc off" id="dc-vot">Votação</span>
       <span class="dc off" id="dc-enc">Encerrada</span>
       <span class="dc off" id="dc-bu">BU</span>
+      <span class="dc off" id="dc-panico" style="display:none">Pânico ativo</span>
     </div>
   </div>
 
@@ -290,7 +291,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <span class="ricon" id="icon-energia">⚡</span>
     <div>
       <div class="rlabel" id="lbl-energia">Falta de energia</div>
-      <div class="rsub" id="sub-energia">toque para acionar — toque novamente para resolver</div>
+      <div class="rsub" id="sub-energia">toque para acionar — toque 2x para resolver</div>
     </div>
     <span class="rbadge" id="badge-energia"></span>
   </button>
@@ -299,7 +300,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <span class="ricon" id="icon-urnaprob">🖥️</span>
     <div>
       <div class="rlabel" id="lbl-urnaprob">Urna com problema</div>
-      <div class="rsub" id="sub-urnaprob">toque para acionar — toque novamente para resolver</div>
+      <div class="rsub" id="sub-urnaprob">toque para acionar — toque 2x para resolver</div>
     </div>
     <span class="rbadge" id="badge-urnaprob"></span>
   </button>
@@ -775,12 +776,17 @@ function confirm() {
 }
 
 // ─── PÂNICO ────────────────────────────────────────────────
+// Ativar continua sendo toque único — numa emergência real, cada segundo
+// conta. Resolver exige toque duplo (2 toques em até 500ms): um toque
+// impreciso não pode cancelar um alerta em andamento sozinho.
+const PANIC_DBLTAP_MS = 500;
+const lastResolveTap = { energia:0, urnaprob:0, sos:0 };
+
 function togglePanico(id) {
-  vib([80,40,80]);
-  const isActive   = S.panico[id];
-  const isResolved = S.panico_resolved[id];
+  const isActive = S.panico[id];
 
   if(!isActive) {
+    vib([80,40,80]);
     // acionar pânico
     S.panico[id] = true;
     S.panico_resolved[id] = false;
@@ -788,19 +794,47 @@ function togglePanico(id) {
     const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!', sos:'🆘 SOS acionado!'};
     showToast(labels[id]);
     vib([100,50,100,50,100]);
-  } else {
-    // resolver pânico
-    S.panico[id] = false;
-    S.panico_resolved[id] = true;
-    applyPanico(id, 'resolved');
-    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
-    showToast(labels[id]);
-    vib([60,30,60]);
+    saveState({ incluirPanico: true });
+    return;
   }
+
+  // já ativo — primeiro toque só avisa; o segundo, dentro da janela, resolve
+  const agora = Date.now();
+  if(agora - lastResolveTap[id] > PANIC_DBLTAP_MS) {
+    lastResolveTap[id] = agora;
+    vib(30);
+    showToast('Toque de novo para confirmar que foi resolvido');
+    return;
+  }
+  lastResolveTap[id] = 0;
+
+  vib([60,30,60]);
+  S.panico[id] = false;
+  S.panico_resolved[id] = true;
+  applyPanico(id, 'resolved');
+  const labelsResolvido = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
+  showToast(labelsResolvido[id]);
   saveState({ incluirPanico: true });
 }
 
+// Chip no topo do display (dentro de .d-row) — sem rolar até os botões
+// vermelhos, não havia como saber que há um pânico ativo em outra parte
+// da tela (achado "alto" da auditoria).
+function updatePanicoChip() {
+  const chip = document.getElementById('dc-panico');
+  if(!chip) return;
+  const ativo = Object.values(S.panico).some(Boolean);
+  if(ativo) {
+    chip.style.display = '';
+    chip.textContent = '🔴 Pânico ativo';
+    chip.className = 'dc err';
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
 function applyPanico(id, state) {
+  updatePanicoChip();
   const btn   = document.getElementById('btn-' + (id==='urnaprob'?'urna-prob':id));
   const icon  = document.getElementById('icon-' + id);
   const lbl   = document.getElementById('lbl-' + id);
@@ -811,7 +845,7 @@ function applyPanico(id, state) {
     btn.className = 'rbtn c-red wide c-panic-active';
     lbl.style.color = 'var(--red)';
     badge.textContent = '🔴';
-    sub.textContent = 'ATIVO — toque para marcar como resolvido';
+    sub.textContent = 'ATIVO — toque 2x para marcar como resolvido';
   } else if(state === 'resolved') {
     btn.className = 'rbtn wide c-panic-resolved';
     lbl.style.color = 'var(--green)';
@@ -823,7 +857,7 @@ function applyPanico(id, state) {
     btn.className = 'rbtn c-red wide';
     lbl.style.color = '';
     badge.textContent = '';
-    sub.textContent = 'toque para acionar — toque novamente para resolver';
+    sub.textContent = 'toque para acionar — toque 2x para resolver';
   }
 }
 

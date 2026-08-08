@@ -223,6 +223,8 @@ async function abrir(ctx, mock) {
   const chamadas = await p.evaluate(() => window.__mock.rpcCalls);
   check('Assumir chama sime_ocorrencia_assumir', chamadas.some(c => c.nome === 'sime_ocorrencia_assumir'),
     JSON.stringify(chamadas));
+  const badgeCls = await p.locator('#sync-badge').getAttribute('class');
+  check('badge de sync fica 🟢 depois de assumir com sucesso', badgeCls.includes('sync-ok'), badgeCls);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -239,6 +241,8 @@ async function abrir(ctx, mock) {
   await p.waitForTimeout(300);
   const toast = await p.locator('#toast').textContent();
   check('recusa do servidor aparece pro operador', toast.includes('já tem responsável'), toast);
+  const badgeCls = await p.locator('#sync-badge').getAttribute('class');
+  check('badge de sync vira 🔴 quando o servidor recusa (achado "alto" da auditoria)', badgeCls.includes('sync-fail'), badgeCls);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

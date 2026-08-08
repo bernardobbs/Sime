@@ -19,6 +19,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .brand{font-weight:800;font-size:.88rem;}
 .topbar .sp{flex:1;}
 .zona{font-size:.72rem;color:var(--text3);}
+/* Assumir/delegar/resolver/registrar contato escrevem direto no Supabase, sem
+   fila offline (igual ao Admin — sessão autenticada, não token de campo). Sem
+   isto, uma falha de rede sumia em silêncio: o toast de erro já existia, mas
+   nada ficava visível DEPOIS que a pessoa fechasse o toast (achado "alto" da
+   auditoria). Mesmo padrão "último resultado" do SIME_admin.html. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d4f0e0);color:var(--green,#2e7d52);}
+.sync-badge.sync-fail{background:var(--red-bg,#f8d7da);color:var(--red,#c0392b);}
 
 .wrap{max-width:680px;margin:0 auto;padding:12px 12px 90px;}
 
@@ -131,6 +139,7 @@ select.campo{margin-bottom:8px;}
   <div class="logo">SI</div>
   <div class="brand">SIME · Problemas</div>
   <div class="sp"></div>
+  <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
   <span class="zona" id="zona-info"></span>
   <button id="btn-sair" onclick="simeLogout()" style="display:none;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.73rem;font-weight:700;cursor:pointer;">⎋</button>
 </div>
@@ -523,9 +532,18 @@ async function carregarHistorico(id){
 // ══════════════════════════════════════════════════
 // AÇÕES
 // ══════════════════════════════════════════════════
+function trackSync(ok){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  el.style.display = 'flex';
+  if(ok){ el.className = 'sync-badge sync-ok'; el.textContent = '🟢 Sync'; }
+  else  { el.className = 'sync-badge sync-fail'; el.textContent = '🔴 Falhou salvar'; }
+}
+
 async function assumir(id){
   const { error } = await supabase.rpc('sime_ocorrencia_assumir', { p_id:id });
-  if(error){ showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  trackSync(true);
   showToast('✋ Você assumiu este problema');
   await recarregar();
 }
@@ -550,7 +568,8 @@ async function confirmarDelegar(id){
   const motivo = document.getElementById('del-motivo').value.trim();
   if(!motivo){ showToast('⚠ Informe o motivo'); return; }
   const { error } = await supabase.rpc('sime_ocorrencia_delegar', { p_id:id, p_para:para, p_motivo:motivo });
-  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  trackSync(true);
   showToast('↪ Delegado');
   await recarregar();
 }
@@ -569,7 +588,8 @@ window.abrirResolver = abrirResolver;
 async function confirmarResolver(id){
   const txt = document.getElementById('res-txt')?.value || '';
   const { error } = await supabase.rpc('sime_ocorrencia_resolver', { p_id:id, p_resolucao:txt });
-  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  trackSync(true);
   showToast('✓ Problema resolvido');
   fecharSheet(null, true);
   await recarregar();
@@ -579,7 +599,7 @@ window.confirmarResolver = confirmarResolver;
 // Registrar o contato é o que faz "ninguém atendeu" virar fato no histórico,
 // em vez de memória de quem estava de plantão. Não bloqueia o link.
 function registrarContato(id, quem){
-  supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(()=>{}, ()=>{});
+  supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(() => trackSync(true), () => trackSync(false));
 }
 window.registrarContato = registrarContato;
 </script>

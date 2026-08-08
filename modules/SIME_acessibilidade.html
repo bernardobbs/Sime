@@ -256,8 +256,17 @@ window.simeCampo = {
     if (!secaoId) return;
     const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial };
     escritasEmVoo++;
+    // syncOK() (definido no <script> clássico) reflete o resultado da
+    // gravação REAL — antes, saveSecao() só chamava syncOK(true) pelo
+    // sucesso do localStorage, que quase nunca falha; o 🟢 aparecia mesmo
+    // quando esta escrita caía silenciosamente na fila offline (achado
+    // "alto" da auditoria).
     syncQueueFn('acessibilidade', dados)
-      .catch(() => enqueue('acessibilidade', dados))
+      .then(() => { if (window.syncOK) window.syncOK(true); })
+      .catch(() => {
+        enqueue('acessibilidade', dados);
+        if (window.syncOK) window.syncOK(false);
+      })
       .finally(() => { escritasEmVoo--; });
   },
 };

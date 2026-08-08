@@ -92,6 +92,7 @@ async function login(p) {
   const chegouCall = calls.find(c => c.params?.p_urna_chegou === true);
   check('toggle "chegou" chama sime_acao_mesa com p_urna_chegou=true', !!chegouCall);
   check('payload usa secao_id/eleicao_id reais e origem instalador', chegouCall.params.p_secao_id === 'sec-uuid-17' && chegouCall.params.p_eleicao_id === 'ele-uuid-1' && chegouCall.params.p_origem === 'instalador');
+  check('badge de sync visível após login', await p.evaluate(() => document.getElementById('sync-badge').style.display !== 'none'));
   check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
