@@ -268,12 +268,23 @@ const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
 
 function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
 
-async function resolverEscopo() {
+async function resolverEscopo(secoesToken) {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+
+  // secoesToken vem da sessão (sime-login), nunca hardcoded no cliente —
+  // é a rota real atribuída a este instalador. Sem isso (offline/token sem
+  // escopo), a tela segue com a lista de exemplo.
+  const numeros = new Set((secoesToken || []).map((n) => parseInt(n, 10)));
+  if (numeros.size && secoes) {
+    const reais = secoes
+      .filter((s) => numeros.has(s.numero))
+      .map((s) => ({ n: String(s.numero).padStart(4, '0'), local: s.local_nome, mun: s.municipio, aptos: s.aptos }));
+    if (reais.length && window.aplicarSecoesReais) window.aplicarSecoesReais(reais);
+  }
 }
 
 async function syncQueueFn(acao, dados) {
@@ -303,12 +314,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   // Sem token não há o que autenticar — com o PIN suprimido, ele é a única
   // identificação do operador. Barrar aqui evita um erro de rede confuso.
   if (!token) { erroEl.textContent = 'Escaneie o QR Code do seu cartão.'; return; }
-  const { client } = await bootstrapCampoSession({
+  const { client, secoes } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
   if (!client) { erroEl.textContent = 'Token ou PIN inválido, ou sem conexão.'; return; }
   campoClient = client;
-  await resolverEscopo();
+  await resolverEscopo(secoes);
   esconderLogin();
   iniciarRetryPeriodico(syncQueueFn);
 });
@@ -325,9 +336,13 @@ document.getElementById('login-offline').addEventListener('click', () => {
 </script>
 <script src="./sime_ui_utils.js"></script>
 <script>
-// ─── SEÇÕES (exemplo — em produção vem do QR/URL do técnico) ──
-// Substitua por apenas as seções atribuídas a este instalador
-const SECOES = [
+// ─── SEÇÕES ──
+// Lista de exemplo pra tela não ficar vazia antes do login (offline/sem
+// token ainda). window.aplicarSecoesReais() (chamado por resolverEscopo(),
+// no <script type="module"> acima) substitui por só as seções de verdade
+// atribuídas a este instalador, resolvidas do token — sem isso, todo
+// instalador via qualquer token real via essa lista fixa, nunca a própria.
+let SECOES = [
   // Exemplo: Rota 006 — Col. Est. Profª Raimundinho Andrade
   {n:'0017',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:118},
   {n:'0018',local:'Col. Est. Profª Raimundinho Andrade',mun:'Campo Maior',aptos:115},
@@ -551,6 +566,22 @@ function resetAll() {
   SECOES.forEach(s => { state[s.n]={s1:false,s2:false,s3:false,prob:false,probResolvido:false}; });
   save(); buildList(); updateStats();
 }
+
+// Chamado pelo <script type="module"> (resolverEscopo()) assim que a lista
+// real de seções do token chega do Supabase — substitui o exemplo hardcoded
+// pela rota de verdade deste instalador. Progresso já marcado (offline, antes
+// do login) é preservado pras seções que continuam na lista nova.
+function aplicarSecoesReais(lista) {
+  if (!lista || !lista.length) return;
+  SECOES = lista;
+  const novoState = {};
+  SECOES.forEach(s => {
+    novoState[s.n] = state[s.n] || { s1:false, s2:false, s3:false, prob:false, probResolvido:false };
+  });
+  state = novoState;
+  load(); buildList(); updateStats();
+}
+window.aplicarSecoesReais = aplicarSecoesReais;
 
 // ── Relógio/vib/showToast vêm de sime_ui_utils.js ──
 iniciarRelogio('h-time');
