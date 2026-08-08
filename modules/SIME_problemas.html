@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME — Problemas</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+/* Esta tela é usada em pé, no corredor do cartório, com uma mão só. O layout
+   é de coluna única em qualquer largura: virar duas colunas num monitor
+   grande faria os problemas caberem "acima da dobra" e é justamente isso que
+   não se quer — a lista precisa doer enquanto tiver item nela. */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:9px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;color:#fff;flex-shrink:0;}
+.brand{font-weight:800;font-size:.88rem;}
+.topbar .sp{flex:1;}
+.zona{font-size:.72rem;color:var(--text3);}
+
+.wrap{max-width:680px;margin:0 auto;padding:12px 12px 90px;}
+
+/* Filtro Meus/Todos — alvo grande, pensado pro polegar */
+.filtros{display:flex;gap:7px;margin-bottom:12px;position:sticky;top:53px;z-index:15;background:var(--bg);padding:6px 0;}
+.filtro{flex:1;padding:11px 8px;border:1px solid var(--border);border-radius:10px;background:var(--card);
+  font-weight:800;font-size:.82rem;color:var(--text2);cursor:pointer;text-align:center;}
+.filtro.on{background:#2a2a2a;color:#fff;border-color:#2a2a2a;}
+.filtro .n{display:inline-block;min-width:20px;padding:0 5px;margin-left:4px;border-radius:20px;background:rgba(0,0,0,.12);font-size:.72rem;}
+.filtro.on .n{background:rgba(255,255,255,.22);}
+
+.aviso-orfas{background:#fff4e5;border:1px solid #fdba74;color:#9a3412;border-radius:10px;
+  padding:9px 12px;font-size:.78rem;font-weight:700;margin-bottom:10px;}
+
+/* Cartão de problema */
+.prob{background:var(--card);border:1px solid var(--border);border-left:5px solid var(--text3);
+  border-radius:11px;padding:12px 13px;margin-bottom:9px;cursor:pointer;
+  transition:transform .12s,box-shadow .12s;}
+.prob:hover,.prob:focus{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.09);outline:none;}
+.prob.t-energia{border-left-color:#f59e0b;}
+.prob.t-urna{border-left-color:#dc2626;}
+.prob.t-mesa_incompleta{border-left-color:#d97706;}
+.prob.t-votacao_atrasada{border-left-color:#ca8a04;}
+.prob.t-instalacao{border-left-color:#ea580c;}
+.prob.t-acessibilidade{border-left-color:#2563eb;}
+.prob.escalado{border-color:#ef4444;box-shadow:0 0 0 2px rgba(239,68,68,.16);}
+
+.prob-top{display:flex;align-items:center;gap:9px;}
+.prob-ico{font-size:1.5rem;line-height:1;flex-shrink:0;}
+.prob-tit{flex:1;min-width:0;}
+.prob-sec{font-weight:800;font-size:.94rem;}
+.prob-loc{font-size:.74rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.prob-idade{font-size:.72rem;font-weight:800;color:var(--text3);white-space:nowrap;}
+.prob-idade.n1{color:#d97706;}
+.prob-idade.n2{color:#dc2626;}
+.prob-rod{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap;}
+.dono{font-size:.75rem;color:var(--text2);}
+.dono b{color:var(--text);}
+.sem-dono{font-size:.75rem;font-weight:800;color:#b45309;}
+.prob-rod .sp{flex:1;}
+
+.vazio{text-align:center;padding:46px 20px;color:var(--text3);}
+.vazio .ico{font-size:2.6rem;margin-bottom:8px;}
+
+/* Folha de detalhe — sobe de baixo no celular, centraliza no desktop */
+.sheet-bg{position:fixed;inset:0;background:rgba(20,18,30,.55);z-index:60;display:none;
+  align-items:flex-end;justify-content:center;}
+.sheet-bg.open{display:flex;}
+.sheet{background:var(--card);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;
+  border-radius:16px 16px 0 0;animation:sobe .2s ease-out;}
+@keyframes sobe{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media(min-width:600px){
+  .sheet-bg{align-items:center;}
+  .sheet{border-radius:16px;max-height:88vh;}
+}
+.sh-hdr{display:flex;gap:11px;align-items:flex-start;padding:15px 16px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--card);}
+.sh-ico{font-size:1.9rem;line-height:1;}
+.sh-tit{flex:1;min-width:0;}
+.sh-t1{font-weight:900;font-size:1rem;}
+.sh-t2{font-size:.78rem;color:var(--text2);}
+.sh-t3{font-size:.72rem;color:var(--text3);margin-top:3px;}
+.sh-x{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text3);padding:2px 6px;}
+.sh-body{padding:13px 16px;}
+.sh-lbl{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text3);margin:14px 0 7px;}
+.sh-lbl:first-child{margin-top:0;}
+
+/* Contatos: linha inteira é o botão — mira grande, sem "clicar no ícone" */
+.ct{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);
+  border-radius:10px;margin-bottom:7px;text-decoration:none;color:inherit;background:var(--bg2);}
+.ct.destaque{background:#e8f8ee;border-color:#7ed6a0;}
+.ct-ico{font-size:1.2rem;}
+.ct-txt{flex:1;min-width:0;}
+.ct-papel{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);}
+.ct-nome{font-weight:700;font-size:.85rem;}
+.ct-tel{font-size:.74rem;color:var(--text2);}
+.ct-seta{font-size:1.1rem;color:#25d366;font-weight:900;}
+.ct-vazio{font-size:.78rem;color:var(--text3);padding:9px 12px;border:1px dashed var(--border);border-radius:10px;}
+
+.hist{font-size:.75rem;color:var(--text2);border-left:2px solid var(--border);padding-left:10px;margin-left:3px;}
+.hist div{margin-bottom:5px;}
+.hist .h-h{color:var(--text3);font-variant-numeric:tabular-nums;}
+
+.sh-foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--border);
+  padding:11px 16px;display:flex;gap:8px;flex-wrap:wrap;}
+.sh-foot .btn{flex:1;min-width:130px;padding:13px;font-size:.85rem;font-weight:800;}
+.btn-verde{background:#1e7a45;color:#fff;border:none;border-radius:10px;cursor:pointer;}
+.btn-assumir{background:#2a2a2a;color:#fff;border:none;border-radius:10px;cursor:pointer;}
+.btn-delegar{background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:10px;cursor:pointer;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+.campo{width:100%;padding:10px 11px;border:1px solid var(--border);border-radius:9px;font-size:.86rem;
+  font-family:inherit;background:var(--bg2);color:var(--text);}
+select.campo{margin-bottom:8px;}
+
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:90;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(360px,92vw);}
+.login-card input{width:100%;padding:10px 11px;border:1px solid var(--border);border-radius:8px;margin-top:8px;font-size:.9rem;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SI</div>
+  <div class="brand">SIME · Problemas</div>
+  <div class="sp"></div>
+  <span class="zona" id="zona-info"></span>
+  <button id="btn-sair" onclick="simeLogout()" style="display:none;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.73rem;font-weight:700;cursor:pointer;">⎋</button>
+</div>
+
+<div class="wrap">
+  <div class="filtros">
+    <div class="filtro" id="f-meus"  onclick="setFiltro('meus')">👤 Meus <span class="n" id="n-meus">0</span></div>
+    <div class="filtro on" id="f-todos" onclick="setFiltro('todos')">📋 Todos <span class="n" id="n-todos">0</span></div>
+  </div>
+  <div id="aviso-orfas"></div>
+  <div id="lista"></div>
+</div>
+
+<div class="sheet-bg" id="sheet-bg" onclick="fecharSheet(event)">
+  <div class="sheet" id="sheet" onclick="event.stopPropagation()"></div>
+</div>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+    <div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;">O painel de problemas exige login da equipe.</div>
+    <form id="login-form">
+      <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+      <div id="login-erro" style="color:#c0392b;font-size:.75rem;min-height:1em;margin-top:6px;"></div>
+      <button class="btn btn-dark" type="submit" style="width:100%;margin-top:10px;">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="./sime_ui_utils.js"></script>
+<script type="module">
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+import { subscribeOcorrencias } from './sime_realtime.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+window.supabase = supabase;
+window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch(e){} location.reload(); };
+
+function mostrarApp(){
+  document.getElementById('login-overlay').style.display='none';
+  document.getElementById('btn-sair').style.display='';
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const erro=document.getElementById('login-erro'); erro.textContent='';
+  const { error } = await supabase.auth.signInWithPassword({
+    email: document.getElementById('login-email').value,
+    password: document.getElementById('login-pass').value,
+  });
+  if(error){ erro.textContent='E-mail ou senha inválidos.'; return; }
+  mostrarApp(); await window.iniciar();
+});
+
+(async ()=>{
+  const { data:{ session } } = await supabase.auth.getSession();
+  if(session){ mostrarApp(); await window.iniciar(); }
+})();
+
+// Realtime: a lista reflete o que outra pessoa da equipe fez sem F5. É o que
+// impede duas pessoas de ligarem para a mesma seção ao mesmo tempo.
+window.assinarOcorrencias = () => subscribeOcorrencias(supabase, () => window.recarregar());
+</script>
+
+<script>
+// ══════════════════════════════════════════════════
+// ESTADO
+// ══════════════════════════════════════════════════
+let EU=null, ZONA=null, ELEICAO=null;
+let OCORRENCIAS=[], SECOES={}, ATORES=[], EXTERNOS=[], EQUIPE=[];
+let NUM_POR_SECAO_ID={};   // uuid -> '0063', montado uma vez na carga
+let FILTRO='todos', ABERTA=null;
+
+const TIPOS = {
+  energia:          { ico:'⚡',  nome:'Falta de energia' },
+  urna:             { ico:'🖥️',  nome:'Urna com problema' },
+  mesa_incompleta:  { ico:'👥',  nome:'Faltou mesário' },
+  votacao_atrasada: { ico:'⏱',  nome:'Votação não iniciada' },
+  instalacao:       { ico:'🔧',  nome:'Problema na instalação' },
+  acessibilidade:   { ico:'♿',  nome:'Acessibilidade' },
+  sos:              { ico:'🆘',  nome:'SOS' },
+  outro:            { ico:'⚠️',  nome:'Outro' },
+};
+
+// ══════════════════════════════════════════════════
+// QUEM CONTATAR — o coração da tela
+// ══════════════════════════════════════════════════
+// O contato não é uma lista fixa: ele é função do TIPO do problema. Faltou
+// luz, quem resolve é a Equatorial; a urna deu defeito, quem resolve é o
+// auxiliar de eleição (contratado do TRE que faz manutenção de urna);
+// faltou mesário, quem resolve é a própria mesa.
+//
+// O primeiro da lista vem destacado — é o que a pessoa deve acionar primeiro.
+// Os demais ficam abaixo, porque na prática o primeiro às vezes não atende.
+const CONTATO_POR_TIPO = {
+  energia:          ['energia', 'mesario', 'auxiliar'],
+  urna:             ['auxiliar', 'mesario'],
+  mesa_incompleta:  ['mesario', 'auxiliar'],
+  votacao_atrasada: ['mesario', 'auxiliar'],
+  instalacao:       ['auxiliar', 'mesario'],
+  acessibilidade:   ['acessibilidade', 'mesario'],
+  // Mesa primeiro: o toque de SOS não carrega motivo, então quem recebe
+  // precisa ligar pra seção pra entender o que é. PM fica como opção
+  // secundária, já visível se o cartório precisar escalar direto.
+  sos:              ['mesario', 'pm'],
+  outro:            ['mesario', 'auxiliar', 'acessibilidade', 'energia'],
+};
+
+const ORDEM_MESA = ['Presidente','1º Mesário','2º Mesário','1º Secretário'];
+
+// Atores estão cadastrados com secao_id. Mas coordenador de acessibilidade e
+// auxiliar de eleição respondem pelo LOCAL, não pela seção — buscar só pela
+// seção exata encontraria bem menos gente do que existe cadastrada. Por isso
+// a busca desses dois sobe para o local.
+function atoresDaSecao(secaoNum, funcao, porLocal){
+  const sec = SECOES[secaoNum];
+  if(!sec) return [];
+  return ATORES.filter(a => {
+    if(a.funcao !== funcao || !a.ativo || !a.telefone) return false;
+    if(!porLocal) return a.secao === secaoNum;
+    const s2 = SECOES[a.secao];
+    return s2 && s2.local_nome === sec.local_nome && s2.municipio === sec.municipio;
+  });
+}
+
+function contatosPara(oc){
+  const secNum = oc.secao_numero;
+  const sec = SECOES[secNum];
+  const out = [];
+
+  for(const chave of (CONTATO_POR_TIPO[oc.tipo] || ['mesario'])){
+    if(chave === 'mesario'){
+      const lista = atoresDaSecao(secNum,'mesario',false).sort((a,b)=>{
+        const ia=ORDEM_MESA.indexOf(a.funcao_mesa), ib=ORDEM_MESA.indexOf(b.funcao_mesa);
+        return (ia<0?99:ia)-(ib<0?99:ib);
+      });
+      if(lista[0]) out.push({ papel: lista[0].funcao_mesa || 'Mesário', nome: lista[0].nome, telefone: lista[0].telefone, ico:'🗳️' });
+    }
+    else if(chave === 'auxiliar'){
+      const a = atoresDaSecao(secNum,'auxiliar_eleicao',true)[0];
+      if(a) out.push({ papel:'Auxiliar de eleição (TRE)', nome:a.nome, telefone:a.telefone, ico:'🔧' });
+    }
+    else if(chave === 'acessibilidade'){
+      const a = atoresDaSecao(secNum,'coord_acessibilidade',true)[0];
+      if(a) out.push({ papel:'Coord. de acessibilidade', nome:a.nome, telefone:a.telefone, ico:'♿' });
+    }
+    else if(chave === 'energia'){
+      // Contato da concessionária é regional: prefere o do município da seção
+      // e cai no da zona quando não houver um específico.
+      const c = EXTERNOS.find(x => x.tipo==='energia' && x.municipio === sec?.municipio)
+             || EXTERNOS.find(x => x.tipo==='energia' && !x.municipio);
+      if(c) out.push({ papel:'Equatorial', nome:c.nome, telefone:c.telefone, ico:'⚡', whatsapp:c.whatsapp });
+    }
+    else if(chave === 'pm'){
+      // Mesmo padrão de energia: contato por município, com fallback pra
+      // zona inteira quando não houver um específico.
+      const c = EXTERNOS.find(x => x.tipo==='pm' && x.municipio === sec?.municipio)
+             || EXTERNOS.find(x => x.tipo==='pm' && !x.municipio);
+      if(c) out.push({ papel:'Polícia Militar', nome:c.nome, telefone:c.telefone, ico:'🚔', whatsapp:c.whatsapp });
+    }
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════
+// CARGA
+// ══════════════════════════════════════════════════
+async function iniciar(){
+  const { data:{ user } } = await supabase.auth.getUser();
+  const { data:u } = await supabase.from('sime_usuarios')
+    .select('id,nome,perfil,zona_id').eq('auth_user_id', user?.id).maybeSingle();
+  EU = u || null;
+
+  if(EU?.zona_id){
+    const { data:z } = await supabase.from('sime_zonas').select('numero,nome').eq('id',EU.zona_id).maybeSingle();
+    ZONA=z;
+    document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona` : '';
+  }
+
+  // Coordenador e super admin abrem em "Todos" — precisam da visão inteira.
+  // Os demais abrem em "Meus", que é a fila de trabalho deles.
+  FILTRO = (EU?.perfil==='coordenador'||EU?.perfil==='super_admin') ? 'todos' : 'meus';
+  aplicarFiltroUI();
+
+  const { data:el } = await supabase.from('sime_eleicoes')
+    .select('id,zona_id,turno,ativa').eq('ativa',true).limit(1);
+  ELEICAO = el?.[0] || null;
+
+  const [secoes, atores, externos, equipe] = await Promise.all([
+    supabase.from('sime_secoes').select('id,numero,local_nome,municipio'),
+    supabase.from('sime_atores').select('nome_completo,telefone_whatsapp,funcao,funcao_mesa,secao_id,ativo'),
+    supabase.from('sime_contatos_externos').select('tipo,nome,municipio,telefone,whatsapp').eq('ativo',true),
+    supabase.from('sime_usuarios').select('id,nome,perfil').eq('ativo',true),
+  ]);
+
+  const numPorId = {};
+  (secoes.data||[]).forEach(s=>{
+    const n = String(s.numero).padStart(4,'0');
+    numPorId[s.id]=n;
+    NUM_POR_SECAO_ID[s.id]=n;
+    SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio };
+  });
+  ATORES = (atores.data||[]).map(a=>({
+    nome:a.nome_completo, telefone:a.telefone_whatsapp, funcao:a.funcao,
+    funcao_mesa:a.funcao_mesa, secao:numPorId[a.secao_id]||'', ativo:a.ativo!==false,
+  }));
+  EXTERNOS = externos.data||[];
+  // Tokens de TV entram em sime_usuarios como 'observador' — não são gente
+  // pra quem se delega um problema.
+  EQUIPE = (equipe.data||[]).filter(u=>u.perfil!=='observador');
+
+  window.assinarOcorrencias();
+  await recarregar();
+  setInterval(()=>{ if(!ABERTA) renderLista(); }, 30000); // reidade os cartões
+}
+window.iniciar = iniciar;
+
+async function recarregar(){
+  const { data } = await supabase.from('sime_ocorrencias')
+    .select('id,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem')
+    .in('status',['aberta','assumida'])
+    .order('aberta_em',{ascending:true});
+
+  OCORRENCIAS = (data||[]).map(o=>({ ...o, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' }));
+  renderLista();
+  if(ABERTA){
+    const atual = OCORRENCIAS.find(o=>o.id===ABERTA.id);
+    if(atual) abrirSheet(atual.id); else fecharSheet(null,true);
+  }
+}
+window.recarregar = recarregar;
+
+// ══════════════════════════════════════════════════
+// LISTA
+// ══════════════════════════════════════════════════
+function minutosDe(iso){ return Math.max(0, Math.floor((Date.now()-Date.parse(iso))/60000)); }
+function idadeTxt(min){ return min < 60 ? `${min} min` : `${Math.floor(min/60)}h${String(min%60).padStart(2,'0')}`; }
+
+function setFiltro(f){ FILTRO=f; aplicarFiltroUI(); renderLista(); }
+window.setFiltro = setFiltro;
+
+function aplicarFiltroUI(){
+  document.getElementById('f-meus').classList.toggle('on', FILTRO==='meus');
+  document.getElementById('f-todos').classList.toggle('on', FILTRO==='todos');
+}
+
+function visiveis(){
+  if(FILTRO!=='meus') return OCORRENCIAS;
+  // "Meus" inclui as sem dono de propósito: problema órfão é o que não pode
+  // passar despercebido, e esconder dele quem está trabalhando seria o
+  // caminho mais curto pra ninguém pegar.
+  return OCORRENCIAS.filter(o => o.responsavel_id === EU?.id || !o.responsavel_id);
+}
+
+function renderLista(){
+  const lista = document.getElementById('lista');
+  const meus = OCORRENCIAS.filter(o=>o.responsavel_id===EU?.id).length;
+  const orfas = OCORRENCIAS.filter(o=>!o.responsavel_id).length;
+  document.getElementById('n-meus').textContent = meus;
+  document.getElementById('n-todos').textContent = OCORRENCIAS.length;
+
+  document.getElementById('aviso-orfas').innerHTML = orfas
+    ? `<div class="aviso-orfas">⚠ ${orfas} problema${orfas>1?'s':''} sem responsável — ninguém assumiu ainda</div>` : '';
+
+  const itens = visiveis();
+  if(!itens.length){
+    lista.innerHTML = `<div class="vazio"><div class="ico">✅</div>
+      <div style="font-weight:800;color:var(--text2)">${FILTRO==='meus'?'Nada com você agora':'Nenhum problema aberto'}</div></div>`;
+    return;
+  }
+
+  lista.innerHTML = itens.map(o=>{
+    const t = TIPOS[o.tipo]||TIPOS.outro;
+    const sec = SECOES[o.secao_numero]||{};
+    const min = minutosDe(o.aberta_em);
+    const resp = EQUIPE.find(u=>u.id===o.responsavel_id);
+    return `<div class="prob t-${o.tipo}${o.nivel_escalonamento>0?' escalado':''}"
+                 tabindex="0" onclick="abrirSheet('${o.id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <div class="prob-top">
+        <div class="prob-ico">${t.ico}</div>
+        <div class="prob-tit">
+          <div class="prob-sec">Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
+          <div class="prob-loc">${sec.local_nome||''}</div>
+        </div>
+        <div class="prob-idade n${o.nivel_escalonamento}">${idadeTxt(min)}</div>
+      </div>
+      <div class="prob-rod">
+        ${resp ? `<span class="dono">👤 <b>${resp.nome}</b></span>`
+               : `<span class="sem-dono">— sem responsável —</span>`}
+        <span class="sp"></span>
+        ${o.nivel_escalonamento===1?'<span class="pill bad">escalado ao gestor</span>':''}
+        ${o.nivel_escalonamento===2?'<span class="pill bad">escalado ao chefe</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// DETALHE
+// ══════════════════════════════════════════════════
+function abrirSheet(id){
+  const o = OCORRENCIAS.find(x=>x.id===id);
+  if(!o) return;
+  ABERTA = o;
+  const t = TIPOS[o.tipo]||TIPOS.outro;
+  const sec = SECOES[o.secao_numero]||{};
+  const min = minutosDe(o.aberta_em);
+  const resp = EQUIPE.find(u=>u.id===o.responsavel_id);
+  const souEu = o.responsavel_id === EU?.id;
+
+  const cts = contatosPara(o);
+  const ctHtml = cts.length ? cts.map((c,i)=>{
+    const msg = `SIME — Seção ${parseInt(o.secao_numero)}\n${t.nome}${sec.local_nome?'\n'+sec.local_nome:''}\n\nAqui é o cartório. Pode nos ajudar?`;
+    const href = c.whatsapp === false
+      ? 'tel:' + String(c.telefone).replace(/\D/g,'')
+      : linkWhatsApp(c.telefone, msg);
+    if(!href) return '';
+    return `<a class="ct${i===0?' destaque':''}" href="${href}" target="_blank" rel="noopener"
+               onclick="registrarContato('${o.id}','${(c.papel||'').replace(/'/g,"")}')">
+      <span class="ct-ico">${c.ico}</span>
+      <span class="ct-txt">
+        <span class="ct-papel">${c.papel}</span>
+        <div class="ct-nome">${c.nome}</div>
+        <div class="ct-tel">${fmtTelefone(c.telefone)}</div>
+      </span>
+      <span class="ct-seta">${c.whatsapp===false?'📞':'›'}</span>
+    </a>`;
+  }).join('') : `<div class="ct-vazio">Nenhum contato cadastrado para este tipo de problema nesta seção.</div>`;
+
+  document.getElementById('sheet').innerHTML = `
+    <div class="sh-hdr">
+      <div class="sh-ico">${t.ico}</div>
+      <div class="sh-tit">
+        <div class="sh-t1">Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
+        <div class="sh-t2">${sec.local_nome||''}${sec.municipio?' · '+sec.municipio:''}</div>
+        <div class="sh-t3">Aberta há ${idadeTxt(min)} · via ${o.origem}
+          ${o.nivel_escalonamento?` · <b style="color:#dc2626">escalado ao ${o.nivel_escalonamento===1?'gestor':'chefe de cartório'}</b>`:''}</div>
+      </div>
+      <button class="sh-x" onclick="fecharSheet()">✕</button>
+    </div>
+
+    <div class="sh-body">
+      <div class="sh-lbl">Quem pode resolver</div>
+      ${ctHtml}
+
+      <div class="sh-lbl">Responsável</div>
+      ${resp ? `<div style="font-size:.85rem">👤 <b>${resp.nome}</b>${souEu?' (você)':''}</div>`
+             : `<div class="sem-dono">Ninguém assumiu ainda</div>`}
+
+      <div id="hist-box"></div>
+    </div>
+
+    <div class="sh-foot">
+      ${!o.responsavel_id
+        ? `<button class="btn btn-assumir" onclick="assumir('${o.id}')">✋ Assumir</button>`
+        : ''}
+      ${o.responsavel_id ? `<button class="btn btn-delegar" onclick="abrirDelegar('${o.id}')">↪ Delegar</button>` : ''}
+      <button class="btn btn-verde" onclick="abrirResolver('${o.id}')">✓ Resolvido</button>
+    </div>`;
+
+  document.getElementById('sheet-bg').classList.add('open');
+  carregarHistorico(o.id);
+}
+window.abrirSheet = abrirSheet;
+
+function fecharSheet(e, forcar){
+  if(!forcar && e && e.target !== document.getElementById('sheet-bg')) return;
+  document.getElementById('sheet-bg').classList.remove('open');
+  ABERTA = null;
+}
+window.fecharSheet = fecharSheet;
+
+async function carregarHistorico(id){
+  const { data } = await supabase.from('sime_ocorrencia_eventos')
+    .select('acao,detalhe,autor_id,criado_em').eq('ocorrencia_id',id).order('criado_em');
+  const box = document.getElementById('hist-box');
+  if(!box || !data?.length) return;
+  const ACAO = { abriu:'Aberta', assumiu:'Assumiu', delegou:'Delegou para', contatou:'Contatou', resolveu:'Resolveu', escalou:'Escalou para' };
+  box.innerHTML = `<div class="sh-lbl">Histórico</div><div class="hist">` + data.map(ev=>{
+    const quem = EQUIPE.find(u=>u.id===ev.autor_id);
+    return `<div><span class="h-h">${fmtTs(ev.criado_em)}</span> — ${ACAO[ev.acao]||ev.acao}${ev.detalhe?': '+ev.detalhe:''}${quem?` <span class="h-h">(${quem.nome})</span>`:''}</div>`;
+  }).join('') + `</div>`;
+}
+
+// ══════════════════════════════════════════════════
+// AÇÕES
+// ══════════════════════════════════════════════════
+async function assumir(id){
+  const { error } = await supabase.rpc('sime_ocorrencia_assumir', { p_id:id });
+  if(error){ showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  showToast('✋ Você assumiu este problema');
+  await recarregar();
+}
+window.assumir = assumir;
+
+function abrirDelegar(id){
+  const opcoes = EQUIPE.filter(u=>u.id!==EU?.id)
+    .map(u=>`<option value="${u.id}">${u.nome} — ${u.perfil}</option>`).join('');
+  if(!opcoes){ showToast('⚠ Não há outra pessoa cadastrada na equipe'); return; }
+  document.getElementById('hist-box').insertAdjacentHTML('beforebegin', `
+    <div class="sh-lbl">Delegar para</div>
+    <select class="campo" id="del-quem">${opcoes}</select>
+    <textarea class="campo" id="del-motivo" rows="2" placeholder="Por que você não consegue resolver? (obrigatório)"></textarea>
+    <button class="btn btn-assumir" style="width:100%;margin-top:8px;padding:12px"
+            onclick="confirmarDelegar('${id}')">↪ Confirmar delegação</button>`);
+  document.getElementById('del-motivo').focus();
+}
+window.abrirDelegar = abrirDelegar;
+
+async function confirmarDelegar(id){
+  const para = document.getElementById('del-quem').value;
+  const motivo = document.getElementById('del-motivo').value.trim();
+  if(!motivo){ showToast('⚠ Informe o motivo'); return; }
+  const { error } = await supabase.rpc('sime_ocorrencia_delegar', { p_id:id, p_para:para, p_motivo:motivo });
+  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  showToast('↪ Delegado');
+  await recarregar();
+}
+window.confirmarDelegar = confirmarDelegar;
+
+function abrirResolver(id){
+  document.getElementById('hist-box').insertAdjacentHTML('beforebegin', `
+    <div class="sh-lbl">Como foi resolvido</div>
+    <textarea class="campo" id="res-txt" rows="2" placeholder="Opcional — ajuda no relatório depois"></textarea>
+    <button class="btn btn-verde" style="width:100%;margin-top:8px;padding:12px"
+            onclick="confirmarResolver('${id}')">✓ Confirmar resolução</button>`);
+  document.getElementById('res-txt').focus();
+}
+window.abrirResolver = abrirResolver;
+
+async function confirmarResolver(id){
+  const txt = document.getElementById('res-txt')?.value || '';
+  const { error } = await supabase.rpc('sime_ocorrencia_resolver', { p_id:id, p_resolucao:txt });
+  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  showToast('✓ Problema resolvido');
+  fecharSheet(null, true);
+  await recarregar();
+}
+window.confirmarResolver = confirmarResolver;
+
+// Registrar o contato é o que faz "ninguém atendeu" virar fato no histórico,
+// em vez de memória de quem estava de plantão. Não bloqueia o link.
+function registrarContato(id, quem){
+  supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(()=>{}, ()=>{});
+}
+window.registrarContato = registrarContato;
+</script>
+</body>
+</html>

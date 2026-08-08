@@ -77,7 +77,13 @@ Deno.serve(async (req) => {
   if (tokenRow.expira_em && new Date(tokenRow.expira_em).getTime() < Date.now()) {
     return jsonResponse(401, { error: 'Token expirado' });
   }
-  if (tokenRow.tipo !== 'tv' && tokenRow.pin !== pin) {
+  // PIN é o segundo fator do acesso de campo: sem ele, quem fotografar ou
+  // achar um cartão entra na seção. Pode ser suprimido temporariamente pela
+  // operação (SIME_EXIGIR_PIN=false), mas o padrão é EXIGIR — uma variável
+  // ausente, vazia ou escrita errado mantém a checagem de pé, em vez de abrir
+  // o sistema por engano de digitação.
+  const exigirPin = Deno.env.get('SIME_EXIGIR_PIN') !== 'false';
+  if (exigirPin && tokenRow.tipo !== 'tv' && tokenRow.pin !== pin) {
     return jsonResponse(401, { error: 'PIN incorreto' });
   }
 

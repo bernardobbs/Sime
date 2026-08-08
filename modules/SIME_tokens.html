@@ -316,6 +316,7 @@ window.zonaSelecionadaNumero = zonaSelecionadaNumero;
 async function carregarDadosDaZona(zonaId) {
   const eleicao = await getEleicaoAtiva({ fallback: null, zonaId });
   eleicaoId = eleicao ? eleicao.id : null;
+  window.ELEICAO_ATIVA = eleicao || null;
   const secoes = await getSecoes({ fallback: null });
   window.SECOES_REAIS = secoes || [];
   const rotas = await getRotas({ fallback: null });
@@ -326,7 +327,7 @@ async function resolverEscopo() {
   initSimeDados(supabase);
   await carregarIdentidadeZona();
   const eleicao = await getEleicaoAtiva({ fallback: null, zonaId: zonaSelecionadaId() });
-  if (eleicao) eleicaoId = eleicao.id;
+  if (eleicao) { eleicaoId = eleicao.id; window.ELEICAO_ATIVA = eleicao; }
   // Dados reais pra popular os seletores do form (seções/rotas/locais) e a
   // geração em massa — sem isso os seletores caem no fallback hardcoded.
   const secoes = await getSecoes({ fallback: null });
@@ -569,6 +570,12 @@ function genPIN(){ return String(Math.floor(1000+Math.random()*9000)); }
 // Fim do Dia D (23:59) com base na config de eleição — mesma expiração pra
 // qualquer token criado no mesmo turno, manual ou em massa.
 function calcularExpiracao(turno){
+  // sime_eleicoes (Supabase) primeiro — antes só lia sime_eleicao_v1, que só
+  // existe no navegador de quem já abriu o Principal; num admin que só usa
+  // Tokens, os cartões saíam sem expiração. window.ELEICAO_ATIVA só cobre o
+  // turno MARCADO ATIVO; para o outro turno, cai no local como antes.
+  const real = window.ELEICAO_ATIVA;
+  if(real && real.turno === +turno && real.data_d) return new Date(real.data_d+'T23:59:59').getTime();
   try{
     const el = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
     const t  = el['turno'+turno];

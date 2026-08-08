@@ -49,7 +49,9 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 - Banco: Supabase (PostgreSQL + Realtime + Auth + Edge Functions)
 - Hospedagem: Vercel (Hobby — gratuito)
 - Fila: Upstash QStash (Free — 500 msg/dia)
-- IA + WhatsApp: Hermes Agent (PC do cartório — sem túnel, ver hermes/README.md)
+- WhatsApp: Hermes Agent — Node.js + Baileys num Raspberry Pi 3B (rede
+  doméstica, atrás de NAT, sem túnel), com fallback de IA (Gemini) só para os
+  casos que o regex não cobre. Ver `hermes/README.md` e `hermes/HERMES_RUNTIME.md`.
 - Custo total: **R$ 0,00/mês**
 
 ### Variáveis de ambiente necessárias (Vercel)
@@ -91,8 +93,10 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   └── SIME_paineis.html                 Todos
 ├── api/
 │   ├── hermes-update.js               ← escrita de eventos de seção
-│   ├── hermes-mesarios.js             ← leitura + confirmação de mesários
-│   └── hermes-notificacoes.js         ← fila que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
+│   ├── hermes-notificacoes.js         ← fila de notificações que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   └── hermes-contatos.js             ← telefone por papel (Gestor de Problemas/Chefe de Cartório), pro escalonamento
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
@@ -144,7 +148,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ### Autônomo
 | Papel | Tecnologia | Função |
 |---|---|---|
-| **Hermes Agent** | IA (PC do cartório ou VPS) | Monitora grupos WhatsApp + envia notificações |
+| **Hermes Agent** | Node.js + Baileys (Raspberry Pi) | Monitora grupos WhatsApp + drena filas de envio |
 
 ### Regras críticas de escalonamento de pânico
 ```
@@ -191,13 +195,58 @@ sime_midias         -- fluxo das mídias eleitorais
 sime_atores         -- cadastro de contatos operacionais
 sime_notificacoes   -- histórico de WhatsApps enviados
 sime_logs           -- auditoria append-only
+sime_ocorrencias    -- problemas como registro (dono, relógio, escalonamento)
+sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
+sime_contatos_externos  -- Equatorial e afins, por zona/município
+sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
 ```
+
+### Painel de Problemas (`SIME_problemas.html`)
+
+O contato oferecido é **função do tipo do problema** — é a regra que organiza
+a tela: faltou luz → Equatorial; urna com defeito → **auxiliar de eleição**
+(contratado do TRE que faz manutenção de urna); faltou mesário → a própria
+mesa; acessibilidade → coordenador do local.
+
+Quem assume cuida até o fim: `sime_ocorrencia_assumir` **recusa** ocorrência
+que já tem dono — para trocar de mãos existe `sime_ocorrencia_delegar`, que
+exige motivo. Resolver pelo cartório fecha a ocorrência **e** baixa o pânico
+na seção pelo mesmo RPC do mesário, então a resolução chega ao aparelho dele
+pelo Realtime.
+
+Escalonamento conta de `aberta_em`, não de `assumida_em` — senão a forma mais
+fácil de não ser escalado seria clicar em "Assumir" e esquecer.
 
 ### RPCs críticas
 ```sql
-sime_now()                -- server timestamp — SEMPRE usar
-sime_acao_midia()         -- atualiza mídia com server ts
-sime_importar_ator()      -- importa ator validando duplicatas
+sime_now()                    -- server timestamp — SEMPRE usar
+sime_acao_midia()             -- atualiza mídia com server ts
+sime_importar_ator()          -- importa 1 ator manual (cadastro avulso, valida telefone)
+sime_sync_atores_from_raw()   -- UPSERT em massa de mesário/apoio logístico a partir de
+                               -- sime_mesarios_raw (ver "Atualização de mesários" abaixo)
+```
+
+### Atualização de mesários e apoio logístico (recarga do TRE)
+
+`sime_mesarios_raw` é staging descartável — pode ser truncada e recarregada a
+qualquer momento com uma nova exportação ELO do TRE (`parse_mesarios.py` em
+`scripts/`, ou onde tiver sido salvo, gera o SQL de INSERT a partir do
+`.md` bruto, nunca digitado à mão — ver commit da carga inicial da 7ª Zona).
+
+A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
+— UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
+`id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
+histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`/
+`whatsapp_*`. Quem sai da nova exportação vira `ativo=false`, não é apagado.
+
+```sql
+-- 1. truncar e recarregar o staging com a exportação nova
+truncate sime_mesarios_raw;
+-- rodar o INSERT gerado pelo parser (gera o .sql a partir do .md, nunca à mão)
+
+-- 2. sincronizar (idempotente — pode rodar quantas vezes precisar)
+select * from sime_sync_atores_from_raw(7, 'PI');  -- 7ª Zona
+select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 ```
 
 ---
@@ -237,6 +286,18 @@ supabase
   .subscribe();
 ```
 
+> **Armadilha real, já mordeu em produção (06/08/2026)**: assinar a tabela no
+> JS não basta — ela também precisa estar na publicação `supabase_realtime`
+> do Postgres (`ALTER PUBLICATION supabase_realtime ADD TABLE ...`), senão o
+> canal nunca dispara e ninguém percebe (não dá erro; a tela só nunca
+> atualiza sozinha). `sime_mesa_estado` ficou sem isso desde sempre — só
+> `sime_ocorrencias` tinha sido adicionada — e o sintoma foi "TV Dia não
+> atualiza depois que o cartório resolve um problema" (um celular disfarça
+> o mesmo bug porque relê o estado a cada volta de tela; um TV box ligado o
+> dia inteiro não tem esse reforço). Corrigido e formalizado em
+> `sql/SIME_realtime_publicacao.sql` — ao criar uma `subscribeX()` nova em
+> `sime_realtime.js`, adicionar a tabela lá também.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
@@ -252,12 +313,22 @@ Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 (zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
 Ainda só em `localStorage`:
-- **Nome da eleição, início da distribuição e intervalo entre saídas** — não
-  têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
-- **Cadastro/edição de ator** em `SIME_atores.html` — a *leitura* vem do banco,
-  mas criar e editar ainda grava local.
 - **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
   escrito pelos módulos e lido pelas TVs.
+
+**Nome da eleição, início da distribuição e intervalo entre saídas** —
+concluído: `sime_eleicoes` ganhou `nome`/`dist_inicio`/`intervalo_saidas_min`
+(mesmo padrão dos demais campos — banco é a fonte, localStorage é a cópia
+offline). `getEleicaoAtiva()` (`sime_dados.js`) já devolve os três; `nome` é
+compartilhado entre as duas linhas (1º/2º turno) da mesma zona, já que o
+formulário só tem um campo pra ele.
+
+Cadastro/edição de ator em `SIME_atores.html` grava direto em `sime_atores`
+com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravava
+`localStorage`, então uma edição "sumia" ao abrir em outra máquina. Como
+`getAtores()` fica cacheado pela sessão (`sime_dados.js`), o salvar aplica a
+mudança na cópia local (`window.ATORES_REAIS`) em vez de rebuscar — rebuscar
+devolveria a lista antiga do cache.
 
 ### Pânico — propagação de volta ao campo (parcial)
 
@@ -267,10 +338,15 @@ aparelho. Além disso, **os campos de pânico só entram no payload quando o
 toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
 ação pode desfazer a resolução (vale offline também).
 
-Os outros cinco módulos de campo (motorista, conferente, instalador, mídias,
-acessibilidade) **ainda só escrevem**. O caso real é o pânico da
-acessibilidade: se a equipe resolver pelo Admin, aquele aparelho não fica
-sabendo. Instrução operacional até lá: resolver naquele aparelho.
+O `SIME_acessibilidade.html` também recebe — assina as seções do **local** do
+coordenador (`secao_id=in.(...)`, não a zona inteira) e relê ao entrar e a cada
+volta de tela. Só o pânico vem do servidor: a fila é contagem local do
+coordenador, e sobrescrevê-la com o número de outro aparelho seria pior que não
+sincronizar.
+
+Motorista, conferente, instalador e mídias **continuam só escrevendo** — são os
+quatro em que ninguém de fora altera o estado durante a operação. Mesário e
+acessibilidade, os dois que a equipe altera à distância (pânico), já recebem.
 
 ### Operação — antes de 4 de outubro
 
@@ -280,22 +356,170 @@ sabendo. Instrução operacional até lá: resolver naquele aparelho.
   legal, é decisão de cada cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
+- **Detecção de eventos de seção (`eventos.js`) só propõe, não grava**
+  (`enc`, `zeresima`, `panico_*`, `urna`, `midia_pronta`, `mesa_completa` — o
+  domínio de dia D). Regex + fallback IA identificam e mandam pro Telegram
+  pra validação humana, mas nada chama `/api/hermes-update` — decisão
+  deliberada (modo proposta), não escrever automaticamente sem medir taxa de
+  acerto primeiro. Sem isso, "seção 63 encerrada" dito no grupo continua
+  exigindo lançamento manual no Admin ou por telefone.
+- **Escalonamento por papel — lado SIME pronto, lado Hermes falta ligar**: a
+  fila de notificações drenada ainda manda pra todos os `ADMIN_NUMBERS` do
+  Hermes, independente do nível. `sime_usuarios.telefone_whatsapp` (coluna
+  nova) + `/api/hermes-contatos` (`acao=listar`) já resolvem "quem é o Gestor
+  de Problemas/Chefe de Cartório desta zona" — o admin cadastra o próprio
+  WhatsApp na aba Equipe do `SIME_admin.html` (campo só aparece pros dois
+  perfis certos). Falta só `index.js` no Pi somar esses números aos
+  `ADMIN_NUMBERS` conforme `idade_s` — ver `hermes/SIME_hermes_skill_escalonamento.md`.
+  94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
+- **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
+  Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
+  funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
+  (`acao=buscar_nome`) também existe no endpoint, mas o gatilho automático
+  no WhatsApp (qualquer DM não reconhecida como comando, com 2+ palavras,
+  era tratada como nome de convocação) foi **suprimido em 06/08/2026** —
+  disparava em cima de conversa comum ("Bom dia", "É Bernardo do cartório")
+  e respondia "não encontrei ninguém chamado <frase>" pra qualquer coisa que
+  não fosse um comando, confundindo quem mandava mensagem normal pro número
+  (flagrado em campo). `buscarConvocacaoPorNome` continua disponível em
+  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente.
+- **Canal de DM (individual) restrito a `ADMIN_NUMBERS`, desde 06/08/2026**
+  — mesmo incidente do item acima. Antes, `status` e `fila` respondiam a
+  qualquer remetente; agora todo o `modules/whatsapp/comandos.js` retorna
+  sem responder nada pra quem não está na lista (nem "sem permissão" — só a
+  DM chegando, sem nenhuma resposta visível). Toda DM é logada no `pm2 logs`
+  (nunca no WhatsApp) pra ainda dar pra achar um admin legítimo bloqueado
+  por JID `@lid` fora da lista.
+- **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando. O
+  Pi já tem `HERMES_BACKUP_ATIVO` configurado (dois números de WhatsApp), mas
+  isso hoje é redundância de **sessão** pra 7ª — os dois números compartilham
+  o mesmo `HERMES_SECRET`, não dá cobertura à 94ª por si só. Fazer os dois
+  números monitorarem grupos das duas zonas é mudança de arquitetura maior
+  (grupo→zona, Bearer por zona, filas por zona) — patch consolidado pronto
+  pra aplicar em `hermes/PATCH_CONSOLIDADO_2026-08-08.md` (junto com
+  autoatendimento e escalonamento, numa sequência só), com o trade-off
+  explícito: junta o raio de impacto de uma queda do Pi inteiro nas duas
+  zonas (a redundância só
+  cobre a sessão do WhatsApp cair, não o Pi cair).
+- **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
+  interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
+  bloqueia confirmação automática para essas mensagens. Medir a frequência.
+- **Ponto único de falha do Hermes**: Pi 3B doméstico, Wi-Fi, sem redundância —
+  se cair no dia da eleição, não há monitoramento por WhatsApp (a fila offline
+  do SIME em si continua funcionando). Só existe um Raspberry Pi disponível,
+  então não há como mitigar a queda do Pi em si — isso continua ponto único
+  de falha real, sem solução. Mitigação parcial disponível desde 05/08, e
+  restrita a um recorte menor do problema: `services/papel.js` +
+  `core/bootstrap.js` permitem um **segundo número de WhatsApp no mesmo Pi**
+  (`HERMES_BACKUP_ATIVO=true`, dois sockets Baileys no mesmo processo, cada
+  um com sua pasta de sessão) assumir a **monitoria de grupo** quando o
+  socket principal desconecta — decisão local e instantânea, não depende de
+  rede. Cobre a sessão do WhatsApp cair sozinha (deslogado, banido, chave
+  corrompida); **não cobre o Pi cair** (energia, Wi-Fi, SD, processo
+  travado), já que os dois números são o mesmo processo/hardware. Também não
+  cobre fila de pânico nem disparo em massa, que continuam só no principal
+  mesmo com o backup ativo (decisão deliberada, ver `hermes/HERMES_RUNTIME.md`).
+  Não ligado por padrão: exige um segundo número de WhatsApp + esse número
+  adicionado manualmente em cada grupo monitorado.
 
 ---
 
 ## HERMES AGENT
+
+### Gestão do Hermes (versão + heartbeat) — `sql/SIME_hermes_gestao_schema.sql` + `/api/hermes-heartbeat`
+
+Primeiro passo da "Proposta de Evolução do Hermes Agent": dar ao SIME
+visibilidade e controle remoto sobre o Hermes, sem reescrever o runtime
+inteiro ainda.
+
+- `sime_componentes` (por zona): `versao_instalada`/`commit_instalado`
+  (o que o Hermes reportou), `versao_desejada`/`atualizar_agora` (o que o
+  admin pediu). SIME nunca empurra comando — o mesmo problema de NAT de
+  sempre — então pedir atualização é só marcar a linha; o Hermes decide se
+  atende no próprio ciclo.
+- `sime_heartbeat` (por zona): pulso de vida + telemetria (versão, uptime,
+  CPU/RAM/temperatura, disco, status WhatsApp/Telegram, última sincronização).
+  "Online" é derivado no cliente (heartbeat < 5 min), não guardado.
+- **Via endpoint, não Supabase direto** — `/api/hermes-heartbeat`
+  (`enviar`/`confirmar_atualizacao`/`erro_atualizacao`, ver
+  `hermes/SIME_hermes_skill_heartbeat.md`), mesmo Bearer por zona dos demais.
+  `index.js` não fala mais com o Supabase direto desde 03/08/2026 (ver
+  `hermes/HERMES_RUNTIME.md`), então esta é a única gravação válida — nada de
+  service key no Hermes pra estas tabelas.
+- Aba "🤖 Hermes" no Admin (`SIME_admin.html`) **lê as tabelas direto** (RLS
+  por zona) — isso é o padrão normal do SIME, o frontend sempre fala com o
+  Supabase com a anon key; só o Hermes é que passa por endpoint. Tem o botão
+  "Solicitar atualização", que faz upsert com `atualizar_agora=true` +
+  `versao_desejada`. Realtime em `sime_heartbeat` (`subscribeHeartbeat` em
+  `sime_realtime.js`) atualiza a tela sozinha.
+- **Não automatizar a aplicação da atualização perto da eleição** (04/10) —
+  o botão do Admin só marca o pedido; o próprio skill doc já registra isso
+  como critério deliberado, não esquecimento.
+- **Em produção desde 06/08/2026** — o Hermes da 7ª Zona chama o endpoint a
+  cada ciclo (`services/telemetria.js`) e recebe `200`. Causa raiz de um 401
+  e depois um 400 (`Zona não encontrada`) que bloquearam isso por um tempo:
+  duas env vars do Vercel (`HERMES_SECRET_ZONA_7`, depois
+  `SUPABASE_SERVICE_ROLE_KEY`) tinham valor vazio/errado apesar de aparecerem
+  "configuradas" no painel — editar não persistia o novo valor; só deletar e
+  recriar a variável resolveu as duas vezes.
 
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
 - `sime_notificar` — envia WhatsApp com 8 templates
 - `sime_updater` — persiste eventos de seção via `/api/hermes-update` (só escrita)
 - `sime_mesarios` — consulta mesários e registra confirmação de permanência na
-  função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
+  função via `/api/hermes-mesarios` (leitura + autoatendimento + `sime_atores.confirmacao`)
+- `sime_campanha` — drena a fila de disparo em massa via `/api/hermes-campanhas`
+  (leitura + `sime_campanhas_confirmacao.status`)
+- `sime_heartbeat` — reporta telemetria e verifica pedido de atualização via
+  `/api/hermes-heartbeat` (escrita em `sime_heartbeat`/`sime_componentes`)
+- `sime_escalonamento` — resolve telefone de Gestor de Problemas/Chefe de
+  Cartório via `/api/hermes-contatos` (só leitura) — **proposta, endpoint
+  pronto mas ainda não chamado pelo `index.js`**
+
+> As skills acima descrevem o **contrato de dados** com o SIME (schema dos
+> endpoints, templates), não um agente de IA com skills de verdade — a
+> instância da 7ª Zona é um app Node.js + Baileys sob medida num Raspberry
+> Pi, documentado em `hermes/HERMES_RUNTIME.md` (não o CLI genérico que
+> `hermes/setup.sh` instala). Regex cobre a maior parte da detecção; Gemini
+> só entra como fallback nos casos que o regex não resolve. Estado de cada
+> contrato, desde 03/08/2026:
+>
+> | Skill | Estado real no Pi |
+> |---|---|
+> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; gatilho automático de busca por nome (`buscar_nome`) suprimido em 06/08/2026 (disparava em cima de conversa comum); autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
+> | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
+> | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
+> | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
+> | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
+> | `sime_escalonamento` | endpoint (`/api/hermes-contatos`) pronto em produção desde 08/08/2026; `index.js` ainda não o chama |
+>
+> A 94ª Zona ainda não tem instância nenhuma.
+
+### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
+
+O SIME popula `sime_campanhas_confirmacao` (telefone, `ator_id`, `zona_id`,
+`mensagem_enviada`, `status='pendente'`); o Hermes é quem lê essa fila (via
+`/api/hermes-campanhas`, mesmo padrão pendentes/confirmar/erro de
+`hermes-notificacoes`) e envia, respeitando 5 msgs/min. A zona vem do usuário
+logado (`zonaDoUsuario()`), nunca de campo na tela. Tem um modelo pronto de
+alerta anti-golpe e um modo de mensagem livre; filtro por função decide quem
+recebe (default: todos os ativos com telefone).
+
+**O envio de fato depende do Hermes estar com `DISPATCH_ATIVO=true`** — isso é
+decisão de quem opera o Raspberry Pi, fora deste repo. Popular a fila não
+garante que a mensagem saia.
+
+Ainda não implementado: capturar a resposta de quem recebeu a campanha
+(`sime_campanhas_confirmacao.resposta_recebida`/`decisao_detectada`) — hoje
+uma resposta cai no fluxo de sempre (`sime_mesarios` confirmar/recusar/
+substituir/atualizar), não fica associada à campanha específica que a gerou.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
-O Hermes roda atrás de NAT (PC do cartório), sem endereço público — o Supabase
-não consegue chamá-lo. Então **o Hermes é quem pergunta**, a cada ~30s:
+O Hermes roda atrás de NAT (Raspberry Pi em rede doméstica), sem endereço
+público — o Supabase não consegue chamá-lo. Então **o Hermes é quem
+pergunta**, a cada ~30s:
 
 ```
 POST /api/hermes-notificacoes  { "acao": "pendentes" }   → fila da zona
@@ -307,6 +531,15 @@ O gatilho de pânico/mídia **enfileira** em `sime_notificacoes`; o POST direto
 para o Hermes virou aceleração opcional, só quando `app.hermes_url` existe.
 Cada notificação traz `idade_s` (relógio do servidor) — é com ela que o Hermes
 decide o nível de escalonamento, sem depender do horário do PC.
+
+A fila de disparo em massa segue o mesmo formato, endpoint próprio:
+```
+POST /api/hermes-campanhas  { "acao": "pendentes" }   → fila da zona
+POST /api/hermes-campanhas  { "acao": "confirmar", "ids": [...], "whatsapp_existe"?: bool }
+POST /api/hermes-campanhas  { "acao": "erro", "ids": [...], "erro_msg": "...", "whatsapp_existe"?: bool }
+```
+Item sem `mensagem_enviada` preenchida já não aparece em `pendentes` — evita o
+Hermes gastar um ciclo só para dar erro num item vazio.
 
 Atraso: até um ciclo. Para um pânico que escala em 10 min, irrelevante.
 
@@ -333,16 +566,37 @@ Eventos suportados:
   panico_resolvido, urna, midia_pronta, mesa_completa
 ```
 
-### Endpoint Vercel — mesários (leitura + confirmação)
+### Endpoint Vercel — mesários (leitura + autoatendimento + confirmação)
 ```
 POST /api/hermes-mesarios
 Authorization: Bearer HERMES_SECRET_ZONA_<numero>
-Body: { acao, secao?, status?, telefone? }
+Body: { acao, secao?, status?, telefone?, mensagem? }
 
 Ações:
-  listar                          → lista mesários da zona (nome, telefone, seção, status)
+  listar                           → lista mesários + apoio logístico da zona (nome, telefone, seção, status)
+  consultar                        → autoatendimento: telefone → função + seção (se MRV), pronto pra WhatsApp
+  atualizar                        → anexa recado livre da pessoa em observacao (nunca sobrescreve dado do TRE)
   confirmar | recusar | substituir → grava sime_atores.confirmacao (por telefone)
 ```
+
+`consultar` é o que responde quando alguém da base manda "oi" pela primeira
+vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E apoio
+logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
+(número/local/município, via `secao_id`). Termina convidando a mandar correção,
+que vai pra `atualizar` — ver `hermes/SIME_hermes_skill_mesarios.md`.
+
+### Endpoint Vercel — contatos por papel (escalonamento)
+```
+POST /api/hermes-contatos
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
+Body: { acao: 'listar' }
+
+→ { ok, zona, contatos: { gestor_prob: [telefones...], coordenador: [telefones...] } }
+```
+Só leitura — telefone vem de `sime_usuarios.telefone_whatsapp` (`ativo=true`),
+cadastrado pelo admin na aba Equipe. Lista vazia = ninguém daquele perfil
+cadastrou telefone ainda, não é erro. Contrato completo e como pluga no loop
+de `sime_notificar`: `hermes/SIME_hermes_skill_escalonamento.md`.
 
 ---
 

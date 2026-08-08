@@ -33,6 +33,8 @@ export function createClient(url, key, opts) {
       async getSession() { return { data: { session: null } }; },
       async getUser() { return { data: { user: null } }; },
     },
+    channel() { return { on() { return this; }, subscribe() { return this; } }; },
+    removeChannel() {},
   };
 }
 `;

@@ -219,10 +219,12 @@ defeito voltou** — anote exatamente o que aconteceu.
 | 8.4 | `SIME_acessibilidade.html` com cartão | Só as seções **daquele local** | [ ] | |
 | 8.5 | Pânico pela acessibilidade | Chega ao Admin e à TV Dia | [ ] | |
 | 8.6 | `SIME_midias.html` com o cartão de **coletor de mídias**, registrar coleta | Entra pelo QR+PIN e a mídia avança (pronta → coletada) | [ ] | |
-| 8.7 | Resolver o pânico de 8.5 **pelo Admin** | Hoje o aparelho da acessibilidade **continua vermelho** — defeito conhecido, ainda não corrigido | [ ] | |
+| 8.7 | Resolver o pânico de 8.5 **pelo Admin** | O aparelho da acessibilidade **vira sozinho**, com aviso "Problema resolvido pela equipe" | [ ] | |
+| 8.7b | Fechar o app da acessibilidade, resolver pelo Admin, **reabrir** | Abre já resolvido — não volta com o vermelho antigo | [ ] | |
 
-> **8.7 é o que sobrou do defeito do pânico.** Enquanto não for corrigido, o
-> pânico levantado pela acessibilidade deve ser resolvido **naquele aparelho**.
+> **8.7 era o que sobrava do defeito do pânico** e foi corrigido: a
+> acessibilidade passou a receber Realtime das seções do seu local. A instrução
+> de "resolver naquele aparelho" **não vale mais** para ela.
 
 ---
 
@@ -334,6 +336,7 @@ Sem estes, o sistema não está pronto para 4 de outubro:
 - [ ] O QR **preenche o token** e o cartão impresso é **legível** (§4)
 - [ ] Ação do mesário chega à TV Dia e ao Admin em segundos (§7)
 - [ ] Resolver o pânico pelo Admin atualiza o mesário e **não é desfeito** (7.8–7.9c)
+- [ ] Resolver o pânico pelo Admin atualiza a acessibilidade (8.7)
 - [ ] A fila offline recupera **todas** as ações (§9)
 - [ ] O Hermes drena a fila e o WhatsApp chega (§10)
 - [ ] A configuração da eleição sobrevive à troca de navegador (§12)
@@ -341,11 +344,11 @@ Sem estes, o sistema não está pronto para 4 de outubro:
 
 ### Fora dos critérios, por decisão consciente
 
-- **8.7** — os outros cinco módulos de campo continuam só escrevendo. O caso
-  que aparece na operação é o pânico da acessibilidade: enquanto não for
-  corrigido, **resolva-o naquele aparelho**, não pelo Admin. Estender o
-  Realtime aos cinco ficou para depois de outubro — mexer nos seis módulos a
-  esta altura é superfície de regressão demais para o ganho.
+- **Motorista, conferente, instalador e mídias** continuam só escrevendo. São
+  os quatro em que ninguém de fora altera o estado durante a operação — o
+  motorista é quem diz que entregou, o conferente é quem diz que embarcou.
+  Mesário e acessibilidade, os dois que a equipe do cartório realmente altera
+  à distância (pânico), já recebem Realtime.
 
 ---
 

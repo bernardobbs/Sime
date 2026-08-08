@@ -27,7 +27,14 @@ export function createClient(url, key, opts) {
     from(table) { return new QB(table); },
     channel(name) {
       const chan = {
-        on(event, filter, cb) { window.__mockConfig.realtimeCallback = cb; return chan; },
+        on(event, filter, cb) {
+          window.__mockConfig.realtimeCallbacks = window.__mockConfig.realtimeCallbacks || {};
+          window.__mockConfig.realtimeCallbacks[filter.table] = cb;
+          // Mantém o nome antigo (mesa_estado) pra não quebrar nenhuma
+          // asserção que já espere só uma tabela assinada.
+          if (filter.table === 'sime_mesa_estado') window.__mockConfig.realtimeCallback = cb;
+          return chan;
+        },
         subscribe() { return chan; },
       };
       return chan;

@@ -201,6 +201,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="brand-sub" id="cur-fase">Dia da Eleição</div>
   </div>
   <div class="t-right">
+    <a href="SIME_principal.html" title="Voltar ao Painel Principal"
+      style="padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">⚙️ Principal</a>
     <div class="user-chip">
       <div class="user-av" id="u-av">RA</div>
       <div>
@@ -218,11 +220,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('dash',this)">📊 Dashboard</button>
   <button class="nav-tab"        onclick="goTab('secoes',this)">📋 Seções</button>
-  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="goTab('problemas',this)">🚨 Problemas <span id="prob-count-badge"></span></button>
+  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="window.open('SIME_problemas.html','_blank')">🚨 Problemas <span id="prob-count-badge"></span></button>
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
   <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
+  <button class="nav-tab"        onclick="goTab('hermes',this)">🤖 Hermes</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
 </div>
 
@@ -273,23 +276,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <table class="data-table">
       <thead><tr>
         <th>Seção</th><th>Local</th><th>Cidade</th>
-        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th></th>
+        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th>Transmissão</th><th></th>
       </tr></thead>
       <tbody id="sec-tbody"></tbody>
     </table>
   </div>
-</div>
-
-<!-- ══════ PROBLEMAS ══════ -->
-<div id="tab-problemas" class="tab-panel">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-    <div>
-      <div style="font-weight:800;font-size:.95rem;">Alertas ativos</div>
-      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="prob-subtitle">Carregando...</div>
-    </div>
-    <button class="btn btn-out" onclick="renderProblemas()">↺ Atualizar</button>
-  </div>
-  <div id="prob-list"></div>
 </div>
 
 <!-- ══════ EQUIPE ══════ -->
@@ -337,7 +328,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Dados operacionais</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-out" onclick="exportarDados()">📥 Exportar snapshot (JSON)</button>
-        <button class="btn btn-red" onclick="if(confirm('Resetar dados de teste?')){resetarDados();}">🗑 Resetar dados de teste</button>
+        <button class="btn btn-red" onclick="resetarProblemas()">🗑 Resetar dados de teste (Problemas + Dia D)</button>
       </div>
     </div>
   </div>
@@ -354,6 +345,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
   <div class="grid4" style="margin-bottom:16px;" id="midias-stats"></div>
   <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">📡 Atribuir transmissão</div>
+    <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;">Matriz nominal técnico↔seção — defina antes do dia D quem transmite cada seção via JE-Connect.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <select id="tx-mun" onchange="renderAtribuicaoTransmissao()"><option value="">Todos os municípios</option></select>
+      <select id="tx-tecnico"><option value="">— selecionar técnico —</option></select>
+      <button class="btn btn-dark btn-sm" onclick="atribuirTransmissao()">Atribuir às seções selecionadas</button>
+    </div>
+    <div id="tx-secoes" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
+    <div id="tx-por-tecnico" style="margin-top:14px;"></div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
     <div class="sec-title">Coletores de mídia</div>
     <div id="midias-coletores"></div>
   </div>
@@ -367,7 +369,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:800;font-size:.95rem;">Atores operacionais</div>
       <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="atores-sub">Carregando...</div>
     </div>
+    <a href="SIME_atores.html" target="_blank" class="btn btn-out" style="text-decoration:none;font-size:.74rem;padding:6px 12px;">✏️ Editar no módulo Atores</a>
   </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">Esta lista é só consulta — para editar nome, telefone ou remover, use o módulo Atores.</div>
   <div class="filter-bar">
     <input type="text" id="atores-search" placeholder="Buscar nome, seção ou telefone..." oninput="renderAtores()">
     <select id="atores-funcao" onchange="renderAtores()">
@@ -390,6 +394,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <tbody id="atores-tbody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- ══════ HERMES (status + atualização remota) ══════ -->
+<div id="tab-hermes" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Hermes Agent</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Heartbeat e versão do bot de WhatsApp/Telegram (Raspberry Pi).</div>
+    </div>
+    <button class="btn btn-out" onclick="renderHermes()">↺ Atualizar</button>
+  </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">
+    "Solicitar atualização" só marca o pedido — o Hermes decide se atende no
+    próprio ciclo de heartbeat. Sem confirmação, não sabemos se ele viu.
+  </div>
+  <div class="grid2" style="gap:16px;" id="hermes-grid"><div class="hint">Carregando…</div></div>
 </div>
 
 <!-- ══════ ZONAS (só super_admin) ══════ -->
@@ -415,7 +435,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
+import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias, subscribeHeartbeat } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -436,8 +457,10 @@ async function carregarDadosReais(){
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
     window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
+    window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
+    await iniciarMesaEstadoReal(secoesReais);
   }
   // Coord. de Motoristas: escopo real via sime_empresas.rotas, em vez da
   // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
@@ -457,7 +480,69 @@ async function carregarDadosReais(){
     const emp = (window.EMPRESAS || []).find(e => e.id === empresaId);
     return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
   };
+
+  // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
+  // o login real via sime-admin-user, mas o roster exibido nunca lia
+  // sime_usuarios de volta. Cada navegador via uma lista diferente (a demo
+  // ou o que foi digitado ali). "Token <tipo> (...)" são usuários fantasma
+  // criados pela sime-login pra QR de campo — não são gente da equipe.
+  const { data: equipeReal } = await supabase.from('sime_usuarios')
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp');
+  window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
+  if (window.renderTeam) window.renderTeam();
+
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
+}
+
+// A aba Seções (dashboard/tabela/modal) e a aba Mídias liam SÓ localStorage
+// (sime_mesa_v1/sime_acess_v1/sime_midias_v1) — nunca o que mesário/coletor
+// de mídias gravam de verdade no Supabase (cada um no PRÓPRIO aparelho, nunca
+// visto pelo navegador do Admin). Mesmo padrão já usado pela TV Dia:
+// snapshot inicial + Realtime, sem polling.
+let canalMesaAberto = false;
+let rerenderMesaTimer = null;
+function agendarRerenderMesaEstado(){
+  clearTimeout(rerenderMesaTimer);
+  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); }, 250);
+}
+let rerenderMidiasTimer = null;
+function agendarRerenderMidias(){
+  clearTimeout(rerenderMidiasTimer);
+  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); }, 250);
+}
+async function iniciarMesaEstadoReal(secoesReais){
+  if (canalMesaAberto) return; // evita canal duplicado se carregarDadosReais() rodar de novo
+  canalMesaAberto = true;
+
+  const numeroPorSecaoId = new Map(secoesReais.map(s => [s.id, s.numero]));
+
+  const elecAtiva = await getEleicaoAtiva({ fallback: null });
+  window.ELEICAO_ID = elecAtiva?.id || null;
+  window.ELEICAO_ATIVA = elecAtiva || null;
+  if (window.renderConfig) window.renderConfig();
+
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  window.MESA_ESTADO_MAP = mesaInicial || {};
+  const midiasInicial = await getMidiasMap({ fallback: null });
+  window.MIDIAS_MAP = midiasInicial || {};
+  // Só pro botão "Exportar dados" (snapshot pontual) — não precisa de
+  // Realtime, ninguém fica olhando pra essa tela esperando ela mudar.
+  window.ROTAS_ESTADO_MAP = await getRotasEstadoMap({ fallback: {} });
+  agendarRerenderMesaEstado();
+  agendarRerenderMidias();
+
+  subscribeMesaEstado(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MESA_ESTADO_MAP[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    agendarRerenderMesaEstado();
+  });
+  subscribeMidias(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MIDIAS_MAP[String(numero).padStart(4, '0')] = mapMidiaRow(row);
+    agendarRerenderMidias();
+  });
 }
 
 // Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
@@ -467,10 +552,11 @@ async function carregarDadosReais(){
 async function carregarIdentidade(){
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
+  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('id,nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
   if (!meuUsuario) return;
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
+  window.MEU_USUARIO_ID = meuUsuario.id || null;
   if (meuUsuario.perfil === 'super_admin') {
     const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
       supabase.from('sime_zonas').select('*').order('numero'),
@@ -485,6 +571,48 @@ async function carregarIdentidade(){
     }
   }
   if (window.aplicarIdentidade) window.aplicarIdentidade();
+  await atualizarBadgeProblemas();
+  iniciarRealtimeProblemas();
+  iniciarRealtimeHermes();
+}
+
+// Contagem real de ocorrências em aberto (aberta|assumida) — RLS já restringe
+// à zona de quem logou. Substitui o badge antigo, que contava pânico direto
+// do localStorage e nunca batia com o que o mesário de fato registrava.
+// É só indicativo — uma falha aqui não pode travar o resto do login.
+async function atualizarBadgeProblemas(){
+  try {
+    const { count } = await supabase
+      .from('sime_ocorrencias')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['aberta', 'assumida']);
+    const badge = document.getElementById('prob-count-badge');
+    if (badge) badge.textContent = count ? `(${count})` : '';
+  } catch (e) {}
+}
+// Exposta pro <script> clássico — resetarProblemas() precisa refazer a
+// contagem do badge depois de apagar.
+window.atualizarBadgeProblemas = atualizarBadgeProblemas;
+
+// Realtime em vez de polling: qualquer INSERT/UPDATE em sime_ocorrencias
+// (nova ocorrência, assumida, resolvida...) refaz a contagem na hora. Um
+// canal só por sessão de Admin.
+let canalProblemasAberto = false;
+function iniciarRealtimeProblemas(){
+  if (canalProblemasAberto) return;
+  canalProblemasAberto = true;
+  try { subscribeOcorrencias(supabase, () => atualizarBadgeProblemas()); } catch (e) {}
+}
+
+// Heartbeat do Hermes muda a cada ciclo dele (minutos) — Realtime evita que o
+// admin fique olhando pra um card parado achando que travou. Só redesenha se
+// a aba estiver de fato aberta (renderHermes escreve no próprio elemento;
+// chamar com a aba fechada é barato e inofensivo, então não checamos antes).
+let canalHermesAberto = false;
+function iniciarRealtimeHermes(){
+  if (canalHermesAberto) return;
+  canalHermesAberto = true;
+  try { subscribeHeartbeat(supabase, () => { if (window.renderHermes) window.renderHermes(); }); } catch (e) {}
 }
 
 // Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
@@ -561,6 +689,35 @@ const SECTIONS_FALLBACK = [
 ];
 var SECTIONS = SECTIONS_FALLBACK;
 
+// Declarados aqui em cima (não perto de renderMidias()/filterTable(), onde
+// ficavam antes) porque essas duas funções podem rodar cedo no carregamento
+// da página — um `const` mais abaixo no arquivo cai em TDZ (ReferenceError
+// "before initialization") se for referenciado antes da própria linha
+// executar, mesmo a função em si só sendo declarada (não chamada) depois.
+const MIDIA_STATUS_LABEL = {
+  aguardando_encerramento:'⏳ Aguardando',
+  pronta_para_coleta:'📦 Pronta',
+  em_coleta_rota:'🚗 Em coleta',
+  coleta_dedicada:'⚡ Dedicada',
+  coletada:'✅ Coletada',
+  entregue_transmissao:'📡 Entregue',
+};
+const MIDIA_STATUS_COLOR = {
+  aguardando_encerramento:'var(--text3)',
+  pronta_para_coleta:'var(--yellow)',
+  em_coleta_rota:'var(--blue)',
+  coleta_dedicada:'var(--purple,#6040a0)',
+  coletada:'var(--green)',
+  entregue_transmissao:'#15803d',
+};
+// Transmissão DIGITAL (JE-Connect) — distinta da entrega física acima.
+const TX_STATUS_BADGE = {
+  pendente:     {label:'Pendente',     cls:'b-off'},
+  em_andamento: {label:'Em andamento', cls:'b-warn'},
+  transmitido:  {label:'Transmitido',  cls:'b-ok'},
+  falhou:       {label:'Falhou',       cls:'b-err'},
+};
+
 // ── MEMBROS DA EQUIPE ──────────────────────────────────────
 const TEAM_KEY = 'sime_equipe_v1';
 const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
@@ -604,7 +761,34 @@ function escopoLabel(){
   return null;
 }
 
-function loadTeam(){ try{return JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');}catch(e){return[];} }
+// window.EQUIPE_REAL (sime_usuarios, carregarDadosReais() no <script type=
+// "module">) é a fonte de identidade (nome/e-mail/perfil/ativo) — sem ela
+// (ainda sem sessão), cai no cache local puro, como antes. Campos sem coluna
+// no banco (cor/iniciais/seções de coleta/substituto) continuam vindo do
+// cache local, casados por id e, pros que ainda têm o id fantasma antigo
+// ('uNNN', de antes desta correção), por e-mail.
+function loadTeam(){
+  let local; try{ local=JSON.parse(localStorage.getItem(TEAM_KEY)||'[]'); }catch(e){ local=[]; }
+  const real = window.EQUIPE_REAL;
+  if(!real) return local;
+  const porId = new Map(local.map(m=>[m.id,m]));
+  const porEmail = new Map(local.filter(m=>m.email).map(m=>[m.email,m]));
+  return real.map(u=>{
+    const extra = porId.get(u.id) || porEmail.get(u.email) || {};
+    return {
+      id: u.id, nome: u.nome, email: u.email||'', perfil: u.perfil,
+      iniciais: extra.iniciais || (u.nome||'?').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase(),
+      cor: extra.cor || '#2a2a2a',
+      local: extra.local || '',
+      empresa_id: u.empresa_id || extra.empresa_id || '',
+      empresa: extra.empresa || (window.EMPRESAS||[]).find(e=>e.id===u.empresa_id)?.nome || '',
+      secoes: extra.secoes || [],
+      substituto: extra.substituto || '',
+      substituto_tel: extra.substituto_tel || '',
+      telefone_whatsapp: u.telefone_whatsapp || extra.telefone_whatsapp || '',
+    };
+  });
+}
 function saveTeam(d){ localStorage.setItem(TEAM_KEY,JSON.stringify(d)); }
 
 // Equipe padrão
@@ -626,7 +810,7 @@ function hasPerm(p){ return PERFIS[curUser.perfil]?.perms.includes(p); }
 function switchUser(uid){
   const team = loadTeam();
   const u = team.find(m=>m.id===uid);
-  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); renderProblemas(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
+  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
 }
 function applyUser(){
   document.getElementById('u-av').textContent   = curUser.iniciais;
@@ -653,11 +837,80 @@ window.aplicarIdentidade = function(){
   const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
   curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
   applyUser();
-  renderDash(); renderTable(); renderProblemas();
+  renderDash(); renderTable();
   const btnSair = document.getElementById('btn-logout');
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
 };
+
+// ── HERMES (heartbeat + versão) ──────────────────────────────────────────
+// Lê direto de sime_heartbeat/sime_componentes (padrão normal do SIME: o
+// frontend sempre fala com o Supabase pela anon key + RLS). Quem GRAVA é só
+// o Hermes, e só via /api/hermes-heartbeat com o Bearer da zona — nunca com
+// service key direto, ver hermes/SIME_hermes_skill_heartbeat.md. RLS por
+// zona já garante que quem não é super_admin só vê a própria.
+async function renderHermes(){
+  const el = document.getElementById('hermes-grid');
+  if (!el) return;
+  const [{ data: zonas, error: e0 }, { data: componentes, error: e1 }, { data: heartbeats, error: e2 }, { data: agoraStr }] = await Promise.all([
+    supabase.from('sime_zonas').select('id,numero,municipio'),
+    supabase.from('sime_componentes').select('*'),
+    supabase.from('sime_heartbeat').select('*'),
+    supabase.rpc('sime_now'),
+  ]);
+  if (e0 || e1 || e2) {
+    el.innerHTML = '<div class="hint">Não foi possível carregar — tabelas do Hermes ainda não existem nesta base? (sql/SIME_hermes_gestao_schema.sql)</div>';
+    return;
+  }
+  const zonaPorId = {}; (zonas || []).forEach(z => { zonaPorId[z.id] = z; });
+  const porZona = {};
+  (heartbeats || []).forEach(h => { porZona[h.zona_id] = { ...(porZona[h.zona_id]||{}), hb: h, zona: zonaPorId[h.zona_id] }; });
+  (componentes || []).forEach(c => { porZona[c.zona_id] = { ...(porZona[c.zona_id]||{}), comp: c, zona: porZona[c.zona_id]?.zona || zonaPorId[c.zona_id] }; });
+  const zonaIds = Object.keys(porZona);
+  if (!zonaIds.length) { el.innerHTML = '<div class="hint">Nenhum heartbeat ainda — o Hermes desta zona nunca gravou status.</div>'; return; }
+  const agoraMs = agoraStr ? new Date(agoraStr).getTime() : Date.now();
+  el.innerHTML = zonaIds.map(zid => {
+    const { hb, comp, zona } = porZona[zid];
+    const online = hb ? (agoraMs - new Date(hb.ultimo_heartbeat).getTime()) < 5 * 60 * 1000 : false;
+    const idadeMin = hb ? Math.round((agoraMs - new Date(hb.ultimo_heartbeat).getTime()) / 60000) : null;
+    return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:.88rem;">${zona ? zona.numero + 'ª Zona' : 'Zona ' + zid.slice(0,8)}</div>
+        <div style="font-size:.72rem;font-weight:700;color:${online?'#1ea672':'#b23'}">${online?'🟢 online':'⚪ sem sinal'}${idadeMin!==null?` · há ${idadeMin} min`:''}</div>
+      </div>
+      ${hb ? `
+      <div style="font-size:.78rem;color:var(--text2);line-height:1.9;">
+        <div>Versão: <b>${hb.versao || '—'}</b>${hb.commit_hash ? ` (${hb.commit_hash.slice(0,7)})` : ''}</div>
+        <div>Uptime: ${hb.uptime_s ? Math.round(hb.uptime_s/3600)+'h' : '—'} · CPU ${hb.cpu_pct ?? '—'}% · RAM ${hb.mem_mb ?? '—'}MB${hb.temperatura_c!=null?` · ${hb.temperatura_c}°C`:''}</div>
+        <div>WhatsApp: ${hb.whatsapp_status || '—'} · Telegram: ${hb.telegram_status || '—'}</div>
+      </div>` : '<div class="hint" style="margin:8px 0;">Sem heartbeat registrado.</div>'}
+      ${comp ? `
+      <div style="font-size:.72rem;color:var(--text3);margin-top:8px;">
+        ${comp.atualizar_agora ? '🔄 Atualização pendente' + (comp.versao_desejada?` → ${comp.versao_desejada}`:'') : (comp.ultimo_resultado==='erro' ? `⚠ Última atualização falhou: ${comp.ultimo_erro||'sem detalhe'}` : '')}
+      </div>` : ''}
+      <button class="btn btn-out" style="margin-top:10px;font-size:.74rem;" onclick="solicitarAtualizacaoHermes('${zid}','${(comp && comp.componente) || 'hermes'}')">⬆️ Solicitar atualização</button>
+    </div>`;
+  }).join('');
+}
+window.renderHermes = renderHermes;
+
+async function solicitarAtualizacaoHermes(zonaId, componente){
+  const versao = prompt('Versão desejada (ex.: v1.2.0). Deixe em branco para a mais recente publicada:', '');
+  if (versao === null) return;
+  const { data: ts } = await supabase.rpc('sime_now');
+  const payload = {
+    zona_id: zonaId, componente,
+    versao_desejada: versao.trim() || null,
+    atualizar_agora: true,
+    solicitado_por: window.MEU_USUARIO_ID || null,
+    solicitado_em: ts,
+  };
+  const { error } = await supabase.from('sime_componentes').upsert(payload, { onConflict: 'zona_id,componente' });
+  if (error) { showToast('⚠ Falha ao solicitar'); return; }
+  showToast('✓ Atualização solicitada — o Hermes atende no próximo heartbeat');
+  renderHermes();
+}
 
 function renderZonas(){
   const el = document.getElementById('zonas-grid');
@@ -683,39 +936,35 @@ function renderZonas(){
 }
 
 // ── DADOS DA ELEIÇÃO ──────────────────────────────────────
-function loadMesa(){ try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
-function saveMesaSec(n,st){ const d=loadMesa(); d[n]={...d[n],...st}; localStorage.setItem('sime_mesa_v1',JSON.stringify(d)); }
+// window.MESA_ESTADO_MAP vem de sime_mesa_estado (Supabase) via
+// iniciarMesaEstadoReal() no <script type="module"> do topo — snapshot +
+// Realtime, mesmo padrão da TV Dia (mesmo fallback: sem remoto ainda, cai no
+// localStorage — nunca mostra menos do que o navegador já sabia).
+function loadMesa(){ if(window.MESA_ESTADO_MAP) return window.MESA_ESTADO_MAP; try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
 
-// Dados reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade).
-// Usa panico.urna (o Mesário usa panico.urnaprob) — normalizado aqui.
-function loadAcess(){ try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}} }
+// sime_acao_acessibilidade grava na MESMA linha/colunas de sime_mesa_estado
+// que o mesário usa (não é tabela separada) — não existe mais um "loadAcess"
+// distinto; o pânico do coordenador de acessibilidade já chega unificado
+// dentro do próprio loadMesa().
 
-// Estado unificado de pânico/fila de uma seção, combinando Mesário
-// (sime_mesa_v1) e Coordenador de Acessibilidade (sime_acess_v1).
-// origem: de onde veio cada pânico ativo (para exibição no painel).
-function estadoSecao(n, st, ac){
-  st = st || loadMesa()[n]; ac = ac || loadAcess()[n];
-  const mesaEnergia = !!(st?.panico?.energia   && !st?.panico_resolved?.energia);
-  const mesaUrna    = !!(st?.panico?.urnaprob  && !st?.panico_resolved?.urnaprob);
-  const acEnergia   = !!(ac?.panico?.energia   && !ac?.panico_resolved?.energia);
-  const acUrna      = !!(ac?.panico?.urna      && !ac?.panico_resolved?.urna);
-  const origem = [];
-  if(mesaEnergia||mesaUrna) origem.push('mesário');
-  if(acEnergia||acUrna)     origem.push('acessibilidade');
-  return {
-    energia: mesaEnergia || acEnergia,
-    urna:    mesaUrna    || acUrna,
-    panico:  mesaEnergia || mesaUrna || acEnergia || acUrna,
-    fila:    Math.max(st?.fila>0?st.fila:0, ac?.fila>0?ac.fila:0) || 0,
-    origem,
-  };
+// Estado de pânico/fila de uma seção, direto de sime_mesa_estado.
+// origem: quem gravou por último (updated_by_origem) — aproximação, já que a
+// tabela não guarda "quem setou cada campo", só o último autor da linha.
+function estadoSecao(n, st){
+  st = st || loadMesa()[n];
+  const energia = !!(st?.panico?.energia  && !st?.panico_resolved?.energia);
+  const urna    = !!(st?.panico?.urnaprob && !st?.panico_resolved?.urnaprob);
+  const sos     = !!(st?.panico?.sos      && !st?.panico_resolved?.sos);
+  const panico = energia || urna || sos;
+  const origem = panico && st?.origem ? [st.origem === 'coord_acessibilidade' ? 'acessibilidade' : 'mesário'] : [];
+  return { energia, urna, sos, panico, fila: st?.fila>0?st.fila:0, origem };
 }
 
 // fmtNow() vem de sime_ui_utils.js
 
 function getStatus(st,uni){
   if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
-  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)));
+  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)||(st.panico?.sos&&!st.panico_resolved?.sos)));
   if(panic)           return {label:'⚠ Problema',cls:'b-err'};
   if(!st)             return {label:'⚠ Problema',cls:'b-err'};
   if(st.urna_cartorio)return {label:'📦 Cartório',cls:'b-ok'};
@@ -732,13 +981,13 @@ function getStatus(st,uni){
 // DASHBOARD
 // ══════════════════════════════════════════════
 function renderDash(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   const escopoSecs = secoesDoUsuario();
   let tot=escopoSecs.length,vot=0,enc=0,urna=0,car=0,prob=0;
   const evts=[];
   escopoSecs.forEach(s=>{
     const st=mesa[s.n];
-    const uni=estadoSecao(s.n, st, acess[s.n]);
+    const uni=estadoSecao(s.n, st);
     if(st){
       if(st.vot)  vot++;
       if(st.enc||st.urna||st.urna_cartorio)  enc++;
@@ -749,6 +998,7 @@ function renderDash(){
       const tag = uni.origem.includes('acessibilidade') && !uni.origem.includes('mesário') ? ' (acessib.)' : '';
       if(uni.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia${tag}`,ts:'—'});
       if(uni.urna)    evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna${tag}`,ts:'—'});
+      if(uni.sos)     evts.push({tipo:'ev-prob',icon:'🆘',msg:`Seção ${parseInt(s.n)} — SOS${tag}`,ts:'—'});
     }
     if(st?.enc&&!st?.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
     if(st?.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
@@ -801,9 +1051,9 @@ function renderDash(){
       </div>
     </div>`;
   }).join('');
-
-  // Badge tab problemas
-  document.getElementById('prob-count-badge').textContent = prob ? `(${prob})` : '';
+  // Badge da aba Problemas: não daqui — atualizarBadgeProblemas() (topo do
+  // arquivo) conta sime_ocorrencias de verdade, que cobre tipos que este
+  // dashboard nem enxerga (mesa incompleta, instalação, "outro").
 }
 
 // ══════════════════════════════════════════════
@@ -811,10 +1061,10 @@ function renderDash(){
 // ══════════════════════════════════════════════
 let allRows = [];
 function renderTable(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   allRows = secoesDoUsuario().map(s=>{
     const st = mesa[s.n]||null;
-    const uni = estadoSecao(s.n, st, acess[s.n]);
+    const uni = estadoSecao(s.n, st);
     const panic = uni.panico;
     const status = getStatus(st, uni);
     const mv = st?Object.values(st.mesa||{}):[]; const chegou=mv.filter(v=>v>=1).length;
@@ -828,7 +1078,6 @@ function filterTable(){
   const q   = document.getElementById('sec-search').value.toLowerCase();
   const sf  = document.getElementById('sec-filter-status').value;
   const cf  = document.getElementById('sec-filter-cidade').value;
-  const mesa= loadMesa();
 
   const filtered = allRows.filter(r=>{
     const {s,st,panic,status} = r;
@@ -846,7 +1095,10 @@ function filterTable(){
   });
 
   const tbody = document.getElementById('sec-tbody');
-  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>`
+  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>{
+    const tx = (window.MIDIAS_MAP?.[s.n]?.transmissao_status) || 'pendente';
+    const txB = TX_STATUS_BADGE[tx] || TX_STATUS_BADGE.pendente;
+    return `
     <tr class="${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
       <td><strong>${parseInt(s.n)}</strong></td>
       <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.loc}</td>
@@ -856,71 +1108,15 @@ function filterTable(){
       <td>${fila!==null?`<span style="background:var(--yellow-bg);color:var(--yellow);padding:1px 7px;border-radius:99px;font-weight:700">${fila}</span>`:`<span style="color:var(--text3)">—</span>`}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>${st?.urna_cartorio?'📦':st?.urna?'🚗':'<span style="color:var(--text3)">—</span>'}</td>
+      <td><span class="badge ${txB.cls}">${txB.label}</span></td>
       <td><button class="btn btn-out btn-xs" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
-    </tr>`).join('');
-}
-
-// ══════════════════════════════════════════════
-// PROBLEMAS
-// ══════════════════════════════════════════════
-function renderProblemas(){
-  const mesa = loadMesa(); const acess = loadAcess(); const items=[];
-  secoesDoUsuario().forEach(s=>{
-    const uni=estadoSecao(s.n, mesa[s.n], acess[s.n]);
-    if(!uni.panico) return;
-    const origem = uni.origem.join(' + ');
-    if(uni.energia) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',origem});
-    if(uni.urna)    items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',origem});
-  });
-
-  document.getElementById('prob-subtitle').textContent = items.length
-    ? `${items.length} alerta${items.length>1?'s':''} ativo${items.length>1?'s':''}` : 'Nenhum problema ativo';
-
-  const list = document.getElementById('prob-list');
-  if(!items.length){
-    list.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text3)"><div style="font-size:2rem;margin-bottom:8px">✅</div><div>Nenhum problema ativo</div></div>';
-    return;
-  }
-  list.innerHTML = items.map(p=>{
-    const tipos = {energia:'⚡ Falta de energia',urna:'🖥️ Problema na urna'};
-    const cls   = {energia:'pt-energia',urna:'pt-urna'};
-    const canResolve = hasPerm('resolver_panico');
-    return `<div class="prob-card">
-      <div class="pc-icon">${p.tipo==='energia'?'⚡':'🖥️'}</div>
-      <div class="pc-info">
-        <div class="pc-sec">Seção ${parseInt(p.n)}</div>
-        <div class="pc-loc">${p.loc} · ${p.city}</div>
-        <span class="pc-tipo ${cls[p.tipo]}">${tipos[p.tipo]}</span>
-        <div class="pc-ts">Reportado por: ${p.origem||'monitoramento'}</div>
-      </div>
-      <div class="pc-actions">
-        ${canResolve?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${p.n}','${p.tipo}')">✓ Resolver</button>`:''}
-        <button class="btn btn-blue btn-sm" onclick="openEditSec('${p.n}')">Detalhes</button>
-      </div>
-    </div>`;
+    </tr>`;
   }).join('');
 }
 
-function resolverPanico(n,tipo){
-  if(!hasPerm('resolver_panico')){ showToast('⚠ Sem permissão'); return; }
-  // Resolve nas duas fontes: Mesário (sime_mesa_v1) e Acessibilidade (sime_acess_v1)
-  const mesa=loadMesa();
-  if(!mesa[n]) mesa[n]={};
-  if(!mesa[n].panico_resolved) mesa[n].panico_resolved={};
-  if(tipo==='energia') mesa[n].panico_resolved.energia=true;
-  if(tipo==='urna')    mesa[n].panico_resolved.urnaprob=true;
-  localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
-
-  const acess=loadAcess();
-  if(acess[n]){
-    if(!acess[n].panico_resolved) acess[n].panico_resolved={};
-    if(tipo==='energia') acess[n].panico_resolved.energia=true;
-    if(tipo==='urna')    acess[n].panico_resolved.urna=true;
-    localStorage.setItem('sime_acess_v1',JSON.stringify(acess));
-  }
-  showToast(`✓ Pânico resolvido — Seção ${parseInt(n)}`);
-  renderProblemas(); renderDash(); renderTable();
-}
+// Aba PROBLEMAS: removida daqui — virou SIME_problemas.html, com dado real
+// (sime_ocorrencias) em vez desta leitura de localStorage, que nunca refletia
+// o que o mesário grava no servidor. O botão da nav abre a tela nova.
 
 // ══════════════════════════════════════════════
 // MODAL EDITAR SEÇÃO
@@ -929,7 +1125,7 @@ function openEditSec(n){
   const sec = SECTIONS.find(s=>s.n===n);
   if(!sec) return;
   const mesa=loadMesa(); const st=mesa[n]||{};
-  const uni=estadoSecao(n, st, loadAcess()[n]);
+  const uni=estadoSecao(n, st);
   const mv=Object.values(st.mesa||{}); const chegou=mv.filter(v=>v>=1).length;
   const canEdit = hasPerm('editar_secoes') || hasPerm('lancar_telefone');
   const canResolve = hasPerm('resolver_panico');
@@ -958,10 +1154,7 @@ function openEditSec(n){
           </div>
         </div>
         ${canResolve?`
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${uni.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
-          ${uni.urna?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''}
-        </div>`:''}
+        <button class="btn btn-green btn-sm" onclick="window.open('SIME_problemas.html','_blank')">Resolver em Problemas →</button>`:''}
       </div>`:''}
 
       <!-- Chegada de membros -->
@@ -1034,29 +1227,30 @@ function openEditSec(n){
   document.getElementById('overlay').classList.add('open');
 }
 
-function salvarSec(n){
+async function salvarSec(n){
   if(!hasPerm('editar_secoes')&&!hasPerm('lancar_telefone')){ showToast('⚠ Sem permissão'); return; }
-  const patch = {
-    mesa:{
-      pres:+document.getElementById('mesa-pres').value,
-      m1:  +document.getElementById('mesa-m1').value,
-      m2:  +document.getElementById('mesa-m2').value,
-      sec: +document.getElementById('mesa-sec').value,
-    },
-    zero:document.getElementById('f-zero').checked,
-    vot: document.getElementById('f-vot').checked,
-    enc: document.getElementById('f-enc').checked,
-    urna:document.getElementById('f-urna').checked,
-    urna_cartorio:document.getElementById('f-car').checked,
-    fila:+document.getElementById('f-fila').value,
-    obs: document.getElementById('f-obs').value,
-    _editado_por: curUser.nome,
-    _editado_em:  fmtNow(),
-  };
-  saveMesaSec(n,patch);
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para salvar'); return; }
+  const { error } = await supabase.rpc('sime_acao_mesa', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_mesa_pres: +document.getElementById('mesa-pres').value,
+    p_mesa_m1:   +document.getElementById('mesa-m1').value,
+    p_mesa_m2:   +document.getElementById('mesa-m2').value,
+    p_mesa_sec:  +document.getElementById('mesa-sec').value,
+    p_zeresima:  document.getElementById('f-zero').checked,
+    p_votacao:   document.getElementById('f-vot').checked,
+    p_encerrada: document.getElementById('f-enc').checked,
+    p_urna_recolhida: document.getElementById('f-urna').checked,
+    p_urna_cartorio:  document.getElementById('f-car').checked,
+    p_fila: +document.getElementById('f-fila').value,
+    p_observacao: document.getElementById('f-obs').value,
+    p_origem: 'admin',
+  });
+  if(error){ showToast('⚠ Falha ao salvar: '+error.message); return; }
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
-  renderDash(); renderTable(); renderProblemas();
+  // Sem renderDash()/renderTable() manual: o Realtime (iniciarMesaEstadoReal,
+  // topo do arquivo) já vai receber o UPDATE e re-renderizar sozinho.
 }
 
 // ══════════════════════════════════════════════
@@ -1082,6 +1276,7 @@ function openNewEvent(){
           <option value="fila">Fila de votação</option>
           <option value="panico_energia">⚡ Falta de energia</option>
           <option value="panico_urna">🖥️ Problema na urna</option>
+          <option value="panico_sos">🆘 SOS (outro problema)</option>
           <option value="obs">Observação livre</option>
         </select>
       </div>
@@ -1115,28 +1310,32 @@ function updateEvForm(){
   } else { extra.innerHTML=''; }
 }
 
-function salvarEvento(){
+async function salvarEvento(){
   const n   = document.getElementById('ev-sec').value; if(!n){ showToast('⚠ Selecione a seção'); return; }
   const tipo= document.getElementById('ev-tipo').value;
-  const mesa= loadMesa(); if(!mesa[n]) mesa[n]={};
-  const st  = mesa[n];
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
 
-  if(tipo==='panico_energia'){ if(!st.panico)st.panico={};st.panico.energia=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.energia=false; }
-  else if(tipo==='panico_urna'){if(!st.panico)st.panico={};st.panico.urnaprob=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.urnaprob=false;}
-  else if(tipo==='fila'){ st.fila=+document.getElementById('ev-val').value; }
+  // sime_acao_mesa trata NULL como "não mexe" — só entra no payload o campo
+  // que este tipo de ocorrência de fato muda. O gatilho do banco cria a
+  // ocorrência em sime_ocorrencias sozinho quando é pânico (mesmo caminho do
+  // mesário), então não precisa duplicar essa lógica aqui.
+  const payload = { p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_origem: 'admin_telefone' };
+  if(tipo==='panico_energia'){ payload.p_panico_energia = true; payload.p_panico_energia_resolvido = false; }
+  else if(tipo==='panico_urna'){ payload.p_panico_urna = true; payload.p_panico_urna_resolvido = false; }
+  else if(tipo==='panico_sos'){ payload.p_panico_sos = true; payload.p_panico_sos_resolvido = false; }
+  else if(tipo==='fila'){ payload.p_fila = +document.getElementById('ev-val').value; }
   else if(tipo==='status'){
     const val=document.getElementById('ev-val').value;
-    if(val==='vot')     st.vot=true;
-    if(val==='enc')     {st.enc=true;st.vot=true;}
-    if(val==='urna')    {st.urna=true;st.enc=true;}
-    if(val==='cartorio'){st.urna_cartorio=true;st.urna=true;st.enc=true;}
-  } else if(tipo==='obs'){ st.obs=document.getElementById('ev-val').value; }
+    if(val==='vot')          payload.p_votacao = true;
+    else if(val==='enc')      { payload.p_encerrada = true; payload.p_votacao = true; }
+    else if(val==='urna')     { payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+    else if(val==='cartorio') { payload.p_urna_cartorio = true; payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+  } else if(tipo==='obs'){ payload.p_observacao = document.getElementById('ev-val').value; }
 
-  st._editado_por=document.getElementById('ev-recv').value;
-  st._editado_em=fmtNow();
-  mesa[n]=st; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+  const { error } = await supabase.rpc('sime_acao_mesa', payload);
+  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
-  renderDash();renderTable();renderProblemas();
 }
 
 // ══════════════════════════════════════════════
@@ -1208,6 +1407,15 @@ function showMemberModal(m){
         </select>
       </div>
 
+      <!-- Escalonamento: WhatsApp (Gestor de Problemas / Chefe de Cartório) —
+           é pra onde o Hermes manda aviso quando um problema não é resolvido
+           a tempo (10 min sem dono, 30 min sem solução — ver CLAUDE.md). -->
+      <div class="form-group" id="grp-tel-escalonamento" style="display:none">
+        <label>WhatsApp (escalonamento de pânico)</label>
+        <input type="text" id="m-tel" value="${m?.telefone_whatsapp||''}" placeholder="86999998888">
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.</div>
+      </div>
+
       <!-- Escopo: Local (Coord. de Acessibilidade) -->
       <div class="form-group" id="grp-local" style="display:none">
         <label>Local de votação (escopo)</label>
@@ -1266,6 +1474,7 @@ function onPerfilChange(){
   const esc = PERFIS[p]?.escopo || 'tudo';
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
+  show('grp-tel-escalonamento', p==='gestor_prob' || p==='coordenador');
   show('grp-local',      esc==='local');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
@@ -1318,6 +1527,9 @@ async function saveMember(id){
               : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
     substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
+    // Escalonamento de pânico (hermes-contatos.js): só relevante pra quem o
+    // Hermes pode precisar avisar — Gestor de Problemas e Chefe de Cartório.
+    telefone_whatsapp: (perfil==='gestor_prob'||perfil==='coordenador') ? (document.getElementById('m-tel')?.value.replace(/\D/g,'')||'') : '',
   };
   const team=loadTeam();
   const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
@@ -1344,6 +1556,13 @@ async function saveMember(id){
       base.auth_user_id=out.auth_user_id;
       base.usuario_id=out.usuario_id;
       mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
+      // sime-admin-user não aceita telefone — a Edge Function só cria o login
+      // (nome/email/perfil); o telefone de escalonamento é gravado à parte,
+      // aqui, com a sessão normal do admin (mesma RLS do update abaixo).
+      if(base.telefone_whatsapp){
+        const { error: telErr } = await supabase.from('sime_usuarios').update({ telefone_whatsapp: base.telefone_whatsapp }).eq('id', out.usuario_id);
+        if(telErr) showToast('⚠ WhatsApp de escalonamento não sincronizou: '+telErr.message);
+      }
     }catch(e){
       showToast('⚠ Sem conexão — acesso não criado');
       return;
@@ -1353,8 +1572,21 @@ async function saveMember(id){
   if(id){
     const idx=team.findIndex(m=>m.id===id);
     if(idx>-1) team[idx]={...team[idx],...base};
+    // Editando gente real (id vindo de sime_usuarios via loadTeam()): nome,
+    // perfil e telefone de escalonamento também precisam mudar lá, senão a
+    // edição "salva" mas some no próximo carregamento — loadTeam() sempre
+    // prioriza o banco pra esses campos.
+    if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
+      const { error } = await supabase.from('sime_usuarios').update({ nome, perfil, telefone_whatsapp: base.telefone_whatsapp||null }).eq('id', id);
+      if(error){ showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
+      const u = window.EQUIPE_REAL.find(u=>u.id===id);
+      if(u && !error){ u.nome = nome; u.perfil = perfil; u.telefone_whatsapp = base.telefone_whatsapp||null; }
+    }
   } else {
-    team.push({id:'u'+Date.now(),...base});
+    // usuario_id: o real sime_usuarios.id, quando saveMember() acabou de criar
+    // o login (acima). Sem e-mail (perfil sem login, ex.: preposto offline),
+    // fica no id local mesmo — não tem como ligar a uma linha real ainda.
+    team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
   saveTeam(team); closeModal(); renderTeam();
   // Se o usuário atual foi editado, reaplica o escopo
@@ -1440,8 +1672,17 @@ async function confirmarTrocaSenha(){
     closeModal(); showToast('✓ Senha definida');
   }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
 }
-function deleteMember(id){
+async function deleteMember(id){
   if(!confirm('Remover este membro?')) return;
+  // Gente real (id de sime_usuarios): loadTeam() sempre reconstrói a lista a
+  // partir de window.EQUIPE_REAL, então só apagar do cache local não
+  // removeria nada de verdade — a pessoa reapareceria no próximo carregamento.
+  const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
+  if(eraReal){
+    const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
+    if(error){ showToast('⚠ Falha ao remover: '+error.message); return; }
+    window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
+  }
   saveTeam(loadTeam().filter(m=>m.id!==id));
   closeModal(); renderTeam(); showToast('✓ Membro removido');
 }
@@ -1673,15 +1914,32 @@ async function setConfirmacao(id, status){
 // CONFIG
 // ══════════════════════════════════════════════
 function renderConfig(){
-  try{
-    const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
-    const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
-    document.getElementById('eleicao-info').innerHTML=`
-      <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
-      <strong>Turno ativo:</strong> ${ta}º turno<br>
-      <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
-      <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
-  }catch(e){ document.getElementById('eleicao-info').textContent='Não configurada'; }
+  const alvo = document.getElementById('eleicao-info');
+  if(!alvo) return; // aba ainda não montada quando iniciarMesaEstadoReal() chama isto
+  // sime_eleicoes (Supabase) é a fonte — antes esta aba só lia sime_eleicao_v1
+  // do localStorage, que só existe no navegador de quem abriu o Principal.
+  // "Nome da eleição" agora também vem do banco (getEleicaoAtiva); o local
+  // continua como fallback só pra zona que salvou antes desta coluna existir.
+  let nomeLocal = '';
+  try{ nomeLocal = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')?.nome || ''; }catch(e){}
+  const real = window.ELEICAO_ATIVA;
+  if(real){
+    alvo.innerHTML=`
+      <strong>Eleição:</strong> ${real.nome||nomeLocal||'Não configurada'}<br>
+      <strong>Turno ativo:</strong> ${real.turno}º turno<br>
+      <strong>Dia D:</strong> ${real.data_d?new Date(real.data_d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+      <strong>Abertura:</strong> ${(real.horario_ab||'').slice(0,5)||'—'} · <strong>Encerramento:</strong> ${(real.horario_enc||'').slice(0,5)||'—'}`;
+  } else {
+    try{
+      const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
+      const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
+      alvo.innerHTML=`
+        <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
+        <strong>Turno ativo:</strong> ${ta}º turno<br>
+        <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+        <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
+    }catch(e){ alvo.textContent='Não configurada'; }
+  }
 
   const links=[
     {icon:'📺',label:'TV Dia',href:'SIME_tv_dia.html'},{icon:'🗳️',label:'Mesário',href:'SIME_mesario.html'},{icon:'🔧',label:'Instalador',href:'SIME_instalador.html'},{icon:'🚚',label:'Conferente',href:'SIME_conferente.html'},{icon:'🚐',label:'Motorista',href:'SIME_motorista.html'},{icon:'📋',label:'Coordenador',href:'SIME_coordenador_preparacao.html'},{icon:'🖥️',label:'TV Véspera',href:'SIME_tv_vespera.html'},{icon:'⚙️',label:'Principal',href:'SIME_principal.html'}
@@ -1690,14 +1948,64 @@ function renderConfig(){
 }
 
 function exportarDados(){
-  const data={mesa:loadMesa(),dist:JSON.parse(localStorage.getItem('sime_dist_v1')||'{}')||'{}',lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
+  // mesa e rotas vêm do Supabase de verdade (sime_mesa_estado/sime_rotas_estado);
+  // lacre continua só local — não existe tabela pra carga/preparação/lacre
+  // ainda (pendência conhecida, ver CLAUDE.md).
+  const data={mesa:loadMesa(),rotas:window.ROTAS_ESTADO_MAP||{},lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sime_snapshot_'+Date.now()+'.json'; a.click();
   showToast('✓ Snapshot exportado');
 }
-function resetarDados(){
-  ['sime_mesa_v1'].forEach(k=>localStorage.removeItem(k));
-  showToast('✓ Dados resetados'); renderDash(); renderTable(); renderProblemas();
+// "Resetar dados de teste" virou um no-op depois da migração pro Supabase
+// (o cache local que ele apagava já estava morto) — só que isso deixou
+// Problemas de teste E estado de Dia D de teste presos na tela pra sempre,
+// sem nenhuma forma de limpar antes da operação real.
+//
+// Cobre sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) e
+// sime_mesa_estado (chegada de mesário, votação, urna, pânico) — as duas
+// únicas tabelas que um ciclo de teste normalmente suja. Escopo continua
+// restrito à zona do usuário (sime_mesa_estado não tem zona_id direto — filtra
+// pelas seções da zona). Ação irreversível: confirmação mostra a contagem de
+// cada tabela antes de apagar.
+//
+// ⚠️ Isso é seguro só ENQUANTO sime_mesa_estado só tem dado de teste — a
+// partir do Dia D real (04/10), essa tabela vira a operação de verdade e este
+// botão não deve mais ser usado (fica registrado em sime_logs quem/quando
+// apagou, pra rastrear se alguém clicar por engano depois disso).
+async function resetarProblemas(){
+  const sb = window.supabase;
+  const zonaId = window.MINHA_ZONA_ID;
+  if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
+
+  const { data: secoes, error: e0 } = await sb.from('sime_secoes').select('id').eq('zona_id', zonaId);
+  if(e0){ showToast('⚠ Falha ao carregar seções: ' + e0.message); return; }
+  const secaoIds = (secoes || []).map(s => s.id);
+
+  const [{ count: countProb, error: e1 }, { count: countMesa, error: e2 }] = await Promise.all([
+    sb.from('sime_ocorrencias').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId),
+    secaoIds.length
+      ? sb.from('sime_mesa_estado').select('secao_id', { count: 'exact', head: true }).in('secao_id', secaoIds)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
+  if(e1){ showToast('⚠ Falha ao contar ocorrências: ' + e1.message); return; }
+  if(e2){ showToast('⚠ Falha ao contar estado de Dia D: ' + e2.message); return; }
+  const totalProb = countProb || 0, totalMesa = countMesa || 0;
+  if(!totalProb && !totalMesa){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
+
+  if(!confirm(`Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`)) return;
+
+  const ops = [];
+  if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
+  if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
+  const resultados = await Promise.all(ops);
+  const falhou = resultados.find(r => r.error);
+  if(falhou){ showToast('⚠ Falha ao apagar: ' + falhou.error.message); return; }
+
+  const { data: ts } = await sb.rpc('sime_now');
+  await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
+
+  showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
+  await atualizarBadgeProblemas();
 }
 
 // ══════════════════════════════════════════════
@@ -1709,11 +2017,11 @@ function goTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   btn.classList.add('active');
   if(id==='secoes') renderTable();
-  if(id==='problemas') renderProblemas();
   if(id==='equipe') renderTeam();
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
   if(id==='atores') renderAtores();
+  if(id==='hermes') renderHermes();
 }
 
 function closeModal(e){
@@ -1750,38 +2058,28 @@ applyUser();
 renderDash();
 renderTable();
 renderConfig();
-setInterval(()=>{ renderDash(); renderProblemas(); },10000);
+setInterval(()=>{ renderDash(); },10000);
 
 // ══════════════════════════════════════════════
 // MÍDIAS
 // ══════════════════════════════════════════════
-const MIDIA_STATUS_LABEL = {
-  aguardando_encerramento:'⏳ Aguardando',
-  pronta_para_coleta:'📦 Pronta',
-  em_coleta_rota:'🚗 Em coleta',
-  coleta_dedicada:'⚡ Dedicada',
-  coletada:'✅ Coletada',
-  entregue_transmissao:'📡 Entregue',
-};
-const MIDIA_STATUS_COLOR = {
-  aguardando_encerramento:'var(--text3)',
-  pronta_para_coleta:'var(--yellow)',
-  em_coleta_rota:'var(--blue)',
-  coleta_dedicada:'var(--purple,#6040a0)',
-  coletada:'var(--green)',
-  entregue_transmissao:'#15803d',
-};
+// MIDIA_STATUS_LABEL/MIDIA_STATUS_COLOR/TX_STATUS_BADGE: declarados perto do
+// topo do arquivo (ver comentário lá) — renderTable() já roda antes daqui.
 
 function renderMidias(){
   renderColetores();
-  const midias = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
+  renderAtribuicaoTransmissao();
+  // window.MIDIAS_MAP vem de sime_midias (Supabase) via iniciarMesaEstadoReal()
+  // no <script type="module"> — antes lia sime_midias_v1 do localStorage, que
+  // nunca via o que o coletor de campo grava no próprio aparelho dele.
+  const midias = window.MIDIAS_MAP || {};
   const counts = {};
   Object.values(midias).forEach(m=>{
     const s=m.status||'aguardando_encerramento';
     counts[s]=(counts[s]||0)+1;
   });
   const total = Object.keys(midias).length;
-  document.getElementById('midias-sub').textContent = total + ' de 174 com registro';
+  document.getElementById('midias-sub').textContent = total + ' de ' + (SECTIONS?.length||0) + ' com registro';
 
   // Stats cards
   const stats = document.getElementById('midias-stats');
@@ -1834,12 +2132,92 @@ function renderColetores(){
   }).join('');
 }
 
-function coletarMidia(n){
-  const d = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
-  d[n]={...d[n],status:'coletada',coletada_ts:Date.now(),tipo_coleta:'dedicada',updated_at:Date.now()};
-  localStorage.setItem('sime_midias_v1',JSON.stringify(d));
+async function coletarMidia(n){
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+  const { error } = await supabase.rpc('sime_acao_midia', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_status: 'coletada', p_tipo: 'dedicada',
+  });
+  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
-  renderMidias();
+  // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o
+  // UPDATE via Realtime e re-renderiza sozinho.
+}
+
+// Matriz nominal técnico↔seção (transmissão de resultados) — resolve a
+// ambiguidade de 2024: quem é responsável por transmitir cada seção, definida
+// e publicada antes do dia D, não descoberta reativamente por mensagem avulsa.
+function renderAtribuicaoTransmissao(){
+  const munSel = document.getElementById('tx-mun');
+  const tecSel = document.getElementById('tx-tecnico');
+  if(!munSel || !tecSel) return;
+
+  if(!munSel.dataset.filled){
+    munSel.innerHTML = '<option value="">Todos os municípios</option>' +
+      (window.cities||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+    munSel.dataset.filled = '1';
+  }
+  const tecnicos = (window.ATORES_REAIS||[]).filter(a=>a.funcao==='tecnico' && a.ativo);
+  tecSel.innerHTML = '<option value="">— selecionar técnico —</option>' +
+    tecnicos.map(t=>`<option value="${t.id}">${t.nome}</option>`).join('');
+
+  const mun = munSel.value;
+  const secs = (window.SECTIONS||[]).filter(s=>!mun || s.city===mun);
+  const midias = window.MIDIAS_MAP||{};
+  const box = document.getElementById('tx-secoes');
+  if(!secs.length){
+    box.innerHTML = '<div style="color:var(--text3);font-size:.78rem;padding:8px">Nenhuma seção neste filtro.</div>';
+  } else {
+    box.innerHTML = secs.map(s=>{
+      const m = midias[s.n]||{};
+      const tecAtual = (window.ATORES_REAIS||[]).find(a=>a.id===m.tecnico_responsavel_id);
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:.8rem;border-bottom:1px solid var(--border)">
+        <input type="checkbox" class="tx-check" value="${s.n}">
+        <span style="flex:1">Seção ${parseInt(s.n)} — ${s.loc}</span>
+        <span style="color:var(--text3)">${tecAtual?tecAtual.nome:'sem técnico'}</span>
+      </label>`;
+    }).join('');
+  }
+
+  // Lista "quem faz o quê" — pra consulta/impressão no dia D.
+  const porTecnico = {};
+  Object.entries(midias).forEach(([n,m])=>{
+    if(!m.tecnico_responsavel_id) return;
+    (porTecnico[m.tecnico_responsavel_id] ||= []).push(n);
+  });
+  const resumo = Object.entries(porTecnico);
+  const resumoEl = document.getElementById('tx-por-tecnico');
+  if(!resumo.length){
+    resumoEl.innerHTML = '';
+  } else {
+    resumoEl.innerHTML = '<div style="font-weight:700;font-size:.8rem;margin-bottom:6px;">Quem transmite o quê</div>' +
+      resumo.map(([tecId,ns])=>{
+        const t = (window.ATORES_REAIS||[]).find(a=>a.id===tecId);
+        const nums = ns.map(n=>parseInt(n)).sort((a,b)=>a-b).join(', ');
+        return `<div style="font-size:.78rem;padding:3px 0"><strong>${t?t.nome:'(técnico removido)'}</strong> — seções ${nums}</div>`;
+      }).join('');
+  }
+}
+
+async function atribuirTransmissao(){
+  const tecId = document.getElementById('tx-tecnico').value;
+  if(!tecId){ showToast('⚠ Selecione o técnico'); return; }
+  const marcadas = [...document.querySelectorAll('.tx-check:checked')].map(c=>c.value);
+  if(!marcadas.length){ showToast('⚠ Selecione ao menos uma seção'); return; }
+  if(!window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+
+  let ok=0, falhas=0;
+  await Promise.all(marcadas.map(async n=>{
+    const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+    if(!secaoId) { falhas++; return; }
+    const { error } = await supabase.rpc('sime_midia_transmissao_upsert', {
+      p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_tecnico_id: tecId,
+    });
+    if(error) falhas++; else ok++;
+  }));
+  showToast(falhas ? `⚠ ${ok} atribuídas, ${falhas} falharam` : `✓ ${ok} seções atribuídas`);
+  // Sem renderMidias() manual: subscribeMidias recebe o UPDATE via Realtime.
 }
 
 // ══════════════════════════════════════════════

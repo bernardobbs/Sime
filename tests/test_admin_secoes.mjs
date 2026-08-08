@@ -22,7 +22,7 @@ export function createClient(){
   function tbl(t){
     let pending=null;
     const api={
-      select(){ return api; }, eq(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; },
+      select(){ return api; }, eq(){ return api; }, order(){ return api; }, not(){ return api; }, limit(){ return api; }, in(){ return api; },
       maybeSingle(){
         if(t==='sime_usuarios') return Promise.resolve({data:USER,error:null});
         return Promise.resolve({data:null,error:null});
@@ -80,6 +80,12 @@ await p.route('**/modules/sime_dados.js', async (route) => {
     export async function getAtores(){ return null; }
     export async function getZonaInfo(){ return null; }
     export function secoesDaEmpresa(){ return []; }
+    export async function getEleicaoAtiva(){ return null; }
+    export function mapMesaEstadoRow(){ return {}; }
+    export async function getMesaEstadoMap(){ return null; }
+    export function mapMidiaRow(){ return {}; }
+    export async function getMidiasMap(){ return null; }
+    export async function getRotasEstadoMap(){ return {}; }
   `});
 });
 await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -114,6 +120,13 @@ const opsInsert = await p.evaluate(() => globalThis.__ops.filter(o => o.op === '
 check('insert enviado ao supabase', opsInsert.length === 1 && opsInsert[0].p.numero === 65, JSON.stringify(opsInsert));
 const linhas2 = await p.locator('.modal-body table tbody tr').count();
 check('lista recarrega com 3 seções', linhas2 === 3, 'n=' + linhas2);
+
+// coluna nova "Transmissão" na tabela de Seções (por trás do modal do
+// gerenciador — não precisa fechá-lo, a tabela principal continua no DOM)
+const temColuna = await p.locator('table:has(#sec-tbody) thead th', { hasText: 'Transmissão' }).count();
+check('tabela de Seções ganhou a coluna Transmissão', temColuna === 1, 'n=' + temColuna);
+const badgeTx = await p.locator('#sec-tbody tr:first-child span.badge').last().textContent();
+check('linha da seção mostra status de transmissão (default Pendente)', badgeTx === 'Pendente', badgeTx);
 
 // exclui a primeira
 p.on('dialog', d => d.accept());

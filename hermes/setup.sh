@@ -48,6 +48,7 @@ cp SIME_hermes_skill_monitor.md   ~/.hermes/skills/sime/
 cp SIME_hermes_skill_notificar.md ~/.hermes/skills/sime/
 cp SIME_hermes_skill_updater.md   ~/.hermes/skills/sime/
 cp SIME_hermes_skill_mesarios.md  ~/.hermes/skills/sime/
+cp SIME_hermes_skill_campanha.md  ~/.hermes/skills/sime/
 
 # 5. Gateway WhatsApp
 # groups-and-dm: o sime_mesarios conversa por DM com cada mesário para
@@ -59,10 +60,11 @@ hermes gateway config \
 # 6. Grupos monitorados — ajuste aos nomes reais dos grupos da sua zona
 hermes config set sime.grupos "Mesários ${ZONA}ª Zona,Motoristas ${ZONA}ª Zona"
 
-# 7. Endpoints do SIME (os três usam o mesmo Bearer)
+# 7. Endpoints do SIME (todos usam o mesmo Bearer)
 hermes config set sime.endpoint_update       "${SIME_URL}/api/hermes-update"
 hermes config set sime.endpoint_mesarios     "${SIME_URL}/api/hermes-mesarios"
 hermes config set sime.endpoint_notificacoes "${SIME_URL}/api/hermes-notificacoes"
+hermes config set sime.endpoint_campanhas    "${SIME_URL}/api/hermes-campanhas"
 hermes config set sime.secret                "${SIME_SECRET}"
 hermes config set sime.poll_intervalo        "${INTERVALO}"
 
