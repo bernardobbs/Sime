@@ -83,7 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
 .form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
 .form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
-.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
 
 /* TOAST */
 /* .toast.show vem de sime_components.css */
@@ -291,7 +291,7 @@ function renderLista(atores){
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" title="Abrir WhatsApp">💬 WA</a>
-        <button class="btn btn-out" style="font-size:.65rem;padding:5px 8px" onclick="abrirModal('${a.id}')">✏️</button>
+        <button class="btn btn-out" aria-label="Editar" style="font-size:.65rem;padding:5px 8px;min-width:44px;min-height:44px;justify-content:center" onclick="abrirModal('${a.id}')">✏️</button>
       </div>`;
     c.appendChild(av);
   });
@@ -329,7 +329,7 @@ function renderGuerra(atores){
           <div class="ac-name">${a.nome}</div>
           <div class="ac-detail">${FUNC_LABEL[a.funcao]} · ${fmtTel(a.telefone)}</div>
         </div>
-        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — '+String.fromCharCode(${a.nome.charCodeAt(0)})+'...')">
+        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — ${a.nome.replace(/'/g,"\\'")}...')">
           📲 CONTATAR
         </a>`;
       grp.appendChild(row);
@@ -482,7 +482,7 @@ function abrirModalExterno(id){
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${c?'Editar contato externo':'Novo contato externo'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body">
       <div class="form-group"><label>Tipo</label>
@@ -837,7 +837,7 @@ function abrirModal(id){
   document.getElementById('modal-body').innerHTML=`
     <div class="m-hdr">
       <div class="m-title">${a?'Editar ator':'Novo ator'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body">
       <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
@@ -939,7 +939,7 @@ function pedirConfirmacao(mensagem, aoConfirmar, opts={}){
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${opts.titulo||'Confirmar'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body"><div style="font-size:.85rem;color:var(--text2);white-space:pre-line;line-height:1.5">${mensagem}</div></div>
     <div class="m-foot">
