@@ -95,7 +95,8 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── hermes-update.js               ← escrita de eventos de seção
 │   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
 │   ├── hermes-notificacoes.js         ← fila de notificações que o Hermes consulta (SIME → Hermes)
-│   └── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   └── hermes-contatos.js             ← telefone por papel (Gestor de Problemas/Chefe de Cartório), pro escalonamento
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
@@ -357,10 +358,15 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   deliberada (modo proposta), não escrever automaticamente sem medir taxa de
   acerto primeiro. Sem isso, "seção 63 encerrada" dito no grupo continua
   exigindo lançamento manual no Admin ou por telefone.
-- **Escalonamento por papel ainda não differencia destinatário**: a fila de
-  notificações drenada manda pra todos os `ADMIN_NUMBERS` do Hermes,
-  independente do nível (Monitor de Campo/Gestor de Problemas/Chefe de
-  Cartório) — falta um endpoint que resolva telefone por papel.
+- **Escalonamento por papel — lado SIME pronto, lado Hermes falta ligar**: a
+  fila de notificações drenada ainda manda pra todos os `ADMIN_NUMBERS` do
+  Hermes, independente do nível. `sime_usuarios.telefone_whatsapp` (coluna
+  nova) + `/api/hermes-contatos` (`acao=listar`) já resolvem "quem é o Gestor
+  de Problemas/Chefe de Cartório desta zona" — o admin cadastra o próprio
+  WhatsApp na aba Equipe do `SIME_admin.html` (campo só aparece pros dois
+  perfis certos). Falta só `index.js` no Pi somar esses números aos
+  `ADMIN_NUMBERS` conforme `idade_s` — ver `hermes/SIME_hermes_skill_escalonamento.md`.
+  94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
 - **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
   Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
   funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
@@ -452,6 +458,9 @@ inteiro ainda.
   (leitura + `sime_campanhas_confirmacao.status`)
 - `sime_heartbeat` — reporta telemetria e verifica pedido de atualização via
   `/api/hermes-heartbeat` (escrita em `sime_heartbeat`/`sime_componentes`)
+- `sime_escalonamento` — resolve telefone de Gestor de Problemas/Chefe de
+  Cartório via `/api/hermes-contatos` (só leitura) — **proposta, endpoint
+  pronto mas ainda não chamado pelo `index.js`**
 
 > As skills acima descrevem o **contrato de dados** com o SIME (schema dos
 > endpoints, templates), não um agente de IA com skills de verdade — a
@@ -468,6 +477,7 @@ inteiro ainda.
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
 > | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
+> | `sime_escalonamento` | endpoint (`/api/hermes-contatos`) pronto em produção desde 08/08/2026; `index.js` ainda não o chama |
 >
 > A 94ª Zona ainda não tem instância nenhuma.
 
@@ -559,6 +569,19 @@ vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E ap
 logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
 (número/local/município, via `secao_id`). Termina convidando a mandar correção,
 que vai pra `atualizar` — ver `hermes/SIME_hermes_skill_mesarios.md`.
+
+### Endpoint Vercel — contatos por papel (escalonamento)
+```
+POST /api/hermes-contatos
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
+Body: { acao: 'listar' }
+
+→ { ok, zona, contatos: { gestor_prob: [telefones...], coordenador: [telefones...] } }
+```
+Só leitura — telefone vem de `sime_usuarios.telefone_whatsapp` (`ativo=true`),
+cadastrado pelo admin na aba Equipe. Lista vazia = ninguém daquele perfil
+cadastrou telefone ainda, não é erro. Contrato completo e como pluga no loop
+de `sime_notificar`: `hermes/SIME_hermes_skill_escalonamento.md`.
 
 ---
 

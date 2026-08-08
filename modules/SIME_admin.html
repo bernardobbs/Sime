@@ -487,7 +487,7 @@ async function carregarDadosReais(){
   // ou o que foi digitado ali). "Token <tipo> (...)" são usuários fantasma
   // criados pela sime-login pra QR de campo — não são gente da equipe.
   const { data: equipeReal } = await supabase.from('sime_usuarios')
-    .select('id,nome,email,perfil,empresa_id,local_id,ativo');
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp');
   window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
   if (window.renderTeam) window.renderTeam();
 
@@ -785,6 +785,7 @@ function loadTeam(){
       secoes: extra.secoes || [],
       substituto: extra.substituto || '',
       substituto_tel: extra.substituto_tel || '',
+      telefone_whatsapp: u.telefone_whatsapp || extra.telefone_whatsapp || '',
     };
   });
 }
@@ -1406,6 +1407,15 @@ function showMemberModal(m){
         </select>
       </div>
 
+      <!-- Escalonamento: WhatsApp (Gestor de Problemas / Chefe de Cartório) —
+           é pra onde o Hermes manda aviso quando um problema não é resolvido
+           a tempo (10 min sem dono, 30 min sem solução — ver CLAUDE.md). -->
+      <div class="form-group" id="grp-tel-escalonamento" style="display:none">
+        <label>WhatsApp (escalonamento de pânico)</label>
+        <input type="text" id="m-tel" value="${m?.telefone_whatsapp||''}" placeholder="86999998888">
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.</div>
+      </div>
+
       <!-- Escopo: Local (Coord. de Acessibilidade) -->
       <div class="form-group" id="grp-local" style="display:none">
         <label>Local de votação (escopo)</label>
@@ -1464,6 +1474,7 @@ function onPerfilChange(){
   const esc = PERFIS[p]?.escopo || 'tudo';
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
+  show('grp-tel-escalonamento', p==='gestor_prob' || p==='coordenador');
   show('grp-local',      esc==='local');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
@@ -1516,6 +1527,9 @@ async function saveMember(id){
               : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
     substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
+    // Escalonamento de pânico (hermes-contatos.js): só relevante pra quem o
+    // Hermes pode precisar avisar — Gestor de Problemas e Chefe de Cartório.
+    telefone_whatsapp: (perfil==='gestor_prob'||perfil==='coordenador') ? (document.getElementById('m-tel')?.value.replace(/\D/g,'')||'') : '',
   };
   const team=loadTeam();
   const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
@@ -1542,6 +1556,13 @@ async function saveMember(id){
       base.auth_user_id=out.auth_user_id;
       base.usuario_id=out.usuario_id;
       mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
+      // sime-admin-user não aceita telefone — a Edge Function só cria o login
+      // (nome/email/perfil); o telefone de escalonamento é gravado à parte,
+      // aqui, com a sessão normal do admin (mesma RLS do update abaixo).
+      if(base.telefone_whatsapp){
+        const { error: telErr } = await supabase.from('sime_usuarios').update({ telefone_whatsapp: base.telefone_whatsapp }).eq('id', out.usuario_id);
+        if(telErr) showToast('⚠ WhatsApp de escalonamento não sincronizou: '+telErr.message);
+      }
     }catch(e){
       showToast('⚠ Sem conexão — acesso não criado');
       return;
@@ -1551,15 +1572,15 @@ async function saveMember(id){
   if(id){
     const idx=team.findIndex(m=>m.id===id);
     if(idx>-1) team[idx]={...team[idx],...base};
-    // Editando gente real (id vindo de sime_usuarios via loadTeam()): nome e
-    // perfil também precisam mudar lá, senão a edição "salva" mas some no
-    // próximo carregamento — loadTeam() sempre prioriza o banco pra esses
-    // dois campos.
+    // Editando gente real (id vindo de sime_usuarios via loadTeam()): nome,
+    // perfil e telefone de escalonamento também precisam mudar lá, senão a
+    // edição "salva" mas some no próximo carregamento — loadTeam() sempre
+    // prioriza o banco pra esses campos.
     if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
-      const { error } = await supabase.from('sime_usuarios').update({ nome, perfil }).eq('id', id);
+      const { error } = await supabase.from('sime_usuarios').update({ nome, perfil, telefone_whatsapp: base.telefone_whatsapp||null }).eq('id', id);
       if(error){ showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
       const u = window.EQUIPE_REAL.find(u=>u.id===id);
-      if(u && !error){ u.nome = nome; u.perfil = perfil; }
+      if(u && !error){ u.nome = nome; u.perfil = perfil; u.telefone_whatsapp = base.telefone_whatsapp||null; }
     }
   } else {
     // usuario_id: o real sime_usuarios.id, quando saveMember() acabou de criar
