@@ -546,6 +546,10 @@ let audioCtx    = null;
 function beep(){
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    // Sem gesto do usuário (TV só de olhar), o contexto nasce 'suspended' e
+    // o som não sai, sem erro nenhum — resume() aqui é melhor esforço, não
+    // garantia contra a política de autoplay em todo navegador/TV box.
+    if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
     const o=audioCtx.createOscillator(),g=audioCtx.createGain();
     o.connect(g);g.connect(audioCtx.destination);
     o.frequency.setValueAtTime(880,audioCtx.currentTime);

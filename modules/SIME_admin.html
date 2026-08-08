@@ -25,6 +25,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .user-name{font-size:.72rem;font-weight:700;}
 .user-role{font-size:.6rem;color:var(--text2);}
 .clock{font-size:.75rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Saúde de sincronização (regra 5, CLAUDE.md) — o Admin grava direto no
+   Supabase, sem fila offline (diferente dos módulos de campo): não faz
+   sentido fingir "vai tentar de novo sozinho" aqui. O badge reflete a
+   verdade — se a última gravação foi bem-sucedida ou falhou — em vez de
+   simular uma fila que não existe. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d4f0e0);color:var(--green,#2e7d52);}
+.sync-badge.sync-fail{background:var(--red-bg,#f8d7da);color:var(--red,#c0392b);}
 
 /* NAV TABS */
 .nav-tabs{background:var(--card);border-bottom:1px solid var(--border);padding:0 20px;display:flex;overflow-x:auto;flex-shrink:0;}
@@ -210,6 +218,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="user-role" id="u-role">Coordenador Geral</div>
       </div>
     </div>
+    <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
     <div class="clock" id="clock">--:--</div>
     <button id="btn-logout" onclick="window.simeLogout && window.simeLogout()" title="Sair do sistema"
       style="display:none;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
@@ -688,6 +697,23 @@ const SECTIONS_FALLBACK = [
   {n:'0001',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0002',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0003',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0004',loc:'EMATER',city:'Campo Maior'},{n:'0005',loc:'SAAE',city:'Campo Maior'},{n:'0006',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0012',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0014',loc:'EMATER',city:'Campo Maior'},{n:'0015',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0016',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0017',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0018',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0019',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0020',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0029',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0030',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0031',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0033',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0034',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0035',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0036',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0037',loc:'EMATER',city:'Campo Maior'},{n:'0038',loc:'EMATER',city:'Campo Maior'},{n:'0044',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0045',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0046',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0047',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0049',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0050',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0062',loc:'FSESP',city:'Campo Maior'},{n:'0063',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0064',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0065',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0066',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0071',loc:'CAIC',city:'Campo Maior'},{n:'0074',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0079',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0080',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0081',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0085',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0086',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0087',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0088',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0089',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0090',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0101',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0102',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0103',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0112',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0115',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0116',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0117',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0122',loc:'FSESP',city:'Campo Maior'},{n:'0123',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0124',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0125',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0126',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0128',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0132',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0133',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0135',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0136',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0137',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0138',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0139',loc:'Grupo Escolar',city:'Jatobá do Piauí'},{n:'0140',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0141',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0144',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0145',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0147',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0148',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0149',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0151',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0152',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0155',loc:'CAIC',city:'Campo Maior'},{n:'0156',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0157',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0158',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0159',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0160',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0162',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0163',loc:"Salão Com. 'Mario Cazuza'",city:'Campo Maior'},{n:'0164',loc:'Salão Com. Santo Antônio',city:'Campo Maior'},{n:'0165',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0166',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0167',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0168',loc:'G.E. Prof. Francisco Luis',city:'Jatobá do Piauí'},{n:'0171',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0172',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0173',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0174',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0175',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0176',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0177',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0178',loc:'U.E. José Cândido Gaioso',city:'Jatobá do Piauí'},{n:'0179',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0180',loc:'U.E. José Gomes de Oliveira',city:'Campo Maior'},{n:'0181',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0185',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0186',loc:'Esc. Reassentamento Corredores',city:'Campo Maior'},{n:'0187',loc:'Esc. Mun. R.A. Maximino',city:'Campo Maior'},{n:'0188',loc:'Escola Mun. da Montanha',city:'Jatobá do Piauí'},{n:'0189',loc:'G.E. Manoel Pereira dos Reis',city:'Sigefredo Pacheco'},{n:'0191',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0192',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0193',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0194',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0195',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0196',loc:'U.E. José Gonçalves Oliveira',city:'Campo Maior'},{n:'0197',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0198',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0199',loc:'U.E. Rafael Nogueira Passos',city:'Jatobá do Piauí'},{n:'0200',loc:'Salão Comunitário',city:'Jatobá do Piauí'},{n:'0201',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0202',loc:'CAIC',city:'Campo Maior'},{n:'0203',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0204',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0205',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0206',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0207',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0208',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0209',loc:'Assoc. Moradores Tangará',city:'Campo Maior'},{n:'0210',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0211',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0212',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0213',loc:'U.E. Manoel Rodrigues Melo',city:'Sigefredo Pacheco'},{n:'0214',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0215',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0216',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0217',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0218',loc:'Posto Saúde da Varjota',city:'Campo Maior'},{n:'0219',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0220',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0221',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0222',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0223',loc:'CAIC',city:'Campo Maior'},{n:'0224',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0225',loc:'Esc. Mun. A.F. Ribeiro Paz',city:'Jatobá do Piauí'},{n:'0226',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0227',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0228',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0229',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0230',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0231',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0232',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0233',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0234',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0235',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0236',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0237',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0238',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0239',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0240',loc:'IFPI',city:'Campo Maior'},{n:'0241',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0242',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0243',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0244',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0245',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0246',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0247',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0248',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0249',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0250',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0251',loc:'IFPI',city:'Campo Maior'},{n:'0252',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0253',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0254',loc:'Creche Vovô José',city:'Campo Maior'},{n:'0255',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0256',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0257',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0258',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0259',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0260',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0261',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0146',loc:'U.E. Antônio Rodrigues',city:'Campo Maior'}
 ];
 var SECTIONS = SECTIONS_FALLBACK;
+
+// ══════════════════════════════════════════════
+// SAÚDE DE SINCRONIZAÇÃO — regra 5 do CLAUDE.md
+// ══════════════════════════════════════════════
+// O Admin grava direto no Supabase, sem fila offline IndexedDB (diferente
+// dos módulos de campo) — não há o que "tentar de novo sozinho" aqui. O
+// badge reflete a verdade sobre a ÚLTIMA gravação em vez de simular uma
+// fila que não existe: fica escondido até a primeira escrita, mostra 🟢
+// depois de um sucesso e 🔴 depois de uma falha (some sozinho ao suceder
+// de novo). Chamado por trackSync(true/false) em cada função de escrita.
+function trackSync(ok){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  el.style.display = 'flex';
+  if(ok){ el.className = 'sync-badge sync-ok'; el.textContent = '🟢 Sync'; }
+  else  { el.className = 'sync-badge sync-fail'; el.textContent = '🔴 Falhou salvar'; }
+}
 
 // Declarados aqui em cima (não perto de renderMidias()/filterTable(), onde
 // ficavam antes) porque essas duas funções podem rodar cedo no carregamento
@@ -1246,7 +1272,8 @@ async function salvarSec(n){
     p_observacao: document.getElementById('f-obs').value,
     p_origem: 'admin',
   });
-  if(error){ showToast('⚠ Falha ao salvar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ Falha ao salvar: '+error.message); return; }
+  trackSync(true);
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
   // Sem renderDash()/renderTable() manual: o Realtime (iniciarMesaEstadoReal,
@@ -1334,7 +1361,8 @@ async function salvarEvento(){
   } else if(tipo==='obs'){ payload.p_observacao = document.getElementById('ev-val').value; }
 
   const { error } = await supabase.rpc('sime_acao_mesa', payload);
-  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ Falha ao registrar: '+error.message); return; }
+  trackSync(true);
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
 }
 
@@ -1552,7 +1580,8 @@ async function saveMember(id){
         body:JSON.stringify({ nome, email, perfil }),
       });
       const out=await resp.json().catch(()=>({}));
-      if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      if(!resp.ok){ trackSync(false); showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      trackSync(true);
       base.auth_user_id=out.auth_user_id;
       base.usuario_id=out.usuario_id;
       mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
@@ -1561,9 +1590,10 @@ async function saveMember(id){
       // aqui, com a sessão normal do admin (mesma RLS do update abaixo).
       if(base.telefone_whatsapp){
         const { error: telErr } = await supabase.from('sime_usuarios').update({ telefone_whatsapp: base.telefone_whatsapp }).eq('id', out.usuario_id);
-        if(telErr) showToast('⚠ WhatsApp de escalonamento não sincronizou: '+telErr.message);
+        if(telErr){ trackSync(false); showToast('⚠ WhatsApp de escalonamento não sincronizou: '+telErr.message); }
       }
     }catch(e){
+      trackSync(false);
       showToast('⚠ Sem conexão — acesso não criado');
       return;
     }
@@ -1578,7 +1608,8 @@ async function saveMember(id){
     // prioriza o banco pra esses campos.
     if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
       const { error } = await supabase.from('sime_usuarios').update({ nome, perfil, telefone_whatsapp: base.telefone_whatsapp||null }).eq('id', id);
-      if(error){ showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
+      if(error){ trackSync(false); showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
+      else trackSync(true);
       const u = window.EQUIPE_REAL.find(u=>u.id===id);
       if(u && !error){ u.nome = nome; u.perfil = perfil; u.telefone_whatsapp = base.telefone_whatsapp||null; }
     }
@@ -1680,7 +1711,8 @@ async function deleteMember(id){
   const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
   if(eraReal){
     const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
-    if(error){ showToast('⚠ Falha ao remover: '+error.message); return; }
+    if(error){ trackSync(false); showToast('⚠ Falha ao remover: '+error.message); return; }
+    trackSync(true);
     window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
   }
   saveTeam(loadTeam().filter(m=>m.id!==id));
@@ -1808,7 +1840,8 @@ async function excluirSecao(id){
   const s=_secoesCache.find(x=>x.id===id); if(!s) return;
   if(!confirm(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`)) return;
   const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
-  if(error){ showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); return; }
+  if(error){ trackSync(false); showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); return; }
+  trackSync(true);
   showToast('✓ Seção excluída');
   await openSecoesManager();
   if(window.carregarDadosReais) await carregarDadosReais();
@@ -2160,7 +2193,8 @@ async function coletarMidia(n){
     p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
     p_status: 'coletada', p_tipo: 'dedicada',
   });
-  if(error){ showToast('⚠ Falha ao registrar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ Falha ao registrar: '+error.message); return; }
+  trackSync(true);
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
   // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o
   // UPDATE via Realtime e re-renderiza sozinho.
@@ -2237,6 +2271,7 @@ async function atribuirTransmissao(){
     });
     if(error) falhas++; else ok++;
   }));
+  trackSync(falhas === 0);
   showToast(falhas ? `⚠ ${ok} atribuídas, ${falhas} falharam` : `✓ ${ok} seções atribuídas`);
   // Sem renderMidias() manual: subscribeMidias recebe o UPDATE via Realtime.
 }

@@ -303,6 +303,10 @@ function initAudio(){ if(!audioCtx) audioCtx = new(window.AudioContext||window.w
 
 function tocarAlarme(){
   initAudio();
+  // Sem gesto do usuário (TV só de olhar), o contexto nasce 'suspended' e o
+  // som não sai, sem erro nenhum — resume() aqui é melhor esforço, não
+  // garantia contra a política de autoplay em todo navegador/TV box.
+  if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
   // Alarme: 3 bips rápidos e urgentes
   [0, 0.25, 0.5].forEach(t => {
     const o = audioCtx.createOscillator();

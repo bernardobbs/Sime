@@ -21,6 +21,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .h-title{font-weight:700;font-size:.92rem;}
 .h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
 .h-clock{font-size:.78rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — sem isso o conferente
+   não tinha como saber se "rota pronta"/"saída registrada" chegou de fato
+   ao cartório ou só ficou na fila offline do aparelho. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;}
+.sync-badge.sync-ok  {background:var(--green-bg);color:var(--green);}
+.sync-badge.sync-pend{background:var(--yellow-bg);color:var(--yellow);}
 
 /* ── VIEWS ── */
 .view{display:none;flex:1;flex-direction:column;}
@@ -160,6 +166,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-user-nome" id="h-user-nome"></div>
     <div class="h-user-rotas" id="h-user-rotas"></div>
   </div>
+  <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
   <div class="h-clock" id="clock">--:--</div>
 </div>
 
@@ -344,10 +351,22 @@ async function tentarLoginCampo(token, pin) {
   if (!client) return { ok: false, rotas: [] };
   campoClient = client;
   await resolverEscopo();
-  iniciarRetryPeriodico(syncQueueFn);
+  iniciarRetryPeriodico(syncQueueFn, (pendentes) => updateSyncBadge(pendentes));
   return { ok: true, rotas: (rotas || []).map(c => 'Rota ' + String(c).padStart(3, '0')) };
 }
 window.tentarLoginCampo = tentarLoginCampo;
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
 </script>
 <script>
 // ══════════════════════════════════════════════

@@ -571,6 +571,14 @@ PRESETS.bip=(ctx,vol)=>beepRaw(ctx,660,440,vol*.28,.2);
 function tocarSom(cat){
   if(sonsCfg.muted) return;
   initAudio();
+  // Sem gesto do usuário (esta TV é só pra olhar, ninguém toca), o
+  // AudioContext nasce 'suspended' e o som simplesmente não sai — sem
+  // erro nenhum, o o.start() roda mas não produz áudio. resume() aqui é o
+  // melhor esforço: funciona em boa parte dos navegadores/TV boxes de
+  // sinalização digital, mas não é garantia contra a política de autoplay
+  // mais estrita — o alerta visual (badge/aba de problemas) continua sendo
+  // a via principal, o som é reforço.
+  if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
   const cfg=sonsCfg[cat];
   const vol=(cfg.vol||70)/100;
   if(cfg.custom){
