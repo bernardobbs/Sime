@@ -459,20 +459,23 @@ async function carregarZonas(){
 // a expiração dos tokens — que sai daí — ia junto. Agora o banco manda, e o
 // localStorage segue existindo para o painel continuar de pé sem sessão.
 //
-// O banco guarda um subconjunto: data_dx_ini, data_d1, data_d, horario_ab,
-// horario_enc e ativa. Nome da eleição, início da distribuição e intervalo
-// entre saídas não têm coluna e continuam só locais.
+// O banco guarda: data_dx_ini, data_d1, data_d, horario_ab, horario_enc,
+// ativa, nome, dist_inicio e intervalo_saidas_min — nome é o mesmo campo nas
+// duas linhas (1º/2º turno) da mesma zona, já que o formulário só tem um
+// input pra ele; dist_inicio/intervalo_saidas_min são por turno, como no
+// localStorage.
 const TURNOS = [1, 2];
 
 function idsDoTurno(t) {
-  return { dx: `t${t}-dx`, d1: `t${t}-d1`, d: `t${t}-d`, ab: `t${t}-ab`, enc: `t${t}-enc` };
+  return { dx: `t${t}-dx`, d1: `t${t}-d1`, d: `t${t}-d`, ab: `t${t}-ab`, enc: `t${t}-enc`,
+           dist: `t${t}-dist`, intervalo: `t${t}-intervalo` };
 }
 
 async function carregarEleicaoDoBanco() {
   if (!window.MINHA_ZONA_ID) return;   // super_admin sem zona: mantém o local
   const { data: linhas } = await supabase
     .from('sime_eleicoes')
-    .select('turno, data_dx_ini, data_d1, data_d, horario_ab, horario_enc, ativa')
+    .select('turno, data_dx_ini, data_d1, data_d, horario_ab, horario_enc, ativa, nome, dist_inicio, intervalo_saidas_min')
     .eq('zona_id', window.MINHA_ZONA_ID);
   if (!linhas?.length) return;
 
@@ -480,7 +483,8 @@ async function carregarEleicaoDoBanco() {
   for (const linha of linhas) {
     const ids = idsDoTurno(linha.turno);
     const por = { [ids.dx]: linha.data_dx_ini, [ids.d1]: linha.data_d1, [ids.d]: linha.data_d,
-                  [ids.ab]: hhmm(linha.horario_ab), [ids.enc]: hhmm(linha.horario_enc) };
+                  [ids.ab]: hhmm(linha.horario_ab), [ids.enc]: hhmm(linha.horario_enc),
+                  [ids.dist]: hhmm(linha.dist_inicio), [ids.intervalo]: linha.intervalo_saidas_min };
     for (const [id, valor] of Object.entries(por)) {
       const el = document.getElementById(id);
       if (el && valor) el.value = valor;
@@ -488,6 +492,10 @@ async function carregarEleicaoDoBanco() {
     if (linha.ativa) {
       const radio = document.getElementById('ta-' + linha.turno);
       if (radio) radio.checked = true;
+    }
+    if (linha.nome) {
+      const nomeEl = document.getElementById('cfg-nome-eleicao');
+      if (nomeEl) nomeEl.value = linha.nome;
     }
   }
   // Reflete no localStorage e na UI derivada (fase, linha do tempo, módulos).
@@ -500,14 +508,18 @@ window.salvarEleicaoNoBanco = async function () {
   if (!window.MINHA_ZONA_ID) return { ok: false, motivo: 'sem zona' };
   const ativo = +(document.querySelector('input[name="turno-ativo"]:checked')?.value || 1);
   const valor = (id) => document.getElementById(id)?.value || null;
+  const nome = document.getElementById('cfg-nome-eleicao')?.value?.trim() || null;
 
   const linhas = TURNOS.map((t) => {
     const ids = idsDoTurno(t);
+    const intervalo = valor(ids.intervalo);
     return {
       zona_id: window.MINHA_ZONA_ID, turno: t,
       data_dx_ini: valor(ids.dx), data_d1: valor(ids.d1), data_d: valor(ids.d),
       horario_ab: valor(ids.ab), horario_enc: valor(ids.enc),
       ativa: t === ativo,
+      nome, dist_inicio: valor(ids.dist),
+      intervalo_saidas_min: intervalo ? parseInt(intervalo, 10) : null,
     };
   // Turno sem Dia D não é gravado: data_d é o que identifica a eleição, e uma
   // linha vazia de 2º turno viraria "eleição ativa" fantasma nas consultas.

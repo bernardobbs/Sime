@@ -313,10 +313,15 @@ Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 (zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
 Ainda só em `localStorage`:
-- **Nome da eleição, início da distribuição e intervalo entre saídas** — não
-  têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
 - **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
   escrito pelos módulos e lido pelas TVs.
+
+**Nome da eleição, início da distribuição e intervalo entre saídas** —
+concluído: `sime_eleicoes` ganhou `nome`/`dist_inicio`/`intervalo_saidas_min`
+(mesmo padrão dos demais campos — banco é a fonte, localStorage é a cópia
+offline). `getEleicaoAtiva()` (`sime_dados.js`) já devolve os três; `nome` é
+compartilhado entre as duas linhas (1º/2º turno) da mesma zona, já que o
+formulário só tem um campo pra ele.
 
 Cadastro/edição de ator em `SIME_atores.html` grava direto em `sime_atores`
 com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravava

@@ -1918,14 +1918,14 @@ function renderConfig(){
   if(!alvo) return; // aba ainda não montada quando iniciarMesaEstadoReal() chama isto
   // sime_eleicoes (Supabase) é a fonte — antes esta aba só lia sime_eleicao_v1
   // do localStorage, que só existe no navegador de quem abriu o Principal.
-  // "Nome da eleição" não tem coluna ainda (pendência conhecida), então
-  // continua vindo do local, como cópia melhor que nada.
+  // "Nome da eleição" agora também vem do banco (getEleicaoAtiva); o local
+  // continua como fallback só pra zona que salvou antes desta coluna existir.
   let nomeLocal = '';
   try{ nomeLocal = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')?.nome || ''; }catch(e){}
   const real = window.ELEICAO_ATIVA;
   if(real){
     alvo.innerHTML=`
-      <strong>Eleição:</strong> ${nomeLocal||'Não configurada'}<br>
+      <strong>Eleição:</strong> ${real.nome||nomeLocal||'Não configurada'}<br>
       <strong>Turno ativo:</strong> ${real.turno}º turno<br>
       <strong>Dia D:</strong> ${real.data_d?new Date(real.data_d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
       <strong>Abertura:</strong> ${(real.horario_ab||'').slice(0,5)||'—'} · <strong>Encerramento:</strong> ${(real.horario_enc||'').slice(0,5)||'—'}`;
