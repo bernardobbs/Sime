@@ -1,5 +1,11 @@
 # Patch: um Pi, dois números, cobrindo as duas zonas — preparado em 08/08/2026
 
+> **Superado por `hermes/PATCH_CONSOLIDADO_2026-08-08.md`.** Este documento
+> foi incorporado lá junto com o autoatendimento e o escalonamento, numa
+> única sequência de aplicação consistente. **Aplicar o consolidado, não
+> este** — o texto abaixo continua válido como explicação do trade-off
+> (único Pi, raio de impacto) e da arquitetura de fundo.
+
 ## Contexto e trade-off — ler antes de aplicar
 
 Hoje o Pi roda **um processo** (`hermes`), com `HERMES_BACKUP_ATIVO=true`

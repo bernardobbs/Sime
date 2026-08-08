@@ -1,5 +1,12 @@
 # Patches pendentes pro Hermes (Raspberry Pi) — preparado em 08/08/2026
 
+> **Superado por `hermes/PATCH_CONSOLIDADO_2026-08-08.md`.** Depois de
+> decidir cobrir as duas zonas no mesmo Pi, o patch multi-zona mudou a
+> assinatura de `services/simeApi.js` (toda chamada passa a exigir `zona`),
+> o que o código deste documento não previa. **Aplicar o consolidado, não
+> este** — o texto abaixo continua válido só como contrato/rationale de cada
+> ação (`consultar`, `hermes-contatos`), não como código pronto pra colar.
+
 Este documento existe porque **o `index.js` real do Hermes nunca foi
 versionado em repositório nenhum** — ele só existe no Raspberry Pi
 (`/home/admin/hermes-agent`, ver `hermes/HERMES_RUNTIME.md`). Tudo que seguir

@@ -390,9 +390,11 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   isso hoje é redundância de **sessão** pra 7ª — os dois números compartilham
   o mesmo `HERMES_SECRET`, não dá cobertura à 94ª por si só. Fazer os dois
   números monitorarem grupos das duas zonas é mudança de arquitetura maior
-  (grupo→zona, Bearer por zona, filas por zona) — patch pronto pra aplicar em
-  `hermes/PATCH_MULTI_ZONA_MESMO_PI.md`, com o trade-off explícito: junta o
-  raio de impacto de uma queda do Pi inteiro nas duas zonas (a redundância só
+  (grupo→zona, Bearer por zona, filas por zona) — patch consolidado pronto
+  pra aplicar em `hermes/PATCH_CONSOLIDADO_2026-08-08.md` (junto com
+  autoatendimento e escalonamento, numa sequência só), com o trade-off
+  explícito: junta o raio de impacto de uma queda do Pi inteiro nas duas
+  zonas (a redundância só
   cobre a sessão do WhatsApp cair, não o Pi cair).
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
