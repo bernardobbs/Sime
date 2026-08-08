@@ -75,25 +75,45 @@ body { display:flex; flex-direction:column; }
 </div>
 <script type="module">
 import { bootstrapTvSession } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getZonaInfo } from './sime_dados.js';
+import { initSimeDados, getSecoes, getZonaInfo, getEleicaoAtiva } from './sime_dados.js';
+import { subscribeCargaLacre } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV (mesmos valores públicos do
 // projeto Supabase — anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
 
 window.SIME_TOTAL_REAL = null; // preenchido via Supabase quando a sessão da TV existir
+// Contagem real de carga/preparação/lacre — antes esta TV só lia
+// localStorage['sime_lacre_v3'], que só existe no navegador de quem
+// preencheu; numa TV real (outro aparelho) ficava sempre em 0%, sem
+// Realtime nenhum (achado crítico da auditoria de UI/UX).
+window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
 
 (async () => {
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
   initSimeDados(client);
-  const [secoes, zona] = await Promise.all([
+  const [secoes, zona, eleicao] = await Promise.all([
     getSecoes({ fallback: null }),
     getZonaInfo({ fallback: null }),
+    getEleicaoAtiva({ fallback: null }),
   ]);
   if (secoes) window.SIME_TOTAL_REAL = secoes.length;
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
-  if (window.updateBars) window.updateBars(); // não espera o próximo tick de 3s
+  if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
+
+  async function refetch() {
+    const { data } = await client.from('sime_carga_lacre').select('carga,preparacao,lacre').eq('eleicao_id', eleicao.id);
+    let c = 0, p = 0, l = 0;
+    for (const r of data || []) { if (r.carga) c++; if (r.preparacao) p++; if (r.lacre) l++; }
+    window.SIME_CARGA_LACRE_REAL = { c, p, l };
+    if (window.updateBars) window.updateBars();
+  }
+  await refetch();
+  // Coordenador de Preparação grava; esta TV só lê — sem interação, então
+  // um refetch completo a cada mudança é simples e barato (no máximo uma
+  // linha por seção da zona) em vez de reconciliar incrementalmente.
+  subscribeCargaLacre(client, () => refetch());
 })();
 </script>
 <script>
@@ -117,7 +137,11 @@ function updateBars(){
   const TOTAL=calcTotal();
   document.getElementById('fc-total').textContent=TOTAL;
   let c=0,p=0,l=0;
-  try{const raw=localStorage.getItem('sime_lacre_v3');if(raw){Object.values(JSON.parse(raw)).forEach(v=>{if(v.carga)c++;if(v.prep)p++;if(v.lacre)l++;});}}catch(e){}
+  if (window.SIME_CARGA_LACRE_REAL) {
+    ({ c, p, l } = window.SIME_CARGA_LACRE_REAL);
+  } else {
+    try{const raw=localStorage.getItem('sime_lacre_v3');if(raw){Object.values(JSON.parse(raw)).forEach(v=>{if(v.carga)c++;if(v.prep)p++;if(v.lacre)l++;});}}catch(e){}
+  }
   const pct=v=>Math.round(v/TOTAL*100);
   document.getElementById('b-carga').style.width=pct(c)+'%'; document.getElementById('p-carga').textContent=pct(c)+'%';
   document.getElementById('b-prep').style.width=pct(p)+'%';  document.getElementById('p-prep').textContent=pct(p)+'%';

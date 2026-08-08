@@ -25,6 +25,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .logo{width:32px;height:32px;border-radius:7px;flex-shrink:0;background:#2c2c2c;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.85rem;color:#fff;}
 .h-title{font-weight:700;font-size:0.92rem;}
 .h-sub{font-size:0.68rem;color:var(--text2);margin-top:1px;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — antes carga/preparação/
+   lacre gravavam só em localStorage, sem fila offline nem indicador nenhum. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;margin-left:auto;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d8f0e4);color:var(--green,#4a8c6a);}
+.sync-badge.sync-pend{background:var(--carga-bg);color:var(--carga);}
 .prereq-legend{display:flex;align-items:center;gap:4px;font-size:0.67rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
 .prereq-legend .arrow{color:var(--text3);}
 .step.c{color:var(--carga);font-weight:700;} .step.p{color:var(--prep);font-weight:700;} .step.l{color:var(--lacre);font-weight:700;}
@@ -131,6 +136,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div class="h-title">SIME Coordenador de Preparação</div>
       <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
     </div>
+    <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
   </div>
   <div class="prereq-legend">
     <span class="step c">📦 Carga</span><span class="arrow">→</span>
@@ -172,17 +178,42 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getZonaInfo } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getZonaInfo, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 import { SIME_CONFIG } from './sime_config.js';
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
 
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
 function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+// acao ignorado (mesma assinatura de sime_offline_queue.js) — upsert em
+// sime_carga_lacre substitui a RPC sime_acao_mesa usada pelos módulos de
+// campo: aqui quem grava é o admin autenticado (e-mail/senha), com a
+// própria sessão/RLS, não um token anônimo.
+async function syncQueueFn(acao, dados) {
+  const { error } = await supabase.from('sime_carga_lacre').upsert(dados, { onConflict: 'eleicao_id,secao_id' });
+  if (error) throw error;
+}
+
+window.simeCoordPrep = {
+  syncCargaLacre(secaoNumero, estado) {
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId || !eleicaoId) return;
+    const dados = { eleicao_id: eleicaoId, secao_id: secaoId, carga: estado.carga, preparacao: estado.prep, lacre: estado.lacre };
+    syncQueueFn('carga_lacre', dados).catch(() => enqueue('carga_lacre', dados));
+  },
+};
 
 async function carregarDadosReais(){
   initSimeDados(supabase);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
+    for (const s of secoesReais) secaoIdPorNumero[s.numero] = s.id;
     window.SECOES = secoesReais.map(s => ({
       n: String(s.numero).padStart(4, '0'),
       local: s.local_nome,
@@ -193,8 +224,27 @@ async function carregarDadosReais(){
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
     const zona = await getZonaInfo({ fallback: null });
-    if (window.recarregarAppComSecoesNovas) window.recarregarAppComSecoesNovas(zona);
+
+    // Estado real de carga/preparação/lacre já gravado (outro coordenador,
+    // outra sessão) — sem isso, quem abre a tela de novo veria tudo
+    // reiniciado, mesmo já tendo sido marcado por outro aparelho.
+    let cargaLacreReal = null;
+    if (eleicaoId) {
+      const { data } = await supabase.from('sime_carga_lacre').select('secao_id, carga, preparacao, lacre').eq('eleicao_id', eleicaoId);
+      if (data) {
+        const idParaNumero = {};
+        for (const s of secoesReais) idParaNumero[s.id] = String(s.numero).padStart(4, '0');
+        cargaLacreReal = {};
+        for (const row of data) {
+          const n = idParaNumero[row.secao_id];
+          if (n) cargaLacreReal[n] = { carga: row.carga, prep: row.preparacao, lacre: row.lacre };
+        }
+      }
+    }
+
+    if (window.recarregarAppComSecoesNovas) window.recarregarAppComSecoesNovas(zona, cargaLacreReal);
   }
+  if (eleicaoId) iniciarRetryPeriodico(syncQueueFn, (pendentes) => window.updateSyncBadge && window.updateSyncBadge(pendentes));
 }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -419,7 +469,22 @@ function toggle(sec,field){
   if(newVal && !canMark(sec,field)){ showToast(field==='prep'?'📦 Faça a carga antes.':'🔧 Conclua a preparação antes.'); return; }
   state[sec][field] = newVal; cascade(sec,field,newVal);
   save(); refreshCard(sec); updateStats(); applyVisibility();
+  if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(sec, state[sec]);
 }
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.style.display = 'flex';
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
+window.updateSyncBadge = updateSyncBadge;
 
 function badgeHTML(n){ const s=state[n]; const c=(s.carga?1:0)+(s.prep?1:0)+(s.lacre?1:0); if(c===3)return'<div class="sec-badge sb-done">✅ Pronta</div>'; if(c>0)return'<div class="sec-badge sb-partial">Parcial</div>'; return'<div class="sec-badge sb-pending">Pendente</div>'; }
 
@@ -538,7 +603,14 @@ function applyVisibility(){
   document.querySelectorAll('.mun-group').forEach(grp=>{ grp.classList.toggle('hidden', !munVis.has(grp.dataset.mun)); });
 }
 
-function resetAll(){ if(!confirm('Resetar todas as marcações?'))return; SECOES.forEach(s=>{state[s.n]={carga:false,prep:false,lacre:false};}); save(); buildList(); updateStats(); }
+function resetAll(){
+  if(!confirm('Resetar todas as marcações?'))return;
+  SECOES.forEach(s=>{
+    state[s.n]={carga:false,prep:false,lacre:false};
+    if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(s.n, state[s.n]);
+  });
+  save(); buildList(); updateStats();
+}
 
 // iniciarRelogio() vem de sime_ui_utils.js
 iniciarRelogio('h-time');
@@ -548,10 +620,13 @@ iniciarRelogio('h-time');
 // marcado) e substitui os totais fixos do cabeçalho/rodapé (antes hardcoded
 // pra 7ª Zona: "174 seções", "63 locais", "34.967 eleitores") pelos números
 // reais da zona autenticada.
-function recarregarAppComSecoesNovas(zona){
+function recarregarAppComSecoesNovas(zona, cargaLacreReal){
   const estadoAntigo = state;
   state = {};
-  SECOES.forEach(s => { state[s.n] = estadoAntigo[s.n] || {carga:false, prep:false, lacre:false}; });
+  // Banco é a fonte quando existe (outro coordenador/aparelho já pode ter
+  // marcado); localStorage cobre só o que ainda não foi confirmado no
+  // servidor (offline) ou o que este mesmo aparelho já tinha antes do login.
+  SECOES.forEach(s => { state[s.n] = cargaLacreReal?.[s.n] || estadoAntigo[s.n] || {carga:false, prep:false, lacre:false}; });
 
   const totalEleitores = SECOES.reduce((acc, s) => acc + (s.aptos || 0), 0);
   const totalLocais = new Set(SECOES.map(s => s.local)).size;

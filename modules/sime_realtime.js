@@ -43,6 +43,11 @@ export function subscribeMidias(client, onChange) { return subscribeTable(client
 // nesta tabela a cada ciclo; sem isso o painel só atualizaria no refresh manual.
 export function subscribeHeartbeat(client, onChange) { return subscribeTable(client, 'sime_heartbeat', onChange); }
 
+// Carga/preparação/lacre (Coordenador de Preparação → TV Preparação) — sem
+// isso a TV (outro dispositivo físico) nunca saberia que o coordenador
+// marcou uma urna, só o refetch manual.
+export function subscribeCargaLacre(client, onChange) { return subscribeTable(client, 'sime_carga_lacre', onChange); }
+
 // Variante para um CONJUNTO de seções — acessibilidade (as seções de um local),
 // motorista e instalador (as da rota). O filtro `in` evita que o celular do
 // operador receba os eventos das outras ~170 seções da zona no Dia D, que é o
