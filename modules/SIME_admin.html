@@ -428,7 +428,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <!-- MODAL EDITAR/LANÇAR SEÇÃO -->
 <div class="overlay" id="overlay" onclick="closeModal(event)">
-  <div class="modal" id="modal-body"></div>
+  <div class="modal" id="modal-body" role="dialog" aria-modal="true"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1109,7 +1109,7 @@ function filterTable(){
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>${st?.urna_cartorio?'📦':st?.urna?'🚗':'<span style="color:var(--text3)">—</span>'}</td>
       <td><span class="badge ${txB.cls}">${txB.label}</span></td>
-      <td><button class="btn btn-out btn-xs" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
+      <td><button class="btn btn-out btn-xs" aria-label="Editar seção" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
     </tr>`;
   }).join('');
 }
@@ -1137,7 +1137,7 @@ function openEditSec(n){
         <div class="modal-title">Seção ${parseInt(n)}</div>
         <div class="modal-sub">${sec.loc} · ${sec.city}</div>
       </div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       ${!canEdit?'<div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:8px 12px;font-size:.74rem;color:var(--yellow);margin-bottom:12px">⚠ Seu perfil não permite edição — visualização apenas.</div>':''}
@@ -1261,7 +1261,7 @@ function openNewEvent(){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">📞 Lançar ocorrência por telefone</div><div class="modal-sub">Registre informações recebidas verbalmente</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-group"><label>Número da seção</label>
@@ -1359,8 +1359,8 @@ function renderTeam(){
           ${m.email?`<div class="tc-scope">✉️ ${m.email}</div>`:''}
         </div>
         <div style="margin-left:auto;display:flex;gap:4px;">
-          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
-          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" onclick="editMember('${m.id}')">✏️</button>`:''}
+          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" aria-label="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
+          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" aria-label="Editar membro" onclick="editMember('${m.id}')">✏️</button>`:''}
         </div>
       </div>
       <div class="perm-grid">
@@ -1389,7 +1389,7 @@ function showMemberModal(m){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">${isNew?'Novo membro':'Editar membro'}</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -1599,7 +1599,7 @@ function mostrarSenhaTemporaria(nome, email, senha){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">✓ Acesso criado</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
@@ -1719,14 +1719,14 @@ function renderSecoesManager(){
       <td>${rotaCodigo(s.rota_id)||'—'}</td>
       <td>${s.ativo?'✅':'⛔'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-out btn-xs" onclick="secaoForm('${s.id}')">✏️</button>
-        <button class="btn btn-out btn-xs" onclick="excluirSecao('${s.id}')">🗑</button>
+        <button class="btn btn-out btn-xs" aria-label="Editar seção" onclick="secaoForm('${s.id}')">✏️</button>
+        <button class="btn btn-out btn-xs" aria-label="Excluir seção" onclick="excluirSecao('${s.id}')">🗑</button>
       </td>
     </tr>`).join('');
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">Gerenciar seções (${_secoesCache.length})</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:60vh;overflow:auto">
       <div style="margin-bottom:8px"><button class="btn btn-dark btn-sm" onclick="secaoForm('')">+ Nova seção</button></div>
@@ -1746,7 +1746,7 @@ function secaoForm(id){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">${s?'Editar seção':'Nova seção'}</div></div>
-      <button class="close-btn" onclick="renderSecoesManager()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="renderSecoesManager()">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -1866,10 +1866,12 @@ function renderMesariosManager(){
       <td>${m.nome_completo}<div style="color:var(--text3);font-size:.72rem">${mesFuncaoTxt(m.observacao)}</div></td>
       <td style="white-space:nowrap">${CONF_LABEL[m.confirmacao]||m.confirmacao}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-out btn-xs" title="Confirmado" onclick="setConfirmacao('${m.id}','confirmado')">✅</button>
-        <button class="btn btn-out btn-xs" title="Recusou" onclick="setConfirmacao('${m.id}','recusou')">🚫</button>
-        <button class="btn btn-out btn-xs" title="Substituído" onclick="setConfirmacao('${m.id}','substituido')">🔄</button>
-        <button class="btn btn-out btn-xs" title="Voltar a pendente" onclick="setConfirmacao('${m.id}','pendente')">⏳</button>
+        <div style="display:flex;gap:7px">
+          <button class="btn btn-out btn-xs" title="Confirmado" aria-label="Marcar como confirmado" onclick="setConfirmacao('${m.id}','confirmado')">✅</button>
+          <button class="btn btn-out btn-xs" title="Recusou" aria-label="Marcar como recusou" onclick="setConfirmacao('${m.id}','recusou')">🚫</button>
+          <button class="btn btn-out btn-xs" title="Substituído" aria-label="Marcar como substituído" onclick="setConfirmacao('${m.id}','substituido')">🔄</button>
+          <button class="btn btn-out btn-xs" title="Voltar a pendente" aria-label="Voltar a pendente" onclick="setConfirmacao('${m.id}','pendente')">⏳</button>
+        </div>
       </td>
     </tr>`).join('');
   const opt=(v,txt)=>`<option value="${v}" ${_mesFiltroStatus===v?'selected':''}>${txt}</option>`;
@@ -1878,7 +1880,7 @@ function renderMesariosManager(){
       <div><div class="modal-title">Confirmação de mesários (${total})</div>
       <div style="color:var(--text3);font-size:.78rem">
         ⏳ ${cont.pendente} pendente · ✅ ${cont.confirmado} confirmado · 🚫 ${cont.recusou} recusou · 🔄 ${cont.substituido} substituído</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:62vh;overflow:auto">
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
@@ -1901,6 +1903,14 @@ function renderMesariosManager(){
 async function setConfirmacao(id, status){
   // recusou/substituido ⇒ a pessoa não vai atuar (ativo=false); demais ⇒ ativo=true.
   const ativo = !(status==='recusou' || status==='substituido');
+  // Botões pequenos e colados (✅🚫🔄⏳) — um toque impreciso trocava
+  // "Confirmado" por "Recusou" sem aviso, desativando o mesário na hora.
+  // Confirmação só pro caminho destrutivo, não pra 'confirmado'/'pendente'.
+  if(!ativo){
+    const local=_mesariosCache.find(m=>m.id===id);
+    const nome = local?.nome_completo || 'este mesário';
+    if(!confirm(`Marcar ${nome} como "${CONF_LABEL[status]||status}"? Isso desativa a convocação dele.`)) return;
+  }
   const { error } = await supabase.from('sime_atores')
     .update({ confirmacao:status, ativo }).eq('id',id);
   if(error){ showToast('⚠ Falha ao salvar'); return; }
@@ -1976,6 +1986,17 @@ async function resetarProblemas(){
   const sb = window.supabase;
   const zonaId = window.MINHA_ZONA_ID;
   if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
+
+  // Bloqueio automático a partir do Dia D real: o botão ficava visível pra
+  // sempre, protegido só por um confirm() nativo — a partir de 04/10,
+  // sime_mesa_estado deixa de ser dado de teste e vira a operação de
+  // verdade. Sem window.ELEICAO_ATIVA (offline/sem sessão) não dá pra
+  // checar a data, então segue pro confirm() normal como antes.
+  const hoje = new Date().toISOString().slice(0,10);
+  if(window.ELEICAO_ATIVA?.data_d && hoje >= window.ELEICAO_ATIVA.data_d){
+    showToast('⛔ Bloqueado: o Dia D desta zona já começou — isso apagaria a operação real');
+    return;
+  }
 
   const { data: secoes, error: e0 } = await sb.from('sime_secoes').select('id').eq('zona_id', zonaId);
   if(e0){ showToast('⚠ Falha ao carregar seções: ' + e0.message); return; }

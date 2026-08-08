@@ -22,6 +22,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* BUSCA */
 .search-row{display:flex;gap:8px;flex-wrap:wrap;}
 .search-row input,.search-row select{padding:9px 12px;border-radius:9px;border:1px solid var(--border2);background:var(--card);font-size:.85rem;color:var(--text);outline:none;}
+/* outline:none acima remove o foco nativo — devolvido só no :focus-visible,
+   pra não aparecer em clique de mouse mas continuar visível via teclado. */
+.search-row input:focus-visible,.search-row select:focus-visible,
+.form-group input:focus-visible,.form-group select:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .search-row input{flex:1;min-width:180px;}
 .search-row select{min-width:140px;}
 
@@ -31,7 +35,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ac-info{flex:1;}
 .ac-name{font-weight:800;font-size:.9rem;}
 .ac-detail{font-size:.72rem;color:var(--text2);margin-top:2px;}
-.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;}
+.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;color:#fff;}
 .ac-btn{padding:10px 14px;border-radius:9px;font-size:.78rem;font-weight:800;cursor:pointer;border:none;background:#25d366;color:#fff;display:flex;align-items:center;gap:5px;flex-shrink:0;text-decoration:none;}
 
 /* FUNCAO COLORS */

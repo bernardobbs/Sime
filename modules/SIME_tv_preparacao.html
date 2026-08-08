@@ -23,16 +23,20 @@ body { display:flex; flex-direction:column; }
 .bar-pct.lacre { color:#333; }
 
 .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 40px 16px; }
-.data { font-size:clamp(2rem,7.5vw,5.5rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
+.data { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
 .hora { display:flex; align-items:baseline; line-height:1; }
-.hora-hm { font-size:clamp(7rem,28vw,22rem); font-weight:900; color:#000; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
-.hora-sep { font-size:clamp(7rem,28vw,22rem); font-weight:900; color:#000; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
+.hora-hm { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
+.hora-sep { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.07} }
-.hora-s { font-size:clamp(3.5rem,12vw,9rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(8px,1.8vw,28px); margin-left:clamp(4px,0.5vw,12px); }
+.hora-s { font-size:clamp(1.8rem,6vw,4.5rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(6px,1vw,16px); margin-left:clamp(4px,0.5vw,12px); }
+
+/* Dado que mais importa (status de carga/preparação/lacre) — antes minúsculo
+   e cinza claro no rodapé, atrás de um relógio gigante que domina a tela. */
+.status-hero { font-size:clamp(1.6rem,5.5vw,3.6rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
+.status-hero.done { color:#0a7a3d; }
 
 .footer { padding:10px 52px 14px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #efefef; flex-shrink:0; }
 .f-brand { font-size:0.58rem; letter-spacing:0.2em; text-transform:uppercase; color:#ccc; font-weight:700; }
-.f-status { font-size:clamp(0.6rem,1vw,0.82rem); color:#ccc; letter-spacing:0.1em; text-transform:uppercase; font-weight:500; }
 .f-counts { display:flex; gap:22px; }
 .fc { text-align:center; }
 .fc-val { font-size:clamp(1rem,1.8vw,1.4rem); font-weight:800; line-height:1; }
@@ -58,10 +62,10 @@ body { display:flex; flex-direction:column; }
     <span class="hora-sep">:</span>
     <span class="hora-s"  id="c-s">00</span>
   </div>
+  <div class="status-hero" id="f-status">—</div>
 </div>
 <div class="footer">
   <div class="f-brand">SIME TV Preparação · 7ª Zona/PI</div>
-  <div class="f-status" id="f-status">—</div>
   <div class="f-counts">
     <div class="fc carga"><div class="fc-val" id="fc-carga">—</div><div class="fc-lbl">Carga</div></div>
     <div class="fc prep"> <div class="fc-val" id="fc-prep">—</div><div class="fc-lbl">Prep.</div></div>
@@ -122,7 +126,9 @@ function updateBars(){
   document.getElementById('fc-prep').textContent=p;
   document.getElementById('fc-lacre').textContent=l;
   const f=TOTAL-l;
-  document.getElementById('f-status').textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  const statusEl=document.getElementById('f-status');
+  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  statusEl.classList.toggle('done', l===TOTAL && TOTAL>0);
 }
 updateBars(); setInterval(updateBars,3000);
 </script>

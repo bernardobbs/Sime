@@ -584,14 +584,21 @@ function calcularExpiracao(turno){
   return null;
 }
 
-function criarTokenObj({nome, tipo, rotas=[], local=null, secoes=[], turno, zona, expira_em}){
+// Relógio do servidor (regra 6 do CLAUDE.md — nunca Date.now() pra timestamp
+// de ação). Date.now() só como fallback sem sessão/rede.
+async function serverNow(){
+  try{ const { data } = await supabase.rpc('sime_now'); if(data) return new Date(data).getTime(); }catch(e){}
+  return Date.now();
+}
+
+function criarTokenObj({nome, tipo, rotas=[], local=null, secoes=[], turno, zona, expira_em, criado_em}){
   return {
     id: genId(), pin: genPIN(), nome, tipo, rotas, local, secoes,
-    turno:+turno, zona, criado_em: Date.now(), expira_em, usado_em: null,
+    turno:+turno, zona, criado_em: criado_em ?? Date.now(), expira_em, usado_em: null,
   };
 }
 
-function criarToken(){
+async function criarToken(){
   const nome  = document.getElementById('f-nome').value.trim();
   const tipo  = document.getElementById('f-tipo').value;
   const rotas = getRotasSelecionadas();
@@ -616,6 +623,7 @@ function criarToken(){
     local: tipo === 'coord_acessibilidade' ? local : null,
     secoes: tipo === 'mesario' ? [secaoUnica] : [],
     turno, zona, expira_em: calcularExpiracao(turno),
+    criado_em: await serverNow(),
   });
 
   const tokens = loadTokens();
@@ -668,6 +676,9 @@ async function gerarEmMassa(){
   const turno = document.getElementById('f-turno').value;
   const zona  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
   const expira_em = calcularExpiracao(turno);
+  // Um único horário de servidor pra todo o lote — os tokens nascem juntos,
+  // não faz sentido (nem vale o custo) perguntar sime_now() um a um.
+  const criado_em = await serverNow();
   const tokens = loadTokens();
   const jaExiste = (tipo, chave) => Object.values(tokens).some(t => t.tipo===tipo && chaveEscopo(t)===chave);
   const novos = [];
@@ -675,20 +686,20 @@ async function gerarEmMassa(){
   window.SECOES_REAIS.forEach(s=>{
     const numero = String(s.numero).padStart(4,'0');
     if(jaExiste('mesario', numero)) return;
-    novos.push(criarTokenObj({ nome:`Mesário — Seção ${s.numero}`, tipo:'mesario', secoes:[numero], turno, zona, expira_em }));
+    novos.push(criarTokenObj({ nome:`Mesário — Seção ${s.numero}`, tipo:'mesario', secoes:[numero], turno, zona, expira_em, criado_em }));
   });
 
   window.ROTAS_REAIS.forEach(r=>{
     const rotaLabel = 'Rota ' + r.codigo;
     [['conferente','Conferente'],['motorista','Motorista'],['instalador','Instalador']].forEach(([tipo,label])=>{
       if(jaExiste(tipo, rotaLabel)) return;
-      novos.push(criarTokenObj({ nome:`${label} — ${rotaLabel}`, tipo, rotas:[rotaLabel], turno, zona, expira_em }));
+      novos.push(criarTokenObj({ nome:`${label} — ${rotaLabel}`, tipo, rotas:[rotaLabel], turno, zona, expira_em, criado_em }));
     });
   });
 
   [...new Set(window.SECOES_REAIS.map(s=>s.local_nome))].forEach(local=>{
     if(jaExiste('coord_acessibilidade', local)) return;
-    novos.push(criarTokenObj({ nome:`Acessibilidade — ${local}`, tipo:'coord_acessibilidade', local, turno, zona, expira_em }));
+    novos.push(criarTokenObj({ nome:`Acessibilidade — ${local}`, tipo:'coord_acessibilidade', local, turno, zona, expira_em, criado_em }));
   });
 
   if(!novos.length){ showToast('✓ Todos os tokens já existem — nada pra gerar'); return; }

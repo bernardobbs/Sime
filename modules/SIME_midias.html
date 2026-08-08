@@ -208,6 +208,14 @@ async function resolverEscopo() {
 // isto só tenta propagar pro Supabase quando há sessão, e PODE lançar — o
 // catch do chamador já enfileira de novo pra tentar depois).
 window.simeCampoMidia = {
+  // Relógio do servidor (regra 6 do CLAUDE.md) — usado por serverTs() no
+  // <script> clássico, que não tem acesso direto a campoClient.
+  async now() {
+    if (!campoClient) return null;
+    const { data, error } = await campoClient.rpc('sime_now');
+    if (error || !data) return null;
+    return new Date(data).getTime();
+  },
   async sync(dados) {
     if (!campoClient || !eleicaoId) return;
     const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
@@ -413,12 +421,24 @@ function saveMidiaLocal(n, patch) {
   log('midia_'+patch.status, 'midias', n, patch);
 }
 
-// Timestamp: em produção, chamar sime_now() no Supabase
-function serverTs() { return Date.now(); } // substituir por RPC pós-migração
+// Timestamp de ação: sempre o relógio do servidor (regra 6 do CLAUDE.md —
+// nunca Date.now() pra isto). Date.now() só entra como fallback quando não
+// há sessão/rede pra perguntar ao Supabase — melhor gravar um horário local
+// aproximado do que travar a ação offline.
+async function serverTs() {
+  if (window.simeCampoMidia?.now) {
+    try { const ts = await window.simeCampoMidia.now(); if (ts) return ts; } catch(e) {}
+  }
+  return Date.now();
+}
 
 function log(acao, modulo, secao, payload) {
+  // Trilha local/diagnóstica só (sime_logs_v1) — o registro oficial é
+  // window.simeCampoMidia.log() logo abaixo, que grava em sime_logs no
+  // Supabase com o timestamp do próprio servidor. Chamado em contexto
+  // síncrono demais pra valer a pena esperar sime_now() aqui também.
   const logs = JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
-  logs.unshift({ acao, modulo, secao, payload, ts: serverTs() });
+  logs.unshift({ acao, modulo, secao, payload, ts: Date.now() });
   if (logs.length > 500) logs.splice(400);
   localStorage.setItem(LOG_KEY, JSON.stringify(logs));
   if (window.simeCampoMidia) window.simeCampoMidia.log(acao, secao, payload).catch(()=>{});
@@ -631,7 +651,7 @@ function abrirColeta(n, tipo) {
 
 async function confirmarColeta(n, tipo) {
   const obs = document.getElementById('sh-obs')?.value||'';
-  const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: serverTs() };
+  const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: await serverTs() };
 
   closeSheet();
   try {
@@ -648,7 +668,7 @@ async function confirmarColeta(n, tipo) {
 }
 
 async function marcarDedicada(n) {
-  const dados = { n, status: 'coleta_dedicada', tipo: 'dedicada', ts: serverTs() };
+  const dados = { n, status: 'coleta_dedicada', tipo: 'dedicada', ts: await serverTs() };
   try {
     await syncAction('midia_dedicada', dados);
     showToast('⚡ Seção ' + parseInt(n) + ' marcada para coleta dedicada');
@@ -661,7 +681,7 @@ async function marcarDedicada(n) {
 async function confirmarEntregaTransmissao() {
   const midias = loadMidias();
   const coletadas = Object.entries(midias).filter(([,m])=>m.status==='coletada').map(([n])=>n);
-  const ts = serverTs();
+  const ts = await serverTs();
   coletadas.forEach(n => {
     saveMidiaLocal(n, { status: 'entregue_transmissao', entregue_ts: ts });
   });

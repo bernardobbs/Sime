@@ -66,6 +66,10 @@ const ctx = await b.newContext();
 const p = await ctx.newPage();
 const erros = [];
 p.on('pageerror', (e) => erros.push(String(e)));
+// recusar/substituir desativa a convocação — desde a correção do achado
+// crítico de UX (botões colados demais, toque acidental desativava
+// mesário), essas duas ações pedem confirm() antes de gravar.
+p.on('dialog', (d) => d.accept());
 await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
   await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs() });
 });
