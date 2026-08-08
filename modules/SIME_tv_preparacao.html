@@ -21,6 +21,18 @@ body { display:flex; flex-direction:column; }
 .bar-pct.carga { color:#bbb; }
 .bar-pct.prep  { color:#888; }
 .bar-pct.lacre { color:#333; }
+/* Estado final ("todas lacradas") ganha destaque de verde — antes a paleta
+   inteira ficava em cinza claríssimo, sem nenhum acento mesmo completa
+   (achado "alto" da auditoria). Escopado em body.tudo-lacrado pra cobrir as
+   barras E os contadores do rodapé com um único toggle. */
+body.tudo-lacrado .bar-fill.carga,
+body.tudo-lacrado .bar-fill.prep,
+body.tudo-lacrado .bar-fill.lacre { background:#0a7a3d; }
+body.tudo-lacrado .bar-pct.carga,
+body.tudo-lacrado .bar-pct.prep,
+body.tudo-lacrado .bar-pct.lacre { color:#0a7a3d; }
+body.tudo-lacrado .fc.lacre .fc-val,
+body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
 
 .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 40px 16px; }
 .data { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
@@ -152,7 +164,9 @@ function updateBars(){
   const f=TOTAL-l;
   const statusEl=document.getElementById('f-status');
   statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
-  statusEl.classList.toggle('done', l===TOTAL && TOTAL>0);
+  const tudoLacrado = l===TOTAL && TOTAL>0;
+  statusEl.classList.toggle('done', tudoLacrado);
+  document.body.classList.toggle('tudo-lacrado', tudoLacrado);
 }
 updateBars(); setInterval(updateBars,3000);
 </script>

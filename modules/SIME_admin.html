@@ -79,10 +79,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-xs{padding:3px 7px;font-size:.66rem;}
 
 /* FORM */
+/* Rótulo presente pro leitor de tela sem alterar o layout visual — usado nos
+   campos que só tinham placeholder (achado "alto" da auditoria). */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 .form-group{margin-bottom:11px;}
 .form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
 .form-group input,.form-group select,.form-group textarea{width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.8rem;outline:none;}
 .form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+/* outline:none acima sem nenhum :focus-visible compensatório deixava a
+   navegação por teclado sem indicação nenhuma de foco (achado "alto"). */
+.form-group input:focus-visible,.form-group select:focus-visible,.form-group textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
 /* BADGES */
@@ -115,6 +121,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* TABELA DE SEÇÕES */
 .filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
 .filter-bar input,.filter-bar select{padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);font-size:.78rem;color:var(--text);outline:none;}
+.filter-bar input:focus-visible,.filter-bar select:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .filter-bar input{flex:1;min-width:180px;}
 .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);}
 .data-table{width:100%;border-collapse:collapse;font-size:.78rem;}
@@ -122,9 +129,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .data-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
 .data-table td strong{color:var(--text);}
 .data-table tr:last-child td{border-bottom:none;}
-.data-table tr:hover td{background:var(--bg2);cursor:pointer;}
+/* Hover "clicável" restrito às linhas que de fato respondem ao clique (só a
+   tabela de Seções) — Atores e as tabelas dos modais tinham o mesmo cursor de
+   ponteiro sem nenhuma ação ao clicar (achado "alto" da auditoria). */
+.data-table tr.clicavel:hover td{background:var(--bg2);cursor:pointer;}
 .data-table tr.has-prob td{background:var(--red-bg);}
-.data-table tr.has-prob:hover td{background:#fde8e6;}
+.data-table tr.clicavel.has-prob:hover td{background:#fde8e6;}
 
 /* PROBLEMAS */
 .prob-card{background:var(--card);border:1.5px solid var(--red-bd);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
@@ -177,6 +187,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;}
 .toggle input:checked+.toggle-slider{background:var(--green);}
 .toggle input:checked+.toggle-slider::before{transform:translateX(16px);}
+/* O input fica visualmente escondido (opacity:0) — sem isto, tabular até o
+   checkbox não dava nenhuma indicação visual de foco (achado "alto"). */
+.toggle input:focus-visible+.toggle-slider{box-shadow:0 0 0 2px var(--blue);}
 
 /* TOAST */
 /* .toast.show vem de sime_components.css */
@@ -192,7 +205,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <form id="login-form" style="background:#f9f7f4;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
     <div style="font-weight:800;font-size:1rem;">SIME — Administração</div>
     <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de coordenador.</div>
+    <label for="login-email" class="sr-only">E-mail</label>
     <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <label for="login-pass" class="sr-only">Senha</label>
     <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
     <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
@@ -306,7 +321,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="grid2" style="gap:16px;">
     <div class="card">
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Sessão atual</div>
-      <div class="form-group"><label>Usuário atual</label>
+      <div class="form-group"><label for="cfg-user">Usuário atual</label>
         <select id="cfg-user" onchange="switchUser(this.value)">
           <option value="">— selecionar —</option>
         </select>
@@ -1125,7 +1140,7 @@ function filterTable(){
     const tx = (window.MIDIAS_MAP?.[s.n]?.transmissao_status) || 'pendente';
     const txB = TX_STATUS_BADGE[tx] || TX_STATUS_BADGE.pendente;
     return `
-    <tr class="${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
+    <tr class="clicavel ${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
       <td><strong>${parseInt(s.n)}</strong></td>
       <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.loc}</td>
       <td>${s.city.replace(' do Piauí','').replace(' Pacheco','')}</td>
@@ -1191,7 +1206,7 @@ function openEditSec(n){
             const key=['pres','m1','m2','sec'][i];
             const val=st.mesa?.[key]||0;
             return `<div class="form-group">
-              <label>${m}</label>
+              <label for="mesa-${key}">${m}</label>
               <select id="mesa-${key}"${dis}>
                 <option value="0" ${val===0?'selected':''}>Ausente</option>
                 <option value="1" ${val===1?'selected':''}>Presente</option>
@@ -1231,7 +1246,7 @@ function openEditSec(n){
       <div>
         <div class="sec-title">Fila de votação</div>
         <div class="form-group">
-          <label>Número de pessoas na fila (0 = sem fila)</label>
+          <label for="f-fila">Número de pessoas na fila (0 = sem fila)</label>
           <input type="number" id="f-fila" value="${uni.fila||0}" min="0" max="999"${dis}>
         </div>
       </div>
@@ -1291,13 +1306,13 @@ function openNewEvent(){
       <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-group"><label>Número da seção</label>
+      <div class="form-group"><label for="ev-sec">Número da seção</label>
         <select id="ev-sec">
           <option value="">— selecionar seção —</option>
           ${SECTIONS.map(s=>`<option value="${s.n}">Seção ${parseInt(s.n)} — ${s.loc}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Tipo de ocorrência</label>
+      <div class="form-group"><label for="ev-tipo">Tipo de ocorrência</label>
         <select id="ev-tipo" onchange="updateEvForm()">
           <option value="status">Atualização de status</option>
           <option value="fila">Fila de votação</option>
@@ -1308,7 +1323,7 @@ function openNewEvent(){
         </select>
       </div>
       <div id="ev-extra"></div>
-      <div class="form-group"><label>Recebido por</label>
+      <div class="form-group"><label for="ev-recv">Recebido por</label>
         <input type="text" id="ev-recv" value="${curUser.nome}" placeholder="Nome de quem recebeu a informação">
       </div>
     </div>
@@ -1324,16 +1339,16 @@ function updateEvForm(){
   const tipo = document.getElementById('ev-tipo').value;
   const extra = document.getElementById('ev-extra');
   if(tipo==='fila'){
-    extra.innerHTML='<div class="form-group"><label>Quantidade na fila</label><input type="number" id="ev-val" value="0" min="0" max="999"></div>';
+    extra.innerHTML='<div class="form-group"><label for="ev-val">Quantidade na fila</label><input type="number" id="ev-val" value="0" min="0" max="999"></div>';
   } else if(tipo==='status'){
-    extra.innerHTML=`<div class="form-group"><label>Status informado</label><select id="ev-val">
+    extra.innerHTML=`<div class="form-group"><label for="ev-val">Status informado</label><select id="ev-val">
       <option value="vot">Votação iniciada</option>
       <option value="enc">Votação encerrada</option>
       <option value="urna">Urna recolhida pelo motorista</option>
       <option value="cartorio">Urna chegou ao cartório</option>
     </select></div>`;
   } else if(tipo==='obs'){
-    extra.innerHTML='<div class="form-group"><label>Observação</label><textarea id="ev-val" rows="3" placeholder="Descreva a ocorrência..."></textarea></div>';
+    extra.innerHTML='<div class="form-group"><label for="ev-val">Observação</label><textarea id="ev-val" rows="3" placeholder="Descreva a ocorrência..."></textarea></div>';
   } else { extra.innerHTML=''; }
 }
 
@@ -1421,15 +1436,15 @@ function showMemberModal(m){
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
-        <div class="form-group"><label>Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
+        <div class="form-group"><label for="m-nome">Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
+        <div class="form-group"><label for="m-ini">Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
       </div>
       <div class="form-group">
-        <label>E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
+        <label for="m-email">E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
         <input type="email" id="m-email" value="${m?.email||''}" placeholder="pessoa@tre-pi.jus.br" ${m?.email?'disabled style="opacity:.6"':''}>
         <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
       </div>
-      <div class="form-group"><label>Perfil de acesso</label>
+      <div class="form-group"><label for="m-perfil">Perfil de acesso</label>
         <select id="m-perfil" onchange="onPerfilChange()">
           ${Object.entries(PERFIS).map(([k,v])=>`<option value="${k}" ${m?.perfil===k?'selected':''} >${v.label}</option>`).join('')}
         </select>
@@ -1439,14 +1454,14 @@ function showMemberModal(m){
            é pra onde o Hermes manda aviso quando um problema não é resolvido
            a tempo (10 min sem dono, 30 min sem solução — ver CLAUDE.md). -->
       <div class="form-group" id="grp-tel-escalonamento" style="display:none">
-        <label>WhatsApp (escalonamento de pânico)</label>
+        <label for="m-tel">WhatsApp (escalonamento de pânico)</label>
         <input type="text" id="m-tel" value="${m?.telefone_whatsapp||''}" placeholder="86999998888">
         <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.</div>
       </div>
 
       <!-- Escopo: Local (Coord. de Acessibilidade) -->
       <div class="form-group" id="grp-local" style="display:none">
-        <label>Local de votação (escopo)</label>
+        <label for="m-local">Local de votação (escopo)</label>
         <select id="m-local">
           <option value="">— selecionar local —</option>
           ${[...new Set(SECTIONS.map(s=>s.loc))].sort().map(l=>`<option value="${l}" ${m?.local===l?'selected':''}>${l}</option>`).join('')}
@@ -1470,7 +1485,7 @@ function showMemberModal(m){
 
       <!-- Escopo: Seções designadas (Motoristas / Coletor de Mídias) -->
       <div class="form-group" id="grp-secoes" style="display:none">
-        <label>Seções designadas (números separados por vírgula)</label>
+        <label for="m-secoes">Seções designadas (números separados por vírgula)</label>
         <input type="text" id="m-secoes" value="${(m?.secoes||[]).map(x=>parseInt(x)).join(', ')}" placeholder="ex: 63, 64, 65">
         <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Vazio = nenhuma seção visível.</div>
       </div>
@@ -1478,12 +1493,12 @@ function showMemberModal(m){
       <!-- Substituto temporário (Coletor de Mídias) -->
       <div id="grp-substituto" style="display:none">
         <div class="form-row">
-          <div class="form-group"><label>Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
-          <div class="form-group"><label>WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
+          <div class="form-group"><label for="m-substituto">Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
+          <div class="form-group"><label for="m-subtel">WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
         </div>
       </div>
 
-      <div class="form-group"><label>Cor do avatar</label>
+      <div class="form-group"><label for="m-cor">Cor do avatar</label>
         <input type="color" id="m-cor" value="${m?.cor||'#2a2a2a'}" style="height:36px;padding:2px;">
       </div>
     </div>
@@ -1634,11 +1649,11 @@ function mostrarSenhaTemporaria(nome, email, senha){
     </div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
-      <div class="form-group"><label>E-mail</label>
-        <input type="text" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
+      <div class="form-group"><label for="credenciais-email">E-mail</label>
+        <input type="text" id="credenciais-email" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
       </div>
-      <div class="form-group"><label>Senha temporária</label>
-        <input type="text" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
+      <div class="form-group"><label for="credenciais-senha">Senha temporária</label>
+        <input type="text" id="credenciais-senha" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
       </div>
     </div>
     <div class="modal-footer">
@@ -1680,9 +1695,9 @@ window.exigirTrocaSenha = function(){
     <div class="modal-hdr"><div><div class="modal-title">🔑 Defina sua senha</div></div></div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Este é seu primeiro acesso. Crie uma senha pessoal para continuar.</p>
-      <div class="form-group"><label>Nova senha (mín. 6 caracteres)</label>
+      <div class="form-group"><label for="ts-senha1">Nova senha (mín. 6 caracteres)</label>
         <input type="password" id="ts-senha1" placeholder="nova senha"></div>
-      <div class="form-group"><label>Repita a senha</label>
+      <div class="form-group"><label for="ts-senha2">Repita a senha</label>
         <input type="password" id="ts-senha2" placeholder="repita"></div>
       <div id="ts-erro" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
     </div>
@@ -1782,18 +1797,18 @@ function secaoForm(id){
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label>Número da seção</label>
+        <div class="form-group"><label for="sc-numero">Número da seção</label>
           <input type="number" id="sc-numero" value="${s?s.numero:''}" ${s?'disabled style=\"opacity:.6\"':''} placeholder="ex: 63"></div>
-        <div class="form-group"><label>Eleitores aptos</label>
+        <div class="form-group"><label for="sc-eleitores">Eleitores aptos</label>
           <input type="number" id="sc-eleitores" value="${s?.eleitores??''}" placeholder="ex: 285"></div>
       </div>
-      <div class="form-group"><label>Município</label>
+      <div class="form-group"><label for="sc-municipio">Município</label>
         <input list="sc-cities" id="sc-municipio" value="${s?.municipio||''}" placeholder="Município">
         <datalist id="sc-cities">${cities.map(c=>`<option value="${c}">`).join('')}</datalist>
       </div>
-      <div class="form-group"><label>Local de votação</label>
+      <div class="form-group"><label for="sc-local">Local de votação</label>
         <input type="text" id="sc-local" value="${s?.local_nome||''}" placeholder="Nome do local"></div>
-      <div class="form-group"><label>Rota (opcional)</label>
+      <div class="form-group"><label for="sc-rota">Rota (opcional)</label>
         <select id="sc-rota">
           <option value="">— sem rota —</option>
           ${rotas.map(r=>`<option value="${r.id}" ${s?.rota_id===r.id?'selected':''}>Rota ${r.codigo}</option>`).join('')}

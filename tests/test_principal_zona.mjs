@@ -185,6 +185,29 @@ async function entrar(p) {
   await p.close();
 }
 
+// ── Modais fantasma avisam ANTES do preenchimento, e a "drop zone" não finge ser clicável ──
+{
+  const { p, erros } = await abrir({ perfil: 'super_admin', zona_id: 'z-7' });
+  await p.evaluate(() => window.openModal('nova-zona'));
+  await p.waitForTimeout(150);
+  const avisoNovaZona = await p.locator('.aviso-nao-impl').textContent();
+  check('modal "Nova zona" avisa antes de preencher que nada é salvo', avisoNovaZona.includes('não'), avisoNovaZona);
+
+  await p.evaluate(() => window.closeModal());
+  await p.evaluate(() => window.openModal('config-zona', '7'));
+  await p.waitForTimeout(150);
+  check('modal "Configurar zona" também avisa antes de preencher', (await p.locator('.aviso-nao-impl').count()) === 1);
+  const dropzoneCursor = await p.locator('.dropzone-desativada').evaluate((el) => getComputedStyle(el).cursor);
+  check('"drop zone" sem handler não finge mais ser clicável (cursor não é pointer)', dropzoneCursor !== 'pointer', dropzoneCursor);
+
+  await p.evaluate(() => window.closeModal());
+  await p.evaluate(() => window.openModal('importar-cal'));
+  await p.waitForTimeout(150);
+  check('modal "Importar calendário" avisa que não está implementado', (await p.locator('.aviso-nao-impl').count()) === 1);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
 await b.close();
 
 const falhou = results.filter(r => !r.ok);

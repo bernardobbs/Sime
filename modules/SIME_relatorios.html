@@ -149,10 +149,21 @@ async function recarregar(){
 
 // helpers de render
 function stat(n,l){ return `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
+// Texto livre digitado por mesário/coordenador/admin (município, local,
+// itinerário, observação de log) ia direto pro innerHTML das tabelas, sem
+// escaping — risco real de XSS a partir de qualquer um desses campos
+// (achado "alto" de segurança da auditoria).
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Marca um pedaço de HTML já pronto (os badges/pills montados pelo próprio
+// código, com qualquer texto livre por dentro já escapado à mão) — tabela()
+// escapa toda célula por padrão; só o que passar por aqui foge disso.
+function html(str){ return { __html: str }; }
 function tabela(headers, linhas){
   if(!linhas.length) return '<div class="empty">Sem dados para este relatório.</div>';
-  return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>${linhas.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table><thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+    <tbody>${linhas.map(r=>`<tr>${r.map(c=>`<td>${(c && typeof c==='object' && '__html' in c) ? c.__html : escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 // ── 1. Situação das seções ──
@@ -191,7 +202,7 @@ async function relSecoes(){
     linhas:rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', r.s.eleitores||'—', r.e.fila||'—', r.status]),
   };
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
-    rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', (r.s.eleitores||'—'), (r.e.fila??'—'), `<span class="pill ${r.cls}">${r.status}</span>`]));
+    rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', (r.s.eleitores||'—'), (r.e.fila??'—'), html(`<span class="pill ${r.cls}">${escapeHtml(r.status)}</span>`)]));
 }
 
 // ── 2. Distribuição de urnas ──
@@ -221,7 +232,7 @@ async function relDistribuicao(){
   };
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
     rows.map(r=>[r.r.codigo,(r.r.municipios||[]).join(' / '),(r.r.urnas_estimadas||'—'),
-      `<span style="font-size:.72rem">${r.r.itinerario||'—'}</span>`,r.e.conferente_nome||'—',`<span class="pill ${r.cls}">${r.lab}</span>`]));
+      html(`<span style="font-size:.72rem">${escapeHtml(r.r.itinerario||'—')}</span>`),r.e.conferente_nome||'—',html(`<span class="pill ${r.cls}">${escapeHtml(r.lab)}</span>`)]));
 }
 
 // ── 3. Pânicos e ocorrências ──
@@ -246,7 +257,7 @@ async function relPanicos(){
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
     panicos.map(l=>{
       const cls=/resolv/i.test(l.acao||'')?'ok':'bad';
-      return [fmt(l.ts),secMap[l.secao_id]||'—',`<span class="pill ${cls}">${l.acao||'—'}</span>`,l.modulo||'—',`<span style="font-size:.7rem;color:var(--text3)">${l.payload?JSON.stringify(l.payload):''}</span>`];
+      return [fmt(l.ts),secMap[l.secao_id]||'—',html(`<span class="pill ${cls}">${escapeHtml(l.acao||'—')}</span>`),l.modulo||'—',html(`<span style="font-size:.7rem;color:var(--text3)">${escapeHtml(l.payload?JSON.stringify(l.payload):'')}</span>`)];
     }));
 }
 

@@ -125,6 +125,26 @@ function baseMockConfig() {
   await ctx.close();
 }
 
+// ── 3b. Todas as seções lacradas: destaque de verde (achado "alto") ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_carga_lacre = cfg.sime_secoes.map((s) => ({
+    eleicao_id: 'ele-uuid-1', secao_id: s.id, carga: true, preparacao: true, lacre: true,
+  }));
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tv_preparacao.html?tv_token=TVTOKENX');
+  await p.waitForTimeout(900);
+
+  check('todas lacradas: body ganha a classe de destaque', await p.evaluate(() => document.body.classList.contains('tudo-lacrado')));
+  const corLacre = await p.evaluate(() => getComputedStyle(document.getElementById('b-lacre')).backgroundColor);
+  check('barra de lacre fica verde quando 100% completa', corLacre === 'rgb(10, 122, 61)', corLacre);
+  check('zero erros JS', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
 // ── 3. Sem eleição ativa: cai no fallback local, sem travar ──
 {
   const ctx = await b.newContext();

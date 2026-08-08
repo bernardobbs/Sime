@@ -113,8 +113,9 @@ async function abrir(ctx, m) {
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
-  await p.evaluate(() => { window.confirm = () => true; });
   await p.click('#dp-btn-enviar');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn'); // modal customizado (não mais confirm() nativo)
   await p.waitForTimeout(300);
 
   const escritas = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_campanhas_confirmacao'));
@@ -133,8 +134,9 @@ async function abrir(ctx, m) {
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
-  await p.evaluate(() => { window.confirm = () => false; });
   await p.click('#dp-btn-enviar');
+  await p.waitForTimeout(150);
+  await p.click('#modal-body .btn-out'); // "Cancelar" no modal customizado
   await p.waitForTimeout(300);
   const escritas = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_campanhas_confirmacao'));
   check('cancelar não enfileira nada', escritas.length === 0, JSON.stringify(escritas));

@@ -153,8 +153,8 @@ async function abrir(arquivo, opts = {}) {
   // Remover: soft-delete (ativo=false) via update, não remoção do array local.
   ops.length = 0;
   await p.evaluate(() => { window.__ops.length = 0; });
-  p.once('dialog', d => d.accept());
-  await p.evaluate(() => window.removerAtor('a1'));
+  await p.evaluate(() => window.removerAtor('a1')); // abre o modal customizado (não mais confirm() nativo)
+  await p.click('#confirmacao-ok-btn');
   await p.waitForFunction(() => window.__ops.some(o => o.op === 'update' && o.payload?.ativo === false));
   const opsRem = await p.evaluate(() => window.__ops);
   check('remover ator: grava ativo=false em sime_atores (soft delete)', opsRem.some(o => o.op === 'update' && o.t === 'sime_atores' && o.payload?.ativo === false && o.filter?.id === 'a1'), JSON.stringify(opsRem));
