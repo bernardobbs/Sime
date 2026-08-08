@@ -356,7 +356,7 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
   // atualizado a cada segundo pelo <script> clássico) — sem ele a tela não
   // tinha como avisar que o canal Realtime caiu (achado "alto" da auditoria).
-  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); }
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   if (mesaInicial) {
     window.__mesaRemota = mesaInicial;
     marcarAtualizado();
@@ -967,6 +967,11 @@ function updateRtStatus(){
   else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
 }
 setInterval(updateRtStatus,1000); updateRtStatus();
+
+// Pré-preenche com o horário real de encerramento da zona — o "17:00" fixo
+// no HTML dessincronizava do horário configurado de fato (achado "médio").
+// Ainda editável: só define o valor inicial, não trava o campo.
+document.getElementById('auto-switch').value = getHor().enc;
 
 updateLeg();buildPages();renderCurrent();updateNav();startTicker();
 setInterval(()=>{buildPages();renderCurrent();checkAutoSwitch();},5000);

@@ -142,10 +142,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" id="tab-rota-btn"    onclick="goTab('rota',this)">🚗 Coleta por Rota</div>
-  <div class="tab"        id="tab-ded-btn"     onclick="goTab('ded',this)">⚡ Coleta Dedicada</div>
-  <div class="tab"        id="tab-trans-btn"   onclick="goTab('trans',this)">📡 Transmissão</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" id="tab-rota-btn"    role="tab" tabindex="0" aria-selected="true"  onclick="goTab('rota',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🚗 Coleta por Rota</div>
+  <div class="tab"        id="tab-ded-btn"     role="tab" tabindex="0" aria-selected="false" onclick="goTab('ded',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚡ Coleta Dedicada</div>
+  <div class="tab"        id="tab-trans-btn"   role="tab" tabindex="0" aria-selected="false" onclick="goTab('trans',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📡 Transmissão</div>
 </div>
 
 <div class="progress-banner" id="prog-banner">
@@ -465,8 +465,8 @@ let sheetAction = null;
 
 function goTab(tab, btn) {
   curTab = tab;
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected','true'); }
   render();
 }
 

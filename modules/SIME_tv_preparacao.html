@@ -49,6 +49,11 @@ body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
 
 .footer { padding:10px 52px 14px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #efefef; flex-shrink:0; }
 .f-brand { font-size:0.58rem; letter-spacing:0.2em; text-transform:uppercase; color:#ccc; font-weight:700; }
+/* Nenhuma indicação de última atualização/status de conexão em toda a tela
+   (achado "médio") — mesmo padrão já usado no TV Dia e TV Véspera. */
+.rt-status{font-size:.58rem;font-weight:700;padding:2px 8px;border-radius:99px;background:#f0f0f0;color:#999;margin-top:6px;}
+.rt-status.warn{background:#fff3e0;color:#c2410c;}
+.rt-status.stale{background:#fde8e6;color:#dc2626;}
 .f-counts { display:flex; gap:22px; }
 .fc { text-align:center; }
 .fc-val { font-size:clamp(1rem,1.8vw,1.4rem); font-weight:800; line-height:1; }
@@ -75,6 +80,7 @@ body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
     <span class="hora-s"  id="c-s">00</span>
   </div>
   <div class="status-hero" id="f-status">—</div>
+  <div class="rt-status" id="rt-status">— sem sessão</div>
 </div>
 <div class="footer">
   <div class="f-brand">SIME TV Preparação · 7ª Zona/PI</div>
@@ -114,11 +120,13 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
   if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
 
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   async function refetch() {
     const { data } = await client.from('sime_carga_lacre').select('carga,preparacao,lacre').eq('eleicao_id', eleicao.id);
     let c = 0, p = 0, l = 0;
     for (const r of data || []) { if (r.carga) c++; if (r.preparacao) p++; if (r.lacre) l++; }
     window.SIME_CARGA_LACRE_REAL = { c, p, l };
+    marcarAtualizado();
     if (window.updateBars) window.updateBars();
   }
   await refetch();
@@ -126,6 +134,7 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
   // um refetch completo a cada mudança é simples e barato (no máximo uma
   // linha por seção da zona) em vez de reconciliar incrementalmente.
   subscribeCargaLacre(client, () => refetch());
+  setInterval(refetch, 60000); // rede de segurança se o canal Realtime cair
 })();
 </script>
 <script>
@@ -169,6 +178,22 @@ function updateBars(){
   document.body.classList.toggle('tudo-lacrado', tudoLacrado);
 }
 updateBars(); setInterval(updateBars,3000);
+
+// Indicador de saúde do Realtime — window.__ultimaAtualizacaoTs vem do
+// <script type="module"> (marcarAtualizado(), a cada evento recebido + no
+// refetch de segurança a cada 60s). Mesmo padrão do TV Dia/TV Véspera.
+function updateRtStatus(){
+  const el=document.getElementById('rt-status');
+  if(!el) return;
+  const ts=window.__ultimaAtualizacaoTs;
+  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  const s=Math.floor((Date.now()-ts)/1000);
+  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
+  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
+  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
+  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+}
+setInterval(updateRtStatus,1000); updateRtStatus();
 </script>
 </body>
 </html>

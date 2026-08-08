@@ -128,9 +128,10 @@ check('tabela de Seções ganhou a coluna Transmissão', temColuna === 1, 'n=' +
 const badgeTx = await p.locator('#sec-tbody tr:first-child span.badge').last().textContent();
 check('linha da seção mostra status de transmissão (default Pendente)', badgeTx === 'Pendente', badgeTx);
 
-// exclui a primeira
-p.on('dialog', d => d.accept());
+// exclui a primeira — passa pelo modal de confirmação customizado
 await p.click('.modal-body table tbody tr:first-child button[onclick^="excluirSecao"]');
+await p.waitForTimeout(150);
+await p.click('#confirmacao-ok-btn');
 await p.waitForTimeout(400);
 const opsDel = await p.evaluate(() => globalThis.__ops.filter(o => o.op === 'delete'));
 check('delete enviado ao supabase', opsDel.length === 1, JSON.stringify(opsDel));

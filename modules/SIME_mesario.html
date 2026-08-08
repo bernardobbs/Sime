@@ -79,7 +79,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 /* ícone e label */
 .ricon{font-size:1.5rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));}
 .rlabel{font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.65);text-align:center;line-height:1.25;}
-.rsub{font-size:.56rem;color:rgba(255,255,255,.3);text-align:center;margin-top:-2px;}
+.rsub{font-size:.56rem;color:rgba(255,255,255,.7);text-align:center;margin-top:-2px;}
 .rbtn.wide .rsub{text-align:left;}
 
 /* badge de status no canto */
@@ -540,6 +540,15 @@ window.simeCampo = {
   syncMidia(partial) {
     if (!campoClient || !secaoId || !eleicaoId) return;
     sincronizarOuEnfileirar('midia', { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial });
+  },
+  // Horário exibido de "mídia pronta" vinha do relógio do celular (Date.now)
+  // — podia divergir do que foi de fato gravado no servidor (achado "médio").
+  async now() {
+    if (!campoClient) return null;
+    try {
+      const { data } = await campoClient.rpc('sime_now');
+      return data ? new Date(data).getTime() : null;
+    } catch (e) { return null; }
   },
 };
 
@@ -1049,13 +1058,13 @@ const MIDIA_KEY = 'sime_midias_v1';
 function loadMidia(n){ try{const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');return d[n]||{status:'aguardando_encerramento'};}catch(e){return{};} }
 function saveMidia(n,patch){ const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');d[n]={...loadMidia(n),...patch,updated_at:Date.now()};localStorage.setItem(MIDIA_KEY,JSON.stringify(d)); }
 
-function marcarMidiaPronta(){
+async function marcarMidiaPronta(){
   const btn=document.getElementById('midia-btn');
   if(!btn||btn.disabled||btn.classList.contains('done')) return;
   // Precisa de encerramento
   if(!S.enc && !S.bu){ showToast('⚠ Encerre a votação primeiro'); return; }
   const n=SECAO_ID||'0063';
-  const ts=Date.now();
+  const ts=(window.simeCampo && await window.simeCampo.now()) || Date.now();
   saveMidia(n,{status:'pronta_para_coleta',pronta_ts:ts});
   if(navigator.vibrate) navigator.vibrate([40,20,80]);
   if (window.simeCampo) window.simeCampo.syncMidia({ p_status: 'pronta_para_coleta' });

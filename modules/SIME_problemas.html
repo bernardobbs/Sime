@@ -18,7 +18,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;color:#fff;flex-shrink:0;}
 .brand{font-weight:800;font-size:.88rem;}
 .topbar .sp{flex:1;}
-.zona{font-size:.72rem;color:var(--text3);}
+.zona{font-size:.72rem;color:var(--text2);}
 /* Assumir/delegar/resolver/registrar contato escrevem direto no Supabase, sem
    fila offline (igual ao Admin — sessão autenticada, não token de campo). Sem
    isto, uma falha de rede sumia em silêncio: o toast de erro já existia, mas
@@ -46,6 +46,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   border-radius:11px;padding:12px 13px;margin-bottom:9px;cursor:pointer;
   transition:transform .12s,box-shadow .12s;}
 .prob:hover,.prob:focus{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.09);outline:none;}
+.prob:focus-visible{outline:2px solid var(--blue,#2d6cdf);outline-offset:2px;}
 .prob.t-energia{border-left-color:#f59e0b;}
 .prob.t-urna{border-left-color:#dc2626;}
 .prob.t-mesa_incompleta{border-left-color:#d97706;}
@@ -59,7 +60,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .prob-tit{flex:1;min-width:0;}
 .prob-sec{font-weight:800;font-size:.94rem;}
 .prob-loc{font-size:.74rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.prob-idade{font-size:.72rem;font-weight:800;color:var(--text3);white-space:nowrap;}
+.prob-idade{font-size:.72rem;font-weight:800;color:var(--text2);white-space:nowrap;}
 .prob-idade.n1{color:#d97706;}
 .prob-idade.n2{color:#dc2626;}
 .prob-rod{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap;}
@@ -93,7 +94,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sh-tit{flex:1;min-width:0;}
 .sh-t1{font-weight:900;font-size:1rem;}
 .sh-t2{font-size:.78rem;color:var(--text2);}
-.sh-t3{font-size:.72rem;color:var(--text3);margin-top:3px;}
+.sh-t3{font-size:.72rem;color:var(--text2);margin-top:3px;}
 .sh-x{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text3);padding:2px 6px;}
 .sh-body{padding:13px 16px;}
 .sh-lbl{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
@@ -146,8 +147,8 @@ select.campo{margin-bottom:8px;}
 
 <div class="wrap">
   <div class="filtros">
-    <div class="filtro" id="f-meus"  onclick="setFiltro('meus')">👤 Meus <span class="n" id="n-meus">0</span></div>
-    <div class="filtro on" id="f-todos" onclick="setFiltro('todos')">📋 Todos <span class="n" id="n-todos">0</span></div>
+    <div class="filtro" id="f-meus" tabindex="0" role="button" onclick="setFiltro('meus')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">👤 Meus <span class="n" id="n-meus">0</span></div>
+    <div class="filtro on" id="f-todos" tabindex="0" role="button" onclick="setFiltro('todos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📋 Todos <span class="n" id="n-todos">0</span></div>
   </div>
   <div id="aviso-orfas"></div>
   <div id="lista"></div>
@@ -400,7 +401,10 @@ function visiveis(){
 
 function renderLista(){
   const lista = document.getElementById('lista');
-  const meus = OCORRENCIAS.filter(o=>o.responsavel_id===EU?.id).length;
+  // Bate com visiveis(): "Meus" inclui as órfãs de propósito — o contador
+  // antigo só contava as com responsavel_id=EU, divergindo da lista real
+  // exibida ao filtrar (achado "médio" da auditoria).
+  const meus = OCORRENCIAS.filter(o=>o.responsavel_id===EU?.id || !o.responsavel_id).length;
   const orfas = OCORRENCIAS.filter(o=>!o.responsavel_id).length;
   document.getElementById('n-meus').textContent = meus;
   document.getElementById('n-todos').textContent = OCORRENCIAS.length;

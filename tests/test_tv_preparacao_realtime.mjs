@@ -91,6 +91,8 @@ function baseMockConfig() {
   check('barra de carga reflete o dado real (2/4 = 50%)', pctCarga.trim() === '50%', pctCarga);
   const fcLacre = await p.locator('#fc-lacre').textContent();
   check('contador de lacradas reflete o dado real (1)', fcLacre.trim() === '1', fcLacre);
+  const rtTxt = await p.locator('#rt-status').textContent();
+  check('indicador de saúde do Realtime sai de "sem sessão" (achado "médio")', !rtTxt.includes('sem sessão'), rtTxt);
   check('zero erros JS', erros.length === 0, erros.join(';'));
   await ctx.close();
 }

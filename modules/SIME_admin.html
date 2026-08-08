@@ -96,7 +96,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .b-ok    {background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .b-warn  {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
 .b-err   {background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
-.b-off   {background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.b-off   {background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
 .b-blue  {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
 .b-purple{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd);}
 
@@ -148,7 +148,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .pt-urna   {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
 .pt-mesa   {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
 .pt-atraso {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
-.pc-ts{font-size:.68rem;color:var(--text3);margin-top:4px;}
+.pc-ts{font-size:.68rem;color:var(--text2);margin-top:4px;}
 .pc-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
 
 /* EQUIPE */
@@ -210,7 +210,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <label for="login-pass" class="sr-only">Senha</label>
     <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
     <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
-    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
+    <div id="login-erro" role="alert" aria-live="polite" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
     <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:#3a5fa0;font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
     <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
   </form>
@@ -311,7 +311,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div id="tab-equipe" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
     <div style="font-weight:800;font-size:.95rem;">Membros da equipe</div>
-    <button class="btn btn-dark" onclick="openNewMember()">+ Novo membro</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-out" onclick="abrirRemovidos()">👤 Removidos</button>
+      <button class="btn btn-dark" onclick="openNewMember()">+ Novo membro</button>
+    </div>
   </div>
   <div class="team-grid" id="team-grid"></div>
 </div>
@@ -936,21 +939,22 @@ async function renderHermes(){
 }
 window.renderHermes = renderHermes;
 
-async function solicitarAtualizacaoHermes(zonaId, componente){
-  const versao = prompt('Versão desejada (ex.: v1.2.0). Deixe em branco para a mais recente publicada:', '');
-  if (versao === null) return;
-  const { data: ts } = await supabase.rpc('sime_now');
-  const payload = {
-    zona_id: zonaId, componente,
-    versao_desejada: versao.trim() || null,
-    atualizar_agora: true,
-    solicitado_por: window.MEU_USUARIO_ID || null,
-    solicitado_em: ts,
-  };
-  const { error } = await supabase.from('sime_componentes').upsert(payload, { onConflict: 'zona_id,componente' });
-  if (error) { showToast('⚠ Falha ao solicitar'); return; }
-  showToast('✓ Atualização solicitada — o Hermes atende no próximo heartbeat');
-  renderHermes();
+function solicitarAtualizacaoHermes(zonaId, componente){
+  pedirTexto('Versão desejada. Deixe em branco para a mais recente publicada.', '', async (versao) => {
+    closeModal();
+    const { data: ts } = await supabase.rpc('sime_now');
+    const payload = {
+      zona_id: zonaId, componente,
+      versao_desejada: versao.trim() || null,
+      atualizar_agora: true,
+      solicitado_por: window.MEU_USUARIO_ID || null,
+      solicitado_em: ts,
+    };
+    const { error } = await supabase.from('sime_componentes').upsert(payload, { onConflict: 'zona_id,componente' });
+    if (error) { showToast('⚠ Falha ao solicitar'); return; }
+    showToast('✓ Atualização solicitada — o Hermes atende no próximo heartbeat');
+    renderHermes();
+  }, { titulo:'Solicitar atualização do Hermes', placeholder:'ex: v1.2.0', labelOk:'⬆️ Solicitar' });
 }
 
 function renderZonas(){
@@ -1287,7 +1291,7 @@ async function salvarSec(n){
     p_observacao: document.getElementById('f-obs').value,
     p_origem: 'admin',
   });
-  if(error){ trackSync(false); showToast('⚠ Falha ao salvar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao salvar')); return; }
   trackSync(true);
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
@@ -1376,7 +1380,7 @@ async function salvarEvento(){
   } else if(tipo==='obs'){ payload.p_observacao = document.getElementById('ev-val').value; }
 
   const { error } = await supabase.rpc('sime_acao_mesa', payload);
-  if(error){ trackSync(false); showToast('⚠ Falha ao registrar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao registrar')); return; }
   trackSync(true);
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
 }
@@ -1442,7 +1446,7 @@ function showMemberModal(m){
       <div class="form-group">
         <label for="m-email">E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
         <input type="email" id="m-email" value="${m?.email||''}" placeholder="pessoa@tre-pi.jus.br" ${m?.email?'disabled style="opacity:.6"':''}>
-        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
+        <div style="font-size:.68rem;color:var(--text2);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
       </div>
       <div class="form-group"><label for="m-perfil">Perfil de acesso</label>
         <select id="m-perfil" onchange="onPerfilChange()">
@@ -1623,7 +1627,7 @@ async function saveMember(id){
     // prioriza o banco pra esses campos.
     if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
       const { error } = await supabase.from('sime_usuarios').update({ nome, perfil, telefone_whatsapp: base.telefone_whatsapp||null }).eq('id', id);
-      if(error){ trackSync(false); showToast('⚠ Nome/perfil não sincronizaram com o servidor: '+error.message); }
+      if(error){ trackSync(false); showToast('⚠ Nome/perfil não sincronizaram: '+mensagemErroAmigavel(error, 'tente novamente')); }
       else trackSync(true);
       const u = window.EQUIPE_REAL.find(u=>u.id===id);
       if(u && !error){ u.nome = nome; u.perfil = perfil; u.telefone_whatsapp = base.telefone_whatsapp||null; }
@@ -1669,23 +1673,24 @@ function copiarCredenciais(email, senha){
 
 // Redefine a senha de um membro (ação 'reset' da Edge Function): gera nova senha
 // temporária e força a troca no próximo login. Para quando a pessoa perde a senha.
-async function resetarSenhaMembro(id){
+function resetarSenhaMembro(id){
   const m=loadTeam().find(x=>x.id===id);
   if(!m?.email){ showToast('⚠ Membro sem login'); return; }
-  if(!confirm(`Gerar nova senha temporária para ${m.nome}?`)) return;
-  let sessao=null;
-  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
-  if(!sessao){ showToast('⚠ Faça login como admin'); return; }
-  try{
-    const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
-      body:JSON.stringify({ acao:'reset', email:m.email }),
-    });
-    const out=await resp.json().catch(()=>({}));
-    if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
-    mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
-  }catch(e){ showToast('⚠ Sem conexão'); }
+  pedirConfirmacao(`Gerar nova senha temporária para ${m.nome}?`, async () => {
+    let sessao=null;
+    try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+    if(!sessao){ closeModal(); showToast('⚠ Faça login como admin'); return; }
+    try{
+      const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+        body:JSON.stringify({ acao:'reset', email:m.email }),
+      });
+      const out=await resp.json().catch(()=>({}));
+      if(!resp.ok){ closeModal(); showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
+      mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
+    }catch(e){ closeModal(); showToast('⚠ Sem conexão'); }
+  }, { titulo:'Redefinir senha', labelOk:'🔑 Gerar nova senha' });
 }
 
 // Troca obrigatória da senha temporária no 1º login (must_change_password).
@@ -1699,7 +1704,7 @@ window.exigirTrocaSenha = function(){
         <input type="password" id="ts-senha1" placeholder="nova senha"></div>
       <div class="form-group"><label for="ts-senha2">Repita a senha</label>
         <input type="password" id="ts-senha2" placeholder="repita"></div>
-      <div id="ts-erro" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
+      <div id="ts-erro" role="alert" aria-live="polite" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-dark" onclick="confirmarTrocaSenha()">Salvar senha</button>
@@ -1714,24 +1719,65 @@ async function confirmarTrocaSenha(){
   if(s1!==s2){ erro.textContent='As senhas não conferem.'; return; }
   try{
     const { error } = await supabase.auth.updateUser({ password:s1, data:{ must_change_password:false } });
-    if(error){ erro.textContent='Não foi possível salvar: '+error.message; return; }
+    if(error){ erro.textContent='Não foi possível salvar: '+mensagemErroAmigavel(error, 'tente novamente'); return; }
     closeModal(); showToast('✓ Senha definida');
   }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
 }
-async function deleteMember(id){
-  if(!confirm('Remover este membro?')) return;
-  // Gente real (id de sime_usuarios): loadTeam() sempre reconstrói a lista a
-  // partir de window.EQUIPE_REAL, então só apagar do cache local não
-  // removeria nada de verdade — a pessoa reapareceria no próximo carregamento.
-  const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
-  if(eraReal){
-    const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
-    if(error){ trackSync(false); showToast('⚠ Falha ao remover: '+error.message); return; }
-    trackSync(true);
-    window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
-  }
-  saveTeam(loadTeam().filter(m=>m.id!==id));
-  closeModal(); renderTeam(); showToast('✓ Membro removido');
+function deleteMember(id){
+  const m = loadTeam().find(x=>x.id===id);
+  pedirConfirmacao(
+    `Remover ${m?.nome||'este membro'} da equipe?\n\nO login dele será desativado — não vai mais conseguir entrar no SIME. Dá pra reativar depois em "👤 Removidos".`,
+    async () => {
+      // Gente real (id de sime_usuarios): loadTeam() sempre reconstrói a lista a
+      // partir de window.EQUIPE_REAL, então só apagar do cache local não
+      // removeria nada de verdade — a pessoa reapareceria no próximo carregamento.
+      const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
+      if(eraReal){
+        const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
+        if(error){ trackSync(false); closeModal(); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao remover')); return; }
+        trackSync(true);
+        window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
+      }
+      saveTeam(loadTeam().filter(m=>m.id!==id));
+      closeModal(); renderTeam(); showToast('✓ Membro removido — login desativado');
+    },
+    { titulo:'Remover membro', labelOk:'🗑 Remover', classeOk:'btn-red' }
+  );
+}
+
+// Lista quem foi removido (ativo=false) com caminho de volta — sem isto, "remover"
+// era uma via de mão única: a única forma de desfazer era ir direto no banco.
+function abrirRemovidos(){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">👤 Membros removidos</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div id="removidos-lista" style="font-size:.85rem;color:var(--text2)">Carregando…</div></div>
+    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+  carregarRemovidos();
+}
+async function carregarRemovidos(){
+  const { data, error } = await supabase.from('sime_usuarios')
+    .select('id,nome,perfil,email').eq('ativo', false).order('nome');
+  const el = document.getElementById('removidos-lista');
+  if(!el) return; // modal fechado antes da resposta chegar
+  if(error){ el.textContent='⚠ Falha ao carregar removidos.'; return; }
+  if(!data || !data.length){ el.textContent='Nenhum membro removido.'; return; }
+  el.innerHTML = data.map(u=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)">
+      <div><strong>${u.nome}</strong><div style="font-size:.75rem;color:var(--text3)">${u.perfil||''}</div></div>
+      <button class="btn btn-dark" style="min-height:36px;padding:6px 10px;font-size:.8rem" onclick="reativarMembro('${u.id}')">↩ Reativar</button>
+    </div>`).join('');
+}
+async function reativarMembro(id){
+  const { error } = await supabase.from('sime_usuarios').update({ ativo: true }).eq('id', id);
+  if(error){ showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao reativar')); return; }
+  const { data } = await supabase.from('sime_usuarios')
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp').eq('id', id).maybeSingle();
+  if(data){ window.EQUIPE_REAL = [...(window.EQUIPE_REAL||[]).filter(u=>u.id!==id), data]; }
+  closeModal(); renderTeam(); showToast('✓ Membro reativado');
 }
 
 // ══════════════════════════════════════════════
@@ -1851,15 +1897,19 @@ async function salvarSecao(id){
   if(window.carregarDadosReais) await carregarDadosReais(); // atualiza SECTIONS/tabela principal
 }
 
-async function excluirSecao(id){
+function excluirSecao(id){
+  // A confirmação reaproveita o mesmo overlay/modal-body do gerenciador de
+  // seções (já aberto) — por isso não fecha o overlay em nenhum dos dois
+  // caminhos, só troca o conteúdo de volta pra lista ao terminar.
   const s=_secoesCache.find(x=>x.id===id); if(!s) return;
-  if(!confirm(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`)) return;
-  const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
-  if(error){ trackSync(false); showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); return; }
-  trackSync(true);
-  showToast('✓ Seção excluída');
-  await openSecoesManager();
-  if(window.carregarDadosReais) await carregarDadosReais();
+  pedirConfirmacao(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`, async () => {
+    const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
+    if(error){ trackSync(false); showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); renderSecoesManager(); return; }
+    trackSync(true);
+    showToast('✓ Seção excluída');
+    await openSecoesManager();
+    if(window.carregarDadosReais) await carregarDadosReais();
+  }, { titulo:'Excluir seção', labelOk:'🗑 Excluir', classeOk:'btn-red' });
 }
 
 // ══════════════════════════════════════════════
@@ -1948,24 +1998,31 @@ function renderMesariosManager(){
   document.getElementById('overlay').classList.add('open');
 }
 
-async function setConfirmacao(id, status){
+function setConfirmacao(id, status){
   // recusou/substituido ⇒ a pessoa não vai atuar (ativo=false); demais ⇒ ativo=true.
   const ativo = !(status==='recusou' || status==='substituido');
+  // A confirmação reaproveita o overlay do gerenciador de mesários (já
+  // aberto) — não fecha o overlay, só volta pra lista (renderMesariosManager)
+  // ao terminar, sucesso ou erro.
+  const aplicar = async () => {
+    const { error } = await supabase.from('sime_atores')
+      .update({ confirmacao:status, ativo }).eq('id',id);
+    if(error){ showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao salvar')); renderMesariosManager(); return; }
+    const local=_mesariosCache.find(m=>m.id===id);
+    if(local){ local.confirmacao=status; local.ativo=ativo; }
+    showToast('✓ '+(CONF_LABEL[status]||status));
+    renderMesariosManager();
+  };
   // Botões pequenos e colados (✅🚫🔄⏳) — um toque impreciso trocava
   // "Confirmado" por "Recusou" sem aviso, desativando o mesário na hora.
   // Confirmação só pro caminho destrutivo, não pra 'confirmado'/'pendente'.
   if(!ativo){
     const local=_mesariosCache.find(m=>m.id===id);
     const nome = local?.nome_completo || 'este mesário';
-    if(!confirm(`Marcar ${nome} como "${CONF_LABEL[status]||status}"? Isso desativa a convocação dele.`)) return;
+    pedirConfirmacao(`Marcar ${nome} como "${CONF_LABEL[status]||status}"? Isso desativa a convocação dele.`, aplicar, { titulo:'Confirmar mudança', labelOk:'Confirmar', classeOk:'btn-red' });
+    return;
   }
-  const { error } = await supabase.from('sime_atores')
-    .update({ confirmacao:status, ativo }).eq('id',id);
-  if(error){ showToast('⚠ Falha ao salvar'); return; }
-  const local=_mesariosCache.find(m=>m.id===id);
-  if(local){ local.confirmacao=status; local.ativo=ativo; }
-  showToast('✓ '+(CONF_LABEL[status]||status));
-  renderMesariosManager();
+  aplicar();
 }
 
 // ══════════════════════════════════════════════
@@ -2036,10 +2093,10 @@ async function resetarProblemas(){
   if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
 
   // Bloqueio automático a partir do Dia D real: o botão ficava visível pra
-  // sempre, protegido só por um confirm() nativo — a partir de 04/10,
+  // sempre, protegido só pela confirmação — a partir de 04/10,
   // sime_mesa_estado deixa de ser dado de teste e vira a operação de
   // verdade. Sem window.ELEICAO_ATIVA (offline/sem sessão) não dá pra
-  // checar a data, então segue pro confirm() normal como antes.
+  // checar a data, então segue pra confirmação normal como antes.
   const hoje = new Date().toISOString().slice(0,10);
   if(window.ELEICAO_ATIVA?.data_d && hoje >= window.ELEICAO_ATIVA.data_d){
     showToast('⛔ Bloqueado: o Dia D desta zona já começou — isso apagaria a operação real');
@@ -2061,20 +2118,25 @@ async function resetarProblemas(){
   const totalProb = countProb || 0, totalMesa = countMesa || 0;
   if(!totalProb && !totalMesa){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
 
-  if(!confirm(`Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`)) return;
+  pedirConfirmacao(
+    `Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`,
+    async () => {
+      const ops = [];
+      if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
+      if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
+      const resultados = await Promise.all(ops);
+      const falhou = resultados.find(r => r.error);
+      if(falhou){ closeModal(); showToast('⚠ '+mensagemErroAmigavel(falhou.error, 'Falha ao apagar')); return; }
 
-  const ops = [];
-  if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
-  if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
-  const resultados = await Promise.all(ops);
-  const falhou = resultados.find(r => r.error);
-  if(falhou){ showToast('⚠ Falha ao apagar: ' + falhou.error.message); return; }
+      const { data: ts } = await sb.rpc('sime_now');
+      await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
 
-  const { data: ts } = await sb.rpc('sime_now');
-  await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
-
-  showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
-  await atualizarBadgeProblemas();
+      closeModal();
+      showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
+      await atualizarBadgeProblemas();
+    },
+    { titulo:'Apagar dados de teste', labelOk:'🗑 Apagar permanentemente', classeOk:'btn-red' }
+  );
 }
 
 // ══════════════════════════════════════════════
@@ -2096,6 +2158,57 @@ function goTab(id,btn){
 function closeModal(e){
   if(!e||e.target===document.getElementById('overlay'))
     document.getElementById('overlay').classList.remove('open');
+}
+
+// Traduz erro cru do Postgres/Supabase pra algo que faz sentido pra quem não
+// é dev — sem isto o toast mostrava direto "duplicate key value violates
+// unique constraint sime_secoes_numero_key" etc. (achado "médio" da
+// auditoria: 7 pontos expunham error.message puro na tela).
+function mensagemErroAmigavel(error, fallback){
+  const msg = error?.message || '';
+  if(/duplicate key|unique constraint/i.test(msg)) return 'Já existe um registro com esse valor';
+  if(/foreign key|violates.*constraint/i.test(msg)) return 'Não é possível: há dados vinculados a isso';
+  if(/permission denied|row-level security|RLS/i.test(msg)) return 'Sem permissão para esta ação';
+  if(/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — entre novamente';
+  if(/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor';
+  return fallback || 'Falha ao salvar. Tente novamente';
+}
+
+// Modais customizados pra confirmação/entrada de texto — confirm()/prompt()
+// nativos quebravam o padrão visual do resto do sistema (achado "médio" da
+// auditoria). Reaproveitam o mesmo overlay/modal-body dos formulários.
+function pedirConfirmacao(mensagem, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-hdr">
+      <div><div class="modal-title">${opts.titulo||'Confirmar'}</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="font-size:.85rem;color:var(--text2);white-space:pre-line;line-height:1.5">${mensagem}</div></div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn ${opts.classeOk||'btn-dark'}" id="confirmacao-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('confirmacao-ok-btn').onclick = aoConfirmar;
+}
+function pedirTexto(mensagem, valorInicial, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-hdr">
+      <div><div class="modal-title">${opts.titulo||'Informar'}</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:.85rem;color:var(--text2);margin-bottom:10px;line-height:1.5">${mensagem}</div>
+      <input type="text" id="pedir-texto-inp" value="${valorInicial||''}" placeholder="${opts.placeholder||''}" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.85rem;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" id="pedir-texto-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  const inp = document.getElementById('pedir-texto-inp');
+  inp.focus();
+  document.getElementById('pedir-texto-ok-btn').onclick = () => aoConfirmar(inp.value);
 }
 
 // showToast()/iniciarRelogio() vêm de sime_ui_utils.js
@@ -2208,7 +2321,7 @@ async function coletarMidia(n){
     p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
     p_status: 'coletada', p_tipo: 'dedicada',
   });
-  if(error){ trackSync(false); showToast('⚠ Falha ao registrar: '+error.message); return; }
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao registrar')); return; }
   trackSync(true);
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
   // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o

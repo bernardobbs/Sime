@@ -312,7 +312,10 @@ async function abrir(ctx, mock) {
 
   check('Todos mostra os 3', await p.locator('.prob').count() === 3);
   check('contador Todos = 3', (await p.locator('#n-todos').textContent()) === '3');
-  check('contador Meus conta só os meus = 1', (await p.locator('#n-meus').textContent()) === '1');
+  // Achado "médio" da auditoria: o contador batia só com responsavel_id=EU,
+  // divergindo da lista real de "Meus" (que também traz órfãs — ver abaixo).
+  // Corrigido pra contar igual a visiveis(): o meu (oc-1) + a órfã (oc-3) = 2.
+  check('contador Meus bate com o que "Meus" realmente mostra (2: o meu + a órfã)', (await p.locator('#n-meus').textContent()) === '2');
   check('avisa que há problema sem responsável',
     (await p.locator('.aviso-orfas').textContent()).includes('1 problema'));
 

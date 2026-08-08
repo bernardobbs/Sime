@@ -75,10 +75,17 @@ async function fazerLogin(p) {
   await p.waitForTimeout(400);
 }
 
-async function clicarResetar(p) {
+// resetarProblemas() usa o modal customizado (pedirConfirmacao), não mais o
+// confirm() nativo — accept=true clica em "Apagar permanentemente", false
+// clica em "Cancelar", null não espera nenhum modal (fluxo "nada pra apagar"
+// nem chega a abrir confirmação).
+async function clicarResetar(p, accept) {
   await p.click("button.nav-tab:has-text('Config')");
   await p.waitForTimeout(150);
   await p.click("button:has-text('Resetar dados de teste')");
+  await p.waitForTimeout(200);
+  if (accept === true) await p.click('#confirmacao-ok-btn');
+  else if (accept === false) await p.click('.modal-footer button:has-text("Cancelar")');
   await p.waitForTimeout(300);
 }
 
@@ -88,7 +95,6 @@ async function clicarResetar(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  p.on('dialog', (d) => d.accept());
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
       secoes: [
@@ -111,7 +117,7 @@ async function clicarResetar(p) {
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
   await fazerLogin(p);
-  await clicarResetar(p);
+  await clicarResetar(p, true);
 
   check('caso1: zero erros JS', erros.length === 0, erros.join('; '));
   const restantesOcor = await p.evaluate(() => window.__ocorrenciasRestantes());
@@ -129,9 +135,7 @@ async function clicarResetar(p) {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
   const erros = [];
-  let dialogApareceu = false;
   p.on('pageerror', (e) => erros.push(String(e)));
-  p.on('dialog', (d) => { dialogApareceu = true; d.dismiss(); });
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
       secoes: [{ id: 'sec-1', zona_id: 'zona-7', numero: 1 }],
@@ -141,10 +145,10 @@ async function clicarResetar(p) {
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
   await fazerLogin(p);
-  await clicarResetar(p);
+  await clicarResetar(p, null);
 
   check('caso2: zero erros JS', erros.length === 0, erros.join('; '));
-  check('caso2: nem chega a perguntar se não há nada pra apagar', !dialogApareceu);
+  check('caso2: nem chega a perguntar se não há nada pra apagar', !(await p.locator('#overlay.open').count()));
   await ctx.close();
 }
 
@@ -154,7 +158,6 @@ async function clicarResetar(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  p.on('dialog', (d) => d.dismiss());
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
       secoes: [{ id: 'sec-1', zona_id: 'zona-7', numero: 1 }],
@@ -165,7 +168,7 @@ async function clicarResetar(p) {
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
   await fazerLogin(p);
-  await clicarResetar(p);
+  await clicarResetar(p, false);
 
   check('caso3: zero erros JS', erros.length === 0, erros.join('; '));
   const restantesOcor = await p.evaluate(() => window.__ocorrenciasRestantes());
@@ -181,7 +184,6 @@ async function clicarResetar(p) {
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
-  p.on('dialog', (d) => d.accept());
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
       secoes: [{ id: 'sec-1', zona_id: 'zona-7', numero: 1 }],
@@ -192,7 +194,7 @@ async function clicarResetar(p) {
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
   await fazerLogin(p);
-  await clicarResetar(p);
+  await clicarResetar(p, true);
 
   check('caso4: zero erros JS', erros.length === 0, erros.join('; '));
   const restantesMesa = await p.evaluate(() => window.__mesaEstadoRestantes());

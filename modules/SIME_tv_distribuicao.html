@@ -481,6 +481,7 @@ function updatePagBar(total, pages){
   ).join('');
 
   bar.innerHTML = `
+    <span title="Controles do cartório — quem estiver na sala, não o público que só olha a TV" style="font-size:.72rem;color:var(--text3);cursor:help">🖐️</span>
     <button onclick="goPage(curPage-1)" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;color:var(--text2)">‹</button>
     <div style="display:flex;gap:5px;align-items:center">${dots}</div>
     <div style="font-size:.7rem;font-weight:700;color:var(--text2);min-width:120px;text-align:center">Pág. ${curPage+1} de ${pages} · ${total} rotas</div>

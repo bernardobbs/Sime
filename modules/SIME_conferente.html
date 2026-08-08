@@ -70,7 +70,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .emb-note{background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 11px;font-size:.72rem;color:var(--yellow);margin:8px 14px 0;flex-shrink:0;}
 
 .urna-list{padding:8px 14px 140px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;flex:1;}
-.ordem-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 2px 3px;}
+.ordem-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);padding:8px 2px 3px;}
 
 .urna-item{
   background:var(--card);border:1.5px solid var(--border);
@@ -99,9 +99,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ui-info{flex:1;}
 .ui-sec{font-weight:800;font-size:1rem;}
 .ui-local{font-size:.73rem;color:var(--text2);line-height:1.3;}
-.ui-parada{font-size:.62rem;color:var(--text3);}
+.ui-parada{font-size:.62rem;color:var(--text2);}
 .ui-right{text-align:right;}
-.ui-mun{font-size:.62rem;color:var(--text3);}
+.ui-mun{font-size:.62rem;color:var(--text2);}
 
 /* footer fixo */
 .emb-footer{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:10px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 -4px 20px rgba(0,0,0,.08);}
@@ -128,7 +128,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .pin-inp.error{border-color:var(--red);background:var(--red-bg);}
 .btn-login{width:100%;padding:14px;border-radius:10px;font-size:.88rem;font-weight:800;cursor:pointer;border:none;background:#2a2a2a;color:#fff;}
 .btn-login:active{background:#444;}
-.login-hint{font-size:.7rem;color:var(--text3);text-align:center;}
+.login-hint{font-size:.7rem;color:var(--text2);text-align:center;}
 
 /* BADGE DE USUÁRIO NO HEADER */
 .h-user{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
@@ -203,7 +203,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       </div>
     </div>
     <div class="emb-conf-row">
-      <input class="emb-conf-inp" id="conf-nome" placeholder="Seu nome (obrigatório)" oninput="saveConferente()">
+      <input class="emb-conf-inp" id="conf-nome" placeholder="Seu nome (opcional)" oninput="saveConferente()">
     </div>
     <div id="emb-timestamps" style="font-size:.65rem;color:var(--text3);margin-top:4px;min-height:14px;padding:0 2px;"></div>
     <div class="emb-prog-wrap">
@@ -330,6 +330,15 @@ window.simeCampo = {
       else return; // sem rota_estado_id não há como gravar a urna (FK)
     }
     await sincronizarOuEnfileirar('rota_urna', { p_rota_estado_id: rotaEstadoId, p_secao_id: secaoId, p_embarcada: embarcada });
+  },
+  // Timestamps exibidos (aberta/pronta/saiu) vinham do relógio do celular —
+  // podiam divergir do horário oficial gravado no servidor (achado "médio").
+  async now() {
+    if (!campoClient) return null;
+    try {
+      const { data } = await campoClient.rpc('sime_now');
+      return data ? new Date(data).getTime() : null;
+    } catch (e) { return null; }
   },
 };
 
@@ -695,11 +704,12 @@ function renderRotas(){
 // ══════════════════════════════════════════════
 // ABRIR ROTA
 // ══════════════════════════════════════════════
-function abrirRota(rota){
+async function abrirRota(rota){
   curRota = rota;
   const st = getRotaState(rota);
   if(st.status === 'aguardando'){
-    updateRotaState(rota, { status:'embarcando', ts_aberta: Date.now() });
+    const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+    updateRotaState(rota, { status:'embarcando', ts_aberta: ts });
     if (window.simeCampo) window.simeCampo.syncRotaEstado(rota, { p_status: 'embarcando', p_ts_aberta: true });
   }
 
@@ -897,8 +907,9 @@ function confirmarPronta(){
     sub:`${total} urnas embarcadas. A rota está pronta para sair?`,
     okLabel:'Pronta para sair',
     okBg:'#2e7d52',
-    action:() => {
-      updateRotaState(curRota, { status:'pronta', ts_pronta:Date.now(), alerta:false });
+    action: async () => {
+      const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+      updateRotaState(curRota, { status:'pronta', ts_pronta:ts, alerta:false });
       if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
       renderUrnas();
       showToast('✅ Rota pronta!');
@@ -923,8 +934,9 @@ function confirmarSaiu(){
     sub: 'O veículo saiu do cartório com todas as urnas?',
     okLabel: 'Confirmar saída',
     okClass: 'sbtn danger',
-    action: () => {
-      updateRotaState(curRota, { status:'saiu', ts_saiu: Date.now() });
+    action: async () => {
+      const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+      updateRotaState(curRota, { status:'saiu', ts_saiu: ts });
       if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'saiu', p_ts_saiu: true });
       renderUrnas();
       showToast('🚗 Saída registrada!');

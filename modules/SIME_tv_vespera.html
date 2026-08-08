@@ -281,7 +281,7 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   }
   // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
   // atualizado a cada segundo pelo <script> clássico) — mesmo padrão do TV Dia.
-  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); }
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   if (instInicial) {
     window.__instRemota = instInicial;
     marcarAtualizado();
@@ -667,7 +667,11 @@ function buildPageEl(cityIdx, inst, lacre, cfg){
     });
 
     box.innerHTML = `<div class="loc-name">${loc.n}</div>${timeLn}<div class="loc-circles">${circs}</div>`;
-    box.ondblclick = ()=>openCfg(loc.id);
+    // Duplo clique só na área do card fora dos círculos de seção — clicar
+    // duas vezes num círculo (cada clique já abre o detalhe da seção) não
+    // deve também abrir a config do local por trás (gestos sobrepostos,
+    // achado "médio" da auditoria).
+    box.ondblclick = (e)=>{ if(e.target.closest('.sw')) return; openCfg(loc.id); };
     grid.appendChild(box);
   });
 

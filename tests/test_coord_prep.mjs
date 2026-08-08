@@ -172,6 +172,33 @@ const STUB_SUPABASE_JS = stubSupabaseJs();
   await ctx.close();
 }
 
+// ── Caso 5: marcar fora de ordem (lacre sem carga/preparação antes) — mesmo
+// padrão do Instalador, tela idêntica (achado "médio": inconsistência entre
+// os dois módulos). ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({ eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04' } });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  await p.click('.sec-card[data-sec="0001"] .ck.lacre'); // pula carga e preparação
+  await p.waitForTimeout(200);
+  const stateSec1 = await p.evaluate(() => state['0001']);
+  check('marcar "lacre" direto, sem carga/preparação antes, não é bloqueado', stateSec1?.lacre === true, JSON.stringify(stateSec1));
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

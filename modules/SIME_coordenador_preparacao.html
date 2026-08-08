@@ -47,7 +47,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .search-wrap{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;padding:0 9px;gap:5px;}
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:0.82rem;padding:7px 0;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
-.cf{padding:5px 9px;border-radius:6px;font-size:0.69rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
+.cf{min-height:44px;display:inline-flex;align-items:center;padding:5px 9px;border-radius:6px;font-size:0.69rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
 .cf.on{background:var(--text);color:var(--card);border-color:var(--text);}
 
 /* ── GRUPO MUNICÍPIO ── */
@@ -80,7 +80,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-badge{font-size:0.64rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:2px;}
 .sb-done{background:var(--lacre-bg);color:var(--lacre);}
 .sb-partial{background:var(--carga-bg);color:var(--carga);}
-.sb-pending{background:var(--bg2);color:var(--text3);}
+.sb-pending{background:var(--bg2);color:var(--text2);}
 
 /* ── CHECKBOXES ── */
 .sec-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
@@ -461,12 +461,16 @@ function load(){ try{const d=localStorage.getItem('sime_lacre_v3');if(d){const p
 
 // showToast() vem de sime_ui_utils.js
 
-function canMark(sec,field){ const s=state[sec]; if(field==='prep'&&!s.carga)return false; if(field==='lacre'&&!s.prep)return false; return true; }
+// Marcação livre em qualquer ordem — o Instalador (tela estruturalmente
+// idêntica) já permitia qualquer ordem, então esta trava aqui era a única
+// inconsistência entre os dois (achado "médio" da auditoria: "decidir um
+// padrão único e aplicar aos dois módulos"). Equipe em campo às 5h30 nem
+// sempre segue carga→preparação→lacre à risca.
+function canMark(){ return true; }
 function cascade(sec,field,val){ if(!val){ if(field==='carga'){state[sec].prep=false;state[sec].lacre=false;} if(field==='prep'){state[sec].lacre=false;} } }
 
 function toggle(sec,field){
   const newVal = !state[sec][field];
-  if(newVal && !canMark(sec,field)){ showToast(field==='prep'?'📦 Faça a carga antes.':'🔧 Conclua a preparação antes.'); return; }
   state[sec][field] = newVal; cascade(sec,field,newVal);
   save(); refreshCard(sec); updateStats(); applyVisibility();
   if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(sec, state[sec]);
