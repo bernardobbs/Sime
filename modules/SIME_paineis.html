@@ -319,9 +319,9 @@ body{display:flex;flex-direction:column;}
       <div class="pages-list" id="ed-pages"></div>
       <div style="border-bottom:1px solid var(--border);margin:14px 0;"></div>
       <div class="form-group">
-        <label>Rotação automática</label>
+        <label id="rot-toggle-caption">Rotação automática</label>
         <div class="toggle-row">
-          <button class="toggle" id="rot-toggle" onclick="toggleRot()"></button>
+          <button class="toggle" id="rot-toggle" type="button" role="switch" aria-pressed="false" aria-labelledby="rot-toggle-caption rot-label" onclick="toggleRot()"></button>
           <span class="toggle-label" id="rot-label">Estático — exibe tudo sem rotação</span>
         </div>
       </div>
@@ -620,6 +620,7 @@ function toggleRot(){ edRotation=!edRotation; updateRotToggle(); }
 function updateRotToggle(){
   const t=document.getElementById('rot-toggle');
   t.className='toggle'+(edRotation?' on':'');
+  t.setAttribute('aria-pressed', String(!!edRotation));
   document.getElementById('rot-label').textContent=edRotation?'Automática — rotaciona entre páginas':'Estático — exibe tudo sem rotação';
   document.getElementById('rot-delay-row').style.display=edRotation?'block':'none';
 }
