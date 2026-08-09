@@ -54,7 +54,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 .dc.off {background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.07);}
 
 /* ── SEPARADORES ── */
-.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);text-align:center;display:flex;align-items:center;gap:8px;}
+.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text2);text-align:center;display:flex;align-items:center;gap:8px;}
 .sec-label::before,.sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(to right,transparent,#2a2a40,transparent);}
 
 /* ── BOTÃO BASE (tecla física) ── */
@@ -213,7 +213,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 }
 .midia-btn:active:not(:disabled){transform:scale(.97);}
 .midia-btn.locked{
-  background:#1a1828;color:#5050780;cursor:not-allowed;
+  background:#1a1828;cursor:not-allowed;
   border:1.5px dashed #3a3858;color:#6060a0;
 }
 .midia-btn.ready{
@@ -242,8 +242,8 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
   <form id="login-form" style="background:#1e1e28;border:1px solid #2a2a3a;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#e8e8f2;">
     <div style="font-weight:800;font-size:1rem;">SIME · Mesário</div>
     <div style="font-size:.72rem;color:#8080a8;">Digite o token e o PIN da sua seção (ou escaneie o QR Code).</div>
-    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;">
-    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;letter-spacing:.3em;text-align:center;">
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;min-height:44px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;min-height:44px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;letter-spacing:.3em;text-align:center;">
     <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#4f7dff;color:#fff;font-weight:700;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#ef4444;min-height:1em;"></div>
     <button type="button" id="login-offline" style="padding:8px;border:1px solid #2a2a3a;border-radius:8px;background:transparent;color:#8080a8;font-size:.76rem;">Continuar offline (sem sincronizar)</button>

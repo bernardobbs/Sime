@@ -136,10 +136,10 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <div class="login-title">SIME · Acessibilidade</div>
     <div class="login-sub">Digite o PIN de 4 dígitos recebido do cartório ou escaneie o QR Code com a câmera do celular.</div>
     <div class="pin-input-wrap">
-      <input class="pin-inp" id="pin-0" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,0)">
-      <input class="pin-inp" id="pin-1" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,1)">
-      <input class="pin-inp" id="pin-2" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,2)">
-      <input class="pin-inp" id="pin-3" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,3)">
+      <input class="pin-inp" id="pin-0" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,0)">
+      <input class="pin-inp" id="pin-1" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,1)">
+      <input class="pin-inp" id="pin-2" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,2)">
+      <input class="pin-inp" id="pin-3" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,3)">
     </div>
     <button class="btn-login" onclick="loginWithPIN()">Entrar →</button>
     <div class="login-hint">Não tem PIN? Peça ao coordenador do cartório.</div>
@@ -150,7 +150,10 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <div class="display">
       <div class="d-brand">
         <span>SIME · Coord. Acessibilidade</span>
-        <span class="d-sync" id="sync-badge" title="Salvo localmente">🟢</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button type="button" onclick="sairAcessibilidade()" aria-label="Sair" style="background:none;border:none;color:inherit;font:inherit;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:4px;min-height:44px;">⎋ Sair</button>
+          <span class="d-sync" id="sync-badge" title="Salvo localmente">🟢</span>
+        </span>
       </div>
       <div class="d-local" id="d-local">—</div>
       <div class="d-sub" id="d-sub">—</div>
@@ -621,6 +624,12 @@ function enterApp(){
   showView('view-app');
   renderAll();
 }
+
+// Sem isso não havia caminho de volta se o coordenador entrasse no local
+// errado — só fechando a aba. Recarrega a página: volta pra tela de PIN,
+// pronta pra outro coordenador (ou o mesmo, corrigindo o PIN) entrar.
+function sairAcessibilidade(){ location.reload(); }
+window.sairAcessibilidade = sairAcessibilidade;
 
 function showView(id){
   document.querySelectorAll('.view, .login-view').forEach(v=>v.classList.remove('active'));

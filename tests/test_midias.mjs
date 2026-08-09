@@ -96,7 +96,6 @@ async function login(p) {
   });
   await p.evaluate(() => window.render());
   await p.click('.btn-coletar');
-  await p.click('.sbtn.yellow');
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.name === 'sime_acao_midia'));
   const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
   const call = calls.find(c => c.name === 'sime_acao_midia');
@@ -133,7 +132,6 @@ async function login(p) {
   });
   await p.evaluate(() => window.render());
   await p.click('.btn-coletar');
-  await p.click('.sbtn.yellow');
   await p.waitForTimeout(300);
 
   const midiaState = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_midias_v1') || '{}')['0001']);
@@ -170,13 +168,60 @@ async function login(p) {
   });
   await p.evaluate(() => window.render());
   await p.click('.btn-coletar');
-  await p.click('.sbtn.yellow');
   await p.waitForTimeout(200);
   const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
   check('continuar offline: nenhuma chamada rpc (sem sessão)', calls.length === 0, 'calls=' + calls.length);
   const midiaState = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_midias_v1') || '{}')['0001']);
   check('continuar offline: aplica localmente mesmo assim', midiaState?.status === 'coletada');
   check('continuar offline: zero erros JS', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 4. Coleta é toque único (achado "baixo"); editar observação depois não mexe em status/coletada_ts ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  await ctx.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      jwt: 'jwt.x', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-7', tipo: 'coletor_midias',
+    }) });
+  });
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_midias.html');
+  await login(p);
+  await p.waitForTimeout(300);
+  await p.evaluate(() => {
+    localStorage.setItem('sime_midias_v1', JSON.stringify({ '0001': { status: 'pronta_para_coleta', pronta_ts: Date.now() } }));
+  });
+  await p.evaluate(() => window.render());
+
+  // um único toque em "Coletar" já coleta — nenhuma folha de confirmação abre
+  check('nenhuma folha aberta antes do toque', await p.locator('.overlay.show').count() === 0);
+  await p.click('.btn-coletar');
+  await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.name === 'sime_acao_midia'));
+  check('toque único já chama sime_acao_midia (sem abrir folha)', (await p.evaluate(() => window.__mockConfig.rpcCalls)).some(c => c.name === 'sime_acao_midia'));
+  const tsAntes = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_midias_v1') || '{}')['0001']?.coletada_ts);
+  check('coletada_ts gravado no toque único', typeof tsAntes === 'number' && tsAntes > 0, String(tsAntes));
+
+  // tocar o cartão já coletado abre a edição de observação, sem duplicar a coleta
+  await p.click('.btn-editavel');
+  await p.waitForTimeout(150);
+  check('abre folha de observação (não a de coleta)', (await p.locator('.sh-title').textContent()).includes('Observação'));
+  await p.fill('#sh-obs', 'embalagem violada');
+  await p.click('button:has-text("💾 Salvar observação")');
+  await p.waitForTimeout(200);
+
+  const estadoFinal = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_midias_v1') || '{}')['0001']);
+  check('observação salva localmente', estadoFinal?.observacao === 'embalagem violada', JSON.stringify(estadoFinal));
+  check('status continua coletada (não voltou a "aguardando")', estadoFinal?.status === 'coletada');
+  check('coletada_ts NÃO muda só por editar a observação', estadoFinal?.coletada_ts === tsAntes, `${estadoFinal?.coletada_ts} vs ${tsAntes}`);
+
+  const chamadasColetada = (await p.evaluate(() => window.__mockConfig.rpcCalls)).filter(c => c.name === 'sime_acao_midia' && c.params.p_status === 'coletada');
+  check('editar observação reenvia p_status=coletada (mesmo status, obs nova)', chamadasColetada.length === 2 && chamadasColetada[1].params.p_obs === 'embalagem violada', JSON.stringify(chamadasColetada));
+
+  check('zero erros JS', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
 

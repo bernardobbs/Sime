@@ -90,11 +90,25 @@ async function loginPIN(p) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.goto('http://localhost:8917/modules/SIME_acessibilidade.html');
+  // type=number permitia caracteres estranhos (-, e) num PIN de 4 dígitos (achado "baixo")
+  check('campo de PIN usa type=text (não number)', await p.getAttribute('#pin-0', 'type') === 'text');
+  check('campo de PIN mantém teclado numérico via inputmode', await p.getAttribute('#pin-0', 'inputmode') === 'numeric');
   await loginPIN(p);
   await p.waitForFunction(() => document.getElementById('view-app').classList.contains('active'));
   check('login local continua funcionando (entra no app)', true);
   await p.waitForTimeout(300);
   check('sime-login foi chamado com token+pin do token local', loginBody?.token === 'ACES001' && loginBody?.pin === '9876');
+
+  // Botão de sair (achado "baixo": não havia caminho de volta se entrasse no local errado)
+  check('botão "Sair" existe no cabeçalho', await p.locator('button[aria-label="Sair"]').count() === 1);
+  await p.click('button[aria-label="Sair"]');
+  await p.waitForFunction(() => document.getElementById('view-login')?.classList.contains('active'));
+  check('sair volta pra tela de PIN', await p.evaluate(() => document.getElementById('view-login').classList.contains('active')));
+  check('sair NÃO deixa o app visível por baixo', await p.evaluate(() => !document.getElementById('view-app').classList.contains('active')));
+
+  // reloga pra continuar o resto do teste
+  await loginPIN(p);
+  await p.waitForFunction(() => document.getElementById('view-app').classList.contains('active'));
 
   await p.click('.fbtn.plus'); // +1 na fila da 1ª seção (0063)
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_fila === 1));

@@ -74,6 +74,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-entregar {background:var(--green);color:#fff;}
 .btn-dedicada {background:var(--purple);color:#fff;}
 .btn-done     {background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+/* Coletada é a única variante de .btn-done que ainda faz algo — abre a
+   observação pra edição — por isso reabre o cursor de clique. */
+.btn-done.btn-editavel{cursor:pointer;color:var(--text2);}
 
 /* ENTREGA TRANSMISSÃO */
 .transmissao-panel{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:18px;margin:14px;text-align:center;}
@@ -530,7 +533,7 @@ function render() {
     } else if(st==='coletada'){
       cls='status-coletada';iconCls='co';icon='✅';
       statusTxt='Mídia coletada • '+fmtTs(m.coletada_ts, '--:--');statusCls='co';
-      btnHtml='<div class="sc-btn btn-done">✓ Coletada</div>';
+      btnHtml=`<button class="sc-btn btn-done btn-editavel" onclick="abrirEditarObsColeta('${sec.n}')">✓ Coletada · ✏️ observação</button>`;
     } else if(st==='em_coleta_rota'){
       cls='status-em-coleta';iconCls='co';icon='🚗';
       statusTxt='Em coleta pela rota '+sec.rota;statusCls='co';
@@ -538,11 +541,11 @@ function render() {
     } else if(st==='coleta_dedicada'){
       cls='status-dedicada';iconCls='de';icon='⚡';
       statusTxt='Coleta dedicada designada';statusCls='de';
-      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','dedicada')">🚗 Coletar</button>`;
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="coletarDireto('${sec.n}','dedicada')">🚗 Coletar</button>`;
     } else if(st==='pronta_para_coleta'){
       cls='status-pronta';iconCls='pr';icon='📦';
       statusTxt='Pronta para coleta • '+fmtTs(m.pronta_ts, '--:--');statusCls='pr';
-      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','rota')">📦 Coletar</button>`;
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="coletarDireto('${sec.n}','rota')">📦 Coletar</button>`;
     } else {
       // aguardando_encerramento
       if(mesaEnc){
@@ -642,25 +645,13 @@ async function marcarTransmissao(n, status) {
 // ══════════════════════════════════════
 // AÇÕES
 // ══════════════════════════════════════
-function abrirColeta(n, tipo) {
-  const sec = SECOES.find(s=>s.n===n);
-  document.getElementById('sheet-body').innerHTML = `
-    <div class="sh-title">📦 Coletar mídia — Seção ${parseInt(n)}</div>
-    <div class="sh-sub">${sec.loc} · ${sec.city}\nConfirme o recolhimento da mídia desta seção.</div>
-    <label class="sh-label">Observação (opcional)</label>
-    <input class="sh-input" type="text" id="sh-obs" placeholder="Ex: embalagem danificada...">
-    <div class="sh-btns">
-      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
-      <button class="sbtn yellow" onclick="confirmarColeta('${n}','${tipo}')">📦 Confirmar coleta</button>
-    </div>`;
-  openSheet();
-}
-
-async function confirmarColeta(n, tipo) {
-  const obs = document.getElementById('sh-obs')?.value||'';
-  const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: await serverTs() };
-
-  closeSheet();
+// Coleta é a ação mais repetida do módulo no Dia D — exigir abrir uma folha
+// só pra confirmar (sem nenhum campo obrigatório nela) era fricção que a
+// filosofia do projeto não pede (toque único pra ações simples). A
+// observação continua disponível, só que depois: tocar o cartão já coletado
+// abre abrirEditarObsColeta() (achado "baixo" da auditoria).
+async function coletarDireto(n, tipo) {
+  const dados = { n, status: 'coletada', tipo, obs: getMidia(n).observacao || '', ts: await serverTs() };
   try {
     await syncAction('midia_coletada', dados);
     showToast('✓ Mídia da seção ' + parseInt(n) + ' coletada');
@@ -671,6 +662,37 @@ async function confirmarColeta(n, tipo) {
   // Urna recolhida: melhor esforço, à parte da fila de mídia — antes só
   // gravava sime_mesa_v1 local (ninguém via). Não bloqueia a coleta se falhar.
   if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
+  render();
+}
+
+function abrirEditarObsColeta(n) {
+  const sec = SECOES.find(s=>s.n===n);
+  const m = getMidia(n);
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sh-title">✏️ Observação — Seção ${parseInt(n)}</div>
+    <div class="sh-sub">${sec.loc} · ${sec.city}\nJá coletada — a observação pode ser ajustada a qualquer momento.</div>
+    <label class="sh-label">Observação</label>
+    <input class="sh-input" type="text" id="sh-obs" placeholder="Ex: embalagem danificada..." value="${(m.observacao||'').replace(/"/g,'&quot;')}">
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn yellow" onclick="salvarObservacaoColeta('${n}')">💾 Salvar observação</button>
+    </div>`;
+  openSheet();
+}
+
+// Só troca a observação — não mexe em status/coletada_ts, pra não parecer
+// que a seção foi "recoletada" na hora em que alguém só corrigiu uma nota.
+async function salvarObservacaoColeta(n) {
+  const obs = document.getElementById('sh-obs')?.value||'';
+  const atual = getMidia(n);
+  saveMidiaLocal(n, { observacao: obs });
+  closeSheet();
+  showToast('✓ Observação salva');
+  try {
+    if (window.simeCampoMidia) await window.simeCampoMidia.sync({ n, status: atual.status, tipo: atual.tipo_coleta, obs });
+  } catch(e) {
+    await window.simeEnqueue('midia_obs_editada', { n, obs });
+  }
   render();
 }
 
@@ -937,7 +959,7 @@ async function confirmarDedicada(n){
     await window.simeEnqueue('midia_dedicada', dados);
   }
   // Urna recolhida: melhor esforço, à parte da fila de mídia (mesmo padrão
-  // de confirmarColeta()).
+  // de coletarDireto()).
   if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
 
   closeSheet();
