@@ -208,6 +208,27 @@ async function entrar(p) {
   await p.close();
 }
 
+// ── Achados "baixo": overlay como dialog acessível, Esc fecha, toast com aria-live, login com label ──
+{
+  const { p, erros } = await abrir({ perfil: 'super_admin', zona_id: 'z-7' });
+
+  check('overlay do modal tem role=dialog', await p.getAttribute('#overlay', 'role') === 'dialog');
+  check('overlay do modal tem aria-modal=true', await p.getAttribute('#overlay', 'aria-modal') === 'true');
+  check('toast tem aria-live (leitor de tela anuncia sozinho)', await p.getAttribute('#toast', 'aria-live') === 'polite');
+  check('login tem labels associadas (não só placeholder)',
+    await p.locator('label[for="login-email"]').count() === 1 && await p.locator('label[for="login-pass"]').count() === 1);
+
+  await p.evaluate(() => window.openModal('nova-zona'));
+  await p.waitForTimeout(150);
+  check('modal abre (overlay ganha .show)', await p.evaluate(() => document.getElementById('overlay').classList.contains('show')));
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(150);
+  check('Esc fecha o modal (achado "baixo": só fechava clicando fora)', await p.evaluate(() => !document.getElementById('overlay').classList.contains('show')));
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
 await b.close();
 
 const falhou = results.filter(r => !r.ok);

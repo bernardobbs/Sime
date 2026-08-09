@@ -13,6 +13,7 @@
   --indigo:#3730a3;--indigo-bg:#e0e7ff;--indigo-bd:#a5b4fc;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;min-height:100vh;}
 .topbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;}
 .logo{width:38px;height:38px;border-radius:9px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;color:#fff;flex-shrink:0;}
@@ -162,7 +163,9 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
   <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
     <div style="font-weight:800;font-size:1rem;">SIME — Painel Principal</div>
     <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de administrador.</div>
+    <label for="login-email" class="sr-only">E-mail</label>
     <input id="login-email" type="email" placeholder="E-mail" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <label for="login-pass" class="sr-only">Senha</label>
     <input id="login-pass" type="password" placeholder="Senha" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
     <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
@@ -401,8 +404,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 
 </div><!-- /page -->
 
-<div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
-<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay" role="dialog" aria-modal="true"><div class="modal" id="modal-body"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
 // Escopo por zona do portal. Antes este arquivo não falava com o Supabase:
@@ -939,6 +942,12 @@ const MODALS={
 function doResetar(){ const v=document.getElementById('rc'); if(v&&v.value==='RESETAR'){closeModal();showToast('✓ Resetado');}else showToast('Digite RESETAR para confirmar'); }
 function openModal(k,p){ const fn=MODALS[k]; if(!fn) return; document.getElementById('modal-body').innerHTML=fn(p); document.getElementById('overlay').classList.add('show'); }
 function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+// Esc fechava só clicando fora — nenhum handler de teclado existia
+// (achado "baixo" da auditoria: role="dialog" sem os outros comportamentos
+// esperados de um dialog acessível).
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('overlay').classList.contains('show')) closeModal();
+});
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeModal(); });
 
 // TOAST

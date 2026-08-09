@@ -159,6 +159,9 @@ async function abrir(arquivo, opts = {}) {
   const opsRem = await p.evaluate(() => window.__ops);
   check('remover ator: grava ativo=false em sime_atores (soft delete)', opsRem.some(o => o.op === 'update' && o.t === 'sime_atores' && o.payload?.ativo === false && o.filter?.id === 'a1'), JSON.stringify(opsRem));
 
+  // Campo de busca sem label/aria-label (achado "baixo" da auditoria)
+  check('campo de busca da Lista tem aria-label', await p.locator('input[aria-label="Buscar atores"]').count() === 1);
+
   check('editar/criar/remover: sem erro JS', erros.length === 0, erros.join(' | '));
   await p.close();
 }

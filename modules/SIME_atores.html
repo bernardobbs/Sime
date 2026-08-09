@@ -269,7 +269,7 @@ function renderLista(atores){
   const c=document.getElementById('content');
   c.innerHTML=`
     <div class="search-row">
-      <input type="text" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar atores" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -305,7 +305,7 @@ function renderGuerra(atores){
       ⚡ MODO GUERRA — Contato direto. Use apenas em emergências. Todo acionamento é registrado.
     </div>
     <div class="search-row">
-      <input type="text" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar seção ou nome" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -700,7 +700,7 @@ function renderDisparo(atores){
         </select>
       </div>
       <div class="form-group"><label>Selecionar destinatários</label>
-        <input type="text" id="dp-busca" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
+        <input type="text" id="dp-busca" aria-label="Buscar por nome" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
         <div style="display:flex;gap:8px;margin:6px 0">
           <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(true)">☑ Marcar exibidos</button>
           <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(false)">☐ Desmarcar exibidos</button>
