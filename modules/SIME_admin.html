@@ -69,14 +69,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-title::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* BUTTONS */
-.btn{padding:6px 13px;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
+.btn{padding:6px 13px;min-height:44px;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
 .btn-dark{background:#2a2a2a;color:#fff;} .btn-dark:hover{background:#444;}
 .btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);} .btn-out:hover{background:var(--bg3);}
 .btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
 .btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .btn-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
-.btn-sm{padding:4px 9px;font-size:.7rem;}
-.btn-xs{padding:3px 7px;font-size:.66rem;}
+/* .btn-sm/.btn-xs ficam abaixo do alvo de toque de 44px do .btn base
+   (achado "baixo" da auditoria) — mas são usados lado a lado em linhas de
+   tabela densas (Seções, Equipe, Mesários), onde 44px cheios quebrariam o
+   layout. Meio-termo: melhoram sem virar do tamanho do botão primário. */
+.btn-sm{padding:4px 9px;font-size:.7rem;min-height:36px;}
+.btn-xs{padding:3px 7px;font-size:.66rem;min-height:32px;}
 
 /* FORM */
 /* Rótulo presente pro leitor de tela sem alterar o layout visual — usado nos
@@ -173,7 +177,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .modal-sub{font-size:.72rem;color:var(--text2);margin-top:2px;}
 .modal-body{padding:16px 18px;}
 .modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
-.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
 
 /* TOGGLE SWITCH */
 .toggle-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
@@ -201,18 +205,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <!-- LOGIN — bloqueia o acesso até validar sessão do Supabase, mas nunca sem
      saída: se o Supabase estiver fora do ar (plano de contingência), o botão
      "continuar offline" segue liberando a UI com os dados locais/fallback. -->
-<div id="login-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:500;">
-  <form id="login-form" style="background:#f9f7f4;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
-    <div style="font-weight:800;font-size:1rem;">SIME — Administração</div>
-    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de coordenador.</div>
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
+    <div style="font-weight:800;font-size:1rem;color:var(--text);">SIME — Administração</div>
+    <div style="font-size:.72rem;color:var(--text2);">Entre com seu e-mail e senha de coordenador.</div>
     <label for="login-email" class="sr-only">E-mail</label>
-    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
+    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text);">
     <label for="login-pass" class="sr-only">Senha</label>
-    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
-    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
-    <div id="login-erro" role="alert" aria-live="polite" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
-    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:#3a5fa0;font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
-    <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
+    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text);">
+    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:var(--text);color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
+    <div id="login-erro" role="alert" aria-live="polite" style="font-size:.72rem;color:var(--red);min-height:1em;"></div>
+    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:var(--blue);font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--text2);font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
   </form>
 </div>
 
@@ -244,7 +248,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('dash',this)">📊 Dashboard</button>
   <button class="nav-tab"        onclick="goTab('secoes',this)">📋 Seções</button>
-  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="window.open('SIME_problemas.html','_blank')">🚨 Problemas <span id="prob-count-badge"></span></button>
+  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="window.open('SIME_problemas.html','sime_problemas')">🚨 Problemas <span id="prob-count-badge"></span></button>
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
@@ -377,7 +381,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
       <select id="tx-mun" onchange="renderAtribuicaoTransmissao()"><option value="">Todos os municípios</option></select>
       <select id="tx-tecnico"><option value="">— selecionar técnico —</option></select>
-      <button class="btn btn-dark btn-sm" onclick="atribuirTransmissao()">Atribuir às seções selecionadas</button>
+      <button class="btn btn-dark btn-sm" id="tx-atribuir-btn" disabled onclick="atribuirTransmissao()">Atribuir às seções selecionadas</button>
+      <span id="tx-count" style="font-size:.72rem;color:var(--text3);align-self:center">Nenhuma seção selecionada</span>
     </div>
     <div id="tx-secoes" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
     <div id="tx-por-tecnico" style="margin-top:14px;"></div>
@@ -688,7 +693,10 @@ document.getElementById('login-esqueci').addEventListener('click', async () => {
   try {
     await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
     erroEl.style.color = '#176c2c';
-    erroEl.textContent = 'Se este e-mail tiver acesso, um link de redefinição foi enviado.';
+    // A chamada não falha mesmo sem SMTP configurado no projeto — não há como
+    // o cliente saber se o e-mail de fato saiu, então o aviso já vem com o
+    // caminho alternativo, sem esperar o e-mail nunca chegar (achado "baixo").
+    erroEl.textContent = 'Se este e-mail tiver acesso, o link chega em instantes. Não chegou? Peça ao coordenador para redefinir pela aba Equipe.';
   } catch (e) {
     erroEl.style.color = '#c0392b';
     erroEl.textContent = 'Não foi possível enviar agora. Peça ao coordenador para redefinir.';
@@ -750,7 +758,7 @@ const MIDIA_STATUS_COLOR = {
   aguardando_encerramento:'var(--text3)',
   pronta_para_coleta:'var(--yellow)',
   em_coleta_rota:'var(--blue)',
-  coleta_dedicada:'var(--purple,#6040a0)',
+  coleta_dedicada:'var(--purple)',
   coletada:'var(--green)',
   entregue_transmissao:'#15803d',
 };
@@ -921,7 +929,7 @@ async function renderHermes(){
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div style="font-weight:800;font-size:.88rem;">${zona ? zona.numero + 'ª Zona' : 'Zona ' + zid.slice(0,8)}</div>
-        <div style="font-size:.72rem;font-weight:700;color:${online?'#1ea672':'#b23'}">${online?'🟢 online':'⚪ sem sinal'}${idadeMin!==null?` · há ${idadeMin} min`:''}</div>
+        <div style="font-size:.72rem;font-weight:700;color:${online?'#1ea672':'var(--red)'}">${online?'🟢 online':'⚪ sem sinal'}${idadeMin!==null?` · há ${idadeMin} min`:''}</div>
       </div>
       ${hb ? `
       <div style="font-size:.78rem;color:var(--text2);line-height:1.9;">
@@ -1051,10 +1059,10 @@ function renderDash(){
 
   // Stat cards
   const cards = [
-    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?'174 seções cadastradas':escopoLabel()||'Escopo restrito',color:'var(--text)'},
-    {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'#16a34a'},
-    {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'#2563eb'},
-    {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'#dc2626':'var(--text3)'},
+    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?`${tot} seções cadastradas`:escopoLabel()||'Escopo restrito',color:'var(--text)'},
+    {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'var(--green)'},
+    {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'var(--blue)'},
+    {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'var(--red)':'var(--text3)'},
   ];
   document.getElementById('stat-cards').innerHTML = cards.map(c=>`
     <div class="stat-card">
@@ -1199,7 +1207,7 @@ function openEditSec(n){
           </div>
         </div>
         ${canResolve?`
-        <button class="btn btn-green btn-sm" onclick="window.open('SIME_problemas.html','_blank')">Resolver em Problemas →</button>`:''}
+        <button class="btn btn-green btn-sm" onclick="window.open('SIME_problemas.html','sime_problemas')">Resolver em Problemas →</button>`:''}
       </div>`:''}
 
       <!-- Chegada de membros -->
@@ -1484,6 +1492,7 @@ function showMemberModal(m){
           <div id="m-empresa-secoes-preview" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
         ` : `
           <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:3px">⚠ Sem lista de empresas cadastradas (ou offline) — digite o nome livremente.</div>
         `}
       </div>
 
@@ -2356,12 +2365,13 @@ function renderAtribuicaoTransmissao(){
       const m = midias[s.n]||{};
       const tecAtual = (window.ATORES_REAIS||[]).find(a=>a.id===m.tecnico_responsavel_id);
       return `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:.8rem;border-bottom:1px solid var(--border)">
-        <input type="checkbox" class="tx-check" value="${s.n}">
+        <input type="checkbox" class="tx-check" value="${s.n}" onchange="updateTxCount()">
         <span style="flex:1">Seção ${parseInt(s.n)} — ${s.loc}</span>
         <span style="color:var(--text3)">${tecAtual?tecAtual.nome:'sem técnico'}</span>
       </label>`;
     }).join('');
   }
+  updateTxCount();
 
   // Lista "quem faz o quê" — pra consulta/impressão no dia D.
   const porTecnico = {};
@@ -2381,6 +2391,17 @@ function renderAtribuicaoTransmissao(){
         return `<div style="font-size:.78rem;padding:3px 0"><strong>${t?t.nome:'(técnico removido)'}</strong> — seções ${nums}</div>`;
       }).join('');
   }
+}
+
+// Sem isto, marcar 0 seções só dava erro DEPOIS de clicar "Atribuir" — o
+// contador e o próprio botão agora refletem a seleção em tempo real
+// (achado "baixo" da auditoria).
+function updateTxCount(){
+  const n = document.querySelectorAll('.tx-check:checked').length;
+  const btn = document.getElementById('tx-atribuir-btn');
+  const lbl = document.getElementById('tx-count');
+  if(btn) btn.disabled = n === 0;
+  if(lbl) lbl.textContent = n === 0 ? 'Nenhuma seção selecionada' : `${n} ${n>1?'seções':'seção'} selecionada${n>1?'s':''}`;
 }
 
 async function atribuirTransmissao(){
@@ -2438,6 +2459,12 @@ function renderAtores(){
   // Renderiza no máximo 300 linhas: a zona tem centenas de mesários e montar
   // a tabela inteira de uma vez trava a aba em máquina modesta.
   const LIMITE = 300;
+  // Aviso de truncamento repetido aqui em cima — a linha no fim da tabela
+  // (achado "baixo" da auditoria) só aparecia pra quem rolasse até lá.
+  if(filtered.length > LIMITE){
+    document.getElementById('atores-sub').innerHTML =
+      `⚠ Mostrando ${LIMITE} de <strong>${filtered.length}</strong> — refine a busca ou o filtro de função pra ver o resto`;
+  }
   tbody.innerHTML = filtered.slice(0, LIMITE).map(a=>`
     <tr>
       <td><strong>${a.nome}</strong>${a.funcao_mesa?` <span style="font-size:.68rem;color:var(--text3)">${a.funcao_mesa}</span>`:''}</td>

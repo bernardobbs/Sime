@@ -93,6 +93,11 @@ async function login(p) {
 
   check('sem filtro: mostra as 3 seções', await p.locator('#tx-secoes .tx-check').count() === 3);
 
+  // Sem seção marcada, o botão vinha habilitado e o erro só aparecia depois
+  // do clique (achado "baixo" da auditoria) — agora nasce desabilitado.
+  check('botão "Atribuir" começa desabilitado (nenhuma seção marcada)', await p.isDisabled('#tx-atribuir-btn'));
+  check('contador começa em "Nenhuma seção selecionada"', (await p.locator('#tx-count').textContent()).includes('Nenhuma'));
+
   await p.selectOption('#tx-mun', 'Campo Maior');
   await p.waitForTimeout(150);
   check('filtro por município: só as 2 de Campo Maior', await p.locator('#tx-secoes .tx-check').count() === 2);
@@ -100,7 +105,10 @@ async function login(p) {
   // seleciona as 2 seções filtradas e atribui ao primeiro técnico
   const checks = p.locator('#tx-secoes .tx-check');
   await checks.nth(0).check();
+  check('contador atualiza em tempo real (1 seção selecionada)', (await p.locator('#tx-count').textContent()).includes('1 seção'));
+  check('botão habilita com 1 seção marcada', !(await p.isDisabled('#tx-atribuir-btn')));
   await checks.nth(1).check();
+  check('contador soma as duas (2 seções selecionadas)', (await p.locator('#tx-count').textContent()).includes('2 seções'));
   await p.selectOption('#tx-tecnico', 'tec-1');
   await p.click('button[onclick="atribuirTransmissao()"]');
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.filter(c => c.name === 'sime_midia_transmissao_upsert').length === 2);
