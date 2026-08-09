@@ -133,7 +133,6 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 
 | Papel | Módulo | Fase | Escopo |
 |---|---|---|---|
-| **Coordenador de Preparação** | SIME_coordenador_preparacao | D-X | Todas as seções |
 | **Auxiliar de Eleição** | Instalador + apoio | D-1 | Equipe do cartório |
 | **Conferente de Embarque** | SIME_conferente | D-1 | Rotas atribuídas |
 | **Instalador** | SIME_instalador | D-1 | Seções da rota (convocado externo) |
@@ -144,6 +143,11 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Secretário** | Registrado pelo Presidente | Dia D | — |
 | **Coord. de Acessibilidade** | SIME_acessibilidade | Dia D | Seções do `local_id` (convocado externo) |
 | **Coletor de Mídias** | SIME_midias | Dia D | Seções designadas (papel fixo, substituto possível) |
+
+> **Coordenador de Preparação** (`SIME_coordenador_preparacao`, fase D-X, todas
+> as seções) é o único papel de campo que **não** entra por QR+PIN — decisão
+> deliberada: entra com e-mail/senha, mesmo padrão do Admin. Não é uma
+> inconsistência a corrigir.
 
 ### Autônomo
 | Papel | Tecnologia | Função |
