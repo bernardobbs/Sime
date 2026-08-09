@@ -199,6 +199,51 @@ const STUB_SUPABASE_JS = stubSupabaseJs();
   await ctx.close();
 }
 
+// ── Caso 6: checkbox é navegável por teclado + aria-pressed; resetar usa modal, não confirm() nativo ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  // Nenhum handler de 'dialog' registrado de propósito — se resetAll() ainda
+  // usasse confirm() nativo, o clique travaria esperando resposta.
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.click('#login-offline');
+  await p.waitForTimeout(200);
+
+  const ck = p.locator('.sec-card').first().locator('.ck.carga');
+  check('checkbox tem role=checkbox', await ck.getAttribute('role') === 'checkbox');
+  check('checkbox tem aria-label (não só ícone)', (await ck.getAttribute('aria-label') || '').length > 0);
+  check('checkbox começa com aria-pressed=false', await ck.getAttribute('aria-pressed') === 'false');
+  await ck.focus();
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(150);
+  check('Enter no teclado marca o checkbox (navegável, não só clique)', await ck.getAttribute('aria-pressed') === 'true');
+
+  // Resetar: modal customizado, não confirm() nativo
+  check('modal de reset começa fechado', await p.locator('#reset-overlay.show').count() === 0);
+  await p.click('.btn-reset');
+  await p.waitForTimeout(150);
+  check('clicar "Resetar" abre o modal (sem travar em confirm nativo)', await p.locator('#reset-overlay.show').count() === 1);
+  await p.click('#reset-overlay button:has-text("Cancelar")');
+  await p.waitForTimeout(150);
+  check('Cancelar fecha o modal sem apagar nada', await p.evaluate(() => state['0001']?.carga === true));
+
+  await p.click('.btn-reset');
+  await p.waitForTimeout(150);
+  await p.click('#reset-overlay button:has-text("↺ Resetar")');
+  await p.waitForTimeout(150);
+  check('confirmar reset zera o progresso', await p.evaluate(() => state['0001']?.carga === false && state['0001']?.prep === false && state['0001']?.lacre === false));
+  check('modal fecha depois de confirmar', await p.locator('#reset-overlay.show').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

@@ -13,14 +13,17 @@
   --carga:#b07d40; --carga-bg:#f5ead9; --carga-bd:#e8cfa0;
   --prep:#4a6fa5;  --prep-bg:#dde7f5;  --prep-bd:#b0c5e0;
   --lacre:#4a8c6a; --lacre-bg:#d8f0e4; --lacre-bd:#9ecfb5;
-  --locked:#e8e4de; --locked-txt:#c0bbb4; --locked-bd:#d8d3cc;
   --red:#c0392b; --red-bg:#fae9e7;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
 
 /* ── HEADER ── */
-.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px 10px;position:sticky;top:0;z-index:10;}
+/* Header + toolbar grudam juntos no topo como um bloco só — antes o
+   toolbar tinha um top:116px fixo, um "número mágico" que dependia da
+   altura exata do header (achado "baixo" da auditoria). */
+.sticky-head{position:sticky;top:0;z-index:10;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px 10px;}
 .header-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .logo{width:32px;height:32px;border-radius:7px;flex-shrink:0;background:#2c2c2c;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.85rem;color:#fff;}
 .h-title{font-weight:700;font-size:0.92rem;}
@@ -43,7 +46,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .mb-pct.carga{color:var(--carga);} .mb-pct.prep{color:var(--prep);} .mb-pct.lacre{color:var(--lacre);}
 
 /* ── TOOLBAR ── */
-.toolbar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:116px;z-index:9;}
+.toolbar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--bg);border-bottom:1px solid var(--border);}
 .search-wrap{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;padding:0 9px;gap:5px;}
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:0.82rem;padding:7px 0;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
@@ -86,12 +89,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
 .ck{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;padding:9px 4px 7px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;transition:all 0.15s;-webkit-user-select:none;user-select:none;position:relative;}
 .ck input{position:absolute;opacity:0;width:0;height:0;}
-.ck.locked{background:var(--locked);border-color:var(--locked-bd);cursor:not-allowed;opacity:0.55;}
-.ck-lock{display:none;position:absolute;top:4px;right:5px;font-size:0.55rem;color:var(--locked-txt);}
-.ck.locked .ck-lock{display:block;}
 .ck-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;font-size:0.78rem;}
 .ck-lbl{font-size:0.69rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
-.ck:active:not(.locked){transform:scale(0.97);}
+.ck:active{transform:scale(0.97);}
+.ck:focus-visible{outline:2px solid var(--prep);outline-offset:2px;}
 .ck.carga.on{background:var(--carga-bg);border-color:var(--carga-bd);} .ck.carga.on .ck-box{background:var(--carga);border-color:var(--carga);color:#fff;} .ck.carga.on .ck-lbl{color:var(--carga);}
 .ck.prep.on {background:var(--prep-bg); border-color:var(--prep-bd);}  .ck.prep.on  .ck-box{background:var(--prep); border-color:var(--prep); color:#fff;}  .ck.prep.on  .ck-lbl{color:var(--prep);}
 .ck.lacre.on{background:var(--lacre-bg);border-color:var(--lacre-bd);} .ck.lacre.on .ck-box{background:var(--lacre);border-color:var(--lacre);color:#fff;} .ck.lacre.on .ck-lbl{color:var(--lacre);}
@@ -110,6 +111,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .f-eleit{font-size:0.65rem;color:var(--text3);white-space:nowrap;}
 .btn-reset{margin-left:auto;padding:7px 12px;border-radius:7px;font-size:0.71rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);transition:all 0.15s;}
 .btn-reset:active{background:var(--red-bg);color:var(--red);border-color:var(--red);}
+
+.reset-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.reset-overlay.show{display:flex;}
+.reset-card{background:var(--card);border-radius:14px;padding:20px;width:100%;max-width:340px;}
+.reset-title{font-weight:800;font-size:.95rem;margin-bottom:6px;}
+.reset-sub{font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:16px;}
+.reset-btns{display:flex;gap:8px;justify-content:flex-end;}
+.reset-btns .btn-out,.reset-btns .btn-red{min-height:44px;padding:8px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;}
+.reset-btns .btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);}
+.reset-btns .btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red);}
 .list-wrap{padding-bottom:70px;}
 </style>
 </head>
@@ -129,41 +140,57 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </form>
 </div>
 
-<div class="header">
-  <div class="header-top">
-    <div class="logo">S</div>
-    <div>
-      <div class="h-title">SIME Coordenador de Preparação</div>
-      <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
+<div class="sticky-head">
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">S</div>
+      <div>
+        <div class="h-title">SIME Coordenador de Preparação</div>
+        <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
+      </div>
+      <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
     </div>
-    <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
+    <div class="prereq-legend">
+      <span class="step c">📦 Carga</span><span class="arrow">→</span>
+      <span class="step p">🔧 Preparação</span><span class="arrow">→</span>
+      <span class="step l">🔒 Lacrada</span>
+      <span style="color:var(--text3);margin-left:4px">· cada etapa libera a próxima</span>
+    </div>
+    <div class="mini-bars">
+      <div class="mb-row"><div class="mb-lbl">📦 Carga</div><div class="mb-track"><div class="mb-fill carga" id="mb-carga" style="width:0%"></div></div><div class="mb-pct carga" id="mp-carga">0%</div></div>
+      <div class="mb-row"><div class="mb-lbl">🔧 Preparação</div><div class="mb-track"><div class="mb-fill prep"  id="mb-prep"  style="width:0%"></div></div><div class="mb-pct prep"  id="mp-prep">0%</div></div>
+      <div class="mb-row"><div class="mb-lbl">🔒 Lacrada</div><div class="mb-track"><div class="mb-fill lacre" id="mb-lacre" style="width:0%"></div></div><div class="mb-pct lacre" id="mp-lacre">0%</div></div>
+    </div>
   </div>
-  <div class="prereq-legend">
-    <span class="step c">📦 Carga</span><span class="arrow">→</span>
-    <span class="step p">🔧 Preparação</span><span class="arrow">→</span>
-    <span class="step l">🔒 Lacrada</span>
-    <span style="color:var(--text3);margin-left:4px">· cada etapa libera a próxima</span>
-  </div>
-  <div class="mini-bars">
-    <div class="mb-row"><div class="mb-lbl">📦 Carga</div><div class="mb-track"><div class="mb-fill carga" id="mb-carga" style="width:0%"></div></div><div class="mb-pct carga" id="mp-carga">0%</div></div>
-    <div class="mb-row"><div class="mb-lbl">🔧 Preparação</div><div class="mb-track"><div class="mb-fill prep"  id="mb-prep"  style="width:0%"></div></div><div class="mb-pct prep"  id="mp-prep">0%</div></div>
-    <div class="mb-row"><div class="mb-lbl">🔒 Lacrada</div><div class="mb-track"><div class="mb-fill lacre" id="mb-lacre" style="width:0%"></div></div><div class="mb-pct lacre" id="mp-lacre">0%</div></div>
-  </div>
-</div>
 
-<div class="toolbar">
-  <div class="search-wrap">
-    <span style="color:var(--text3);font-size:0.83rem">⌕</span>
-    <input type="text" placeholder="Seção, local ou município..." oninput="search(this.value)">
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span style="color:var(--text3);font-size:0.83rem">⌕</span>
+      <input type="text" placeholder="Seção, local ou município..." oninput="search(this.value)">
+    </div>
+    <button class="cf on" onclick="setFilter('all',this)">Todas</button>
+    <button class="cf"    onclick="setFilter('pending',this)">Pendentes</button>
+    <button class="cf"    onclick="setFilter('partial',this)">Parciais</button>
+    <button class="cf"    onclick="setFilter('done',this)">Prontas</button>
   </div>
-  <button class="cf on" onclick="setFilter('all',this)">Todas</button>
-  <button class="cf"    onclick="setFilter('pending',this)">Pendentes</button>
-  <button class="cf"    onclick="setFilter('partial',this)">Parciais</button>
-  <button class="cf"    onclick="setFilter('done',this)">Prontas</button>
 </div>
 
 <div class="list-wrap" id="list-wrap"></div>
 <div class="toast" id="toast"></div>
+
+<!-- confirm() nativo quebrava o padrão visual do resto do sistema (achado
+     "baixo" da auditoria) — modal mínimo só pro reset, a única ação
+     irreversível desta tela. -->
+<div class="reset-overlay" id="reset-overlay">
+  <div class="reset-card">
+    <div class="reset-title">Resetar todas as marcações?</div>
+    <div class="reset-sub">Carga, preparação e lacre de todas as seções voltam a zero. Não pode ser desfeito.</div>
+    <div class="reset-btns">
+      <button class="btn-out" onclick="fecharResetModal()">Cancelar</button>
+      <button class="btn-red" onclick="confirmarResetAll()">↺ Resetar</button>
+    </div>
+  </div>
+</div>
 
 <div class="footer-bar">
   <div class="f-counts">
@@ -462,11 +489,12 @@ function load(){ try{const d=localStorage.getItem('sime_lacre_v3');if(d){const p
 // showToast() vem de sime_ui_utils.js
 
 // Marcação livre em qualquer ordem — o Instalador (tela estruturalmente
-// idêntica) já permitia qualquer ordem, então esta trava aqui era a única
-// inconsistência entre os dois (achado "médio" da auditoria: "decidir um
-// padrão único e aplicar aos dois módulos"). Equipe em campo às 5h30 nem
-// sempre segue carga→preparação→lacre à risca.
-function canMark(){ return true; }
+// idêntica) já permitia qualquer ordem, então a trava que existia aqui era
+// a única inconsistência entre os dois (achado "médio" da auditoria:
+// "decidir um padrão único e aplicar aos dois módulos"). Equipe em campo
+// às 5h30 nem sempre segue carga→preparação→lacre à risca. Desmarcar uma
+// etapa ainda derruba as seguintes (cascade), pra não deixar "lacrada"
+// marcada sem "carga".
 function cascade(sec,field,val){ if(!val){ if(field==='carga'){state[sec].prep=false;state[sec].lacre=false;} if(field==='prep'){state[sec].lacre=false;} } }
 
 function toggle(sec,field){
@@ -500,10 +528,10 @@ function refreshCard(n){
   card.classList.toggle('is-done', cnt===3);
   ['carga','prep','lacre'].forEach(f=>{
     const ck = card.querySelector(`.ck.${f}`);
-    const ic = s[f]; const il = !ic && !canMark(n,f);
-    ck.classList.toggle('on',ic); ck.classList.toggle('locked',il);
+    const ic = s[f];
+    ck.classList.toggle('on',ic);
+    ck.setAttribute('aria-pressed', String(!!ic));
     ck.querySelector('.ck-box').textContent = ic?'✓':'';
-    ck.querySelector('.ck-lock').style.display = il?'block':'none';
   });
   const mun = SECOES.find(x=>x.n===n)?.mun; if(mun) refreshMunProg(mun);
 }
@@ -517,10 +545,13 @@ function refreshMunProg(mun){
   const p = grp.querySelector('.mun-pct'); if(p) p.textContent=pct+'%';
 }
 
+// div+onclick com input escondido não era navegável por teclado nem tinha
+// nome acessível (achado "baixo" da auditoria) — ganha role="checkbox" +
+// aria-label + aria-pressed (sincronizado em refreshCard) + Enter/Espaço.
 function mkCk(sec,field,label,emoji){
-  const ic=state[sec][field]; const il=!ic&&!canMark(sec,field);
-  return`<div class="ck ${field}${ic?' on':''}${il?' locked':''}" onclick="toggle('${sec}','${field}')">
-    <input type="checkbox"${ic?' checked':''}><span class="ck-lock">🔒</span>
+  const ic=state[sec][field];
+  return`<div class="ck ${field}${ic?' on':''}" role="checkbox" tabindex="0" aria-pressed="${ic?'true':'false'}" aria-label="${label}" onclick="toggle('${sec}','${field}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle('${sec}','${field}');}">
+    <input type="checkbox"${ic?' checked':''} tabindex="-1">
     <div class="ck-box">${ic?'✓':''}</div><div class="ck-lbl">${emoji} ${label}</div></div>`;
 }
 
@@ -608,12 +639,18 @@ function applyVisibility(){
 }
 
 function resetAll(){
-  if(!confirm('Resetar todas as marcações?'))return;
+  document.getElementById('reset-overlay').classList.add('show');
+}
+function fecharResetModal(){
+  document.getElementById('reset-overlay').classList.remove('show');
+}
+function confirmarResetAll(){
   SECOES.forEach(s=>{
     state[s.n]={carga:false,prep:false,lacre:false};
     if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(s.n, state[s.n]);
   });
   save(); buildList(); updateStats();
+  fecharResetModal();
 }
 
 // iniciarRelogio() vem de sime_ui_utils.js

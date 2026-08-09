@@ -93,6 +93,12 @@ async function login(p) {
   check('toggle "chegou" chama sime_acao_mesa com p_urna_chegou=true', !!chegouCall);
   check('payload usa secao_id/eleicao_id reais e origem instalador', chegouCall.params.p_secao_id === 'sec-uuid-17' && chegouCall.params.p_eleicao_id === 'ele-uuid-1' && chegouCall.params.p_origem === 'instalador');
   check('badge de sync visível após login', await p.evaluate(() => document.getElementById('sync-badge').style.display !== 'none'));
+
+  // marcar etapa só vibrava — toggleProb() (problema) já avisava por texto,
+  // mas as etapas da urna ficavam sem nenhum feedback textual (achado "baixo")
+  const toastTxt = await p.locator('#toast').textContent();
+  check('marcar etapa mostra toast (não só vibra)', toastTxt.includes('Chegou'), toastTxt);
+
   check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
