@@ -117,6 +117,14 @@ async function abrir(ctx, mock) {
   const destaque = await p.locator('.ct.destaque .ct-nome').textContent();
   check('energia: contato do município da seção vence o geral da zona',
     destaque.includes('Campo Maior'), destaque);
+
+  // Botões só-ícone sem aria-label (achado "baixo") + alvo de toque do fechar
+  check('botão de fechar o detalhe tem aria-label', await p.locator('.sh-x[aria-label="Fechar"]').count() === 1);
+  const fecharBox = await p.locator('.sh-x').first().evaluate(el => el.getBoundingClientRect());
+  check('botão de fechar tem alvo de toque ≥44px', fecharBox.width >= 44 && fecharBox.height >= 44, JSON.stringify(fecharBox));
+  check('login tem labels associadas (não só placeholder)',
+    await p.locator('label[for="login-email"]').count() === 1 && await p.locator('label[for="login-pass"]').count() === 1);
+
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

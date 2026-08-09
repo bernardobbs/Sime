@@ -111,8 +111,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-pronta.alerta {background:var(--red);color:#fff;animation:shake .4s ease;}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .btn-saiu{width:100%;padding:14px;border-radius:12px;font-size:.9rem;font-weight:800;cursor:pointer;border:none;background:#1a1a22;color:#e0e0f0;}
-.footer-row{display:flex;gap:8px;}
-.btn-desfazer{flex:1;padding:10px;border-radius:9px;font-size:.76rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.footer-row{display:flex;gap:14px;}
+.btn-desfazer{flex:1;padding:10px;min-height:44px;border-radius:9px;font-size:.76rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
 .btn-desfazer:active{background:var(--bg3);}
 
 /* ── LOGIN SCREEN ── */
@@ -177,10 +177,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="login-title">SIME Conferente</div>
     <div class="login-sub">Digite o PIN de 4 dígitos recebido do cartório ou escaneie o QR Code com a câmera do celular.</div>
     <div class="pin-input-wrap">
-      <input class="pin-inp" id="pin-0" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,0)">
-      <input class="pin-inp" id="pin-1" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,1)">
-      <input class="pin-inp" id="pin-2" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,2)">
-      <input class="pin-inp" id="pin-3" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,3)">
+      <input class="pin-inp" id="pin-0" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,0)">
+      <input class="pin-inp" id="pin-1" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,1)">
+      <input class="pin-inp" id="pin-2" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,2)">
+      <input class="pin-inp" id="pin-3" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,3)">
     </div>
     <button class="btn-login" onclick="loginWithPIN()">Entrar →</button>
     <div class="login-hint">Não tem PIN? Peça ao coordenador do cartório.</div>
@@ -901,21 +901,19 @@ function confirmarPronta(){
   const nome = document.getElementById('conf-nome').value.trim();
   if(nome) updateRotaState(curRota, { conferente: nome });
 
-  openSheet({
-    icon:'✅',
-    title:`${curRota} — confirmar`,
-    sub:`${total} urnas embarcadas. A rota está pronta para sair?`,
-    okLabel:'Pronta para sair',
-    okBg:'#2e7d52',
-    action: async () => {
-      const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
-      updateRotaState(curRota, { status:'pronta', ts_pronta:ts, alerta:false });
-      if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
-      renderUrnas();
-      showToast('✅ Rota pronta!');
-      vib([60,30,60]);
-    }
-  });
+  // Sem modal: já existe desfazerPronta() de um toque só logo abaixo — pedir
+  // confirmação aqui era fricção que a filosofia do projeto não previa pra
+  // uma ação reversível (achado "baixo" da auditoria).
+  confirmarProntaDireto();
+}
+
+async function confirmarProntaDireto(){
+  const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+  updateRotaState(curRota, { status:'pronta', ts_pronta:ts, alerta:false });
+  if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
+  renderUrnas();
+  showToast('✅ Rota pronta!');
+  vib([60,30,60]);
 }
 
 function desfazerPronta(){
