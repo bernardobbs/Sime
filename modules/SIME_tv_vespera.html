@@ -559,6 +559,20 @@ function goPage(idx){
   updateNav();
 }
 
+// Sem visão dedicada de "Problemas" como o TV Dia tem — problemas ficam
+// misturados na rotação normal, só destacados por cor (achado "baixo" da
+// auditoria). Réplica completa não cabe aqui (TV Dia usa pânico de Dia D,
+// domínio diferente do prob/probResolvido do Instalador) — em vez disso, o
+// chip "N problemas" no topo pula direto pra 1ª cidade com problema e pausa
+// a rotação automática, pra não passar batido.
+function irParaProblema(){
+  const inst=loadInst(), lacre=loadLacre();
+  const idx = CITIES.findIndex(c => c.locs.some(l => l.s.some(n => getSt(n,lacre,inst).prob)));
+  if(idx < 0) return;
+  if(!paused) togglePause();
+  goPage(idx);
+}
+
 function updateNav(){
   // dots
   const dots = document.getElementById('page-dots');
@@ -806,7 +820,7 @@ function fullRender(){
     s.tr  ?`<span class="ts" style="color:#d97706"><div class="ts-d" style="background:#d97706"></div>${s.tr} trânsito</span>`:'',
     s.pd  ?`<span class="ts" style="color:#9090b0"><div class="ts-d" style="background:#dc2626"></div>${s.pd} aguardando</span>`:'',
     s.inc ?`<span class="ts" style="color:#ea580c"><div class="ts-d" style="background:#ea580c"></div>${s.inc} inconsistências</span>`:'',
-    s.pr  ?`<span class="ts" style="color:#ef4444"><div class="ts-d" style="background:#ef4444"></div>${s.pr} problemas</span>`:'',
+    s.pr  ?`<button class="ts" onclick="irParaProblema()" style="color:#ef4444;background:none;border:none;font:inherit;cursor:pointer;padding:0;"><div class="ts-d" style="background:#ef4444"></div>${s.pr} problemas — ver</button>`:'',
     `<span class="ts" style="color:var(--text3)">${s.tot} total</span>`,
   ].join('');
 
