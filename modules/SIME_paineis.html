@@ -36,6 +36,13 @@ body{display:flex;flex-direction:column;}
 .btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .btn-sm{padding:5px 10px;font-size:.72rem;}
 
+.conf-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px;}
+.conf-overlay.show{display:flex;}
+.conf-card{background:var(--card);border-radius:14px;padding:20px;width:100%;max-width:340px;}
+.conf-title{font-weight:800;font-size:.95rem;margin-bottom:6px;}
+.conf-sub{font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:16px;}
+.conf-btns{display:flex;gap:8px;justify-content:flex-end;}
+
 .mgr-body{padding:20px 24px 40px;}
 .mgr-title{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
 .mgr-title::after{content:'';flex:1;height:1px;background:var(--border);}
@@ -273,15 +280,15 @@ body{display:flex;flex-direction:column;}
   </div>
   <div class="v-content" id="v-content"></div>
   <div class="v-nav" id="v-nav">
-    <button class="nav-btn" onclick="vGoPage(vCurPage-1)">‹</button>
+    <button class="nav-btn" onclick="vGoPage(vCurPage-1)" aria-label="Página anterior">‹</button>
     <div class="pdots" id="v-dots"></div>
     <div class="pg-label" id="v-pg-label">—</div>
     <div class="cd-wrap">
       <div class="cd-track"><div class="cd-fill" id="v-cdfill" style="width:100%"></div></div>
       <div class="cd-num" id="v-cdnum">—</div>
     </div>
-    <button class="pause-btn" id="v-pause" onclick="vTogglePause()">⏸</button>
-    <button class="nav-btn" onclick="vGoPage(vCurPage+1)">›</button>
+    <button class="pause-btn" id="v-pause" onclick="vTogglePause()" aria-label="Pausar rotação">⏸</button>
+    <button class="nav-btn" onclick="vGoPage(vCurPage+1)" aria-label="Próxima página">›</button>
     <div class="v-sep"></div>
     <div class="d-inp-wrap">⏱ <input type="number" id="v-delay-inp" value="10" min="3" max="60" onchange="vSetDelay(+this.value)">s</div>
     <div class="v-sep"></div>
@@ -340,6 +347,19 @@ body{display:flex;flex-direction:column;}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- confirm() nativo quebrava o padrão visual do resto do sistema (achado
+     "baixo" da auditoria) — modal mínimo para a exclusão de painel. -->
+<div class="conf-overlay" id="conf-overlay">
+  <div class="conf-card">
+    <div class="conf-title" id="conf-title">Confirmar?</div>
+    <div class="conf-sub" id="conf-sub"></div>
+    <div class="conf-btns">
+      <button class="btn btn-out" onclick="fecharConfirmacaoPainel()">Cancelar</button>
+      <button class="btn btn-red" id="conf-ok-btn">Confirmar</button>
+    </div>
+  </div>
+</div>
 
 <script type="module">
 import { bootstrapTvSession, agruparSecoesPorCidade } from './sime_tv_auth.js';
@@ -575,12 +595,23 @@ function copyUrl(url){
   showToast('📋 URL copiada!');
 }
 
+function pedirConfirmacaoPainel(titulo, sub, aoConfirmar){
+  document.getElementById('conf-title').textContent = titulo;
+  document.getElementById('conf-sub').textContent = sub;
+  document.getElementById('conf-overlay').classList.add('show');
+  document.getElementById('conf-ok-btn').onclick = () => { fecharConfirmacaoPainel(); aoConfirmar(); };
+}
+function fecharConfirmacaoPainel(){
+  document.getElementById('conf-overlay').classList.remove('show');
+}
+
 function delPanel(idx){
-  if(!confirm('Excluir este painel?')) return;
-  const panels = loadPanels();
-  panels.splice(idx,1);
-  savePanels(panels);
-  renderManager();
+  pedirConfirmacaoPainel('Excluir painel?', 'Esta ação não pode ser desfeita.', () => {
+    const panels = loadPanels();
+    panels.splice(idx,1);
+    savePanels(panels);
+    renderManager();
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -642,7 +673,7 @@ function renderEdPages(){
       <div class="page-item-header">
         <div class="page-num">${i+1}</div>
         <input class="page-name-inp" value="${pg.label}" oninput="edPages[${i}].label=this.value" placeholder="Nome da página">
-        ${edPages.length>1?`<button class="page-del" onclick="delPage(${i})">✕</button>`:''}
+        ${edPages.length>1?`<button class="page-del" onclick="delPage(${i})" aria-label="Excluir página">✕</button>`:''}
       </div>
       <div class="sec-selector">
         <div class="sel-tabs">
@@ -941,7 +972,12 @@ function vStartTicker(){
   },1000);
 }
 function vSetDelay(v){ vDelay=Math.max(3,Math.min(120,v)); vStartTicker(); }
-function vTogglePause(){ vPaused=!vPaused; document.getElementById('v-pause').textContent=vPaused?'▶':'⏸'; }
+function vTogglePause(){
+  vPaused=!vPaused;
+  const btn=document.getElementById('v-pause');
+  btn.textContent=vPaused?'▶':'⏸';
+  btn.setAttribute('aria-label', vPaused?'Retomar rotação':'Pausar rotação');
+}
 function vUpdateCountdown(){
   const pct=(vCd/vDelay)*100;
   const f=document.getElementById('v-cdfill');

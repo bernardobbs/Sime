@@ -36,6 +36,9 @@ tr:last-child td{border-bottom:none;}
 #login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(360px,92vw);}
 .login-card input{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:8px;font-size:.9rem;}
+.offline-banner{background:#fff3d6;color:#8a5a00;border:1px solid #e6c477;border-radius:9px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:12px;display:none;align-items:center;gap:8px;}
+.offline-banner.show{display:flex;}
+.offline-banner button{margin-left:auto;background:none;border:1px solid #8a5a00;color:#8a5a00;border-radius:6px;padding:4px 10px;font-size:.72rem;font-weight:700;cursor:pointer;}
 @media print{
   .topbar,.tabs,.toolbar,#login-overlay,.toast{display:none!important;}
   body{background:#fff;} .wrap{max-width:100%;padding:0;}
@@ -68,6 +71,10 @@ tr:last-child td{border-bottom:none;}
     <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
   </div>
 
+  <div id="offline-banner" class="offline-banner">
+    <span id="offline-banner-txt"></span>
+    <button type="button" onclick="voltarParaLogin()">Entrar para atualizar</button>
+  </div>
   <div id="cards" class="cards"></div>
   <div id="conteudo" class="tablewrap"></div>
 </div>
@@ -85,6 +92,7 @@ tr:last-child td{border-bottom:none;}
       <div id="login-erro" style="color:#c0392b;font-size:.75rem;min-height:1em;margin-top:6px;"></div>
       <button class="btn btn-dark" type="submit" style="width:100%;margin-top:10px;">Entrar</button>
     </form>
+    <button type="button" id="btn-ver-offline" class="btn btn-out" style="width:100%;margin-top:8px;display:none;" onclick="verUltimoOffline()">📄 Ver último relatório salvo (offline)</button>
   </div>
 </div>
 
@@ -96,7 +104,11 @@ window.supabase = supabase;
 
 window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch(e){} location.reload(); };
 
-function mostrarApp(){ document.getElementById('login-overlay').style.display='none'; document.getElementById('btn-logout').style.display=''; }
+function mostrarApp(){
+  document.getElementById('login-overlay').style.display='none';
+  document.getElementById('btn-logout').style.display='';
+  document.getElementById('offline-banner').classList.remove('show');
+}
 
 document.getElementById('login-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -104,13 +116,14 @@ document.getElementById('login-form').addEventListener('submit', async (e)=>{
   const password=document.getElementById('login-pass').value;
   const erro=document.getElementById('login-erro'); erro.textContent='';
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if(error){ erro.textContent='E-mail ou senha inválidos.'; return; }
+  if(error){ erro.textContent=/Failed to fetch|NetworkError/i.test(error.message||'') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.'; return; }
   mostrarApp(); await window.iniciarRelatorios();
 });
 
 (async ()=>{
   const { data:{ session } } = await supabase.auth.getSession();
   if(session){ mostrarApp(); await window.iniciarRelatorios(); }
+  else if(window.mostrarBotaoOffline) window.mostrarBotaoOffline();
 })();
 </script>
 
@@ -152,8 +165,81 @@ function trocarRel(rel, el){
     t.classList.toggle('on', on);
     t.setAttribute('aria-selected', String(on));
   });
-  recarregar();
+  if(OFFLINE_MODE) mostrarCacheOffline(rel);
+  else recarregar();
 }
+
+// ── Modo offline mínimo ──
+// Login bloqueava 100% da tela sem nenhuma alternativa: sem sessão válida e
+// sem rede, quem precisava só CONFERIR um número já visto ficava sem nada
+// (achado "baixo" da auditoria). Guarda o último HTML já renderizado de cada
+// aba (dados que a própria conta já tinha permissão de ver) e oferece ver
+// essa cópia, somente leitura, sem exigir login de novo.
+const CACHE_KEY='sime_relatorios_cache_v1';
+let OFFLINE_MODE=false;
+
+function salvarCacheRelatorio(rel){
+  try{
+    const cache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
+    cache[rel]={
+      titulo:document.getElementById('rel-titulo').textContent,
+      cardsHtml:document.getElementById('cards').innerHTML,
+      conteudoHtml:document.getElementById('conteudo').innerHTML,
+      ts:Date.now(),
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  }catch(e){ /* localStorage indisponível — cache é só uma cortesia, segue sem ele */ }
+}
+
+function lerCacheRelatorios(){
+  try{ return JSON.parse(localStorage.getItem(CACHE_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+window.mostrarBotaoOffline = function(){
+  const cache=lerCacheRelatorios();
+  if(Object.keys(cache).length) document.getElementById('btn-ver-offline').style.display='';
+};
+
+window.verUltimoOffline = function(){
+  OFFLINE_MODE=true;
+  document.getElementById('login-overlay').style.display='none';
+  const cache=lerCacheRelatorios();
+  const rel=cache[REL] ? REL : Object.keys(cache)[0];
+  document.querySelectorAll('.tab').forEach(t=>{
+    const on=t.dataset.rel===rel;
+    t.classList.toggle('on', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  REL=rel;
+  mostrarCacheOffline(rel);
+};
+
+function mostrarCacheOffline(rel){
+  const cache=lerCacheRelatorios();
+  const item=cache[rel];
+  const banner=document.getElementById('offline-banner');
+  if(!item){
+    document.getElementById('rel-titulo').textContent='';
+    document.getElementById('cards').innerHTML='';
+    document.getElementById('conteudo').innerHTML='<div class="empty">Sem cópia salva deste relatório ainda — entre com conexão ao menos uma vez.</div>';
+    banner.classList.add('show');
+    document.getElementById('offline-banner-txt').textContent='🟡 Offline — nenhum dado salvo para esta aba';
+    return;
+  }
+  document.getElementById('rel-titulo').textContent=item.titulo;
+  document.getElementById('cards').innerHTML=item.cardsHtml;
+  document.getElementById('conteudo').innerHTML=item.conteudoHtml;
+  const min=Math.max(0, Math.round((Date.now()-item.ts)/60000));
+  banner.classList.add('show');
+  document.getElementById('offline-banner-txt').textContent=`🟡 Offline — mostrando dados salvos há ${min<1?'menos de 1 minuto':min+' min'}`;
+}
+
+window.voltarParaLogin = function(){
+  OFFLINE_MODE=false;
+  document.getElementById('offline-banner').classList.remove('show');
+  document.getElementById('login-overlay').style.display='';
+  window.mostrarBotaoOffline();
+};
 
 // Erro cru do Postgres/Supabase ("relation ... does not exist", "JWT
 // expired" etc.) ia direto pra tela — agora mapeado pra algo que faz
@@ -174,6 +260,7 @@ async function recarregar(){
     if(REL==='secoes') await relSecoes();
     else if(REL==='distribuicao') await relDistribuicao();
     else if(REL==='panicos') await relPanicos();
+    salvarCacheRelatorio(REL);
   }catch(e){
     cont.innerHTML='<div class="empty">Não foi possível carregar. '+mensagemErroAmigavel(e)+'</div>';
   }

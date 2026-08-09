@@ -114,6 +114,37 @@ check('pânicos: seção 0063/0079 mapeada', /0079/.test(pan), pan.replace(/\s+/
 check('pânicos: XSS no payload do log NÃO executa', await p.evaluate(() => window.__xssPayload !== true));
 check('pânicos: nenhum <img> injetado na tabela', await p.evaluate(() => document.querySelectorAll('#conteudo img').length === 0));
 
+// ── Modo offline mínimo: cada relatório visto vira cópia local ──
+const cacheAposUso = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_relatorios_cache_v1') || '{}'));
+check('cache: guardou os 3 relatórios já vistos', Object.keys(cacheAposUso).sort().join(',') === 'distribuicao,panicos,secoes', JSON.stringify(Object.keys(cacheAposUso)));
+check('cache: relatório de pânicos guardou o HTML renderizado', /0079/.test(cacheAposUso.panicos?.conteudoHtml || ''));
+
+// recarrega a página SEM logar (sessão em memória do stub reseta) — login
+// deve continuar bloqueando dados ao vivo, mas oferecer a cópia salva.
+await p.reload();
+await p.waitForTimeout(300);
+check('offline: login volta a aparecer (sem sessão)', await p.evaluate(() => getComputedStyle(document.getElementById('login-overlay')).display !== 'none'));
+check('offline: botão "ver salvo" aparece por existir cache', await p.evaluate(() => getComputedStyle(document.getElementById('btn-ver-offline')).display !== 'none'));
+
+await p.click('#btn-ver-offline');
+await p.waitForTimeout(150);
+check('offline: login some ao ver cópia salva', await p.evaluate(() => getComputedStyle(document.getElementById('login-overlay')).display === 'none'));
+check('offline: banner de offline aparece', await p.evaluate(() => document.getElementById('offline-banner').classList.contains('show')));
+const bannerTxt = await p.locator('#offline-banner-txt').textContent();
+check('offline: banner menciona "Offline"', /Offline/.test(bannerTxt), bannerTxt);
+const rowsOffline = await p.locator('#conteudo table tbody tr').count();
+check('offline: tabela da 1ª aba (seções) veio da cópia salva', rowsOffline === 3, 'n=' + rowsOffline);
+
+await p.click('.tab[data-rel=panicos]');
+await p.waitForTimeout(150);
+const panOffline = await p.locator('#conteudo table tbody').textContent();
+check('offline: trocar de aba lê a cópia salva daquela aba, sem tentar rede', /0079/.test(panOffline), panOffline.replace(/\s+/g, ' ').slice(0, 120));
+
+await p.click('#offline-banner button');
+await p.waitForTimeout(150);
+check('offline: "Entrar para atualizar" reabre o login', await p.evaluate(() => getComputedStyle(document.getElementById('login-overlay')).display !== 'none'));
+check('offline: banner some ao voltar pro login', await p.evaluate(() => !document.getElementById('offline-banner').classList.contains('show')));
+
 await ctx.close();
 await b.close();
 
