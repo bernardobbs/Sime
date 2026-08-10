@@ -4,16 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME Coordenador de Preparação</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
 <style>
+/* Só as cores que não são comuns ao tema "cream" compartilhado (mesmo
+   padrão do --purple em admin/midias/principal e --orange em conferente) —
+   --bg/--card/--text/--red etc. já vêm de sime_theme_cream.css. Este
+   arquivo e o Instalador tinham cada um sua própria cópia quase igual da
+   paleta base, com deriva de 1-2 dígitos hex por edições isoladas ao longo
+   do tempo (achado "baixo" da auditoria: "paleta redefinida localmente"). */
 :root {
-  --bg:#f4f1ec; --bg2:#edeae3; --bg3:#e5e1d8; --card:#faf9f6;
-  --border:#dcd8cf; --border2:#ccc8bf;
-  --text:#2c2c2c; --text2:#6b6760; --text3:#a39e96;
   --carga:#b07d40; --carga-bg:#f5ead9; --carga-bd:#e8cfa0;
   --prep:#4a6fa5;  --prep-bg:#dde7f5;  --prep-bd:#b0c5e0;
   --lacre:#4a8c6a; --lacre-bg:#d8f0e4; --lacre-bd:#9ecfb5;
-  --red:#c0392b; --red-bg:#fae9e7;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
@@ -27,22 +30,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .header-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .logo{width:32px;height:32px;border-radius:7px;flex-shrink:0;background:#2c2c2c;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.85rem;color:#fff;}
 .h-title{font-weight:700;font-size:0.92rem;}
-.h-sub{font-size:0.68rem;color:var(--text2);margin-top:1px;}
+.h-sub{font-size:0.73rem;color:var(--text2);margin-top:1px;}
 /* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — antes carga/preparação/
    lacre gravavam só em localStorage, sem fila offline nem indicador nenhum. */
-.sync-badge{display:flex;align-items:center;gap:4px;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;margin-left:auto;}
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:0.7rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;margin-left:auto;}
 .sync-badge.sync-ok  {background:var(--green-bg,#d8f0e4);color:var(--green,#4a8c6a);}
 .sync-badge.sync-pend{background:var(--carga-bg);color:var(--carga);}
-.prereq-legend{display:flex;align-items:center;gap:4px;font-size:0.67rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
+.prereq-legend{display:flex;align-items:center;gap:4px;font-size:0.72rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
 .prereq-legend .arrow{color:var(--text3);}
 .step.c{color:var(--carga);font-weight:700;} .step.p{color:var(--prep);font-weight:700;} .step.l{color:var(--lacre);font-weight:700;}
 .mini-bars{display:flex;flex-direction:column;gap:4px;}
 .mb-row{display:flex;align-items:center;gap:8px;}
-.mb-lbl{font-size:0.61rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;width:72px;flex-shrink:0;color:var(--text2);}
+.mb-lbl{font-size:0.67rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;width:72px;flex-shrink:0;color:var(--text2);}
 .mb-track{flex:1;height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;}
 .mb-fill{height:100%;border-radius:99px;transition:width 0.4s ease;}
 .mb-fill.carga{background:var(--carga);} .mb-fill.prep{background:var(--prep);} .mb-fill.lacre{background:var(--lacre);}
-.mb-pct{font-size:0.61rem;font-weight:700;width:28px;text-align:right;flex-shrink:0;}
+.mb-pct{font-size:0.67rem;font-weight:700;width:28px;text-align:right;flex-shrink:0;}
 .mb-pct.carga{color:var(--carga);} .mb-pct.prep{color:var(--prep);} .mb-pct.lacre{color:var(--lacre);}
 
 /* ── TOOLBAR ── */
@@ -50,7 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .search-wrap{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;padding:0 9px;gap:5px;}
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:0.82rem;padding:7px 0;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
-.cf{min-height:44px;display:inline-flex;align-items:center;padding:5px 9px;border-radius:6px;font-size:0.69rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
+.cf{min-height:44px;display:inline-flex;align-items:center;padding:5px 9px;border-radius:6px;font-size:0.74rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
 .cf.on{background:var(--text);color:var(--card);border-color:var(--text);}
 
 /* ── GRUPO MUNICÍPIO ── */
@@ -60,12 +63,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .mun-group.collapsed .mun-header{border-radius:8px;}
 .mun-header{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px 8px 0 0;cursor:pointer;user-select:none;}
 .mun-label{font-weight:800;font-size:0.88rem;}
-.mun-meta{font-size:0.69rem;color:var(--text2);}
+.mun-meta{font-size:0.74rem;color:var(--text2);}
 .mun-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .mun-prog{width:64px;height:5px;background:var(--bg3);border-radius:99px;overflow:hidden;}
 .mun-prog-fill{height:100%;background:var(--lacre);border-radius:99px;transition:width 0.3s;}
 .mun-pct{font-size:0.7rem;font-weight:700;color:var(--lacre);min-width:30px;text-align:right;}
-.mun-eleit{font-size:0.65rem;color:var(--text3);}
+.mun-eleit{font-size:0.7rem;color:var(--text3);}
 .mun-body{border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;}
 
 /* ── CARDS ── */
@@ -78,9 +81,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-info{flex:1;}
 .sec-local{font-size:0.77rem;color:var(--text2);line-height:1.3;}
 .sec-meta{display:flex;gap:8px;align-items:center;margin-top:2px;flex-wrap:wrap;}
-.sec-rota{font-size:0.64rem;color:var(--text3);background:var(--bg2);border-radius:4px;padding:1px 5px;}
-.sec-aptos{font-size:0.68rem;font-weight:700;color:var(--text2);background:var(--bg2);border-radius:4px;padding:1px 6px;}
-.sec-badge{font-size:0.64rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:2px;}
+.sec-rota{font-size:0.69rem;color:var(--text3);background:var(--bg2);border-radius:4px;padding:1px 5px;}
+.sec-aptos{font-size:0.73rem;font-weight:700;color:var(--text2);background:var(--bg2);border-radius:4px;padding:1px 6px;}
+.sec-badge{font-size:0.69rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:2px;}
 .sb-done{background:var(--lacre-bg);color:var(--lacre);}
 .sb-partial{background:var(--carga-bg);color:var(--carga);}
 .sb-pending{background:var(--bg2);color:var(--text2);}
@@ -90,7 +93,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ck{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;padding:9px 4px 7px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;transition:all 0.15s;-webkit-user-select:none;user-select:none;position:relative;}
 .ck input{position:absolute;opacity:0;width:0;height:0;}
 .ck-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;font-size:0.78rem;}
-.ck-lbl{font-size:0.69rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
+.ck-lbl{font-size:0.74rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
 .ck:active{transform:scale(0.97);}
 .ck:focus-visible{outline:2px solid var(--prep);outline-offset:2px;}
 .ck.carga.on{background:var(--carga-bg);border-color:var(--carga-bd);} .ck.carga.on .ck-box{background:var(--carga);border-color:var(--carga);color:#fff;} .ck.carga.on .ck-lbl{color:var(--carga);}
@@ -106,9 +109,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .f-counts{display:flex;gap:10px;}
 .f-count{text-align:center;}
 .f-val{font-size:1.05rem;font-weight:800;line-height:1;}
-.f-lbl{font-size:0.57rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;}
+.f-lbl{font-size:0.66rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;}
 .f-count.carga .f-val{color:var(--carga);} .f-count.prep .f-val{color:var(--prep);} .f-count.lacre .f-val{color:var(--lacre);} .f-count.total .f-val{color:var(--text3);}
-.f-eleit{font-size:0.65rem;color:var(--text3);white-space:nowrap;}
+.f-eleit{font-size:0.7rem;color:var(--text3);white-space:nowrap;}
 .btn-reset{margin-left:auto;padding:7px 12px;border-radius:7px;font-size:0.71rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);transition:all 0.15s;}
 .btn-reset:active{background:var(--red-bg);color:var(--red);border-color:var(--red);}
 
