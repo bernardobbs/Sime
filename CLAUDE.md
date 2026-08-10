@@ -311,14 +311,30 @@ Admin, enum de funções, `sime_empresas`, token de acessibilidade) estão
 **concluídos** — assim como Realtime nas TVs, Supabase Auth, deploy na Vercel
 e os QR Codes por zona.
 
-### Migração localStorage → Supabase (parcial)
+### Migração localStorage → Supabase (concluída)
 
 Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 (zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
-Ainda só em `localStorage`:
-- **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
-  escrito pelos módulos e lido pelas TVs.
+> Esta seção dizia até 10/08/2026 que carga/lacre, instalador e distribuição
+> "ainda" só gravavam em `localStorage` — desatualizado desde os lotes 5d/E
+> da auditoria de UI/UX (08/08). Corrigido aqui porque uma pendência marcada
+> como aberta que já foi fechada é pior que não documentar nada: leva a
+> gastar tempo "migrando" o que já está migrado.
+
+**Estado de campo já é Supabase-first**, com `localStorage` só como cópia
+offline (mesmo padrão de todo o resto do app — grava no banco, espelha
+localmente, sincroniza quando volta a rede):
+- **Carga/lacre** (Coordenador de Preparação, TV Preparação, TV Véspera) —
+  tabela `sime_carga_lacre` (upsert por `eleicao_id,secao_id`), com Realtime
+  propagando pras TVs. `localStorage['sime_lacre_v3']` é só o espelho local
+  (`save()`/`load()` em `SIME_coordenador_preparacao.html`), não a fonte.
+- **Instalador** — grava via RPC `sime_acao_mesa` (mesma usada pelo
+  Mesário); `localStorage['sime_inst_v1']` é o espelho local.
+- **Conferente / TV Distribuição** — grava via RPC `sime_rota_estado_upsert`/
+  `sime_rota_urna_toggle`; TV Distribuição lê por Realtime
+  (`subscribeRotasEstado`); `localStorage['sime_dist_v1']` é o espelho local
+  do Conferente.
 
 **Nome da eleição, início da distribuição e intervalo entre saídas** —
 concluído: `sime_eleicoes` ganhou `nome`/`dist_inicio`/`intervalo_saidas_min`
@@ -354,10 +370,13 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 
 ### Operação — antes de 4 de outubro
 
-- **94ª Zona zerada**: 0 tokens e 0 atores. Precisa importar os atores e gerar
-  os cartões.
-- **Data de carga e lacre** (`data_dx_ini`) nula nas duas zonas — não há padrão
-  legal, é decisão de cada cartório.
+> **Prioridade é a 7ª Zona.** A 94ª segue zerada (0 tokens, 0 atores) e fica
+> deliberadamente fora do foco atual — não é bloqueador pra nada que envolva
+> a 7ª, e não deve ditar prazo nem prioridade de trabalho enquanto a 7ª não
+> estiver pronta. Retomar a 94ª como tarefa própria, não como item que puxa
+> os demais.
+- **Data de carga e lacre da 7ª Zona** (`data_dx_ini`) nula — não há padrão
+  legal, é decisão do cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
 - **Detecção de eventos de seção (`eventos.js`) só propõe, não grava**
