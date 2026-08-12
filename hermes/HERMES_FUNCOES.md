@@ -178,8 +178,9 @@ meio da operação.
 
 ## 3. Funções do lado Hermes (o que roda no Pi)
 
-Not a wishlist — isto é o estado **verificado em produção**, reconciliado
-em 03/08/2026 (ver detalhe completo em `HERMES_RUNTIME.md`, seção 5):
+Não é lista de desejos — isto é o estado **verificado em produção**,
+reconciliado em 03/08/2026 (ver detalhe completo em `HERMES_RUNTIME.md`,
+seção 5):
 
 | Função | Estado |
 |---|---|
