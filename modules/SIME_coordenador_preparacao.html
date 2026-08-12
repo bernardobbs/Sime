@@ -2,47 +2,58 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME Coordenador de Preparação</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
 <style>
+/* Só as cores que não são comuns ao tema "cream" compartilhado (mesmo
+   padrão do --purple em admin/midias/principal e --orange em conferente) —
+   --bg/--card/--text/--red etc. já vêm de sime_theme_cream.css. Este
+   arquivo e o Instalador tinham cada um sua própria cópia quase igual da
+   paleta base, com deriva de 1-2 dígitos hex por edições isoladas ao longo
+   do tempo (achado "baixo" da auditoria: "paleta redefinida localmente"). */
 :root {
-  --bg:#f4f1ec; --bg2:#edeae3; --bg3:#e5e1d8; --card:#faf9f6;
-  --border:#dcd8cf; --border2:#ccc8bf;
-  --text:#2c2c2c; --text2:#6b6760; --text3:#a39e96;
   --carga:#b07d40; --carga-bg:#f5ead9; --carga-bd:#e8cfa0;
   --prep:#4a6fa5;  --prep-bg:#dde7f5;  --prep-bd:#b0c5e0;
   --lacre:#4a8c6a; --lacre-bg:#d8f0e4; --lacre-bd:#9ecfb5;
-  --locked:#e8e4de; --locked-txt:#c0bbb4; --locked-bd:#d8d3cc;
-  --red:#c0392b; --red-bg:#fae9e7;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
 
 /* ── HEADER ── */
-.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px 10px;position:sticky;top:0;z-index:10;}
+/* Header + toolbar grudam juntos no topo como um bloco só — antes o
+   toolbar tinha um top:116px fixo, um "número mágico" que dependia da
+   altura exata do header (achado "baixo" da auditoria). */
+.sticky-head{position:sticky;top:0;z-index:10;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px 10px;}
 .header-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .logo{width:32px;height:32px;border-radius:7px;flex-shrink:0;background:#2c2c2c;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.85rem;color:#fff;}
 .h-title{font-weight:700;font-size:0.92rem;}
-.h-sub{font-size:0.68rem;color:var(--text2);margin-top:1px;}
-.prereq-legend{display:flex;align-items:center;gap:4px;font-size:0.67rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
+.h-sub{font-size:0.73rem;color:var(--text2);margin-top:1px;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — antes carga/preparação/
+   lacre gravavam só em localStorage, sem fila offline nem indicador nenhum. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:0.7rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;margin-left:auto;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d8f0e4);color:var(--green,#4a8c6a);}
+.sync-badge.sync-pend{background:var(--carga-bg);color:var(--carga);}
+.prereq-legend{display:flex;align-items:center;gap:4px;font-size:0.72rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:4px 9px;margin-bottom:8px;width:fit-content;}
 .prereq-legend .arrow{color:var(--text3);}
 .step.c{color:var(--carga);font-weight:700;} .step.p{color:var(--prep);font-weight:700;} .step.l{color:var(--lacre);font-weight:700;}
 .mini-bars{display:flex;flex-direction:column;gap:4px;}
 .mb-row{display:flex;align-items:center;gap:8px;}
-.mb-lbl{font-size:0.61rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;width:72px;flex-shrink:0;color:var(--text2);}
+.mb-lbl{font-size:0.67rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;width:72px;flex-shrink:0;color:var(--text2);}
 .mb-track{flex:1;height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;}
 .mb-fill{height:100%;border-radius:99px;transition:width 0.4s ease;}
 .mb-fill.carga{background:var(--carga);} .mb-fill.prep{background:var(--prep);} .mb-fill.lacre{background:var(--lacre);}
-.mb-pct{font-size:0.61rem;font-weight:700;width:28px;text-align:right;flex-shrink:0;}
+.mb-pct{font-size:0.67rem;font-weight:700;width:28px;text-align:right;flex-shrink:0;}
 .mb-pct.carga{color:var(--carga);} .mb-pct.prep{color:var(--prep);} .mb-pct.lacre{color:var(--lacre);}
 
 /* ── TOOLBAR ── */
-.toolbar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:116px;z-index:9;}
+.toolbar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--bg);border-bottom:1px solid var(--border);}
 .search-wrap{flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;padding:0 9px;gap:5px;}
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:0.82rem;padding:7px 0;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
-.cf{padding:5px 9px;border-radius:6px;font-size:0.69rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
+.cf{min-height:44px;display:inline-flex;align-items:center;padding:5px 9px;border-radius:6px;font-size:0.74rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--card);color:var(--text2);transition:all 0.15s;white-space:nowrap;}
 .cf.on{background:var(--text);color:var(--card);border-color:var(--text);}
 
 /* ── GRUPO MUNICÍPIO ── */
@@ -52,12 +63,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .mun-group.collapsed .mun-header{border-radius:8px;}
 .mun-header{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px 8px 0 0;cursor:pointer;user-select:none;}
 .mun-label{font-weight:800;font-size:0.88rem;}
-.mun-meta{font-size:0.69rem;color:var(--text2);}
+.mun-meta{font-size:0.74rem;color:var(--text2);}
 .mun-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .mun-prog{width:64px;height:5px;background:var(--bg3);border-radius:99px;overflow:hidden;}
 .mun-prog-fill{height:100%;background:var(--lacre);border-radius:99px;transition:width 0.3s;}
 .mun-pct{font-size:0.7rem;font-weight:700;color:var(--lacre);min-width:30px;text-align:right;}
-.mun-eleit{font-size:0.65rem;color:var(--text3);}
+.mun-eleit{font-size:0.7rem;color:var(--text3);}
 .mun-body{border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;}
 
 /* ── CARDS ── */
@@ -70,23 +81,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-info{flex:1;}
 .sec-local{font-size:0.77rem;color:var(--text2);line-height:1.3;}
 .sec-meta{display:flex;gap:8px;align-items:center;margin-top:2px;flex-wrap:wrap;}
-.sec-rota{font-size:0.64rem;color:var(--text3);background:var(--bg2);border-radius:4px;padding:1px 5px;}
-.sec-aptos{font-size:0.68rem;font-weight:700;color:var(--text2);background:var(--bg2);border-radius:4px;padding:1px 6px;}
-.sec-badge{font-size:0.64rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:2px;}
+.sec-rota{font-size:0.69rem;color:var(--text3);background:var(--bg2);border-radius:4px;padding:1px 5px;}
+.sec-aptos{font-size:0.73rem;font-weight:700;color:var(--text2);background:var(--bg2);border-radius:4px;padding:1px 6px;}
+.sec-badge{font-size:0.69rem;font-weight:700;padding:2px 7px;border-radius:99px;flex-shrink:0;margin-top:2px;}
 .sb-done{background:var(--lacre-bg);color:var(--lacre);}
 .sb-partial{background:var(--carga-bg);color:var(--carga);}
-.sb-pending{background:var(--bg2);color:var(--text3);}
+.sb-pending{background:var(--bg2);color:var(--text2);}
 
 /* ── CHECKBOXES ── */
 .sec-checks{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
 .ck{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;padding:9px 4px 7px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;transition:all 0.15s;-webkit-user-select:none;user-select:none;position:relative;}
 .ck input{position:absolute;opacity:0;width:0;height:0;}
-.ck.locked{background:var(--locked);border-color:var(--locked-bd);cursor:not-allowed;opacity:0.55;}
-.ck-lock{display:none;position:absolute;top:4px;right:5px;font-size:0.55rem;color:var(--locked-txt);}
-.ck.locked .ck-lock{display:block;}
 .ck-box{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;font-size:0.78rem;}
-.ck-lbl{font-size:0.69rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
-.ck:active:not(.locked){transform:scale(0.97);}
+.ck-lbl{font-size:0.74rem;font-weight:600;color:var(--text2);text-align:center;line-height:1.2;}
+.ck:active{transform:scale(0.97);}
+.ck:focus-visible{outline:2px solid var(--prep);outline-offset:2px;}
 .ck.carga.on{background:var(--carga-bg);border-color:var(--carga-bd);} .ck.carga.on .ck-box{background:var(--carga);border-color:var(--carga);color:#fff;} .ck.carga.on .ck-lbl{color:var(--carga);}
 .ck.prep.on {background:var(--prep-bg); border-color:var(--prep-bd);}  .ck.prep.on  .ck-box{background:var(--prep); border-color:var(--prep); color:#fff;}  .ck.prep.on  .ck-lbl{color:var(--prep);}
 .ck.lacre.on{background:var(--lacre-bg);border-color:var(--lacre-bd);} .ck.lacre.on .ck-box{background:var(--lacre);border-color:var(--lacre);color:#fff;} .ck.lacre.on .ck-lbl{color:var(--lacre);}
@@ -100,11 +109,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .f-counts{display:flex;gap:10px;}
 .f-count{text-align:center;}
 .f-val{font-size:1.05rem;font-weight:800;line-height:1;}
-.f-lbl{font-size:0.57rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;}
+.f-lbl{font-size:0.66rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;}
 .f-count.carga .f-val{color:var(--carga);} .f-count.prep .f-val{color:var(--prep);} .f-count.lacre .f-val{color:var(--lacre);} .f-count.total .f-val{color:var(--text3);}
-.f-eleit{font-size:0.65rem;color:var(--text3);white-space:nowrap;}
+.f-eleit{font-size:0.7rem;color:var(--text3);white-space:nowrap;}
 .btn-reset{margin-left:auto;padding:7px 12px;border-radius:7px;font-size:0.71rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);transition:all 0.15s;}
 .btn-reset:active{background:var(--red-bg);color:var(--red);border-color:var(--red);}
+
+.reset-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:200;padding:20px;}
+.reset-overlay.show{display:flex;}
+.reset-card{background:var(--card);border-radius:14px;padding:20px;width:100%;max-width:340px;}
+.reset-title{font-weight:800;font-size:.95rem;margin-bottom:6px;}
+.reset-sub{font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:16px;}
+.reset-btns{display:flex;gap:8px;justify-content:flex-end;}
+.reset-btns .btn-out,.reset-btns .btn-red{min-height:44px;padding:8px 16px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;}
+.reset-btns .btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);}
+.reset-btns .btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red);}
 .list-wrap{padding-bottom:70px;}
 </style>
 </head>
@@ -124,40 +143,57 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </form>
 </div>
 
-<div class="header">
-  <div class="header-top">
-    <div class="logo">S</div>
-    <div>
-      <div class="h-title">SIME Coordenador de Preparação</div>
-      <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
+<div class="sticky-head">
+  <div class="header">
+    <div class="header-top">
+      <div class="logo">S</div>
+      <div>
+        <div class="h-title">SIME Coordenador de Preparação</div>
+        <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
+      </div>
+      <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
+    </div>
+    <div class="prereq-legend">
+      <span class="step c">📦 Carga</span><span class="arrow">→</span>
+      <span class="step p">🔧 Preparação</span><span class="arrow">→</span>
+      <span class="step l">🔒 Lacrada</span>
+      <span style="color:var(--text3);margin-left:4px">· cada etapa libera a próxima</span>
+    </div>
+    <div class="mini-bars">
+      <div class="mb-row"><div class="mb-lbl">📦 Carga</div><div class="mb-track"><div class="mb-fill carga" id="mb-carga" style="width:0%"></div></div><div class="mb-pct carga" id="mp-carga">0%</div></div>
+      <div class="mb-row"><div class="mb-lbl">🔧 Preparação</div><div class="mb-track"><div class="mb-fill prep"  id="mb-prep"  style="width:0%"></div></div><div class="mb-pct prep"  id="mp-prep">0%</div></div>
+      <div class="mb-row"><div class="mb-lbl">🔒 Lacrada</div><div class="mb-track"><div class="mb-fill lacre" id="mb-lacre" style="width:0%"></div></div><div class="mb-pct lacre" id="mp-lacre">0%</div></div>
     </div>
   </div>
-  <div class="prereq-legend">
-    <span class="step c">📦 Carga</span><span class="arrow">→</span>
-    <span class="step p">🔧 Preparação</span><span class="arrow">→</span>
-    <span class="step l">🔒 Lacrada</span>
-    <span style="color:var(--text3);margin-left:4px">· cada etapa libera a próxima</span>
-  </div>
-  <div class="mini-bars">
-    <div class="mb-row"><div class="mb-lbl">📦 Carga</div><div class="mb-track"><div class="mb-fill carga" id="mb-carga" style="width:0%"></div></div><div class="mb-pct carga" id="mp-carga">0%</div></div>
-    <div class="mb-row"><div class="mb-lbl">🔧 Preparação</div><div class="mb-track"><div class="mb-fill prep"  id="mb-prep"  style="width:0%"></div></div><div class="mb-pct prep"  id="mp-prep">0%</div></div>
-    <div class="mb-row"><div class="mb-lbl">🔒 Lacrada</div><div class="mb-track"><div class="mb-fill lacre" id="mb-lacre" style="width:0%"></div></div><div class="mb-pct lacre" id="mp-lacre">0%</div></div>
-  </div>
-</div>
 
-<div class="toolbar">
-  <div class="search-wrap">
-    <span style="color:var(--text3);font-size:0.83rem">⌕</span>
-    <input type="text" placeholder="Seção, local ou município..." oninput="search(this.value)">
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span style="color:var(--text3);font-size:0.83rem">⌕</span>
+      <input type="text" placeholder="Seção, local ou município..." oninput="search(this.value)">
+    </div>
+    <button class="cf on" onclick="setFilter('all',this)">Todas</button>
+    <button class="cf"    onclick="setFilter('pending',this)">Pendentes</button>
+    <button class="cf"    onclick="setFilter('partial',this)">Parciais</button>
+    <button class="cf"    onclick="setFilter('done',this)">Prontas</button>
   </div>
-  <button class="cf on" onclick="setFilter('all',this)">Todas</button>
-  <button class="cf"    onclick="setFilter('pending',this)">Pendentes</button>
-  <button class="cf"    onclick="setFilter('partial',this)">Parciais</button>
-  <button class="cf"    onclick="setFilter('done',this)">Prontas</button>
 </div>
 
 <div class="list-wrap" id="list-wrap"></div>
 <div class="toast" id="toast"></div>
+
+<!-- confirm() nativo quebrava o padrão visual do resto do sistema (achado
+     "baixo" da auditoria) — modal mínimo só pro reset, a única ação
+     irreversível desta tela. -->
+<div class="reset-overlay" id="reset-overlay">
+  <div class="reset-card">
+    <div class="reset-title">Resetar todas as marcações?</div>
+    <div class="reset-sub">Carga, preparação e lacre de todas as seções voltam a zero. Não pode ser desfeito.</div>
+    <div class="reset-btns">
+      <button class="btn-out" onclick="fecharResetModal()">Cancelar</button>
+      <button class="btn-red" onclick="confirmarResetAll()">↺ Resetar</button>
+    </div>
+  </div>
+</div>
 
 <div class="footer-bar">
   <div class="f-counts">
@@ -172,17 +208,42 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getZonaInfo } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getZonaInfo, getEleicaoAtiva } from './sime_dados.js';
+import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 import { SIME_CONFIG } from './sime_config.js';
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
 
+let eleicaoId = null;
+const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+
 function esconderLogin(){ document.getElementById('login-overlay').style.display = 'none'; }
+
+// acao ignorado (mesma assinatura de sime_offline_queue.js) — upsert em
+// sime_carga_lacre substitui a RPC sime_acao_mesa usada pelos módulos de
+// campo: aqui quem grava é o admin autenticado (e-mail/senha), com a
+// própria sessão/RLS, não um token anônimo.
+async function syncQueueFn(acao, dados) {
+  const { error } = await supabase.from('sime_carga_lacre').upsert(dados, { onConflict: 'eleicao_id,secao_id' });
+  if (error) throw error;
+}
+
+window.simeCoordPrep = {
+  syncCargaLacre(secaoNumero, estado) {
+    const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
+    if (!secaoId || !eleicaoId) return;
+    const dados = { eleicao_id: eleicaoId, secao_id: secaoId, carga: estado.carga, preparacao: estado.prep, lacre: estado.lacre };
+    syncQueueFn('carga_lacre', dados).catch(() => enqueue('carga_lacre', dados));
+  },
+};
 
 async function carregarDadosReais(){
   initSimeDados(supabase);
+  const eleicao = await getEleicaoAtiva({ fallback: null });
+  if (eleicao) eleicaoId = eleicao.id;
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
+    for (const s of secoesReais) secaoIdPorNumero[s.numero] = s.id;
     window.SECOES = secoesReais.map(s => ({
       n: String(s.numero).padStart(4, '0'),
       local: s.local_nome,
@@ -193,8 +254,27 @@ async function carregarDadosReais(){
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
     const zona = await getZonaInfo({ fallback: null });
-    if (window.recarregarAppComSecoesNovas) window.recarregarAppComSecoesNovas(zona);
+
+    // Estado real de carga/preparação/lacre já gravado (outro coordenador,
+    // outra sessão) — sem isso, quem abre a tela de novo veria tudo
+    // reiniciado, mesmo já tendo sido marcado por outro aparelho.
+    let cargaLacreReal = null;
+    if (eleicaoId) {
+      const { data } = await supabase.from('sime_carga_lacre').select('secao_id, carga, preparacao, lacre').eq('eleicao_id', eleicaoId);
+      if (data) {
+        const idParaNumero = {};
+        for (const s of secoesReais) idParaNumero[s.id] = String(s.numero).padStart(4, '0');
+        cargaLacreReal = {};
+        for (const row of data) {
+          const n = idParaNumero[row.secao_id];
+          if (n) cargaLacreReal[n] = { carga: row.carga, prep: row.preparacao, lacre: row.lacre };
+        }
+      }
+    }
+
+    if (window.recarregarAppComSecoesNovas) window.recarregarAppComSecoesNovas(zona, cargaLacreReal);
   }
+  if (eleicaoId) iniciarRetryPeriodico(syncQueueFn, (pendentes) => window.updateSyncBadge && window.updateSyncBadge(pendentes));
 }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -411,15 +491,35 @@ function load(){ try{const d=localStorage.getItem('sime_lacre_v3');if(d){const p
 
 // showToast() vem de sime_ui_utils.js
 
-function canMark(sec,field){ const s=state[sec]; if(field==='prep'&&!s.carga)return false; if(field==='lacre'&&!s.prep)return false; return true; }
+// Marcação livre em qualquer ordem — o Instalador (tela estruturalmente
+// idêntica) já permitia qualquer ordem, então a trava que existia aqui era
+// a única inconsistência entre os dois (achado "médio" da auditoria:
+// "decidir um padrão único e aplicar aos dois módulos"). Equipe em campo
+// às 5h30 nem sempre segue carga→preparação→lacre à risca. Desmarcar uma
+// etapa ainda derruba as seguintes (cascade), pra não deixar "lacrada"
+// marcada sem "carga".
 function cascade(sec,field,val){ if(!val){ if(field==='carga'){state[sec].prep=false;state[sec].lacre=false;} if(field==='prep'){state[sec].lacre=false;} } }
 
 function toggle(sec,field){
   const newVal = !state[sec][field];
-  if(newVal && !canMark(sec,field)){ showToast(field==='prep'?'📦 Faça a carga antes.':'🔧 Conclua a preparação antes.'); return; }
   state[sec][field] = newVal; cascade(sec,field,newVal);
   save(); refreshCard(sec); updateStats(); applyVisibility();
+  if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(sec, state[sec]);
 }
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.style.display = 'flex';
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
+window.updateSyncBadge = updateSyncBadge;
 
 function badgeHTML(n){ const s=state[n]; const c=(s.carga?1:0)+(s.prep?1:0)+(s.lacre?1:0); if(c===3)return'<div class="sec-badge sb-done">✅ Pronta</div>'; if(c>0)return'<div class="sec-badge sb-partial">Parcial</div>'; return'<div class="sec-badge sb-pending">Pendente</div>'; }
 
@@ -431,10 +531,10 @@ function refreshCard(n){
   card.classList.toggle('is-done', cnt===3);
   ['carga','prep','lacre'].forEach(f=>{
     const ck = card.querySelector(`.ck.${f}`);
-    const ic = s[f]; const il = !ic && !canMark(n,f);
-    ck.classList.toggle('on',ic); ck.classList.toggle('locked',il);
+    const ic = s[f];
+    ck.classList.toggle('on',ic);
+    ck.setAttribute('aria-pressed', String(!!ic));
     ck.querySelector('.ck-box').textContent = ic?'✓':'';
-    ck.querySelector('.ck-lock').style.display = il?'block':'none';
   });
   const mun = SECOES.find(x=>x.n===n)?.mun; if(mun) refreshMunProg(mun);
 }
@@ -448,10 +548,13 @@ function refreshMunProg(mun){
   const p = grp.querySelector('.mun-pct'); if(p) p.textContent=pct+'%';
 }
 
+// div+onclick com input escondido não era navegável por teclado nem tinha
+// nome acessível (achado "baixo" da auditoria) — ganha role="checkbox" +
+// aria-label + aria-pressed (sincronizado em refreshCard) + Enter/Espaço.
 function mkCk(sec,field,label,emoji){
-  const ic=state[sec][field]; const il=!ic&&!canMark(sec,field);
-  return`<div class="ck ${field}${ic?' on':''}${il?' locked':''}" onclick="toggle('${sec}','${field}')">
-    <input type="checkbox"${ic?' checked':''}><span class="ck-lock">🔒</span>
+  const ic=state[sec][field];
+  return`<div class="ck ${field}${ic?' on':''}" role="checkbox" tabindex="0" aria-pressed="${ic?'true':'false'}" aria-label="${label}" onclick="toggle('${sec}','${field}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle('${sec}','${field}');}">
+    <input type="checkbox"${ic?' checked':''} tabindex="-1">
     <div class="ck-box">${ic?'✓':''}</div><div class="ck-lbl">${emoji} ${label}</div></div>`;
 }
 
@@ -538,7 +641,20 @@ function applyVisibility(){
   document.querySelectorAll('.mun-group').forEach(grp=>{ grp.classList.toggle('hidden', !munVis.has(grp.dataset.mun)); });
 }
 
-function resetAll(){ if(!confirm('Resetar todas as marcações?'))return; SECOES.forEach(s=>{state[s.n]={carga:false,prep:false,lacre:false};}); save(); buildList(); updateStats(); }
+function resetAll(){
+  document.getElementById('reset-overlay').classList.add('show');
+}
+function fecharResetModal(){
+  document.getElementById('reset-overlay').classList.remove('show');
+}
+function confirmarResetAll(){
+  SECOES.forEach(s=>{
+    state[s.n]={carga:false,prep:false,lacre:false};
+    if (window.simeCoordPrep) window.simeCoordPrep.syncCargaLacre(s.n, state[s.n]);
+  });
+  save(); buildList(); updateStats();
+  fecharResetModal();
+}
 
 // iniciarRelogio() vem de sime_ui_utils.js
 iniciarRelogio('h-time');
@@ -548,10 +664,13 @@ iniciarRelogio('h-time');
 // marcado) e substitui os totais fixos do cabeçalho/rodapé (antes hardcoded
 // pra 7ª Zona: "174 seções", "63 locais", "34.967 eleitores") pelos números
 // reais da zona autenticada.
-function recarregarAppComSecoesNovas(zona){
+function recarregarAppComSecoesNovas(zona, cargaLacreReal){
   const estadoAntigo = state;
   state = {};
-  SECOES.forEach(s => { state[s.n] = estadoAntigo[s.n] || {carga:false, prep:false, lacre:false}; });
+  // Banco é a fonte quando existe (outro coordenador/aparelho já pode ter
+  // marcado); localStorage cobre só o que ainda não foi confirmado no
+  // servidor (offline) ou o que este mesmo aparelho já tinha antes do login.
+  SECOES.forEach(s => { state[s.n] = cargaLacreReal?.[s.n] || estadoAntigo[s.n] || {carga:false, prep:false, lacre:false}; });
 
   const totalEleitores = SECOES.reduce((acc, s) => acc + (s.aptos || 0), 0);
   const totalLocais = new Set(SECOES.map(s => s.local)).size;

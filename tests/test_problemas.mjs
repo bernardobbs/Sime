@@ -117,6 +117,14 @@ async function abrir(ctx, mock) {
   const destaque = await p.locator('.ct.destaque .ct-nome').textContent();
   check('energia: contato do município da seção vence o geral da zona',
     destaque.includes('Campo Maior'), destaque);
+
+  // Botões só-ícone sem aria-label (achado "baixo") + alvo de toque do fechar
+  check('botão de fechar o detalhe tem aria-label', await p.locator('.sh-x[aria-label="Fechar"]').count() === 1);
+  const fecharBox = await p.locator('.sh-x').first().evaluate(el => el.getBoundingClientRect());
+  check('botão de fechar tem alvo de toque ≥44px', fecharBox.width >= 44 && fecharBox.height >= 44, JSON.stringify(fecharBox));
+  check('login tem labels associadas (não só placeholder)',
+    await p.locator('label[for="login-email"]').count() === 1 && await p.locator('label[for="login-pass"]').count() === 1);
+
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -223,6 +231,8 @@ async function abrir(ctx, mock) {
   const chamadas = await p.evaluate(() => window.__mock.rpcCalls);
   check('Assumir chama sime_ocorrencia_assumir', chamadas.some(c => c.nome === 'sime_ocorrencia_assumir'),
     JSON.stringify(chamadas));
+  const badgeCls = await p.locator('#sync-badge').getAttribute('class');
+  check('badge de sync fica 🟢 depois de assumir com sucesso', badgeCls.includes('sync-ok'), badgeCls);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -239,6 +249,8 @@ async function abrir(ctx, mock) {
   await p.waitForTimeout(300);
   const toast = await p.locator('#toast').textContent();
   check('recusa do servidor aparece pro operador', toast.includes('já tem responsável'), toast);
+  const badgeCls = await p.locator('#sync-badge').getAttribute('class');
+  check('badge de sync vira 🔴 quando o servidor recusa (achado "alto" da auditoria)', badgeCls.includes('sync-fail'), badgeCls);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -308,7 +320,10 @@ async function abrir(ctx, mock) {
 
   check('Todos mostra os 3', await p.locator('.prob').count() === 3);
   check('contador Todos = 3', (await p.locator('#n-todos').textContent()) === '3');
-  check('contador Meus conta só os meus = 1', (await p.locator('#n-meus').textContent()) === '1');
+  // Achado "médio" da auditoria: o contador batia só com responsavel_id=EU,
+  // divergindo da lista real de "Meus" (que também traz órfãs — ver abaixo).
+  // Corrigido pra contar igual a visiveis(): o meu (oc-1) + a órfã (oc-3) = 2.
+  check('contador Meus bate com o que "Meus" realmente mostra (2: o meu + a órfã)', (await p.locator('#n-meus').textContent()) === '2');
   check('avisa que há problema sem responsável',
     (await p.locator('.aviso-orfas').textContent()).includes('1 problema'));
 

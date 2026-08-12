@@ -60,7 +60,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sc-num{font-weight:800;font-size:1rem;}
 .sc-loc{font-size:.72rem;color:var(--text2);margin-top:2px;}
 .sc-status{font-size:.64rem;font-weight:700;margin-top:3px;}
-.sc-status.ag {color:var(--text3);}
+/* "Aguardando encerramento" é o status mais comum durante boa parte do Dia D
+   — var(--text3) era a cor de menor contraste do tema (achado "alto"). */
+.sc-status.ag {color:var(--text2);}
 .sc-status.pr {color:var(--yellow);}
 .sc-status.co {color:var(--green);}
 .sc-status.en {color:#15803d;}
@@ -72,6 +74,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-entregar {background:var(--green);color:#fff;}
 .btn-dedicada {background:var(--purple);color:#fff;}
 .btn-done     {background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+/* Coletada é a única variante de .btn-done que ainda faz algo — abre a
+   observação pra edição — por isso reabre o cursor de clique. */
+.btn-done.btn-editavel{cursor:pointer;color:var(--text2);}
 
 /* ENTREGA TRANSMISSÃO */
 .transmissao-panel{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:18px;margin:14px;text-align:center;}
@@ -112,7 +117,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ri-info{flex:1;}
 .ri-name{font-size:.82rem;font-weight:700;}
 .ri-func{font-size:.68rem;color:var(--text2);}
-.ri-tel{font-size:.68rem;color:var(--text3);}
+.ri-tel{font-size:.68rem;color:var(--text2);}
 </style>
 </head>
 <body>
@@ -137,13 +142,13 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-title">SIME · Mídias</div>
     <div class="h-sub" id="h-sub">Recolhimento de Mídias</div>
   </div>
-  <button onclick="abrirConfigWA()" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 4px;" title="Configurar WhatsApp">📲</button><div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
+  <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" id="tab-rota-btn"    onclick="goTab('rota',this)">🚗 Coleta por Rota</div>
-  <div class="tab"        id="tab-ded-btn"     onclick="goTab('ded',this)">⚡ Coleta Dedicada</div>
-  <div class="tab"        id="tab-trans-btn"   onclick="goTab('trans',this)">📡 Transmissão</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" id="tab-rota-btn"    role="tab" tabindex="0" aria-selected="true"  onclick="goTab('rota',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🚗 Coleta por Rota</div>
+  <div class="tab"        id="tab-ded-btn"     role="tab" tabindex="0" aria-selected="false" onclick="goTab('ded',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚡ Coleta Dedicada</div>
+  <div class="tab"        id="tab-trans-btn"   role="tab" tabindex="0" aria-selected="false" onclick="goTab('trans',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📡 Transmissão</div>
 </div>
 
 <div class="progress-banner" id="prog-banner">
@@ -208,6 +213,14 @@ async function resolverEscopo() {
 // isto só tenta propagar pro Supabase quando há sessão, e PODE lançar — o
 // catch do chamador já enfileira de novo pra tentar depois).
 window.simeCampoMidia = {
+  // Relógio do servidor (regra 6 do CLAUDE.md) — usado por serverTs() no
+  // <script> clássico, que não tem acesso direto a campoClient.
+  async now() {
+    if (!campoClient) return null;
+    const { data, error } = await campoClient.rpc('sime_now');
+    if (error || !data) return null;
+    return new Date(data).getTime();
+  },
   async sync(dados) {
     if (!campoClient || !eleicaoId) return;
     const secaoId = secaoIdPorNumero[parseInt(dados.n, 10)];
@@ -413,12 +426,24 @@ function saveMidiaLocal(n, patch) {
   log('midia_'+patch.status, 'midias', n, patch);
 }
 
-// Timestamp: em produção, chamar sime_now() no Supabase
-function serverTs() { return Date.now(); } // substituir por RPC pós-migração
+// Timestamp de ação: sempre o relógio do servidor (regra 6 do CLAUDE.md —
+// nunca Date.now() pra isto). Date.now() só entra como fallback quando não
+// há sessão/rede pra perguntar ao Supabase — melhor gravar um horário local
+// aproximado do que travar a ação offline.
+async function serverTs() {
+  if (window.simeCampoMidia?.now) {
+    try { const ts = await window.simeCampoMidia.now(); if (ts) return ts; } catch(e) {}
+  }
+  return Date.now();
+}
 
 function log(acao, modulo, secao, payload) {
+  // Trilha local/diagnóstica só (sime_logs_v1) — o registro oficial é
+  // window.simeCampoMidia.log() logo abaixo, que grava em sime_logs no
+  // Supabase com o timestamp do próprio servidor. Chamado em contexto
+  // síncrono demais pra valer a pena esperar sime_now() aqui também.
   const logs = JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
-  logs.unshift({ acao, modulo, secao, payload, ts: serverTs() });
+  logs.unshift({ acao, modulo, secao, payload, ts: Date.now() });
   if (logs.length > 500) logs.splice(400);
   localStorage.setItem(LOG_KEY, JSON.stringify(logs));
   if (window.simeCampoMidia) window.simeCampoMidia.log(acao, secao, payload).catch(()=>{});
@@ -426,8 +451,13 @@ function log(acao, modulo, secao, payload) {
 
 function applyLocalAction(acao, dados) {
   if (acao === 'midia_transmissao') { saveTransmissaoLocal(dados.n, dados.status); return; }
-  const { n, status, tipo, obs, resp } = dados;
-  saveMidiaLocal(n, { status, tipo_coleta: tipo, observacao: obs, responsavel: resp });
+  const { n, status, tipo, obs, resp, ts } = dados;
+  const patch = { status, tipo_coleta: tipo, observacao: obs, responsavel: resp };
+  // coletada_ts nunca era salvo aqui — render() já lia m.coletada_ts (L525),
+  // então todo cartão coletado mostrava "--:--" pra sempre, mesmo com o
+  // horário do servidor disponível em dados.ts (achado "alto" da auditoria).
+  if (status === 'coletada' && ts) patch.coletada_ts = ts;
+  saveMidiaLocal(n, patch);
 }
 
 // ══════════════════════════════════════
@@ -438,8 +468,8 @@ let sheetAction = null;
 
 function goTab(tab, btn) {
   curTab = tab;
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected','true'); }
   render();
 }
 
@@ -503,7 +533,7 @@ function render() {
     } else if(st==='coletada'){
       cls='status-coletada';iconCls='co';icon='✅';
       statusTxt='Mídia coletada • '+fmtTs(m.coletada_ts, '--:--');statusCls='co';
-      btnHtml='<div class="sc-btn btn-done">✓ Coletada</div>';
+      btnHtml=`<button class="sc-btn btn-done btn-editavel" onclick="abrirEditarObsColeta('${sec.n}')">✓ Coletada · ✏️ observação</button>`;
     } else if(st==='em_coleta_rota'){
       cls='status-em-coleta';iconCls='co';icon='🚗';
       statusTxt='Em coleta pela rota '+sec.rota;statusCls='co';
@@ -511,11 +541,11 @@ function render() {
     } else if(st==='coleta_dedicada'){
       cls='status-dedicada';iconCls='de';icon='⚡';
       statusTxt='Coleta dedicada designada';statusCls='de';
-      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','dedicada')">🚗 Coletar</button>`;
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="coletarDireto('${sec.n}','dedicada')">🚗 Coletar</button>`;
     } else if(st==='pronta_para_coleta'){
       cls='status-pronta';iconCls='pr';icon='📦';
       statusTxt='Pronta para coleta • '+fmtTs(m.pronta_ts, '--:--');statusCls='pr';
-      btnHtml=`<button class="sc-btn btn-coletar" onclick="abrirColeta('${sec.n}','rota')">📦 Coletar</button>`;
+      btnHtml=`<button class="sc-btn btn-coletar" onclick="coletarDireto('${sec.n}','rota')">📦 Coletar</button>`;
     } else {
       // aguardando_encerramento
       if(mesaEnc){
@@ -564,7 +594,7 @@ function renderTransmissao(co, en, tot, recolh) {
       <div class="tp-stats">
         <div class="tps-item"><div class="tps-val" style="color:var(--green)">${prontas}</div><div class="tps-lbl">Mídias coletadas</div></div>
         <div class="tps-item"><div class="tps-val" style="color:var(--blue)">${en}</div><div class="tps-lbl">Já entregues</div></div>
-        <div class="tps-item"><div class="tps-val" style="color:var(--text3)">${tot-prontas-en}</div><div class="tps-lbl">Pendentes</div></div>
+        <div class="tps-item"><div class="tps-val" style="color:var(--text2)">${tot-prontas-en}</div><div class="tps-lbl">Pendentes</div></div>
       </div>
       ${prontas > 0 ? `<button class="btn-transmissao ready" onclick="confirmarEntregaTransmissao()">✅ Confirmar entrega de ${prontas} mídias na transmissão</button>` :
         `<button class="btn-transmissao" disabled>🔒 Nenhuma mídia coletada ainda</button>`}
@@ -615,25 +645,13 @@ async function marcarTransmissao(n, status) {
 // ══════════════════════════════════════
 // AÇÕES
 // ══════════════════════════════════════
-function abrirColeta(n, tipo) {
-  const sec = SECOES.find(s=>s.n===n);
-  document.getElementById('sheet-body').innerHTML = `
-    <div class="sh-title">📦 Coletar mídia — Seção ${parseInt(n)}</div>
-    <div class="sh-sub">${sec.loc} · ${sec.city}\nConfirme o recolhimento da mídia desta seção.</div>
-    <label class="sh-label">Observação (opcional)</label>
-    <input class="sh-input" type="text" id="sh-obs" placeholder="Ex: embalagem danificada...">
-    <div class="sh-btns">
-      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
-      <button class="sbtn yellow" onclick="confirmarColeta('${n}','${tipo}')">📦 Confirmar coleta</button>
-    </div>`;
-  openSheet();
-}
-
-async function confirmarColeta(n, tipo) {
-  const obs = document.getElementById('sh-obs')?.value||'';
-  const dados = { n, status: tipo==='dedicada'?'coletada':'coletada', tipo, obs, ts: serverTs() };
-
-  closeSheet();
+// Coleta é a ação mais repetida do módulo no Dia D — exigir abrir uma folha
+// só pra confirmar (sem nenhum campo obrigatório nela) era fricção que a
+// filosofia do projeto não pede (toque único pra ações simples). A
+// observação continua disponível, só que depois: tocar o cartão já coletado
+// abre abrirEditarObsColeta() (achado "baixo" da auditoria).
+async function coletarDireto(n, tipo) {
+  const dados = { n, status: 'coletada', tipo, obs: getMidia(n).observacao || '', ts: await serverTs() };
   try {
     await syncAction('midia_coletada', dados);
     showToast('✓ Mídia da seção ' + parseInt(n) + ' coletada');
@@ -647,8 +665,39 @@ async function confirmarColeta(n, tipo) {
   render();
 }
 
+function abrirEditarObsColeta(n) {
+  const sec = SECOES.find(s=>s.n===n);
+  const m = getMidia(n);
+  document.getElementById('sheet-body').innerHTML = `
+    <div class="sh-title">✏️ Observação — Seção ${parseInt(n)}</div>
+    <div class="sh-sub">${sec.loc} · ${sec.city}\nJá coletada — a observação pode ser ajustada a qualquer momento.</div>
+    <label class="sh-label">Observação</label>
+    <input class="sh-input" type="text" id="sh-obs" placeholder="Ex: embalagem danificada..." value="${(m.observacao||'').replace(/"/g,'&quot;')}">
+    <div class="sh-btns">
+      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
+      <button class="sbtn yellow" onclick="salvarObservacaoColeta('${n}')">💾 Salvar observação</button>
+    </div>`;
+  openSheet();
+}
+
+// Só troca a observação — não mexe em status/coletada_ts, pra não parecer
+// que a seção foi "recoletada" na hora em que alguém só corrigiu uma nota.
+async function salvarObservacaoColeta(n) {
+  const obs = document.getElementById('sh-obs')?.value||'';
+  const atual = getMidia(n);
+  saveMidiaLocal(n, { observacao: obs });
+  closeSheet();
+  showToast('✓ Observação salva');
+  try {
+    if (window.simeCampoMidia) await window.simeCampoMidia.sync({ n, status: atual.status, tipo: atual.tipo_coleta, obs });
+  } catch(e) {
+    await window.simeEnqueue('midia_obs_editada', { n, obs });
+  }
+  render();
+}
+
 async function marcarDedicada(n) {
-  const dados = { n, status: 'coleta_dedicada', tipo: 'dedicada', ts: serverTs() };
+  const dados = { n, status: 'coleta_dedicada', tipo: 'dedicada', ts: await serverTs() };
   try {
     await syncAction('midia_dedicada', dados);
     showToast('⚡ Seção ' + parseInt(n) + ' marcada para coleta dedicada');
@@ -661,7 +710,7 @@ async function marcarDedicada(n) {
 async function confirmarEntregaTransmissao() {
   const midias = loadMidias();
   const coletadas = Object.entries(midias).filter(([,m])=>m.status==='coletada').map(([n])=>n);
-  const ts = serverTs();
+  const ts = await serverTs();
   coletadas.forEach(n => {
     saveMidiaLocal(n, { status: 'entregue_transmissao', entregue_ts: ts });
   });
@@ -881,8 +930,10 @@ function previewNovoResp(sel){
     </div>
   </div>`;
 
-  // Preview da mensagem WhatsApp
-  const msg = montarMsgNovoResponsavel('???', sec?.loc||'—', {nome, telefone:tel});
+  // Preview da mensagem WhatsApp — antes passava '???' fixo em vez do número
+  // real da seção, então o preview sempre mostrava "Seção NaN" (a mensagem
+  // enviada de fato estava certa; só este preview usava o placeholder).
+  const msg = montarMsgNovoResponsavel(sec?.n||'???', sec?.loc||'—', {nome, telefone:tel});
   waPrev.innerHTML = `<div style="font-size:.65rem;font-weight:700;color:var(--text3);margin-top:8px;margin-bottom:4px">Preview WhatsApp que será enviado:</div>
     <div class="wa-preview">${msg.replace(/</g,'&lt;').replace(/\*/g,'<b>').replace(/\*/g,'</b>')}</div>`;
 }
@@ -908,7 +959,7 @@ async function confirmarDedicada(n){
     await window.simeEnqueue('midia_dedicada', dados);
   }
   // Urna recolhida: melhor esforço, à parte da fila de mídia (mesmo padrão
-  // de confirmarColeta()).
+  // de coletarDireto()).
   if (window.simeCampoMidia) window.simeCampoMidia.syncMesa(n, { p_urna_recolhida: true }).catch(()=>{});
 
   closeSheet();
@@ -931,39 +982,12 @@ async function confirmarDedicada(n){
   render();
 }
 
-// Configuração Z-API (acessível do admin)
-function abrirConfigWA(){
-  const cfg = loadZapiCfg();
-  document.getElementById('sheet-body').innerHTML = `
-    <div class="sh-title">📲 Configurar WhatsApp (Z-API)</div>
-    <div class="sh-sub">Configure uma vez. As notificações são enviadas automaticamente.</div>
-    <label class="sh-label">Instance ID</label>
-    <input class="sh-input" type="text" id="cfg-inst" value="${cfg.instanceId||''}" placeholder="Ex: 3C4D5E6F7G8H">
-    <label class="sh-label">Token</label>
-    <input class="sh-input" type="text" id="cfg-tok" value="${cfg.token||''}" placeholder="Ex: ABCD1234...">
-    <label class="sh-label">Client Token (segurança)</label>
-    <input class="sh-input" type="text" id="cfg-cli" value="${cfg.clientToken||''}" placeholder="Ex: F5EE...">
-    <label class="sh-label">Edge Function URL (opcional, pós-Supabase)</label>
-    <input class="sh-input" type="text" id="cfg-edge" value="${cfg.edgeUrl||''}" placeholder="https://xxx.supabase.co/functions/v1">
-    <div class="sh-btns" style="margin-top:12px">
-      <button class="sbtn cancel" onclick="closeSheet()">Cancelar</button>
-      <button class="sbtn ok" onclick="salvarCfgWA()">💾 Salvar</button>
-    </div>`;
-  openSheet();
-}
-
-function salvarCfgWA(){
-  const cfg = {
-    instanceId:  document.getElementById('cfg-inst').value.trim(),
-    token:       document.getElementById('cfg-tok').value.trim(),
-    clientToken: document.getElementById('cfg-cli').value.trim(),
-    edgeUrl:     document.getElementById('cfg-edge').value.trim(),
-  };
-  localStorage.setItem(ZAPI_CONFIG_KEY, JSON.stringify(cfg));
-  closeSheet();
-  showToast('✓ Configuração WhatsApp salva');
-  render();
-}
+// A edição da configuração Z-API (legada, substituída pelo Hermes) saiu
+// deste módulo de campo — não tinha relação com o fluxo atual e ocupava
+// espaço no cabeçalho de uma tela usada em campo (achado "alto" da
+// auditoria). loadZapiCfg()/enviarWA() continuam aqui: ainda é o que
+// dispara as notificações de troca de responsável, só não se edita mais
+// a configuração por aqui.
 
 function fmtNow(){
   const n=new Date();

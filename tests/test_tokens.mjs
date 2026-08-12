@@ -143,10 +143,38 @@ async function login(p) {
   await p.click('text=🔑 Gerar QR Code + PIN');
   await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
   await p.click('.btn-red.btn-sm'); // excluir o token recém-criado
+  await p.click('#conf-ok-btn'); // confirma no modal (achado "baixo": confirm() nativo virou modal)
   await p.waitForFunction(() => window.__mockConfig.deleteCalls.length > 0);
   const delCall = (await p.evaluate(() => window.__mockConfig.deleteCalls))[0];
   check('excluir token chama delete em sime_tokens', delCall?.table === 'sime_tokens');
   check('delete filtra por eleicao_id real', delCall.filters.eleicao_id === 'ele-uuid-1');
+  await ctx.close();
+}
+
+// ── 3b. Limpar todos: modal cancela sem apagar, confirma e apaga tudo ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+  await p.waitForTimeout(200);
+  await p.fill('#f-nome', 'Teste Limpar Todos');
+  await p.selectOption('#f-tipo', 'conferente');
+  await p.click('label.rota-ck >> nth=0');
+  await p.click('text=🔑 Gerar QR Code + PIN');
+  await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
+
+  await p.click('text=🗑 Limpar todos');
+  check('limpar todos: modal abre', await p.evaluate(() => document.getElementById('conf-overlay').classList.contains('show')));
+  await p.click('.conf-btns >> text=Cancelar');
+  check('limpar todos: cancelar fecha sem apagar', await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).length === 1));
+  check('limpar todos: modal fecha ao cancelar', await p.evaluate(() => !document.getElementById('conf-overlay').classList.contains('show')));
+
+  await p.click('text=🗑 Limpar todos');
+  await p.click('#conf-ok-btn');
+  await p.waitForTimeout(150);
+  check('limpar todos: confirmar apaga o localStorage', await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).length === 0));
   await ctx.close();
 }
 

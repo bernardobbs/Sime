@@ -95,7 +95,8 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── hermes-update.js               ← escrita de eventos de seção
 │   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
 │   ├── hermes-notificacoes.js         ← fila de notificações que o Hermes consulta (SIME → Hermes)
-│   └── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   └── hermes-contatos.js             ← telefone por papel (Gestor de Problemas/Chefe de Cartório), pro escalonamento
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
@@ -132,7 +133,6 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 
 | Papel | Módulo | Fase | Escopo |
 |---|---|---|---|
-| **Coordenador de Preparação** | SIME_coordenador_preparacao | D-X | Todas as seções |
 | **Auxiliar de Eleição** | Instalador + apoio | D-1 | Equipe do cartório |
 | **Conferente de Embarque** | SIME_conferente | D-1 | Rotas atribuídas |
 | **Instalador** | SIME_instalador | D-1 | Seções da rota (convocado externo) |
@@ -143,6 +143,11 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Secretário** | Registrado pelo Presidente | Dia D | — |
 | **Coord. de Acessibilidade** | SIME_acessibilidade | Dia D | Seções do `local_id` (convocado externo) |
 | **Coletor de Mídias** | SIME_midias | Dia D | Seções designadas (papel fixo, substituto possível) |
+
+> **Coordenador de Preparação** (`SIME_coordenador_preparacao`, fase D-X, todas
+> as seções) é o único papel de campo que **não** entra por QR+PIN — decisão
+> deliberada: entra com e-mail/senha, mesmo padrão do Admin. Não é uma
+> inconsistência a corrigir.
 
 ### Autônomo
 | Papel | Tecnologia | Função |
@@ -285,6 +290,18 @@ supabase
   .subscribe();
 ```
 
+> **Armadilha real, já mordeu em produção (06/08/2026)**: assinar a tabela no
+> JS não basta — ela também precisa estar na publicação `supabase_realtime`
+> do Postgres (`ALTER PUBLICATION supabase_realtime ADD TABLE ...`), senão o
+> canal nunca dispara e ninguém percebe (não dá erro; a tela só nunca
+> atualiza sozinha). `sime_mesa_estado` ficou sem isso desde sempre — só
+> `sime_ocorrencias` tinha sido adicionada — e o sintoma foi "TV Dia não
+> atualiza depois que o cartório resolve um problema" (um celular disfarça
+> o mesmo bug porque relê o estado a cada volta de tela; um TV box ligado o
+> dia inteiro não tem esse reforço). Corrigido e formalizado em
+> `sql/SIME_realtime_publicacao.sql` — ao criar uma `subscribeX()` nova em
+> `sime_realtime.js`, adicionar a tabela lá também.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
@@ -294,16 +311,37 @@ Admin, enum de funções, `sime_empresas`, token de acessibilidade) estão
 **concluídos** — assim como Realtime nas TVs, Supabase Auth, deploy na Vercel
 e os QR Codes por zona.
 
-### Migração localStorage → Supabase (parcial)
+### Migração localStorage → Supabase (concluída)
 
 Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 (zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
-Ainda só em `localStorage`:
-- **Nome da eleição, início da distribuição e intervalo entre saídas** — não
-  têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
-- **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
-  escrito pelos módulos e lido pelas TVs.
+> Esta seção dizia até 10/08/2026 que carga/lacre, instalador e distribuição
+> "ainda" só gravavam em `localStorage` — desatualizado desde os lotes 5d/E
+> da auditoria de UI/UX (08/08). Corrigido aqui porque uma pendência marcada
+> como aberta que já foi fechada é pior que não documentar nada: leva a
+> gastar tempo "migrando" o que já está migrado.
+
+**Estado de campo já é Supabase-first**, com `localStorage` só como cópia
+offline (mesmo padrão de todo o resto do app — grava no banco, espelha
+localmente, sincroniza quando volta a rede):
+- **Carga/lacre** (Coordenador de Preparação, TV Preparação, TV Véspera) —
+  tabela `sime_carga_lacre` (upsert por `eleicao_id,secao_id`), com Realtime
+  propagando pras TVs. `localStorage['sime_lacre_v3']` é só o espelho local
+  (`save()`/`load()` em `SIME_coordenador_preparacao.html`), não a fonte.
+- **Instalador** — grava via RPC `sime_acao_mesa` (mesma usada pelo
+  Mesário); `localStorage['sime_inst_v1']` é o espelho local.
+- **Conferente / TV Distribuição** — grava via RPC `sime_rota_estado_upsert`/
+  `sime_rota_urna_toggle`; TV Distribuição lê por Realtime
+  (`subscribeRotasEstado`); `localStorage['sime_dist_v1']` é o espelho local
+  do Conferente.
+
+**Nome da eleição, início da distribuição e intervalo entre saídas** —
+concluído: `sime_eleicoes` ganhou `nome`/`dist_inicio`/`intervalo_saidas_min`
+(mesmo padrão dos demais campos — banco é a fonte, localStorage é a cópia
+offline). `getEleicaoAtiva()` (`sime_dados.js`) já devolve os três; `nome` é
+compartilhado entre as duas linhas (1º/2º turno) da mesma zona, já que o
+formulário só tem um campo pra ele.
 
 Cadastro/edição de ator em `SIME_atores.html` grava direto em `sime_atores`
 com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravava
@@ -332,10 +370,13 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 
 ### Operação — antes de 4 de outubro
 
-- **94ª Zona zerada**: 0 tokens e 0 atores. Precisa importar os atores e gerar
-  os cartões.
-- **Data de carga e lacre** (`data_dx_ini`) nula nas duas zonas — não há padrão
-  legal, é decisão de cada cartório.
+> **Prioridade é a 7ª Zona.** A 94ª segue zerada (0 tokens, 0 atores) e fica
+> deliberadamente fora do foco atual — não é bloqueador pra nada que envolva
+> a 7ª, e não deve ditar prazo nem prioridade de trabalho enquanto a 7ª não
+> estiver pronta. Retomar a 94ª como tarefa própria, não como item que puxa
+> os demais.
+- **Data de carga e lacre da 7ª Zona** (`data_dx_ini`) nula — não há padrão
+  legal, é decisão do cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
 - **Detecção de eventos de seção (`eventos.js`) só propõe, não grava**
@@ -345,10 +386,15 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   deliberada (modo proposta), não escrever automaticamente sem medir taxa de
   acerto primeiro. Sem isso, "seção 63 encerrada" dito no grupo continua
   exigindo lançamento manual no Admin ou por telefone.
-- **Escalonamento por papel ainda não differencia destinatário**: a fila de
-  notificações drenada manda pra todos os `ADMIN_NUMBERS` do Hermes,
-  independente do nível (Monitor de Campo/Gestor de Problemas/Chefe de
-  Cartório) — falta um endpoint que resolva telefone por papel.
+- **Escalonamento por papel — lado SIME pronto, lado Hermes falta ligar**: a
+  fila de notificações drenada ainda manda pra todos os `ADMIN_NUMBERS` do
+  Hermes, independente do nível. `sime_usuarios.telefone_whatsapp` (coluna
+  nova) + `/api/hermes-contatos` (`acao=listar`) já resolvem "quem é o Gestor
+  de Problemas/Chefe de Cartório desta zona" — o admin cadastra o próprio
+  WhatsApp na aba Equipe do `SIME_admin.html` (campo só aparece pros dois
+  perfis certos). Falta só `index.js` no Pi somar esses números aos
+  `ADMIN_NUMBERS` conforme `idade_s` — ver `hermes/SIME_hermes_skill_escalonamento.md`.
+  94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
 - **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
   Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
   funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
@@ -367,7 +413,17 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   DM chegando, sem nenhuma resposta visível). Toda DM é logada no `pm2 logs`
   (nunca no WhatsApp) pra ainda dar pra achar um admin legítimo bloqueado
   por JID `@lid` fora da lista.
-- **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando.
+- **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando. O
+  Pi já tem `HERMES_BACKUP_ATIVO` configurado (dois números de WhatsApp), mas
+  isso hoje é redundância de **sessão** pra 7ª — os dois números compartilham
+  o mesmo `HERMES_SECRET`, não dá cobertura à 94ª por si só. Fazer os dois
+  números monitorarem grupos das duas zonas é mudança de arquitetura maior
+  (grupo→zona, Bearer por zona, filas por zona) — patch consolidado pronto
+  pra aplicar em `hermes/PATCH_CONSOLIDADO_2026-08-08.md` (junto com
+  autoatendimento e escalonamento, numa sequência só), com o trade-off
+  explícito: junta o raio de impacto de uma queda do Pi inteiro nas duas
+  zonas (a redundância só
+  cobre a sessão do WhatsApp cair, não o Pi cair).
 - **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
   interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
   bloqueia confirmação automática para essas mensagens. Medir a frequência.
@@ -440,6 +496,9 @@ inteiro ainda.
   (leitura + `sime_campanhas_confirmacao.status`)
 - `sime_heartbeat` — reporta telemetria e verifica pedido de atualização via
   `/api/hermes-heartbeat` (escrita em `sime_heartbeat`/`sime_componentes`)
+- `sime_escalonamento` — resolve telefone de Gestor de Problemas/Chefe de
+  Cartório via `/api/hermes-contatos` (só leitura) — **proposta, endpoint
+  pronto mas ainda não chamado pelo `index.js`**
 
 > As skills acima descrevem o **contrato de dados** com o SIME (schema dos
 > endpoints, templates), não um agente de IA com skills de verdade — a
@@ -456,6 +515,7 @@ inteiro ainda.
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
 > | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
+> | `sime_escalonamento` | endpoint (`/api/hermes-contatos`) pronto em produção desde 08/08/2026; `index.js` ainda não o chama |
 >
 > A 94ª Zona ainda não tem instância nenhuma.
 
@@ -547,6 +607,19 @@ vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E ap
 logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
 (número/local/município, via `secao_id`). Termina convidando a mandar correção,
 que vai pra `atualizar` — ver `hermes/SIME_hermes_skill_mesarios.md`.
+
+### Endpoint Vercel — contatos por papel (escalonamento)
+```
+POST /api/hermes-contatos
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
+Body: { acao: 'listar' }
+
+→ { ok, zona, contatos: { gestor_prob: [telefones...], coordenador: [telefones...] } }
+```
+Só leitura — telefone vem de `sime_usuarios.telefone_whatsapp` (`ativo=true`),
+cadastrado pelo admin na aba Equipe. Lista vazia = ninguém daquele perfil
+cadastrou telefone ainda, não é erro. Contrato completo e como pluga no loop
+de `sime_notificar`: `hermes/SIME_hermes_skill_escalonamento.md`.
 
 ---
 

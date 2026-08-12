@@ -99,6 +99,8 @@ function baseMockConfig() {
     return JSON.parse(el.dataset.st.replace(/&quot;/g, '"'));
   });
   check('DOM renderizado reflete o dado real (real:true) pra seção 0063', swReal?.real === true);
+  const rtTxt = await p.locator('#rt-status').textContent();
+  check('indicador de saúde do Realtime sai de "sem sessão" com sessão de TV ativa', !rtTxt.includes('sem sessão'), rtTxt);
   check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
@@ -143,7 +145,35 @@ function baseMockConfig() {
   await ctx.close();
 }
 
-// ── 3. Sem tv_token: fallback local intacto, zero chamadas Realtime ──
+// ── 4. Pânico ativo troca a tela sozinha pra aba Problemas, com contato exposto na linha ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_mesa_estado[0].panico_energia = true;
+  cfg.sime_mesa_estado[0].panico_energia_resolvido = false;
+  cfg.sime_atores = [
+    { id: 'ator-1', nome_completo: 'Ana Paula Sousa', telefone_whatsapp: '5586999996666',
+      funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 'sec-uuid-63', ativo: true },
+  ];
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tv_dia.html?tv_token=TVTOKENX');
+  await p.waitForTimeout(2200);
+
+  const fasesCls = await p.locator('#fase-prob').getAttribute('class');
+  check('pânico ativo troca a tela sozinha pra "Problemas" (achado "alto" — ninguém clicaria manualmente)',
+    fasesCls.includes('active'), fasesCls);
+  check('lista de problemas mostra a seção com pânico', (await p.locator('.prob-item').count()) >= 1);
+
+  const waHref = await p.locator('.prob-contact a.sm-btn.wa').first().getAttribute('href');
+  check('contato (WhatsApp) exposto direto na linha, sem precisar abrir o modal',
+    !!waHref && waHref.includes('wa.me') && waHref.includes('5586999996666'), waHref);
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 5. Sem tv_token: fallback local intacto, zero chamadas Realtime ──
 {
   const ctx = await b.newContext();
   const cfg = baseMockConfig();

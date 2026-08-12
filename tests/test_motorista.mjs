@@ -113,8 +113,7 @@ function baseMockConfig() {
   await p.waitForFunction(() => document.getElementById('view-main').style.display !== 'none');
   await p.waitForTimeout(300);
 
-  await p.click('.btn-entregar'); // primeira seção da 1ª parada
-  await p.click('#sh-ok');
+  await p.click('.btn-entregar'); // primeira seção da 1ª parada — toque único, sem modal
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_urna_entregue === true));
   const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
   const entregaCall = calls.find(c => c.params?.p_urna_entregue === true);
@@ -158,13 +157,44 @@ function baseMockConfig() {
   await p.waitForFunction(() => document.getElementById('view-main').style.display !== 'none');
   await p.click('#login-offline');
   await p.waitForFunction(() => document.getElementById('login-overlay').style.display === 'none');
-  await p.click('.btn-entregar');
-  await p.click('#sh-ok');
+  await p.click('.btn-entregar'); // toque único, sem modal
   await p.waitForTimeout(200);
   const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
   check('continuar offline: nenhuma chamada rpc (sem sessão)', calls.length === 0, 'calls=' + calls.length);
   check('continuar offline: fluxo ?rota= continua funcionando', await p.textContent('#h-title').then(t => t.includes('Rota 001')));
   check('continuar offline: zero erros JS', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 5. Badge de sync aparece após login; desfazer reverte e resincroniza ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  await ctx.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      jwt: 'jwt.x', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-7', tipo: 'motorista', rotas: ['001'],
+    }) });
+  });
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_motorista.html');
+  await p.fill('#login-token', 'MOTO001');
+  await p.fill('#login-pin', '4321');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForFunction(() => document.getElementById('view-main').style.display !== 'none');
+  await p.waitForTimeout(300);
+
+  check('badge de sync visível após login', await p.evaluate(() => document.getElementById('sync-badge').style.display !== 'none'));
+  check('badge mostra 🟢 Sync (sem pendências)', (await p.locator('#sync-badge').textContent()).includes('Sync'));
+
+  await p.click('.btn-entregar'); // toque único confirma
+  await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_urna_entregue === true));
+  await p.click('.btn-desfazer-mini'); // desfaz — sem modal, sempre visível
+  await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_urna_entregue === false));
+  const btnVoltou = await p.locator('.btn-entregar').count();
+  check('desfazer volta o botão "Entregar" pra seção', btnVoltou > 0);
+  check('zero erros JS', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
 

@@ -27,10 +27,16 @@ body{display:flex;flex-direction:column;}
 .t-sep{width:1px;height:18px;background:var(--border);}
 .t-tag{font-size:.72rem;color:var(--text2);font-weight:600;}
 .t-stats{display:flex;gap:10px;flex:1;flex-wrap:wrap;}
-.ts{font-size:.65rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.ts{font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:3px;}
 .ts-d{width:6px;height:6px;border-radius:50%;}
 .t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .t-clock{font-size:.82rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;min-width:72px;text-align:right;}
+/* Sem indicador de saúde do Realtime, um canal caído deixava a tela travada
+   num dado velho sem nenhum aviso (achado "alto" da auditoria — mesmo padrão
+   já aplicado ao TV Dia). */
+.rt-status{font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;}
+.rt-status.warn{background:#fff7ed;color:#c2410c;}
+.rt-status.stale{background:#fef2f2;color:#dc2626;}
 .cfg-btn{padding:4px 10px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);}
 .cfg-btn:hover{background:var(--border);}
 
@@ -74,7 +80,7 @@ body{display:flex;flex-direction:column;}
 .loc.delayed:not(.done){background:#fffbf0;border-color:#fcd34d;}
 .loc.prob:not(.done)   {background:#fef2f2;border-color:#fca5a5;}
 
-.loc-name{font-size:.66rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.loc-name{font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .loc.done .loc-name{color:#15803d;}
 
 .loc-time{min-height:13px;display:flex;align-items:center;}
@@ -126,9 +132,9 @@ body{display:flex;flex-direction:column;}
 .delay-wrap input{width:42px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);font-size:.67rem;text-align:center;color:var(--text);}
 /* legenda */
 .leg{display:flex;gap:12px;align-items:center;}
-.li{display:flex;align-items:center;gap:3px;font-size:.6rem;color:var(--text3);}
-.li-d{width:6px;height:6px;border-radius:50%;}
-.li-b{display:inline-flex;align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;background:#ef4444;color:#fff;font-size:.5rem;font-weight:900;}
+.li{display:flex;align-items:center;gap:3px;font-size:.78rem;color:var(--text2);}
+.li-d{width:8px;height:8px;border-radius:50%;}
+.li-b{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:#ef4444;color:#fff;font-size:.62rem;font-weight:900;}
 .li-arcs,.li-dica{color:var(--text3);opacity:.85;}
 .li-dica{font-style:italic;}
 
@@ -185,6 +191,7 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="t-stats" id="t-stats"></div>
   <div class="t-right">
+    <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
     <button class="cfg-btn" onclick="openCfg()">⚙ Horários</button>
     <div class="t-clock" id="clock">--:--:--</div>
   </div>
@@ -244,8 +251,8 @@ body{display:flex;flex-direction:column;}
 
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst, getAtores } from './sime_dados.js';
-import { subscribeMesaEstado } from './sime_realtime.js';
+import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst, getAtores, getEleicaoAtiva } from './sime_dados.js';
+import { subscribeMesaEstado, subscribeCargaLacre } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
@@ -263,8 +270,7 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   // Realtime: snapshot inicial do instalador (chegou/posicionada/instalada,
   // colunas de sime_mesa_estado) + assinatura pra refletir mudanças quase
   // instantaneamente, em vez de esperar o próximo ciclo de 5s de
-  // fullRender(). "Lacre" (Coordenador de Preparação) continua só em
-  // localStorage — não existe tabela real pra isso ainda.
+  // fullRender().
   const secoesParaInst = await getSecoes({ fallback: null });
   const numeroPorSecaoId = new Map((secoesParaInst || []).map((s) => [s.id, s.numero]));
   const instInicial = await getInstMap({ fallback: null });
@@ -273,8 +279,12 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     clearTimeout(rerenderTimer);
     rerenderTimer = setTimeout(() => { if (window.fullRender) window.fullRender(); }, 300);
   }
+  // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
+  // atualizado a cada segundo pelo <script> clássico) — mesmo padrão do TV Dia.
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   if (instInicial) {
     window.__instRemota = instInicial;
+    marcarAtualizado();
     agendarRerender();
   }
   subscribeMesaEstado(client, (row) => {
@@ -282,8 +292,36 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     if (numero == null) return;
     if (!window.__instRemota) window.__instRemota = {};
     window.__instRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
+    marcarAtualizado();
     agendarRerender();
   });
+
+  // "Lacre" (Coordenador de Preparação) — lê sime_carga_lacre, a mesma tabela
+  // já usada pelo TV Preparação. Antes vinha exclusivamente do localStorage,
+  // que só reflete a realidade se a instalação for lacrada no mesmo
+  // navegador físico da própria TV — praticamente nunca (achado "alto").
+  const eleicaoLacre = await getEleicaoAtiva({ fallback: null });
+  if (eleicaoLacre) {
+    async function refetchLacre() {
+      try {
+        const { data, error } = await client.from('sime_carga_lacre')
+          .select('secao_id,lacre').eq('eleicao_id', eleicaoLacre.id);
+        if (error || !data) return;
+        const map = {};
+        for (const row of data) {
+          const numero = numeroPorSecaoId.get(row.secao_id);
+          if (numero == null) continue;
+          map[String(numero).padStart(4, '0')] = { lacre: !!row.lacre };
+        }
+        window.__lacreRemota = map;
+        marcarAtualizado();
+        agendarRerender();
+      } catch (e) { /* mantém o snapshot atual até a próxima tentativa */ }
+    }
+    await refetchLacre();
+    subscribeCargaLacre(client, () => refetchLacre());
+    setInterval(refetchLacre, 60000); // rede de segurança se o canal cair
+  }
 
   // Contatos da mesa, pro modal de seção oferecer o WhatsApp. Falha em
   // silêncio: sem contato o botão some, e a véspera segue funcionando.
@@ -397,7 +435,11 @@ let pendingCfg = {};
 //   sime_lacre_v3  → coordenador de preparação  (lacrada = arco 1)
 //   sime_inst_v1   → instalador  (s1=chegou arco 2 · s3=instalada arco 3 · prob)
 // ══════════════════════════════════════════════════
-function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
+// Prefere o cache Realtime (sime_carga_lacre via Supabase) quando existe —
+// antes só lia localStorage, que nunca reflete a realidade a menos que a
+// instalação seja lacrada no mesmo navegador físico da própria TV
+// (praticamente nunca — achado "alto" da auditoria).
+function loadLacre(){ if(window.__lacreRemota) return window.__lacreRemota; try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
 // Prefere o cache Realtime (sime_mesa_estado via Supabase) quando existe —
 // populado pelo <script type="module"> acima. Sem sessão/rede, cai no
 // localStorage exatamente como antes (offline-first).
@@ -517,6 +559,20 @@ function goPage(idx){
   updateNav();
 }
 
+// Sem visão dedicada de "Problemas" como o TV Dia tem — problemas ficam
+// misturados na rotação normal, só destacados por cor (achado "baixo" da
+// auditoria). Réplica completa não cabe aqui (TV Dia usa pânico de Dia D,
+// domínio diferente do prob/probResolvido do Instalador) — em vez disso, o
+// chip "N problemas" no topo pula direto pra 1ª cidade com problema e pausa
+// a rotação automática, pra não passar batido.
+function irParaProblema(){
+  const inst=loadInst(), lacre=loadLacre();
+  const idx = CITIES.findIndex(c => c.locs.some(l => l.s.some(n => getSt(n,lacre,inst).prob)));
+  if(idx < 0) return;
+  if(!paused) togglePause();
+  goPage(idx);
+}
+
 function updateNav(){
   // dots
   const dots = document.getElementById('page-dots');
@@ -546,6 +602,10 @@ let audioCtx    = null;
 function beep(){
   try{
     if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    // Sem gesto do usuário (TV só de olhar), o contexto nasce 'suspended' e
+    // o som não sai, sem erro nenhum — resume() aqui é melhor esforço, não
+    // garantia contra a política de autoplay em todo navegador/TV box.
+    if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
     const o=audioCtx.createOscillator(),g=audioCtx.createGain();
     o.connect(g);g.connect(audioCtx.destination);
     o.frequency.setValueAtTime(880,audioCtx.currentTime);
@@ -621,7 +681,11 @@ function buildPageEl(cityIdx, inst, lacre, cfg){
     });
 
     box.innerHTML = `<div class="loc-name">${loc.n}</div>${timeLn}<div class="loc-circles">${circs}</div>`;
-    box.ondblclick = ()=>openCfg(loc.id);
+    // Duplo clique só na área do card fora dos círculos de seção — clicar
+    // duas vezes num círculo (cada clique já abre o detalhe da seção) não
+    // deve também abrir a config do local por trás (gestos sobrepostos,
+    // achado "médio" da auditoria).
+    box.ondblclick = (e)=>{ if(e.target.closest('.sw')) return; openCfg(loc.id); };
     grid.appendChild(box);
   });
 
@@ -756,7 +820,7 @@ function fullRender(){
     s.tr  ?`<span class="ts" style="color:#d97706"><div class="ts-d" style="background:#d97706"></div>${s.tr} trânsito</span>`:'',
     s.pd  ?`<span class="ts" style="color:#9090b0"><div class="ts-d" style="background:#dc2626"></div>${s.pd} aguardando</span>`:'',
     s.inc ?`<span class="ts" style="color:#ea580c"><div class="ts-d" style="background:#ea580c"></div>${s.inc} inconsistências</span>`:'',
-    s.pr  ?`<span class="ts" style="color:#ef4444"><div class="ts-d" style="background:#ef4444"></div>${s.pr} problemas</span>`:'',
+    s.pr  ?`<button class="ts" onclick="irParaProblema()" style="color:#ef4444;background:none;border:none;font:inherit;cursor:pointer;padding:0;"><div class="ts-d" style="background:#ef4444"></div>${s.pr} problemas — ver</button>`:'',
     `<span class="ts" style="color:var(--text3)">${s.tot} total</span>`,
   ].join('');
 
@@ -800,6 +864,22 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
 // RELÓGIO
 // ══════════════════════════════════════════════════
 iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
+
+// Indicador de saúde do Realtime — window.__ultimaAtualizacaoTs vem do
+// <script type="module"> (marcarAtualizado(), a cada evento recebido + no
+// refetch de segurança a cada 60s). Mesmo padrão do TV Dia.
+function updateRtStatus(){
+  const el=document.getElementById('rt-status');
+  if(!el) return;
+  const ts=window.__ultimaAtualizacaoTs;
+  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  const s=Math.floor((Date.now()-ts)/1000);
+  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
+  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
+  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
+  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+}
+setInterval(updateRtStatus,1000); updateRtStatus();
 
 // ══════════════════════════════════════════════════
 // INIT

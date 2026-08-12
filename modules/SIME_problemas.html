@@ -13,12 +13,21 @@
    não se quer — a lista precisa doer enquanto tiver item nela. */
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 
 .topbar{background:var(--card);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:9px;position:sticky;top:0;z-index:20;}
 .logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem;color:#fff;flex-shrink:0;}
 .brand{font-weight:800;font-size:.88rem;}
 .topbar .sp{flex:1;}
-.zona{font-size:.72rem;color:var(--text3);}
+.zona{font-size:.72rem;color:var(--text2);}
+/* Assumir/delegar/resolver/registrar contato escrevem direto no Supabase, sem
+   fila offline (igual ao Admin — sessão autenticada, não token de campo). Sem
+   isto, uma falha de rede sumia em silêncio: o toast de erro já existia, mas
+   nada ficava visível DEPOIS que a pessoa fechasse o toast (achado "alto" da
+   auditoria). Mesmo padrão "último resultado" do SIME_admin.html. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d4f0e0);color:var(--green,#2e7d52);}
+.sync-badge.sync-fail{background:var(--red-bg,#f8d7da);color:var(--red,#c0392b);}
 
 .wrap{max-width:680px;margin:0 auto;padding:12px 12px 90px;}
 
@@ -38,6 +47,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   border-radius:11px;padding:12px 13px;margin-bottom:9px;cursor:pointer;
   transition:transform .12s,box-shadow .12s;}
 .prob:hover,.prob:focus{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.09);outline:none;}
+.prob:focus-visible{outline:2px solid var(--blue,#2d6cdf);outline-offset:2px;}
 .prob.t-energia{border-left-color:#f59e0b;}
 .prob.t-urna{border-left-color:#dc2626;}
 .prob.t-mesa_incompleta{border-left-color:#d97706;}
@@ -51,7 +61,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .prob-tit{flex:1;min-width:0;}
 .prob-sec{font-weight:800;font-size:.94rem;}
 .prob-loc{font-size:.74rem;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.prob-idade{font-size:.72rem;font-weight:800;color:var(--text3);white-space:nowrap;}
+.prob-idade{font-size:.72rem;font-weight:800;color:var(--text2);white-space:nowrap;}
 .prob-idade.n1{color:#d97706;}
 .prob-idade.n2{color:#dc2626;}
 .prob-rod{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap;}
@@ -59,6 +69,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .dono b{color:var(--text);}
 .sem-dono{font-size:.75rem;font-weight:800;color:#b45309;}
 .prob-rod .sp{flex:1;}
+
+/* Badge de escalonamento (Gestor de Problemas/Chefe de Cartório) — o alerta
+   mais urgente da tela, então cor sólida em vez do estilo discreto do resto. */
+.pill{display:inline-flex;align-items:center;font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.pill.bad{background:#dc2626;color:#fff;}
 
 .vazio{text-align:center;padding:46px 20px;color:var(--text3);}
 .vazio .ico{font-size:2.6rem;margin-bottom:8px;}
@@ -80,8 +95,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sh-tit{flex:1;min-width:0;}
 .sh-t1{font-weight:900;font-size:1rem;}
 .sh-t2{font-size:.78rem;color:var(--text2);}
-.sh-t3{font-size:.72rem;color:var(--text3);margin-top:3px;}
-.sh-x{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text3);padding:2px 6px;}
+.sh-t3{font-size:.72rem;color:var(--text2);margin-top:3px;}
+.sh-x{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text3);padding:2px 6px;min-width:44px;min-height:44px;}
 .sh-body{padding:13px 16px;}
 .sh-lbl{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
   color:var(--text3);margin:14px 0 7px;}
@@ -126,14 +141,15 @@ select.campo{margin-bottom:8px;}
   <div class="logo">SI</div>
   <div class="brand">SIME · Problemas</div>
   <div class="sp"></div>
+  <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
   <span class="zona" id="zona-info"></span>
-  <button id="btn-sair" onclick="simeLogout()" style="display:none;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.73rem;font-weight:700;cursor:pointer;">⎋</button>
+  <button id="btn-sair" onclick="simeLogout()" aria-label="Sair" style="display:none;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.73rem;font-weight:700;cursor:pointer;">⎋</button>
 </div>
 
 <div class="wrap">
   <div class="filtros">
-    <div class="filtro" id="f-meus"  onclick="setFiltro('meus')">👤 Meus <span class="n" id="n-meus">0</span></div>
-    <div class="filtro on" id="f-todos" onclick="setFiltro('todos')">📋 Todos <span class="n" id="n-todos">0</span></div>
+    <div class="filtro" id="f-meus" tabindex="0" role="button" onclick="setFiltro('meus')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">👤 Meus <span class="n" id="n-meus">0</span></div>
+    <div class="filtro on" id="f-todos" tabindex="0" role="button" onclick="setFiltro('todos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📋 Todos <span class="n" id="n-todos">0</span></div>
   </div>
   <div id="aviso-orfas"></div>
   <div id="lista"></div>
@@ -148,7 +164,9 @@ select.campo{margin-bottom:8px;}
     <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
     <div style="font-size:.78rem;color:var(--text3);margin-bottom:8px;">O painel de problemas exige login da equipe.</div>
     <form id="login-form">
+      <label for="login-email" class="sr-only">E-mail</label>
       <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <label for="login-pass" class="sr-only">Senha</label>
       <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
       <div id="login-erro" style="color:#c0392b;font-size:.75rem;min-height:1em;margin-top:6px;"></div>
       <button class="btn btn-dark" type="submit" style="width:100%;margin-top:10px;">Entrar</button>
@@ -386,7 +404,10 @@ function visiveis(){
 
 function renderLista(){
   const lista = document.getElementById('lista');
-  const meus = OCORRENCIAS.filter(o=>o.responsavel_id===EU?.id).length;
+  // Bate com visiveis(): "Meus" inclui as órfãs de propósito — o contador
+  // antigo só contava as com responsavel_id=EU, divergindo da lista real
+  // exibida ao filtrar (achado "médio" da auditoria).
+  const meus = OCORRENCIAS.filter(o=>o.responsavel_id===EU?.id || !o.responsavel_id).length;
   const orfas = OCORRENCIAS.filter(o=>!o.responsavel_id).length;
   document.getElementById('n-meus').textContent = meus;
   document.getElementById('n-todos').textContent = OCORRENCIAS.length;
@@ -469,7 +490,7 @@ function abrirSheet(id){
         <div class="sh-t3">Aberta há ${idadeTxt(min)} · via ${o.origem}
           ${o.nivel_escalonamento?` · <b style="color:#dc2626">escalado ao ${o.nivel_escalonamento===1?'gestor':'chefe de cartório'}</b>`:''}</div>
       </div>
-      <button class="sh-x" onclick="fecharSheet()">✕</button>
+      <button class="sh-x" aria-label="Fechar" onclick="fecharSheet()">✕</button>
     </div>
 
     <div class="sh-body">
@@ -518,9 +539,18 @@ async function carregarHistorico(id){
 // ══════════════════════════════════════════════════
 // AÇÕES
 // ══════════════════════════════════════════════════
+function trackSync(ok){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  el.style.display = 'flex';
+  if(ok){ el.className = 'sync-badge sync-ok'; el.textContent = '🟢 Sync'; }
+  else  { el.className = 'sync-badge sync-fail'; el.textContent = '🔴 Falhou salvar'; }
+}
+
 async function assumir(id){
   const { error } = await supabase.rpc('sime_ocorrencia_assumir', { p_id:id });
-  if(error){ showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  trackSync(true);
   showToast('✋ Você assumiu este problema');
   await recarregar();
 }
@@ -545,7 +575,8 @@ async function confirmarDelegar(id){
   const motivo = document.getElementById('del-motivo').value.trim();
   if(!motivo){ showToast('⚠ Informe o motivo'); return; }
   const { error } = await supabase.rpc('sime_ocorrencia_delegar', { p_id:id, p_para:para, p_motivo:motivo });
-  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  trackSync(true);
   showToast('↪ Delegado');
   await recarregar();
 }
@@ -564,7 +595,8 @@ window.abrirResolver = abrirResolver;
 async function confirmarResolver(id){
   const txt = document.getElementById('res-txt')?.value || '';
   const { error } = await supabase.rpc('sime_ocorrencia_resolver', { p_id:id, p_resolucao:txt });
-  if(error){ showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  trackSync(true);
   showToast('✓ Problema resolvido');
   fecharSheet(null, true);
   await recarregar();
@@ -574,7 +606,7 @@ window.confirmarResolver = confirmarResolver;
 // Registrar o contato é o que faz "ninguém atendeu" virar fato no histórico,
 // em vez de memória de quem estava de plantão. Não bloqueia o link.
 function registrarContato(id, quem){
-  supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(()=>{}, ()=>{});
+  supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(() => trackSync(true), () => trackSync(false));
 }
 window.registrarContato = registrarContato;
 </script>

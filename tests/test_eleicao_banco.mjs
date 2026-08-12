@@ -66,7 +66,8 @@ async function logar(p) {
 // ── Carrega do banco e sobrepõe o padrão de outubro ──
 {
   const { p, erros } = await abrir({ zonaId: 'z-7', eleicoes: [
-    { zona_id:'z-7', turno:1, data_dx_ini:'2026-09-20', data_d1:'2026-10-03', data_d:'2026-10-04', horario_ab:'08:00:00', horario_enc:'17:00:00', ativa:true },
+    { zona_id:'z-7', turno:1, data_dx_ini:'2026-09-20', data_d1:'2026-10-03', data_d:'2026-10-04', horario_ab:'08:00:00', horario_enc:'17:00:00', ativa:true,
+      nome:'Eleições Municipais 2026', dist_inicio:'05:45:00', intervalo_saidas_min:12 },
   ]});
   await logar(p);
   const r = await p.evaluate(() => ({
@@ -74,11 +75,17 @@ async function logar(p) {
     d1: document.getElementById('t1-d1').value,
     d:  document.getElementById('t1-d').value,
     ab: document.getElementById('t1-ab').value,
+    nome: document.getElementById('cfg-nome-eleicao').value,
+    dist: document.getElementById('t1-dist').value,
+    intervalo: document.getElementById('t1-intervalo').value,
   }));
   check('carga e lacre vem do banco', r.dx === '2026-09-20', r.dx);
   check('véspera vem do banco', r.d1 === '2026-10-03', r.d1);
   check('Dia D vem do banco', r.d === '2026-10-04', r.d);
   check('horário com segundos vira HH:MM no input', r.ab === '08:00', r.ab);
+  check('nome da eleição vem do banco', r.nome === 'Eleições Municipais 2026', r.nome);
+  check('início da distribuição vem do banco', r.dist === '05:45', r.dist);
+  check('intervalo entre saídas vem do banco', r.intervalo === '12', r.intervalo);
 
   // O que veio do banco tem que ficar no localStorage também (uso offline).
   const local = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_eleicao_v1') || '{}'));
@@ -92,6 +99,11 @@ async function logar(p) {
   const { p, erros } = await abrir({ zonaId: 'z-7', eleicoes: [] });
   await logar(p);
   await p.fill('#t1-dx', '2026-09-25');
+  // "Nome da eleição" mora na aba Config, escondida por padrão nesta tela —
+  // setar direto em vez de trocar de aba só pra isso.
+  await p.evaluate(() => { document.getElementById('cfg-nome-eleicao').value = 'Eleições Municipais 2026'; });
+  await p.fill('#t1-dist', '06:00');
+  await p.fill('#t1-intervalo', '15');
   await p.click('button[onclick="saveEleicao()"]');
   await p.waitForTimeout(500);
 
@@ -105,6 +117,13 @@ async function logar(p) {
   check('grava a carga e lacre digitada', l1?.data_dx_ini === '2026-09-25', l1?.data_dx_ini);
   check('grava a véspera derivada', l1?.data_d1 === '2026-10-03', l1?.data_d1);
   check('marca o turno ativo', l1?.ativa === true, String(l1?.ativa));
+  check('grava o nome da eleição', l1?.nome === 'Eleições Municipais 2026', l1?.nome);
+  check('grava o início da distribuição', l1?.dist_inicio === '06:00', l1?.dist_inicio);
+  check('grava o intervalo entre saídas como número', l1?.intervalo_saidas_min === 15, String(l1?.intervalo_saidas_min));
+
+  // Mesmo nome nas duas linhas — o formulário só tem um campo, não um por turno.
+  const l2check = chamada?.linhas?.find(l => l.turno === 2);
+  check('nome também vai na linha do 2º turno', l2check?.nome === 'Eleições Municipais 2026', l2check?.nome);
 
   // 2º turno tem Dia D padrão (último domingo), então também é gravado.
   const l2 = chamada?.linhas?.find(l => l.turno === 2);

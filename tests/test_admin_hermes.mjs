@@ -134,8 +134,10 @@ async function fazerLogin(p) {
   await fazerLogin(p);
   await p.click("button.nav-tab:has-text('Hermes')");
   await p.waitForTimeout(300);
-  await p.evaluate(() => { window.prompt = () => 'v1.3.0'; });
   await p.click('#hermes-grid button:has-text("Solicitar atualização")');
+  await p.waitForTimeout(150);
+  await p.fill('#pedir-texto-inp', 'v1.3.0');
+  await p.click('#pedir-texto-ok-btn');
   await p.waitForTimeout(200);
   const upserts = await p.evaluate(() => window.__upserts);
   const pedido = upserts.find(u => u.t === 'sime_componentes' && u.payload.atualizar_agora === true);

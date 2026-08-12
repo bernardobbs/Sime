@@ -13,7 +13,7 @@ export function createClient() {
 }
 
 class QB {
-  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._gte = {}; this._lt = {}; this._op = null; }
+  constructor(t) { this.t = t; this.f = {}; this._in = {}; this._gte = {}; this._lt = {}; this._notNull = []; this._op = null; }
   select(c) { this._sel = c; return this; }
   eq(c, v) { this.f[c] = v; return this; }
   // .in(coluna, [valores]) — usado por api/hermes-notificacoes.js para filtrar
@@ -25,15 +25,19 @@ class QB {
   // lexicográfica e cronológica).
   gte(c, v) { this._gte[c] = v; return this; }
   lt(c, v) { this._lt[c] = v; return this; }
+  // .not(coluna, 'is', null) — usado por api/hermes-contatos.js pra só trazer
+  // quem já tem telefone_whatsapp cadastrado.
+  not(c, op, v) { if (op === 'is' && v === null) this._notNull.push(c); return this; }
   order() { return this; }
   limit() { return this; }
-  // Aplica os .eq/.in/.gte/.lt acumulados a uma lista de linhas.
+  // Aplica os .eq/.in/.gte/.lt/.not acumulados a uma lista de linhas.
   _filtra(rows) {
     return (rows || []).filter((r) =>
       Object.entries(this.f).every(([k, v]) => r[k] === v) &&
       Object.entries(this._in).every(([k, set]) => set.has(r[k])) &&
       Object.entries(this._gte).every(([k, v]) => r[k] != null && r[k] >= v) &&
-      Object.entries(this._lt).every(([k, v]) => r[k] != null && r[k] < v));
+      Object.entries(this._lt).every(([k, v]) => r[k] != null && r[k] < v) &&
+      this._notNull.every((k) => r[k] != null));
   }
   update(p) { this._op = 'update'; this._payload = p; return this; }
   upsert(o, opt) {
@@ -84,6 +88,7 @@ class QB {
     if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
     if (this.t === 'sime_campanhas_confirmacao') return resolve({ data: this._filtra(S.campanhas), error: null });
     if (this.t === 'sime_heartbeat') return resolve({ data: this._filtra(S.heartbeats), error: null });
+    if (this.t === 'sime_usuarios') return resolve({ data: this._filtra(S.usuarios), error: null });
     return resolve({ data: null, error: null });
   }
   _read() {

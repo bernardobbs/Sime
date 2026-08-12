@@ -29,18 +29,22 @@ tr:last-child td{border-bottom:none;}
 .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:.68rem;font-weight:700;}
 .pill.ok{background:#d0f0d8;color:#176c2c;}
 .pill.go{background:#d6e6ff;color:#1c4f9c;}
-.pill.wait{background:var(--bg2);color:var(--text3);}
+.pill.wait{background:var(--bg2);color:var(--text2);}
 .pill.bad{background:#f8d6d0;color:#a3271a;}
 .empty{padding:30px;text-align:center;color:var(--text3);}
 .tablewrap{overflow-x:auto;}
 #login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;width:min(360px,92vw);}
 .login-card input{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:8px;font-size:.9rem;}
+.offline-banner{background:#fff3d6;color:#8a5a00;border:1px solid #e6c477;border-radius:9px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:12px;display:none;align-items:center;gap:8px;}
+.offline-banner.show{display:flex;}
+.offline-banner button{margin-left:auto;background:none;border:1px solid #8a5a00;color:#8a5a00;border-radius:6px;padding:4px 10px;font-size:.72rem;font-weight:700;cursor:pointer;}
 @media print{
-  .topbar,.tabs,.toolbar,#login-overlay{display:none!important;}
+  .topbar,.tabs,.toolbar,#login-overlay,.toast{display:none!important;}
   body{background:#fff;} .wrap{max-width:100%;padding:0;}
   table{border:1px solid #999;} th{background:#eee!important;}
 }
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -53,10 +57,10 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <div class="wrap">
-  <div class="tabs">
-    <div class="tab on" data-rel="secoes" onclick="trocarRel('secoes',this)">🗳️ Situação das seções</div>
-    <div class="tab" data-rel="distribuicao" onclick="trocarRel('distribuicao',this)">🚚 Distribuição de urnas</div>
-    <div class="tab" data-rel="panicos" onclick="trocarRel('panicos',this)">🚨 Pânicos e ocorrências</div>
+  <div class="tabs" role="tablist">
+    <div class="tab on" role="tab" tabindex="0" aria-selected="true" data-rel="secoes" onclick="trocarRel('secoes',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🗳️ Situação das seções</div>
+    <div class="tab" role="tab" tabindex="0" aria-selected="false" data-rel="distribuicao" onclick="trocarRel('distribuicao',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🚚 Distribuição de urnas</div>
+    <div class="tab" role="tab" tabindex="0" aria-selected="false" data-rel="panicos" onclick="trocarRel('panicos',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🚨 Pânicos e ocorrências</div>
   </div>
 
   <div class="toolbar">
@@ -67,9 +71,15 @@ tr:last-child td{border-bottom:none;}
     <button class="btn btn-dark btn-sm" onclick="window.print()">🖨️ Imprimir</button>
   </div>
 
+  <div id="offline-banner" class="offline-banner">
+    <span id="offline-banner-txt"></span>
+    <button type="button" onclick="voltarParaLogin()">Entrar para atualizar</button>
+  </div>
   <div id="cards" class="cards"></div>
   <div id="conteudo" class="tablewrap"></div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <!-- Login -->
 <div id="login-overlay">
@@ -82,6 +92,7 @@ tr:last-child td{border-bottom:none;}
       <div id="login-erro" style="color:#c0392b;font-size:.75rem;min-height:1em;margin-top:6px;"></div>
       <button class="btn btn-dark" type="submit" style="width:100%;margin-top:10px;">Entrar</button>
     </form>
+    <button type="button" id="btn-ver-offline" class="btn btn-out" style="width:100%;margin-top:8px;display:none;" onclick="verUltimoOffline()">📄 Ver último relatório salvo (offline)</button>
   </div>
 </div>
 
@@ -93,7 +104,11 @@ window.supabase = supabase;
 
 window.simeLogout = async () => { try { await supabase.auth.signOut(); } catch(e){} location.reload(); };
 
-function mostrarApp(){ document.getElementById('login-overlay').style.display='none'; document.getElementById('btn-logout').style.display=''; }
+function mostrarApp(){
+  document.getElementById('login-overlay').style.display='none';
+  document.getElementById('btn-logout').style.display='';
+  document.getElementById('offline-banner').classList.remove('show');
+}
 
 document.getElementById('login-form').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -101,13 +116,14 @@ document.getElementById('login-form').addEventListener('submit', async (e)=>{
   const password=document.getElementById('login-pass').value;
   const erro=document.getElementById('login-erro'); erro.textContent='';
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if(error){ erro.textContent='E-mail ou senha inválidos.'; return; }
+  if(error){ erro.textContent=/Failed to fetch|NetworkError/i.test(error.message||'') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.'; return; }
   mostrarApp(); await window.iniciarRelatorios();
 });
 
 (async ()=>{
   const { data:{ session } } = await supabase.auth.getSession();
   if(session){ mostrarApp(); await window.iniciarRelatorios(); }
+  else if(window.mostrarBotaoOffline) window.mostrarBotaoOffline();
 })();
 </script>
 
@@ -128,10 +144,112 @@ async function iniciarRelatorios(){
 }
 window.iniciarRelatorios = iniciarRelatorios;
 
+// showToast() — o resto do app usa sime_ui_utils.js, mas este módulo nunca
+// teve toast nenhum (nem exportar CSV nem erro davam qualquer feedback além
+// do próprio conteúdo da tela mudar).
+let _toastTimer=null;
+function showToast(msg, duration=2600){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'), duration);
+}
+window.showToast=showToast;
+
 function trocarRel(rel, el){
   REL=rel;
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t===el));
-  recarregar();
+  document.querySelectorAll('.tab').forEach(t=>{
+    const on=t===el;
+    t.classList.toggle('on', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  if(OFFLINE_MODE) mostrarCacheOffline(rel);
+  else recarregar();
+}
+
+// ── Modo offline mínimo ──
+// Login bloqueava 100% da tela sem nenhuma alternativa: sem sessão válida e
+// sem rede, quem precisava só CONFERIR um número já visto ficava sem nada
+// (achado "baixo" da auditoria). Guarda o último HTML já renderizado de cada
+// aba (dados que a própria conta já tinha permissão de ver) e oferece ver
+// essa cópia, somente leitura, sem exigir login de novo.
+const CACHE_KEY='sime_relatorios_cache_v1';
+let OFFLINE_MODE=false;
+
+function salvarCacheRelatorio(rel){
+  try{
+    const cache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
+    cache[rel]={
+      titulo:document.getElementById('rel-titulo').textContent,
+      cardsHtml:document.getElementById('cards').innerHTML,
+      conteudoHtml:document.getElementById('conteudo').innerHTML,
+      ts:Date.now(),
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  }catch(e){ /* localStorage indisponível — cache é só uma cortesia, segue sem ele */ }
+}
+
+function lerCacheRelatorios(){
+  try{ return JSON.parse(localStorage.getItem(CACHE_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+window.mostrarBotaoOffline = function(){
+  const cache=lerCacheRelatorios();
+  if(Object.keys(cache).length) document.getElementById('btn-ver-offline').style.display='';
+};
+
+window.verUltimoOffline = function(){
+  OFFLINE_MODE=true;
+  document.getElementById('login-overlay').style.display='none';
+  const cache=lerCacheRelatorios();
+  const rel=cache[REL] ? REL : Object.keys(cache)[0];
+  document.querySelectorAll('.tab').forEach(t=>{
+    const on=t.dataset.rel===rel;
+    t.classList.toggle('on', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  REL=rel;
+  mostrarCacheOffline(rel);
+};
+
+function mostrarCacheOffline(rel){
+  const cache=lerCacheRelatorios();
+  const item=cache[rel];
+  const banner=document.getElementById('offline-banner');
+  if(!item){
+    document.getElementById('rel-titulo').textContent='';
+    document.getElementById('cards').innerHTML='';
+    document.getElementById('conteudo').innerHTML='<div class="empty">Sem cópia salva deste relatório ainda — entre com conexão ao menos uma vez.</div>';
+    banner.classList.add('show');
+    document.getElementById('offline-banner-txt').textContent='🟡 Offline — nenhum dado salvo para esta aba';
+    return;
+  }
+  document.getElementById('rel-titulo').textContent=item.titulo;
+  document.getElementById('cards').innerHTML=item.cardsHtml;
+  document.getElementById('conteudo').innerHTML=item.conteudoHtml;
+  const min=Math.max(0, Math.round((Date.now()-item.ts)/60000));
+  banner.classList.add('show');
+  document.getElementById('offline-banner-txt').textContent=`🟡 Offline — mostrando dados salvos há ${min<1?'menos de 1 minuto':min+' min'}`;
+}
+
+window.voltarParaLogin = function(){
+  OFFLINE_MODE=false;
+  document.getElementById('offline-banner').classList.remove('show');
+  document.getElementById('login-overlay').style.display='';
+  window.mostrarBotaoOffline();
+};
+
+// Erro cru do Postgres/Supabase ("relation ... does not exist", "JWT
+// expired" etc.) ia direto pra tela — agora mapeado pra algo que faz
+// sentido pra quem não é dev (achado "médio" da auditoria).
+function mensagemErroAmigavel(e){
+  const msg=e?.message||'';
+  if(/permission denied|row-level security/i.test(msg)) return 'Sem permissão para ver estes dados.';
+  if(/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — saia e entre de novo.';
+  if(/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor.';
+  return 'Tente atualizar novamente.';
 }
 
 async function recarregar(){
@@ -142,24 +260,37 @@ async function recarregar(){
     if(REL==='secoes') await relSecoes();
     else if(REL==='distribuicao') await relDistribuicao();
     else if(REL==='panicos') await relPanicos();
+    salvarCacheRelatorio(REL);
   }catch(e){
-    cont.innerHTML='<div class="empty">Não foi possível carregar. '+(e.message||'')+'</div>';
+    cont.innerHTML='<div class="empty">Não foi possível carregar. '+mensagemErroAmigavel(e)+'</div>';
   }
 }
 
 // helpers de render
 function stat(n,l){ return `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
+// Texto livre digitado por mesário/coordenador/admin (município, local,
+// itinerário, observação de log) ia direto pro innerHTML das tabelas, sem
+// escaping — risco real de XSS a partir de qualquer um desses campos
+// (achado "alto" de segurança da auditoria).
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Marca um pedaço de HTML já pronto (os badges/pills montados pelo próprio
+// código, com qualquer texto livre por dentro já escapado à mão) — tabela()
+// escapa toda célula por padrão; só o que passar por aqui foge disso.
+function html(str){ return { __html: str }; }
 function tabela(headers, linhas){
   if(!linhas.length) return '<div class="empty">Sem dados para este relatório.</div>';
-  return `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-    <tbody>${linhas.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table><thead><tr>${headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+    <tbody>${linhas.map(r=>`<tr>${r.map(c=>`<td>${(c && typeof c==='object' && '__html' in c) ? c.__html : escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 // ── 1. Situação das seções ──
 async function relSecoes(){
   document.getElementById('rel-titulo').textContent='Situação das seções (Dia D)';
-  const { data:secoes } = await supabase.from('sime_secoes')
+  const { data:secoes, error:erroSecoes } = await supabase.from('sime_secoes')
     .select('id,numero,municipio,local_nome,eleitores,rota_id').eq('ativo',true).order('numero');
+  if(erroSecoes) throw erroSecoes;
   const rotasMap={}; const { data:rotas } = await supabase.from('sime_rotas').select('id,codigo');
   (rotas||[]).forEach(r=>rotasMap[r.id]=r.codigo);
   let estadoMap={};
@@ -191,14 +322,15 @@ async function relSecoes(){
     linhas:rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', r.s.eleitores||'—', r.e.fila||'—', r.status]),
   };
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
-    rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', (r.s.eleitores||'—'), (r.e.fila??'—'), `<span class="pill ${r.cls}">${r.status}</span>`]));
+    rows.map(r=>[r.s.numero, r.s.municipio||'—', r.s.local_nome||'—', rotasMap[r.s.rota_id]||'—', (r.s.eleitores||'—'), (r.e.fila??'—'), html(`<span class="pill ${r.cls}">${escapeHtml(r.status)}</span>`)]));
 }
 
 // ── 2. Distribuição de urnas ──
 async function relDistribuicao(){
   document.getElementById('rel-titulo').textContent='Distribuição de urnas por rota';
-  const { data:rotas } = await supabase.from('sime_rotas')
+  const { data:rotas, error:erroRotas } = await supabase.from('sime_rotas')
     .select('id,codigo,nome,municipios,itinerario,urnas_estimadas').eq('ativo',true).order('codigo');
+  if(erroRotas) throw erroRotas;
   let estMap={};
   if(ELEICAO){
     const { data:est } = await supabase.from('sime_rotas_estado').select('rota_id,status,conferente_nome,ts_saiu').eq('eleicao_id',ELEICAO.id);
@@ -221,7 +353,7 @@ async function relDistribuicao(){
   };
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
     rows.map(r=>[r.r.codigo,(r.r.municipios||[]).join(' / '),(r.r.urnas_estimadas||'—'),
-      `<span style="font-size:.72rem">${r.r.itinerario||'—'}</span>`,r.e.conferente_nome||'—',`<span class="pill ${r.cls}">${r.lab}</span>`]));
+      html(`<span style="font-size:.72rem">${escapeHtml(r.r.itinerario||'—')}</span>`),r.e.conferente_nome||'—',html(`<span class="pill ${r.cls}">${escapeHtml(r.lab)}</span>`)]));
 }
 
 // ── 3. Pânicos e ocorrências ──
@@ -229,7 +361,8 @@ async function relPanicos(){
   document.getElementById('rel-titulo').textContent='Pânicos e ocorrências (auditoria)';
   // logs de pânico/ocorrência (append-only). RLS limita à zona.
   let q = supabase.from('sime_logs').select('acao,modulo,secao_id,payload,ts').order('ts',{ascending:false}).limit(500);
-  const { data:logs } = await q;
+  const { data:logs, error:erroLogs } = await q;
+  if(erroLogs) throw erroLogs;
   const panicos=(logs||[]).filter(l=>/panico|problema|alerta/i.test(l.acao||''));
   // mapa secao_id → numero
   const { data:secoes } = await supabase.from('sime_secoes').select('id,numero');
@@ -246,13 +379,13 @@ async function relPanicos(){
   document.getElementById('conteudo').innerHTML = tabela(dadosAtuais.headers,
     panicos.map(l=>{
       const cls=/resolv/i.test(l.acao||'')?'ok':'bad';
-      return [fmt(l.ts),secMap[l.secao_id]||'—',`<span class="pill ${cls}">${l.acao||'—'}</span>`,l.modulo||'—',`<span style="font-size:.7rem;color:var(--text3)">${l.payload?JSON.stringify(l.payload):''}</span>`];
+      return [fmt(l.ts),secMap[l.secao_id]||'—',html(`<span class="pill ${cls}">${escapeHtml(l.acao||'—')}</span>`),l.modulo||'—',html(`<span style="font-size:.7rem;color:var(--text3)">${escapeHtml(l.payload?JSON.stringify(l.payload):'')}</span>`)];
     }));
 }
 
 // ── Exportar CSV ──
 function exportarCSV(){
-  if(!dadosAtuais.linhas?.length){ return; }
+  if(!dadosAtuais.linhas?.length){ showToast('⚠ Nada para exportar neste relatório'); return; }
   const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   const csv=[dadosAtuais.headers.map(esc).join(','),
     ...dadosAtuais.linhas.map(r=>r.map(esc).join(','))].join('\r\n');
@@ -261,6 +394,7 @@ function exportarCSV(){
   a.href=URL.createObjectURL(blob);
   a.download=`sime_relatorio_${REL}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
+  showToast('✓ CSV exportado');
 }
 
 window.trocarRel=trocarRel;

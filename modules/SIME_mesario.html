@@ -35,7 +35,13 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 .remote::before{left:0;} .remote::after{right:0;}
 
 /* ── DISPLAY ── */
-.display{background:var(--display-bg);border-radius:14px;padding:12px 14px;border:1px solid #22223a;box-shadow:inset 0 3px 10px rgba(0,0,0,.6);}
+.display{position:relative;background:var(--display-bg);border-radius:14px;padding:12px 14px;border:1px solid #22223a;box-shadow:inset 0 3px 10px rgba(0,0,0,.6);}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — sem isso o mesário não
+   tinha como saber se uma ação chegou de fato ao cartório ou só ficou na
+   fila offline do aparelho. */
+.sync-badge{position:absolute;top:10px;right:12px;display:flex;align-items:center;gap:4px;font-size:.62rem;font-weight:700;padding:3px 8px;border-radius:99px;}
+.sync-badge.sync-ok  {background:rgba(34,197,94,.14);color:var(--green);}
+.sync-badge.sync-pend{background:rgba(245,158,11,.14);color:var(--yellow);}
 .d-brand{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px;}
 .d-sec{font-size:1.55rem;font-weight:900;color:var(--text);line-height:1;}
 .d-local{font-size:.7rem;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -48,7 +54,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 .dc.off {background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.07);}
 
 /* ── SEPARADORES ── */
-.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text3);text-align:center;display:flex;align-items:center;gap:8px;}
+.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--text2);text-align:center;display:flex;align-items:center;gap:8px;}
 .sec-label::before,.sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(to right,transparent,#2a2a40,transparent);}
 
 /* ── BOTÃO BASE (tecla física) ── */
@@ -73,7 +79,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 /* ícone e label */
 .ricon{font-size:1.5rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));}
 .rlabel{font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.65);text-align:center;line-height:1.25;}
-.rsub{font-size:.56rem;color:rgba(255,255,255,.3);text-align:center;margin-top:-2px;}
+.rsub{font-size:.56rem;color:rgba(255,255,255,.7);text-align:center;margin-top:-2px;}
 .rbtn.wide .rsub{text-align:left;}
 
 /* badge de status no canto */
@@ -207,7 +213,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 }
 .midia-btn:active:not(:disabled){transform:scale(.97);}
 .midia-btn.locked{
-  background:#1a1828;color:#5050780;cursor:not-allowed;
+  background:#1a1828;cursor:not-allowed;
   border:1.5px dashed #3a3858;color:#6060a0;
 }
 .midia-btn.ready{
@@ -236,8 +242,8 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
   <form id="login-form" style="background:#1e1e28;border:1px solid #2a2a3a;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#e8e8f2;">
     <div style="font-weight:800;font-size:1rem;">SIME · Mesário</div>
     <div style="font-size:.72rem;color:#8080a8;">Digite o token e o PIN da sua seção (ou escaneie o QR Code).</div>
-    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;">
-    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;letter-spacing:.3em;text-align:center;">
+    <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;min-height:44px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;">
+    <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;min-height:44px;border:1px solid #2a2a3a;border-radius:8px;background:#181824;color:#e8e8f2;letter-spacing:.3em;text-align:center;">
     <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#4f7dff;color:#fff;font-weight:700;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#ef4444;min-height:1em;"></div>
     <button type="button" id="login-offline" style="padding:8px;border:1px solid #2a2a3a;border-radius:8px;background:transparent;color:#8080a8;font-size:.76rem;">Continuar offline (sem sincronizar)</button>
@@ -248,6 +254,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 
   <!-- ── DISPLAY ── -->
   <div class="display">
+    <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
     <div class="d-brand">SIME · Mesário</div>
     <div class="d-sec">Seção 063</div>
     <div class="d-local">Col. Est. Profª Raimundinho Andrade — Campo Maior</div>
@@ -257,6 +264,7 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
       <span class="dc off" id="dc-vot">Votação</span>
       <span class="dc off" id="dc-enc">Encerrada</span>
       <span class="dc off" id="dc-bu">BU</span>
+      <span class="dc off" id="dc-panico" style="display:none">Pânico ativo</span>
     </div>
   </div>
 
@@ -272,6 +280,39 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
     <div class="led" id="led-enc" title="Encerrada"></div>
     <div class="led" id="led-bu" title="BU"></div>
   </div>
+
+  <!-- ── EMERGÊNCIA — fica logo no topo, não no fim de uma tela rolável.
+       Pânico pode acontecer em qualquer fase do dia (chegada, votação,
+       encerramento); a posição antiga obrigava rolar por 4 blocos de
+       botões pra achar isto numa emergência real. ── -->
+  <div class="sec-label">Emergência</div>
+
+  <button class="rbtn c-red wide" id="btn-energia" onclick="togglePanico('energia')">
+    <span class="ricon" id="icon-energia">⚡</span>
+    <div>
+      <div class="rlabel" id="lbl-energia">Falta de energia</div>
+      <div class="rsub" id="sub-energia">toque para acionar — toque 2x para resolver</div>
+    </div>
+    <span class="rbadge" id="badge-energia"></span>
+  </button>
+
+  <button class="rbtn c-red wide" id="btn-urna-prob" onclick="togglePanico('urnaprob')">
+    <span class="ricon" id="icon-urnaprob">🖥️</span>
+    <div>
+      <div class="rlabel" id="lbl-urnaprob">Urna com problema</div>
+      <div class="rsub" id="sub-urnaprob">toque para acionar — toque 2x para resolver</div>
+    </div>
+    <span class="rbadge" id="badge-urnaprob"></span>
+  </button>
+
+  <button class="rbtn c-red wide" id="btn-sos" onclick="togglePanico('sos')">
+    <span class="ricon" id="icon-sos">🆘</span>
+    <div>
+      <div class="rlabel" id="lbl-sos">SOS</div>
+      <div class="rsub" id="sub-sos">outro problema (fiscais, eleitores, fila) — toque para acionar</div>
+    </div>
+    <span class="rbadge" id="badge-sos"></span>
+  </button>
 
   <!-- ── SEÇÃO 1: CHEGADA DA MESA ── -->
   <div class="sec-label">Chegada da mesa</div>
@@ -359,37 +400,6 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
       <div class="rsub">motorista levou a urna</div>
     </div>
   </button>
-
-  <!-- ── SEÇÃO 4: PÂNICO ── -->
-  <div class="sec-label">Emergência</div>
-
-  <button class="rbtn c-red wide" id="btn-energia" onclick="togglePanico('energia')">
-    <span class="ricon" id="icon-energia">⚡</span>
-    <div>
-      <div class="rlabel" id="lbl-energia">Falta de energia</div>
-      <div class="rsub" id="sub-energia">toque para acionar — toque novamente para resolver</div>
-    </div>
-    <span class="rbadge" id="badge-energia"></span>
-  </button>
-
-  <button class="rbtn c-red wide" id="btn-urna-prob" onclick="togglePanico('urnaprob')">
-    <span class="ricon" id="icon-urnaprob">🖥️</span>
-    <div>
-      <div class="rlabel" id="lbl-urnaprob">Urna com problema</div>
-      <div class="rsub" id="sub-urnaprob">toque para acionar — toque novamente para resolver</div>
-    </div>
-    <span class="rbadge" id="badge-urnaprob"></span>
-  </button>
-
-  <button class="rbtn c-red wide" id="btn-sos" onclick="togglePanico('sos')">
-    <span class="ricon" id="icon-sos">🆘</span>
-    <div>
-      <div class="rlabel" id="lbl-sos">SOS</div>
-      <div class="rsub" id="sub-sos">outro problema (fiscais, eleitores, fila) — toque para acionar</div>
-    </div>
-    <span class="rbadge" id="badge-sos"></span>
-  </button>
-
 
   <!-- MÍDIA — sempre visível, muda de estado.
        Ficava FORA do .remote, como filho direto do body. Como o body é flex,
@@ -531,6 +541,15 @@ window.simeCampo = {
     if (!campoClient || !secaoId || !eleicaoId) return;
     sincronizarOuEnfileirar('midia', { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial });
   },
+  // Horário exibido de "mídia pronta" vinha do relógio do celular (Date.now)
+  // — podia divergir do que foi de fato gravado no servidor (achado "médio").
+  async now() {
+    if (!campoClient) return null;
+    try {
+      const { data } = await campoClient.rpc('sime_now');
+      return data ? new Date(data).getTime() : null;
+    } catch (e) { return null; }
+  },
 };
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -549,8 +568,20 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   campoClient = client;
   await resolverEscopo(secoes);
   esconderLogin();
-  iniciarRetryPeriodico(syncQueueFn);
+  iniciarRetryPeriodico(syncQueueFn, (pendentes) => updateSyncBadge(pendentes));
 });
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
 
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.
@@ -754,12 +785,17 @@ function confirm() {
 }
 
 // ─── PÂNICO ────────────────────────────────────────────────
+// Ativar continua sendo toque único — numa emergência real, cada segundo
+// conta. Resolver exige toque duplo (2 toques em até 500ms): um toque
+// impreciso não pode cancelar um alerta em andamento sozinho.
+const PANIC_DBLTAP_MS = 500;
+const lastResolveTap = { energia:0, urnaprob:0, sos:0 };
+
 function togglePanico(id) {
-  vib([80,40,80]);
-  const isActive   = S.panico[id];
-  const isResolved = S.panico_resolved[id];
+  const isActive = S.panico[id];
 
   if(!isActive) {
+    vib([80,40,80]);
     // acionar pânico
     S.panico[id] = true;
     S.panico_resolved[id] = false;
@@ -767,19 +803,47 @@ function togglePanico(id) {
     const labels = {energia:'⚡ FALTA DE ENERGIA acionado!', urnaprob:'🖥️ PROBLEMA NA URNA acionado!', sos:'🆘 SOS acionado!'};
     showToast(labels[id]);
     vib([100,50,100,50,100]);
-  } else {
-    // resolver pânico
-    S.panico[id] = false;
-    S.panico_resolved[id] = true;
-    applyPanico(id, 'resolved');
-    const labels = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
-    showToast(labels[id]);
-    vib([60,30,60]);
+    saveState({ incluirPanico: true });
+    return;
   }
+
+  // já ativo — primeiro toque só avisa; o segundo, dentro da janela, resolve
+  const agora = Date.now();
+  if(agora - lastResolveTap[id] > PANIC_DBLTAP_MS) {
+    lastResolveTap[id] = agora;
+    vib(30);
+    showToast('Toque de novo para confirmar que foi resolvido');
+    return;
+  }
+  lastResolveTap[id] = 0;
+
+  vib([60,30,60]);
+  S.panico[id] = false;
+  S.panico_resolved[id] = true;
+  applyPanico(id, 'resolved');
+  const labelsResolvido = {energia:'⚡ Energia — problema resolvido ✓', urnaprob:'🖥️ Urna — problema resolvido ✓', sos:'🆘 SOS — resolvido ✓'};
+  showToast(labelsResolvido[id]);
   saveState({ incluirPanico: true });
 }
 
+// Chip no topo do display (dentro de .d-row) — sem rolar até os botões
+// vermelhos, não havia como saber que há um pânico ativo em outra parte
+// da tela (achado "alto" da auditoria).
+function updatePanicoChip() {
+  const chip = document.getElementById('dc-panico');
+  if(!chip) return;
+  const ativo = Object.values(S.panico).some(Boolean);
+  if(ativo) {
+    chip.style.display = '';
+    chip.textContent = '🔴 Pânico ativo';
+    chip.className = 'dc err';
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
 function applyPanico(id, state) {
+  updatePanicoChip();
   const btn   = document.getElementById('btn-' + (id==='urnaprob'?'urna-prob':id));
   const icon  = document.getElementById('icon-' + id);
   const lbl   = document.getElementById('lbl-' + id);
@@ -790,7 +854,7 @@ function applyPanico(id, state) {
     btn.className = 'rbtn c-red wide c-panic-active';
     lbl.style.color = 'var(--red)';
     badge.textContent = '🔴';
-    sub.textContent = 'ATIVO — toque para marcar como resolvido';
+    sub.textContent = 'ATIVO — toque 2x para marcar como resolvido';
   } else if(state === 'resolved') {
     btn.className = 'rbtn wide c-panic-resolved';
     lbl.style.color = 'var(--green)';
@@ -802,7 +866,7 @@ function applyPanico(id, state) {
     btn.className = 'rbtn c-red wide';
     lbl.style.color = '';
     badge.textContent = '';
-    sub.textContent = 'toque para acionar — toque novamente para resolver';
+    sub.textContent = 'toque para acionar — toque 2x para resolver';
   }
 }
 
@@ -994,13 +1058,13 @@ const MIDIA_KEY = 'sime_midias_v1';
 function loadMidia(n){ try{const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');return d[n]||{status:'aguardando_encerramento'};}catch(e){return{};} }
 function saveMidia(n,patch){ const d=JSON.parse(localStorage.getItem(MIDIA_KEY)||'{}');d[n]={...loadMidia(n),...patch,updated_at:Date.now()};localStorage.setItem(MIDIA_KEY,JSON.stringify(d)); }
 
-function marcarMidiaPronta(){
+async function marcarMidiaPronta(){
   const btn=document.getElementById('midia-btn');
   if(!btn||btn.disabled||btn.classList.contains('done')) return;
   // Precisa de encerramento
   if(!S.enc && !S.bu){ showToast('⚠ Encerre a votação primeiro'); return; }
   const n=SECAO_ID||'0063';
-  const ts=Date.now();
+  const ts=(window.simeCampo && await window.simeCampo.now()) || Date.now();
   saveMidia(n,{status:'pronta_para_coleta',pronta_ts:ts});
   if(navigator.vibrate) navigator.vibrate([40,20,80]);
   if (window.simeCampo) window.simeCampo.syncMidia({ p_status: 'pronta_para_coleta' });

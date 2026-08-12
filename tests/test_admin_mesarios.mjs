@@ -66,6 +66,10 @@ const ctx = await b.newContext();
 const p = await ctx.newPage();
 const erros = [];
 p.on('pageerror', (e) => erros.push(String(e)));
+// recusar/substituir desativa a convocação — desde a correção do achado
+// crítico de UX (botões colados demais, toque acidental desativava
+// mesário), essas duas ações pedem confirm() antes de gravar.
+p.on('dialog', (d) => d.accept());
 await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
   await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs() });
 });
@@ -129,8 +133,10 @@ await p.waitForTimeout(200);
 const linhasB = await p.locator('.modal-body table tbody tr').count();
 check('busca por seção 0065 mostra 1', linhasB === 1, 'n=' + linhasB);
 
-// marca recusa (deve mandar ativo=false)
+// marca recusa (deve mandar ativo=false) — passa pela confirmação customizada
 await p.click('.modal-body table tbody tr:first-child button[onclick*="recusou"]');
+await p.waitForTimeout(150);
+await p.click('#confirmacao-ok-btn');
 await p.waitForTimeout(300);
 const opsR = await p.evaluate(() => globalThis.__ops.filter(o => o.op === 'update' && o.t === 'sime_atores' && o.val === 'm3'));
 check('recusa manda ativo=false', opsR.length === 1 && opsR[0].p.confirmacao === 'recusou' && opsR[0].p.ativo === false, JSON.stringify(opsR));

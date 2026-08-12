@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME · Atores</title>
 <link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
@@ -22,6 +22,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* BUSCA */
 .search-row{display:flex;gap:8px;flex-wrap:wrap;}
 .search-row input,.search-row select{padding:9px 12px;border-radius:9px;border:1px solid var(--border2);background:var(--card);font-size:.85rem;color:var(--text);outline:none;}
+/* outline:none acima remove o foco nativo — devolvido só no :focus-visible,
+   pra não aparecer em clique de mouse mas continuar visível via teclado. */
+.search-row input:focus-visible,.search-row select:focus-visible,
+.form-group input:focus-visible,.form-group select:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .search-row input{flex:1;min-width:180px;}
 .search-row select{min-width:140px;}
 
@@ -31,7 +35,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ac-info{flex:1;}
 .ac-name{font-weight:800;font-size:.9rem;}
 .ac-detail{font-size:.72rem;color:var(--text2);margin-top:2px;}
-.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;}
+.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;color:#fff;}
 .ac-btn{padding:10px 14px;border-radius:9px;font-size:.78rem;font-weight:800;cursor:pointer;border:none;background:#25d366;color:#fff;display:flex;align-items:center;gap:5px;flex-shrink:0;text-decoration:none;}
 
 /* FUNCAO COLORS */
@@ -79,7 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
 .form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
 .form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
-.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
 
 /* TOAST */
 /* .toast.show vem de sime_components.css */
@@ -97,12 +101,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="btn btn-dark" style="font-size:.72rem;padding:6px 10px;" onclick="abrirModal(null)">+ Novo</button>
 </div>
 
-<div class="tabs">
-  <div class="tab active" id="tab-lista-btn" onclick="goTab('lista',this)">📋 Lista</div>
-  <div class="tab"        id="tab-guerra-btn" onclick="goTab('guerra',this)">⚡ Modo Guerra</div>
-  <div class="tab"        id="tab-import-btn" onclick="goTab('import',this)">📥 Importar CSV</div>
-  <div class="tab"        id="tab-externos-btn" onclick="goTab('externos',this)">☎️ Contatos externos</div>
-  <div class="tab"        id="tab-disparo-btn" onclick="goTab('disparo',this)">📢 Disparo em massa</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" id="tab-lista-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('lista',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📋 Lista</div>
+  <div class="tab"        id="tab-guerra-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('guerra',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚡ Modo Guerra</div>
+  <div class="tab"        id="tab-import-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('import',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📥 Importar CSV</div>
+  <div class="tab"        id="tab-externos-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('externos',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">☎️ Contatos externos</div>
+  <div class="tab"        id="tab-disparo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('disparo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📢 Disparo em massa</div>
 </div>
 
 <div class="content" id="content"></div>
@@ -230,8 +234,8 @@ let csvParsed=[];
 
 function goTab(tab,btn){
   curTab=tab;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.tab').forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  if(btn){ btn.classList.add('active'); btn.setAttribute('aria-selected','true'); }
   render();
 }
 
@@ -265,7 +269,7 @@ function renderLista(atores){
   const c=document.getElementById('content');
   c.innerHTML=`
     <div class="search-row">
-      <input type="text" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar atores" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -287,7 +291,7 @@ function renderLista(atores){
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" title="Abrir WhatsApp">💬 WA</a>
-        <button class="btn btn-out" style="font-size:.65rem;padding:5px 8px" onclick="abrirModal('${a.id}')">✏️</button>
+        <button class="btn btn-out" aria-label="Editar" style="font-size:.65rem;padding:5px 8px;min-width:44px;min-height:44px;justify-content:center" onclick="abrirModal('${a.id}')">✏️</button>
       </div>`;
     c.appendChild(av);
   });
@@ -301,7 +305,7 @@ function renderGuerra(atores){
       ⚡ MODO GUERRA — Contato direto. Use apenas em emergências. Todo acionamento é registrado.
     </div>
     <div class="search-row">
-      <input type="text" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar seção ou nome" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -325,7 +329,7 @@ function renderGuerra(atores){
           <div class="ac-name">${a.nome}</div>
           <div class="ac-detail">${FUNC_LABEL[a.funcao]} · ${fmtTel(a.telefone)}</div>
         </div>
-        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — '+String.fromCharCode(${a.nome.charCodeAt(0)})+'...')">
+        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — ${a.nome.replace(/'/g,"\\'")}...')">
           📲 CONTATAR
         </a>`;
       grp.appendChild(row);
@@ -478,7 +482,7 @@ function abrirModalExterno(id){
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${c?'Editar contato externo':'Novo contato externo'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body">
       <div class="form-group"><label>Tipo</label>
@@ -540,13 +544,14 @@ async function salvarExterno(id){
   await window.recarregarExternos();
 }
 
-async function removerExterno(id){
-  if(!confirm('Remover este contato?')) return;
-  const sb = window.supabaseAtores;
-  const { error } = await sb.from('sime_contatos_externos').update({ ativo:false }).eq('id', id);
-  if(error){ showToast('⚠ ' + error.message); return; }
-  closeModal(); showToast('✓ Removido');
-  await window.recarregarExternos();
+function removerExterno(id){
+  pedirConfirmacao('Remover este contato?', async () => {
+    const sb = window.supabaseAtores;
+    const { error } = await sb.from('sime_contatos_externos').update({ ativo:false }).eq('id', id);
+    if(error){ showToast('⚠ ' + error.message); return; }
+    closeModal(); showToast('✓ Removido');
+    await window.recarregarExternos();
+  }, { titulo:'Remover contato', labelOk:'🗑 Remover', classeOk:'btn-red' });
 }
 
 // A zona vem do usuário logado, nunca de um campo na tela: cadastrar contato
@@ -695,7 +700,7 @@ function renderDisparo(atores){
         </select>
       </div>
       <div class="form-group"><label>Selecionar destinatários</label>
-        <input type="text" id="dp-busca" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
+        <input type="text" id="dp-busca" aria-label="Buscar por nome" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
         <div style="display:flex;gap:8px;margin:6px 0">
           <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(true)">☑ Marcar exibidos</button>
           <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(false)">☐ Desmarcar exibidos</button>
@@ -788,7 +793,7 @@ function personalizarMensagem(msg, a){
     .replaceAll('{municipio}', info.municipio || '');
 }
 
-async function confirmarDisparo(){
+function confirmarDisparo(){
   const sb = window.supabaseAtores;
   if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
   const msg = (document.getElementById('dp-msg')?.value||'').trim();
@@ -801,26 +806,28 @@ async function confirmarDisparo(){
   const aviso = ehConvocacao
     ? `Enfileirar a confirmação de identidade para ${destinatarios.length} pessoa(s)?\n\nA convocação (2ª mensagem + imagem) só sai pra quem responder SIM à primeira. O envio de fato depende do Hermes estar com o disparo ligado.`
     : `Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`;
-  if(!confirm(aviso)) return;
 
-  const zonaId = await zonaDoUsuario();
-  if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
+  pedirConfirmacao(aviso, async () => {
+    closeModal();
+    const zonaId = await zonaDoUsuario();
+    if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
 
-  const imagemUrl = (dispImagemUrl||'').trim() || null;
-  const linhas = destinatarios.map(a => ({
-    ator_id: a.id,
-    telefone_whatsapp: a.telefone,
-    zona_id: zonaId,
-    mensagem_enviada: personalizarMensagem(msg, a),
-    mensagem_convocacao: ehConvocacao ? personalizarMensagem(msgConvocacao, a) : null,
-    imagem_url: imagemUrl,
-    status: 'pendente',
-  }));
-  const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
-  if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
+    const imagemUrl = (dispImagemUrl||'').trim() || null;
+    const linhas = destinatarios.map(a => ({
+      ator_id: a.id,
+      telefone_whatsapp: a.telefone,
+      zona_id: zonaId,
+      mensagem_enviada: personalizarMensagem(msg, a),
+      mensagem_convocacao: ehConvocacao ? personalizarMensagem(msgConvocacao, a) : null,
+      imagem_url: imagemUrl,
+      status: 'pendente',
+    }));
+    const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
+    if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
 
-  await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao });
-  showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
+    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao });
+    showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
+  }, { titulo:'Confirmar disparo', labelOk:'📢 Enfileirar' });
 }
 
 // MODAL CRUD
@@ -830,7 +837,7 @@ function abrirModal(id){
   document.getElementById('modal-body').innerHTML=`
     <div class="m-hdr">
       <div class="m-title">${a?'Editar ator':'Novo ator'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body">
       <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
@@ -901,28 +908,48 @@ async function salvarAtor(id){
   saveAtores(atores); closeModal(); showToast('✓ Ator salvo'); render();
 }
 
-async function removerAtor(id){
-  if(!confirm('Remover este ator?')) return;
+function removerAtor(id){
+  pedirConfirmacao('Remover este ator?', async () => {
+    const sb = window.supabaseAtores;
+    if (sb) {
+      try {
+        const { error } = await sb.from('sime_atores').update({ ativo: false }).eq('id', id);
+        if (error) throw error;
+        const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
+        if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],ativo:false};
+      } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao remover')); return; }
+      closeModal(); showToast('✓ Removido'); render(); return;
+    }
 
-  const sb = window.supabaseAtores;
-  if (sb) {
-    try {
-      const { error } = await sb.from('sime_atores').update({ ativo: false }).eq('id', id);
-      if (error) throw error;
-      const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
-      if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],ativo:false};
-    } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao remover')); return; }
-    closeModal(); showToast('✓ Removido'); render(); return;
-  }
-
-  const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
-  saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
+    const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
+    saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
+  }, { titulo:'Remover ator', labelOk:'🗑 Remover', classeOk:'btn-red' });
 }
 
 function closeModal(e){
   if(!e||e.target===document.getElementById('overlay'))
     document.getElementById('overlay').classList.remove('open');
 }
+
+// Modal customizado pra confirmações destrutivas/de envio — antes 3 ações
+// usavam confirm() nativo, quebrando o padrão visual do resto do sistema
+// (achado "alto" da auditoria). Reaproveita o mesmo overlay/modal-body já
+// usado pelos formulários de edição.
+function pedirConfirmacao(mensagem, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">${opts.titulo||'Confirmar'}</div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body"><div style="font-size:.85rem;color:var(--text2);white-space:pre-line;line-height:1.5">${mensagem}</div></div>
+    <div class="m-foot">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn ${opts.classeOk||'btn-dark'}" id="confirmacao-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('confirmacao-ok-btn').onclick = aoConfirmar;
+}
+window.pedirConfirmacao = pedirConfirmacao;
 
 // showToast() vem de sime_ui_utils.js
 
