@@ -899,7 +899,8 @@ window.aplicarIdentidade = function(){
 // Lê direto de sime_heartbeat/sime_componentes (padrão normal do SIME: o
 // frontend sempre fala com o Supabase pela anon key + RLS). Quem GRAVA é só
 // o Hermes, e só via /api/hermes-heartbeat com o Bearer da zona — nunca com
-// service key direto, ver hermes/SIME_hermes_skill_heartbeat.md. RLS por
+// service key direto, ver SIME_hermes_skill_heartbeat.md no repositório
+// bernardobbs/hermes. RLS por
 // zona já garante que quem não é super_admin só vê a própria.
 async function renderHermes(){
   const el = document.getElementById('hermes-grid');

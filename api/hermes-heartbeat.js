@@ -7,7 +7,8 @@
 //
 // Por que um endpoint, e não UPSERT direto em sime_heartbeat com o service
 // key do Hermes: desde 03/08/2026 index.js NÃO fala mais com o Supabase
-// direto (ver hermes/HERMES_RUNTIME.md, seção 3) — foi corrigido depois de um
+// direto (ver HERMES_RUNTIME.md, seção 3, no repositório bernardobbs/hermes)
+// — foi corrigido depois de um
 // bug real de escrita com coluna errada. Toda gravação do Hermes passa por
 // endpoint com HERMES_SECRET como Bearer, sem exceção; isto aqui segue o
 // mesmo padrão pras tabelas de sql/SIME_hermes_gestao_schema.sql.
