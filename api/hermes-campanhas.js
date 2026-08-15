@@ -36,10 +36,12 @@
 // Ações:
 //   pendentes  → itens prontos pra alguma ação agora (mais antigos primeiro),
 //                cada um já dizendo o que fazer em proxima_acao
-//   confirmar  → avança o status (aceita novo_status; default 'enviado')
-//   erro       → marca 'erro' + incrementa tentativas, para não travar a fila
-//   responder  → grava a resposta SIM/NÃO de quem recebeu a verificação
-//   resumo     → contagem por status da zona (pro relatório horário no Telegram)
+//   confirmar         → avança o status (aceita novo_status; default 'enviado')
+//   erro              → marca 'erro' + incrementa tentativas, para não travar a fila
+//   responder         → grava a resposta SIM/NÃO de quem recebeu a verificação
+//   verificar_pendente → só lê: há campanha aguardando resposta desse telefone?
+//   resumo            → contagem por status da zona (pro relatório horário no Telegram)
+//   relatorio         → mesma contagem, mas detalhada por pessoa (telefone/nome)
 //
 // Mesma auth por zona de hermes-update.js / hermes-mesarios.js / hermes-notificacoes.js.
 
@@ -288,6 +290,25 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, id: item.id, status: decisao });
   }
 
+  // ── VERIFICAR_PENDENTE ── consulta (nunca muda nada) se há uma campanha
+  // 'aguardando_resposta' pra esse telefone na zona autenticada. Usado pelo
+  // Hermes pra decidir se responde "quem é você" com a identidade de quem
+  // manda a verificação (services/campanhas/identidade.js) — só nesse
+  // contexto, pra não virar uma resposta automática genérica pra qualquer
+  // DM perguntando "quem é". Mesma regra de casamento por telefone de
+  // RESPONDER acima, mas sem escrever nada.
+  if (acao === 'verificar_pendente') {
+    if (!telefone) return res.status(400).json({ error: 'telefone é obrigatório' });
+    const { data: candidatos, error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('telefone_whatsapp')
+      .eq('zona_id', zonaId)
+      .eq('status', 'aguardando_resposta');
+    if (error) return res.status(500).json({ error: error.message });
+    const pendente = (candidatos || []).some((c) => telefoneCasa(c.telefone_whatsapp, telefone));
+    return res.status(200).json({ ok: true, pendente });
+  }
+
   // ── RESUMO ── contagem por status da zona inteira (não só "última hora")
   // — é uma fotografia do estado atual da campanha, pro Hermes postar no
   // Telegram todo ciclo (ex.: de hora em hora).
@@ -301,6 +322,31 @@ export default async function handler(req, res) {
     const contagem = {};
     for (const row of data || []) contagem[row.status] = (contagem[row.status] || 0) + 1;
     return res.status(200).json({ ok: true, zona: zona.numeroZona, total: (data || []).length, contagem });
+  }
+
+  // ── RELATORIO ── mesma fotografia do resumo, mas detalhada por pessoa —
+  // pedido do dono do projeto pra saber exatamente QUEM não tem WhatsApp,
+  // QUEM confirmou e QUEM negou ser a pessoa procurada (não só a contagem).
+  // whatsapp_existe é lido à parte do status: 'erro' cobre qualquer falha
+  // de envio (rede, timeout), não só número inexistente — só entra em
+  // nao_whatsapp quando o Hermes marcou whatsapp_existe=false de propósito.
+  if (acao === 'relatorio') {
+    const { data, error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('telefone_whatsapp, status, whatsapp_existe, sime_atores(nome_completo)')
+      .eq('zona_id', zonaId);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const linha = (c) => ({ telefone: c.telefone_whatsapp, nome: c.sime_atores?.nome_completo || null });
+    const rows = data || [];
+    const naoWhatsapp = rows.filter((c) => c.whatsapp_existe === false).map(linha);
+    const confirmaram = rows.filter((c) => ['confirmado', 'finalizado'].includes(c.status)).map(linha);
+    const negaram = rows.filter((c) => c.status === 'telefone_incorreto').map(linha);
+
+    return res.status(200).json({
+      ok: true, zona: zona.numeroZona, total: rows.length,
+      nao_whatsapp: naoWhatsapp, confirmaram, negaram,
+    });
   }
 
   return res.status(400).json({ error: `Ação desconhecida: ${acao}` });
