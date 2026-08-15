@@ -17,10 +17,13 @@ modules/   16 módulos HTML (HTML+JS puro, sem build) — um por papel/fase
 sql/       schema Supabase, notificações WhatsApp e triggers do Hermes
 api/       função serverless (Vercel) que recebe eventos do Hermes
 supabase/  Edge Function sime-login (troca token → sessão JWT)
-hermes/    skills do agente de WhatsApp (Oracle Cloud) + setup
 docs/      documentação de apoio
 CLAUDE.md  documentação completa da arquitetura
 ```
+
+O código e a documentação do agente de WhatsApp (Hermes) que consome os endpoints de `api/`
+vivem num repositório separado: [`bernardobbs/hermes`](https://github.com/bernardobbs/hermes) —
+inclui `HERMES_RUNTIME.md`, `HERMES_FUNCOES.md` e o contrato de cada skill (`SIME_hermes_skill_*.md`).
 
 **Arquitetura multi-zona (em migração):** o SIME está evoluindo de single-tenant
 (7ª Zona fixa) para um modelo SaaS onde uma única instância (1 Vercel + 1 Supabase)

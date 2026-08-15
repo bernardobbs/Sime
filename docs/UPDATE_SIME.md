@@ -649,8 +649,8 @@ O único item concreto já resolvido a partir deste pedido: o comando `status`
 do Hermes (WhatsApp) agora responde também com um bloco "🧩 Módulos do
 Hermes" — WhatsApp, Telegram, fallback IA, integração com o SIME, fila de
 pânico, disparo em massa, detecção de eventos de dia D e monitor de
-temperatura, cada um com seu estado. Ver `hermes/HERMES_RUNTIME.md` pro
-runtime real e `CLAUDE.md` pro estado de cada skill.
+temperatura, cada um com seu estado. Ver `HERMES_RUNTIME.md` no repositório
+`bernardobbs/hermes` pro runtime real e `CLAUDE.md` pro estado de cada skill.
 
 Antes de começar a Fase 1 (Motor de Eventos / Event Bus), vale revisar com
 calma: schema novo no Supabase pra eventos/timeline, quais dos 16 módulos

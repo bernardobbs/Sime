@@ -51,7 +51,9 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 - Fila: Upstash QStash (Free — 500 msg/dia)
 - WhatsApp: Hermes Agent — Node.js + Baileys num Raspberry Pi 3B (rede
   doméstica, atrás de NAT, sem túnel), com fallback de IA (Gemini) só para os
-  casos que o regex não cobre. Ver `hermes/README.md` e `hermes/HERMES_RUNTIME.md`.
+  casos que o regex não cobre. Código e documentação do agente vivem no
+  repositório separado `bernardobbs/hermes` — ver `README.md` e
+  `HERMES_RUNTIME.md` de lá.
 - Custo total: **R$ 0,00/mês**
 
 ### Variáveis de ambiente necessárias (Vercel)
@@ -65,7 +67,8 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 
 > `HERMES_URL` NÃO deve ser definida quando o Hermes roda atrás de NAT: ela só
 > serve para o SIME empurrar a notificação direto. Sem ela, o SIME enfileira e
-> o Hermes consulta — que é o modo correto. Ver `hermes/README.md`.
+> o Hermes consulta — que é o modo correto. Ver `README.md` no repositório
+> `bernardobbs/hermes`.
 
 ---
 
@@ -101,18 +104,16 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
 │   └── SIME_hermes_trigger.sql        ← Triggers para o Hermes
-├── hermes/
-│   ├── README.md                      ← Configuração (Linux e Windows)
-│   ├── SIME_hermes_skill_monitor.md   ← Skill: monitora grupos
-│   ├── SIME_hermes_skill_notificar.md ← Skill: drena a fila e envia WhatsApp
-│   ├── SIME_hermes_skill_updater.md   ← Skill: persiste no Supabase
-│   ├── SIME_hermes_skill_mesarios.md  ← Skill: confirma mesários
-│   └── setup.sh                       ← Instalação (ZONA=7 bash setup.sh)
 └── docs/
     ├── descricao_completa.md
     ├── plano_implementacao.md
     └── prompt_chatgpt.md
 ```
+
+> Código e documentação do agente Hermes (runtime, skills, patches) não
+> vivem mais neste repositório — foram unificados em `bernardobbs/hermes`,
+> pra não duplicar entre os produtos que o consomem (SIME, e futuramente o
+> Casinha Hub).
 
 ---
 
@@ -393,7 +394,8 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   de Problemas/Chefe de Cartório desta zona" — o admin cadastra o próprio
   WhatsApp na aba Equipe do `SIME_admin.html` (campo só aparece pros dois
   perfis certos). Falta só `index.js` no Pi somar esses números aos
-  `ADMIN_NUMBERS` conforme `idade_s` — ver `hermes/SIME_hermes_skill_escalonamento.md`.
+  `ADMIN_NUMBERS` conforme `idade_s` — ver `SIME_hermes_skill_escalonamento.md`
+  no repositório `bernardobbs/hermes`.
   94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
 - **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
   Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
@@ -419,7 +421,8 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   o mesmo `HERMES_SECRET`, não dá cobertura à 94ª por si só. Fazer os dois
   números monitorarem grupos das duas zonas é mudança de arquitetura maior
   (grupo→zona, Bearer por zona, filas por zona) — patch consolidado pronto
-  pra aplicar em `hermes/PATCH_CONSOLIDADO_2026-08-08.md` (junto com
+  pra aplicar em `PATCH_CONSOLIDADO_2026-08-08.md` (repositório
+  `bernardobbs/hermes`, junto com
   autoatendimento e escalonamento, numa sequência só), com o trade-off
   explícito: junta o raio de impacto de uma queda do Pi inteiro nas duas
   zonas (a redundância só
@@ -441,7 +444,8 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   corrompida); **não cobre o Pi cair** (energia, Wi-Fi, SD, processo
   travado), já que os dois números são o mesmo processo/hardware. Também não
   cobre fila de pânico nem disparo em massa, que continuam só no principal
-  mesmo com o backup ativo (decisão deliberada, ver `hermes/HERMES_RUNTIME.md`).
+  mesmo com o backup ativo (decisão deliberada, ver `HERMES_RUNTIME.md` no
+  repositório `bernardobbs/hermes`).
   Não ligado por padrão: exige um segundo número de WhatsApp + esse número
   adicionado manualmente em cada grupo monitorado.
 
@@ -465,9 +469,11 @@ inteiro ainda.
   "Online" é derivado no cliente (heartbeat < 5 min), não guardado.
 - **Via endpoint, não Supabase direto** — `/api/hermes-heartbeat`
   (`enviar`/`confirmar_atualizacao`/`erro_atualizacao`, ver
-  `hermes/SIME_hermes_skill_heartbeat.md`), mesmo Bearer por zona dos demais.
+  `SIME_hermes_skill_heartbeat.md` no repositório `bernardobbs/hermes`),
+  mesmo Bearer por zona dos demais.
   `index.js` não fala mais com o Supabase direto desde 03/08/2026 (ver
-  `hermes/HERMES_RUNTIME.md`), então esta é a única gravação válida — nada de
+  `HERMES_RUNTIME.md` no repositório `bernardobbs/hermes`), então esta é a
+  única gravação válida — nada de
   service key no Hermes pra estas tabelas.
 - Aba "🤖 Hermes" no Admin (`SIME_admin.html`) **lê as tabelas direto** (RLS
   por zona) — isso é o padrão normal do SIME, o frontend sempre fala com o
@@ -503,8 +509,9 @@ inteiro ainda.
 > As skills acima descrevem o **contrato de dados** com o SIME (schema dos
 > endpoints, templates), não um agente de IA com skills de verdade — a
 > instância da 7ª Zona é um app Node.js + Baileys sob medida num Raspberry
-> Pi, documentado em `hermes/HERMES_RUNTIME.md` (não o CLI genérico que
-> `hermes/setup.sh` instala). Regex cobre a maior parte da detecção; Gemini
+> Pi, documentado em `HERMES_RUNTIME.md` (não o CLI genérico que `setup.sh`
+> instala — ambos no repositório `bernardobbs/hermes`). Regex cobre a maior
+> parte da detecção; Gemini
 > só entra como fallback nos casos que o regex não resolve. Estado de cada
 > contrato, desde 03/08/2026:
 >
@@ -606,7 +613,8 @@ Ações:
 vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E apoio
 logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
 (número/local/município, via `secao_id`). Termina convidando a mandar correção,
-que vai pra `atualizar` — ver `hermes/SIME_hermes_skill_mesarios.md`.
+que vai pra `atualizar` — ver `SIME_hermes_skill_mesarios.md` no
+repositório `bernardobbs/hermes`.
 
 ### Endpoint Vercel — contatos por papel (escalonamento)
 ```
@@ -619,7 +627,8 @@ Body: { acao: 'listar' }
 Só leitura — telefone vem de `sime_usuarios.telefone_whatsapp` (`ativo=true`),
 cadastrado pelo admin na aba Equipe. Lista vazia = ninguém daquele perfil
 cadastrou telefone ainda, não é erro. Contrato completo e como pluga no loop
-de `sime_notificar`: `hermes/SIME_hermes_skill_escalonamento.md`.
+de `sime_notificar`: `SIME_hermes_skill_escalonamento.md` no repositório
+`bernardobbs/hermes`.
 
 ---
 
