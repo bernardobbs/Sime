@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIME — Hermes Campanhas</title>
+
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --border: #dfe3e8;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #1d4ed8;
+      --primary-hover: #1e40af;
+      --success: #15803d;
+      --warning: #b45309;
+      --danger: #b91c1c;
+      --info: #0369a1;
+      --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      --radius: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    }
+
+    .container {
+      width: min(1400px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }
+
+    .header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .title-area h1 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      line-height: 1.2;
+    }
+
+    .title-area p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #f8fafc;
+    }
+
+    button.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    button.primary:hover {
+      background: var(--primary-hover);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .status-bar {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .status-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .status-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .status-value {
+      font-size: 16px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .message {
+      display: none;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 14px;
+    }
+
+    .message.visible {
+      display: block;
+    }
+
+    .message.error {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: var(--danger);
+    }
+
+    .message.info {
+      border-color: #bae6fd;
+      background: #f0f9ff;
+      color: var(--info);
+    }
+
+    .message.success {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: var(--success);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .card-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 750;
+      line-height: 1;
+    }
+
+    .card-subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .processed-card {
+      border-left: 4px solid var(--success);
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 800px;
+    }
+
+    th,
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    th {
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .empty {
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1100px) {
+      .cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 800px) {
+      .status-bar {
+        grid-template-columns: 1fr;
+      }
+
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .container {
+        width: min(100% - 20px, 1400px);
+        padding-top: 14px;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        width: 100%;
+      }
+
+      .actions button {
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+
+    <header class="header">
+      <div class="title-area">
+        <h1>SIME — Hermes Campanhas</h1>
+        <p>Métricas e acompanhamento das campanhas de comunicação.</p>
+      </div>
+
+      <div class="actions">
+        <button
+          type="button"
+          id="btnConfig"
+        >
+          Config (dev)
+        </button>
+
+        <button
+          type="button"
+          id="btnAtualizar"
+          class="primary"
+        >
+          Atualizar
+        </button>
+      </div>
+    </header>
+
+    <div
+      id="message"
+      class="message"
+      role="status"
+      aria-live="polite"
+    ></div>
+
+    <section class="status-bar" aria-label="Resumo da atividade">
+
+      <div class="status-item">
+        <div class="status-label">Zona</div>
+        <div
+          id="zonaValue"
+          class="status-value"
+        >
+          —
+        </div>
+      </div>
+
+      <div class="status-item">
+        <div class="status-label">Total de itens</div>
+        <div
+          id="totalValue"
+          class="status-value"
+        >
+          0
+        </div>
+      </div>
+
+      <div class="status-item">
+        <div class="status-label">Última atividade registrada</div>
+        <div
+          id="lastActivityValue"
+          class="status-value"
+        >
+          —
+        </div>
+      </div>
+
+    </section>
+
+    <section aria-label="Métricas">
+
+      <div class="cards">
+
+        <article class="card">
+          <div class="card-label">Pendentes</div>
+          <div
+            id="statusPendente"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Aguardando resposta</div>
+          <div
+            id="statusAguardando"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Confirmados</div>
+          <div
+            id="statusConfirmado"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Finalizados</div>
+          <div
+            id="statusFinalizado"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Erros</div>
+          <div
+            id="statusErro"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Telefone incorreto</div>
+          <div
+            id="statusTelefoneIncorreto"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">Sem resposta</div>
+          <div
+            id="statusSemResposta"
+            class="card-value"
+          >
+            0
+          </div>
+        </article>
+
+        <article class="card processed-card">
+          <div class="card-label">Processado</div>
+          <div
+            id="processedValue"
+            class="card-value"
+          >
+            0%
+          </div>
+          <div class="card-subtitle">
+            Finalizado + telefone incorreto + sem resposta + erro
+          </div>
+        </article>
+
+      </div>
+
+    </section>
+
+    <section class="section">
+
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Itens recentes</h2>
+          <p class="section-note">
+            Registros mais recentes retornados pela API.
+          </p>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+
+        <table>
+          <thead>
+            <tr>
+              <th>Campanha / ID</th>
+              <th>Telefone WhatsApp</th>
+              <th>Status</th>
+              <th>Tentativas</th>
+              <th>Criado em</th>
+            </tr>
+          </thead>
+
+          <tbody id="recentesBody"></tbody>
+        </table>
+
+        <div
+          id="recentesEmpty"
+          class="empty"
+          hidden
+        >
+          Nenhum registro recente encontrado.
+        </div>
+
+      </div>
+
+    </section>
+
+    <p class="footer-note">
+      O identificador exibido como campanha corresponde ao <strong>ID do registro</strong>,
+      pois a estrutura atualmente disponível não fornece um nome explícito de campanha.
+      “Última atividade registrada” representa apenas o último registro de atividade
+      retornado pela API e não constitui indicador de status online/offline.
+    </p>
+
+  </main>
+
+  <script type="module">
+
+    import { getHermesMetrics } from "./sime_hermes_api.js";
+
+    const elements = {
+      btnAtualizar: document.getElementById("btnAtualizar"),
+      btnConfig: document.getElementById("btnConfig"),
+
+      message: document.getElementById("message"),
+
+      zonaValue: document.getElementById("zonaValue"),
+      totalValue: document.getElementById("totalValue"),
+      lastActivityValue: document.getElementById("lastActivityValue"),
+
+      statusPendente: document.getElementById("statusPendente"),
+      statusAguardando: document.getElementById("statusAguardando"),
+      statusConfirmado: document.getElementById("statusConfirmado"),
+      statusFinalizado: document.getElementById("statusFinalizado"),
+      statusErro: document.getElementById("statusErro"),
+      statusTelefoneIncorreto: document.getElementById("statusTelefoneIncorreto"),
+      statusSemResposta: document.getElementById("statusSemResposta"),
+
+      processedValue: document.getElementById("processedValue"),
+
+      recentesBody: document.getElementById("recentesBody"),
+      recentesEmpty: document.getElementById("recentesEmpty")
+    };
+
+    const STATUS_FIELDS = {
+      pendente: "statusPendente",
+      aguardando_resposta: "statusAguardando",
+      confirmado: "statusConfirmado",
+      finalizado: "statusFinalizado",
+      erro: "statusErro",
+      telefone_incorreto: "statusTelefoneIncorreto",
+      sem_resposta: "statusSemResposta"
+    };
+
+    function setText(element, value) {
+      element.textContent = value === null || value === undefined
+        ? "—"
+        : String(value);
+    }
+
+    function formatNumber(value) {
+      const number = Number(value);
+
+      if (!Number.isFinite(number)) {
+        return "0";
+      }
+
+      return new Intl.NumberFormat("pt-BR").format(number);
+    }
+
+    function formatPercent(value) {
+      const number = Number(value);
+
+      if (!Number.isFinite(number)) {
+        return "0%";
+      }
+
+      return `${number.toLocaleString("pt-BR", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+      })}%`;
+    }
+
+    function formatDate(value) {
+      if (!value) {
+        return "—";
+      }
+
+      const date = new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+
+      return date.toLocaleString("pt-BR");
+    }
+
+    function getStatusCounts(data) {
+      if (data && data.status_counts && typeof data.status_counts === "object") {
+        return data.status_counts;
+      }
+
+      if (data && data.statuses && typeof data.statuses === "object") {
+        return data.statuses;
+      }
+
+      if (data && data.counts && typeof data.counts === "object") {
+        return data.counts;
+      }
+
+      return {};
+    }
+
+    function getRecentItems(data) {
+      if (Array.isArray(data?.recentes)) {
+        return data.recentes;
+      }
+
+      if (Array.isArray(data?.recent)) {
+        return data.recent;
+      }
+
+      if (Array.isArray(data?.items)) {
+        return data.items;
+      }
+
+      return [];
+    }
+
+    function getZona(data) {
+      return (
+        data?.zona ??
+        data?.zone ??
+        data?.zona_id ??
+        "—"
+      );
+    }
+
+    function getTotal(data, recentItems) {
+      const value =
+        data?.total ??
+        data?.total_items ??
+        data?.total_count;
+
+      if (value !== undefined && value !== null) {
+        return value;
+      }
+
+      const counts = getStatusCounts(data);
+
+      const values = Object.values(counts)
+        .map(Number)
+        .filter(Number.isFinite);
+
+      if (values.length > 0) {
+        return values.reduce((sum, item) => sum + item, 0);
+      }
+
+      return recentItems.length;
+    }
+
+    function getProcessedPercent(data, counts) {
+      if (
+        data?.percent_processed !== undefined &&
+        data?.percent_processed !== null
+      ) {
+        return data.percent_processed;
+      }
+
+      const processed =
+        Number(counts.finalizado || 0) +
+        Number(counts.telefone_incorreto || 0) +
+        Number(counts.sem_resposta || 0) +
+        Number(counts.erro || 0);
+
+      const total = getTotal(data, []);
+
+      if (!Number(total)) {
+        return 0;
+      }
+
+      return (processed / Number(total)) * 100;
+    }
+
+    function getLastActivity(data) {
+      return (
+        data?.last_activity ??
+        data?.ultima_atividade ??
+        null
+      );
+    }
+
+    function clearRecentItems() {
+      while (elements.recentesBody.firstChild) {
+        elements.recentesBody.removeChild(
+          elements.recentesBody.firstChild
+        );
+      }
+    }
+
+    function createCell(value) {
+      const cell = document.createElement("td");
+      setText(cell, value);
+      return cell;
+    }
+
+    function createStatusBadge(status) {
+      const badge = document.createElement("span");
+
+      badge.className = "badge";
+
+      setText(
+        badge,
+        status === null || status === undefined
+          ? "—"
+          : status
+      );
+
+      return badge;
+    }
+
+    function renderRecentItems(items) {
+      clearRecentItems();
+
+      if (!Array.isArray(items) || items.length === 0) {
+        elements.recentesEmpty.hidden = false;
+        return;
+      }
+
+      elements.recentesEmpty.hidden = true;
+
+      for (const row of items) {
+        const tr = document.createElement("tr");
+
+        const idCell = createCell(
+          row?.id ?? "—"
+        );
+
+        const telefoneCell = createCell(
+          row?.telefone_whatsapp ?? "—"
+        );
+
+        const statusCell = document.createElement("td");
+        statusCell.appendChild(
+          createStatusBadge(row?.status)
+        );
+
+        const tentativasCell = createCell(
+          row?.tentativas ?? 0
+        );
+
+        const createdAtCell = createCell(
+          formatDate(row?.created_at)
+        );
+
+        tr.appendChild(idCell);
+        tr.appendChild(telefoneCell);
+        tr.appendChild(statusCell);
+        tr.appendChild(tentativasCell);
+        tr.appendChild(createdAtCell);
+
+        elements.recentesBody.appendChild(tr);
+      }
+    }
+
+    function renderMetrics(data) {
+      const counts = getStatusCounts(data);
+      const recentItems = getRecentItems(data);
+
+      setText(
+        elements.zonaValue,
+        getZona(data)
+      );
+
+      setText(
+        elements.totalValue,
+        formatNumber(getTotal(data, recentItems))
+      );
+
+      setText(
+        elements.lastActivityValue,
+        formatDate(getLastActivity(data))
+      );
+
+      for (const [status, elementName] of Object.entries(STATUS_FIELDS)) {
+        const element = elements[elementName];
+
+        if (!element) {
+          continue;
+        }
+
+        setText(
+          element,
+          formatNumber(counts[status] || 0)
+        );
+      }
+
+      setText(
+        elements.processedValue,
+        formatPercent(
+          getProcessedPercent(data, counts)
+        )
+      );
+
+      renderRecentItems(recentItems);
+    }
+
+    function showMessage(text, type = "info") {
+      elements.message.className = `message visible ${type}`;
+      elements.message.textContent = String(text);
+    }
+
+    function hideMessage() {
+      elements.message.className = "message";
+      elements.message.textContent = "";
+    }
+
+    async function atualizar() {
+      elements.btnAtualizar.disabled = true;
+      hideMessage();
+
+      try {
+        const result = await getHermesMetrics();
+
+        if (!result || result.ok === false) {
+          const errorMessage =
+            result?.error ||
+            "Não foi possível carregar as métricas.";
+
+          showMessage(errorMessage, "error");
+          return;
+        }
+
+        renderMetrics(result);
+
+        showMessage(
+          "Métricas atualizadas com sucesso.",
+          "success"
+        );
+
+      } catch (error) {
+        showMessage(
+          `Erro ao atualizar métricas: ${String(error)}`,
+          "error"
+        );
+      } finally {
+        elements.btnAtualizar.disabled = false;
+      }
+    }
+
+    function configurarTokenDev() {
+      const current =
+        localStorage.getItem("SIME_HERMES_BEARER") || "";
+
+      const value = window.prompt(
+        "Configuração somente para homologação/desenvolvimento.\n\n" +
+        "Informe o valor do Authorization Bearer.\n" +
+        "Exemplo: Bearer SEU_TOKEN\n\n" +
+        "Deixe vazio para remover o token armazenado.",
+        current
+      );
+
+      if (value === null) {
+        return;
+      }
+
+      const trimmed = value.trim();
+
+      if (!trimmed) {
+        localStorage.removeItem("SIME_HERMES_BEARER");
+
+        showMessage(
+          "Token de homologação removido do localStorage.",
+          "info"
+        );
+
+        return;
+      }
+
+      localStorage.setItem(
+        "SIME_HERMES_BEARER",
+        trimmed
+      );
+
+      showMessage(
+        "Token de homologação salvo no localStorage deste navegador.",
+        "success"
+      );
+    }
+
+    elements.btnAtualizar.addEventListener(
+      "click",
+      atualizar
+    );
+
+    elements.btnConfig.addEventListener(
+      "click",
+      configurarTokenDev
+    );
+
+    atualizar();
+
+  </script>
+</body>
+</html>
