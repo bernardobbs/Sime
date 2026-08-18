@@ -109,7 +109,11 @@ export default async function handler(req, res) {
   const zonaId = await buscarZonaId(zona.numeroZona);
   if (!zonaId) return res.status(400).json({ error: 'Zona não encontrada' });
 
-  const { acao = 'pendentes', ids = [], erro_msg, whatsapp_existe, novo_status, telefone, decisao, resposta_texto } = req.body || {};
+  const {
+    acao = 'pendentes', ids = [], erro_msg, whatsapp_existe, novo_status,
+    telefone, decisao, resposta_texto,
+    item_id, proxima_etapa, intencao, status_final,
+  } = req.body || {};
 
   // ── PENDENTES ──
   if (acao === 'pendentes') {
@@ -288,6 +292,142 @@ export default async function handler(req, res) {
       payload: { id: item.id, zona: zona.numeroZona, decisao, resposta_texto }, ts,
     });
     return res.status(200).json({ ok: true, id: item.id, status: decisao });
+  }
+
+  // ── OBTER_ETAPA_PENDENTE ── consulta (não escreve nada) se há um item com
+  // campanha_id preenchido, status 'aguardando_resposta', casando pelo
+  // telefone — e, se sim, devolve a etapa atual do script (mensagem já foi
+  // mandada; o que falta são as respostas_esperadas dessa etapa, pro Hermes
+  // casar localmente). Espelha VERIFICAR_PENDENTE (mesma regra de telefone),
+  // mas só considera itens QUE TÊM campanha_id — itens do fluxo legado
+  // (campanha_id nulo) nunca aparecem aqui, então o Hermes cai pro
+  // identidade.js de sempre pra eles. Ver sql/SIME_campanhas_scripts_schema.sql
+  // e modules/campanhas/script.js do lado do Hermes.
+  if (acao === 'obter_etapa_pendente') {
+    if (!telefone) return res.status(400).json({ error: 'telefone é obrigatório' });
+
+    const { data: candidatos, error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('id, telefone_whatsapp, campanha_id, etapa_atual, ts_enviado')
+      .eq('zona_id', zonaId)
+      .eq('status', 'aguardando_resposta')
+      .not('campanha_id', 'is', null);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const casados = (candidatos || [])
+      .filter((c) => telefoneCasa(c.telefone_whatsapp, telefone))
+      .sort((a, b) => new Date(b.ts_enviado || 0) - new Date(a.ts_enviado || 0));
+
+    if (!casados.length) return res.status(200).json({ ok: true, pendente: false });
+
+    const item = casados[0];
+    const { data: etapa, error: etapaErr } = await supabase
+      .from('sime_campanha_etapas')
+      .select('etapa_numero, respostas_esperadas')
+      .eq('campanha_id', item.campanha_id)
+      .eq('etapa_numero', item.etapa_atual)
+      .maybeSingle();
+    if (etapaErr) return res.status(500).json({ error: etapaErr.message });
+    if (!etapa) return res.status(200).json({ ok: true, pendente: false }); // etapa órfã — não trava, cai pro legado
+
+    return res.status(200).json({
+      ok: true,
+      pendente: true,
+      item_id: item.id,
+      campanha_id: item.campanha_id,
+      etapa_atual: etapa.etapa_numero,
+      respostas_esperadas: etapa.respostas_esperadas,
+    });
+  }
+
+  // ── AVANCAR_ETAPA ── grava a decisão de um ramo do script (casado pelo
+  // Hermes em script.js) e avança pra próxima etapa, ou fecha com
+  // status_final se o ramo for terminal (proxima_etapa null). Restrito ao
+  // item_id explícito (o Hermes já resolveu qual item é, via
+  // obter_etapa_pendente acima) e confere zona, igual todo o resto do
+  // arquivo.
+  if (acao === 'avancar_etapa') {
+    if (!item_id) return res.status(400).json({ error: 'item_id é obrigatório' });
+
+    const { data: item, error: itemErr } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('id, campanha_id, etapa_atual')
+      .eq('id', item_id)
+      .eq('zona_id', zonaId)
+      .maybeSingle();
+    if (itemErr) return res.status(500).json({ error: itemErr.message });
+    if (!item) return res.status(404).json({ error: 'Item não encontrado nesta zona' });
+
+    const ts = await serverTs();
+    const proximaEtapaNumero = proxima_etapa ?? null;
+
+    // Terminal: grava status_final e sai do fluxo de aguardando_resposta.
+    if (!proximaEtapaNumero) {
+      const statusFinal = ['confirmado', 'telefone_incorreto', 'finalizado', 'sem_resposta', 'erro']
+        .includes(status_final) ? status_final : 'finalizado';
+      const { error } = await supabase
+        .from('sime_campanhas_confirmacao')
+        .update({
+          status: statusFinal,
+          resposta_recebida: resposta_texto ? String(resposta_texto).slice(0, 500) : null,
+          decisao_detectada: intencao || null,
+          ts_respondido: ts,
+          updated_at: ts,
+        })
+        .eq('id', item.id);
+      if (error) return res.status(500).json({ error: error.message });
+
+      await supabase.from('sime_logs').insert({
+        acao: 'campanha_script_terminal', modulo: 'hermes_campanhas',
+        payload: { id: item.id, zona: zona.numeroZona, intencao, status_final: statusFinal }, ts,
+      });
+      return res.status(200).json({ ok: true, id: item.id, status: statusFinal, proxima_mensagem: null });
+    }
+
+    // Não-terminal: busca a mensagem da próxima etapa e avança etapa_atual,
+    // mantendo status 'aguardando_resposta' (a próxima etapa também espera
+    // resposta).
+    const { data: proximaEtapa, error: proxErr } = await supabase
+      .from('sime_campanha_etapas')
+      .select('mensagem')
+      .eq('campanha_id', item.campanha_id)
+      .eq('etapa_numero', proximaEtapaNumero)
+      .maybeSingle();
+    if (proxErr) return res.status(500).json({ error: proxErr.message });
+    if (!proximaEtapa) return res.status(400).json({ error: `Etapa ${proximaEtapaNumero} não existe para esta campanha` });
+
+    const { error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .update({
+        etapa_atual: proximaEtapaNumero,
+        resposta_recebida: resposta_texto ? String(resposta_texto).slice(0, 500) : null,
+        decisao_detectada: intencao || null,
+        ts_respondido: ts,
+        ts_enviado: ts, // conta como novo envio pra fins de RETRY_HORAS/MAX_TENTATIVAS
+        updated_at: ts,
+      })
+      .eq('id', item.id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabase.from('sime_logs').insert({
+      acao: 'campanha_script_avancou', modulo: 'hermes_campanhas',
+      payload: { id: item.id, zona: zona.numeroZona, intencao, etapa_anterior: item.etapa_atual, etapa_nova: proximaEtapaNumero }, ts,
+    });
+    return res.status(200).json({ ok: true, id: item.id, etapa_atual: proximaEtapaNumero, proxima_mensagem: proximaEtapa.mensagem });
+  }
+
+  // ── REGISTRAR_FORA_DO_SCRIPT ── resposta que não casou com nenhuma
+  // palavra-chave da etapa atual (seção 17 da especificação de melhorias).
+  // Por enquanto só registra em sime_logs — não decide nada, não muda
+  // status, não manda resposta automática.
+  if (acao === 'registrar_fora_do_script') {
+    if (!item_id) return res.status(400).json({ error: 'item_id é obrigatório' });
+    const ts = await serverTs();
+    await supabase.from('sime_logs').insert({
+      acao: 'campanha_script_fora_do_script', modulo: 'hermes_campanhas',
+      payload: { id: item_id, zona: zona.numeroZona, resposta_texto }, ts,
+    });
+    return res.status(200).json({ ok: true, registrado: true });
   }
 
   // ── VERIFICAR_PENDENTE ── consulta (nunca muda nada) se há uma campanha
