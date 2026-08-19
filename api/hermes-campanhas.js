@@ -132,7 +132,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('id, ator_id, telefone_whatsapp, mensagem_enviada, mensagem_convocacao, imagem_url, status, tentativas, ts_enviado, created_at')
+      .select('id, ator_id, telefone_whatsapp, mensagem_enviada, mensagem_convocacao, imagem_url, status, tentativas, ts_enviado, created_at, campanha_id, etapa_atual')
       .eq('zona_id', zonaId)
       .in('status', ['pendente', 'aguardando_resposta', 'confirmado'])
       .order('created_at', { ascending: true })
@@ -144,11 +144,14 @@ export default async function handler(req, res) {
       let proximaAcao = null, mensagem = null, imagemUrl = null;
 
       if (c.status === 'pendente') {
-        // Tem mensagem_convocacao → é o fluxo com confirmação de identidade,
-        // a mensagem_enviada aqui é a VERIFICAÇÃO, não a convocação em si.
-        // Sem mensagem_convocacao → fluxo simples de sempre, uma tacada só.
+        // Tem campanha_id → é a etapa 1 de um script de campanha (mensagem já
+        // vem pronta em mensagem_enviada, ver SIME_atores.html); tem
+        // mensagem_convocacao → é o fluxo legado com confirmação de
+        // identidade, a mensagem_enviada aqui é a VERIFICAÇÃO, não a
+        // convocação em si. Nenhum dos dois → fluxo simples de sempre, uma
+        // tacada só.
         mensagem = c.mensagem_enviada;
-        proximaAcao = c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar';
+        proximaAcao = c.campanha_id ? 'enviar_etapa_script' : (c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar');
         if (proximaAcao === 'enviar') imagemUrl = c.imagem_url || null;
       } else if (c.status === 'aguardando_resposta') {
         const devido = !c.ts_enviado || new Date(c.ts_enviado) < new Date(cutoff);
@@ -172,6 +175,14 @@ export default async function handler(req, res) {
         imagem_url: imagemUrl,
         tentativas: c.tentativas || 0,
         criado_em: c.created_at,
+        // campanha_id/etapa_atual só vêm preenchidos pra itens de script
+        // (ver sql/SIME_campanhas_scripts_schema.sql) — o Hermes usa
+        // campanha_id pra saber que precisa chamar confirmar sem novo_status
+        // explícito (o default já vira 'aguardando_resposta' pra esses itens,
+        // ver ação 'confirmar' abaixo) e depois obter_etapa_pendente/
+        // avancar_etapa pra seguir o script.
+        campanha_id: c.campanha_id || null,
+        etapa_atual: c.etapa_atual || null,
       });
     }
     return res.status(200).json({ ok: true, zona: zona.numeroZona, campanhas });
@@ -186,10 +197,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'ids é obrigatório' });
     }
     // Confere que os ids são da zona que está chamando — sem isso, uma zona
-    // poderia marcar como enviado o item de outra.
+    // poderia marcar como enviado o item de outra. campanha_id vem junto pra
+    // decidir o default de novo_status abaixo (script sempre espera resposta
+    // depois de mandar).
     const { data: alvo } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('id, tentativas')
+      .select('id, tentativas, campanha_id')
       .in('id', ids)
       .eq('zona_id', zonaId);
     const validos = alvo || [];
@@ -221,31 +234,47 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, atualizadas: idsValidos.length });
     }
 
-    const novoStatus = ['enviado', 'aguardando_resposta', 'finalizado'].includes(novo_status) ? novo_status : 'enviado';
+    // novo_status explícito vale pra todo o lote. Sem ele, o default depende
+    // do item: campanha_id preenchido é etapa de script — mandar a etapa 1
+    // sempre espera resposta (o script só progride via avancar_etapa), então
+    // o default correto é 'aguardando_resposta', não 'enviado'. Sem isso, um
+    // item de script confirmado sem novo_status explícito saía do filtro de
+    // pendentes (['pendente','aguardando_resposta','confirmado']) pra sempre
+    // e o script nunca avançava — mesmo bug que motivou expor campanha_id em
+    // 'pendentes' acima.
+    const statusExplicito = ['enviado', 'aguardando_resposta', 'finalizado'].includes(novo_status) ? novo_status : null;
+    const porStatus = new Map();
+    for (const c of validos) {
+      const status = statusExplicito || (c.campanha_id ? 'aguardando_resposta' : 'enviado');
+      if (!porStatus.has(status)) porStatus.set(status, []);
+      porStatus.get(status).push(c);
+    }
 
-    if (novoStatus === 'aguardando_resposta') {
-      for (const c of validos) {
-        const { error: upErr } = await supabase
-          .from('sime_campanhas_confirmacao')
-          .update({ status: 'aguardando_resposta', ts_enviado: ts, tentativas: (c.tentativas || 0) + 1, updated_at: ts })
-          .eq('id', c.id);
-        if (upErr) return res.status(500).json({ error: upErr.message });
+    for (const [status, itens] of porStatus) {
+      if (status === 'aguardando_resposta') {
+        for (const c of itens) {
+          const { error: upErr } = await supabase
+            .from('sime_campanhas_confirmacao')
+            .update({ status: 'aguardando_resposta', ts_enviado: ts, tentativas: (c.tentativas || 0) + 1, updated_at: ts })
+            .eq('id', c.id);
+          if (upErr) return res.status(500).json({ error: upErr.message });
+        }
+      } else {
+        const patch = { status, updated_at: ts };
+        if (status === 'enviado') patch.ts_enviado = ts;
+        if (typeof whatsapp_existe === 'boolean') {
+          patch.whatsapp_existe = whatsapp_existe;
+          patch.whatsapp_existe_ts = ts;
+        }
+        const { error } = await supabase
+          .from('sime_campanhas_confirmacao').update(patch).in('id', itens.map((c) => c.id));
+        if (error) return res.status(500).json({ error: error.message });
       }
-    } else {
-      const patch = { status: novoStatus, updated_at: ts };
-      if (novoStatus === 'enviado') patch.ts_enviado = ts;
-      if (typeof whatsapp_existe === 'boolean') {
-        patch.whatsapp_existe = whatsapp_existe;
-        patch.whatsapp_existe_ts = ts;
-      }
-      const { error } = await supabase
-        .from('sime_campanhas_confirmacao').update(patch).in('id', idsValidos);
-      if (error) return res.status(500).json({ error: error.message });
     }
 
     await supabase.from('sime_logs').insert({
       acao: 'campanha_confirmar', modulo: 'hermes_campanhas',
-      payload: { ids: idsValidos, zona: zona.numeroZona, novo_status: novoStatus }, ts,
+      payload: { ids: idsValidos, zona: zona.numeroZona, novo_status: statusExplicito || 'auto-por-item' }, ts,
     });
     return res.status(200).json({ ok: true, atualizadas: idsValidos.length });
   }

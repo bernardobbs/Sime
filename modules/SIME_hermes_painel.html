@@ -322,11 +322,60 @@
         flex: 1;
       }
     }
+
+    #login-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      width: min(360px, 92vw);
+    }
+
+    .login-card input {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 8px;
+      font-size: .9rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+    }
+
+    .login-card button.primary {
+      width: 100%;
+      margin-top: 10px;
+    }
   </style>
 </head>
 
 <body>
-  <main class="container">
+  <div id="login-overlay">
+    <div class="login-card">
+      <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">Métricas de campanha exigem login da equipe.</div>
+      <form id="login-form">
+        <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+        <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+        <div id="login-erro" style="color:var(--danger);font-size:.78rem;min-height:1em;margin-top:6px;"></div>
+        <button class="primary" type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <main class="container" id="painel-conteudo" style="display:none;">
 
     <header class="header">
       <div class="title-area">
@@ -335,13 +384,6 @@
       </div>
 
       <div class="actions">
-        <button
-          type="button"
-          id="btnConfig"
-        >
-          Config (dev)
-        </button>
-
         <button
           type="button"
           id="btnAtualizar"
@@ -534,11 +576,25 @@
 
   <script type="module">
 
+    import { createClient } from './vendor/supabase-js.esm.js';
+    import { SIME_CONFIG } from './sime_config.js';
     import { getHermesMetrics } from "./sime_hermes_api.js";
+
+    const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+    // Zona vem da conta logada (sime_usuarios.zona_id), nunca de um campo na
+    // tela — mesmo padrão de zonaDoUsuario() em SIME_atores.html.
+    let _zonaCache = null;
+    async function zonaDoUsuario() {
+      if (_zonaCache) return _zonaCache;
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data } = await supabase.from('sime_usuarios').select('zona_id, sime_zonas(numero)').eq('auth_user_id', user?.id).maybeSingle();
+      _zonaCache = { zonaId: data?.zona_id || null, zonaNumero: data?.sime_zonas?.numero ?? null };
+      return _zonaCache;
+    }
 
     const elements = {
       btnAtualizar: document.getElementById("btnAtualizar"),
-      btnConfig: document.getElementById("btnConfig"),
 
       message: document.getElementById("message"),
 
@@ -614,6 +670,15 @@
     }
 
     function getStatusCounts(data) {
+      // api/hermes-campanhas-metrics.js devolve o detalhamento por status em
+      // `contagem` (mesmo nome usado em api/hermes-campanhas.js acao=resumo)
+      // — checar primeiro. Os outros nomes ficam como fallback só por
+      // tolerância a uma futura mudança de contrato, nunca bateram com a API
+      // real.
+      if (data && data.contagem && typeof data.contagem === "object") {
+        return data.contagem;
+      }
+
       if (data && data.status_counts && typeof data.status_counts === "object") {
         return data.status_counts;
       }
@@ -838,7 +903,12 @@
       hideMessage();
 
       try {
-        const result = await getHermesMetrics();
+        const { zonaId, zonaNumero } = await zonaDoUsuario();
+        if (!zonaId) {
+          showMessage('Conta sem zona associada — fale com quem administra o SIME.', 'error');
+          return;
+        }
+        const result = await getHermesMetrics(supabase, zonaId, zonaNumero);
 
         if (!result || result.ok === false) {
           const errorMessage =
@@ -866,57 +936,36 @@
       }
     }
 
-    function configurarTokenDev() {
-      const current =
-        localStorage.getItem("SIME_HERMES_BEARER") || "";
-
-      const value = window.prompt(
-        "Configuração somente para homologação/desenvolvimento.\n\n" +
-        "Informe o valor do Authorization Bearer.\n" +
-        "Exemplo: Bearer SEU_TOKEN\n\n" +
-        "Deixe vazio para remover o token armazenado.",
-        current
-      );
-
-      if (value === null) {
-        return;
-      }
-
-      const trimmed = value.trim();
-
-      if (!trimmed) {
-        localStorage.removeItem("SIME_HERMES_BEARER");
-
-        showMessage(
-          "Token de homologação removido do localStorage.",
-          "info"
-        );
-
-        return;
-      }
-
-      localStorage.setItem(
-        "SIME_HERMES_BEARER",
-        trimmed
-      );
-
-      showMessage(
-        "Token de homologação salvo no localStorage deste navegador.",
-        "success"
-      );
-    }
-
     elements.btnAtualizar.addEventListener(
       "click",
       atualizar
     );
 
-    elements.btnConfig.addEventListener(
-      "click",
-      configurarTokenDev
-    );
+    // ── Login (mesmo padrão de SIME_relatorios.html) ──
+    function mostrarPainel() {
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('painel-conteudo').style.display = '';
+    }
 
-    atualizar();
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-pass').value;
+      const erro = document.getElementById('login-erro');
+      erro.textContent = '';
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        erro.textContent = /Failed to fetch|NetworkError/i.test(error.message || '') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.';
+        return;
+      }
+      mostrarPainel();
+      atualizar();
+    });
+
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) { mostrarPainel(); atualizar(); }
+    })();
 
   </script>
 </body>

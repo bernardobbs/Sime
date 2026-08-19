@@ -94,6 +94,18 @@ function scAdicionarEtapa() {
 function scRemoverEtapa(etapaNumero) {
   if (!scEditando || scEditando.etapas.length <= 1) { showToast('⚠ Um script precisa de pelo menos uma etapa'); return; }
   scEditando.etapas = scEditando.etapas.filter(e => e.etapa_numero !== etapaNumero);
+  // Ramos de outras etapas que apontavam pra esta ficam sem destino — limpar
+  // aqui (em vez de deixar um número órfão) pra podeSalvar() barrar o salvar
+  // até alguém escolher um destino novo, ao invés de silenciosamente gravar
+  // uma referência quebrada que só quebra em produção quando o Hermes tenta
+  // avançar pra uma etapa que não existe mais.
+  let ramosOrfaos = 0;
+  scEditando.etapas.forEach(e => {
+    e.respostas_esperadas.forEach(r => {
+      if (r.proxima_etapa === etapaNumero) { r.proxima_etapa = null; ramosOrfaos++; }
+    });
+  });
+  if (ramosOrfaos > 0) showToast(`⚠ ${ramosOrfaos} ramo(s) ficaram sem destino — escolha um novo antes de salvar`);
   render();
 }
 function scAdicionarRamo(etapaNumero) {
@@ -142,6 +154,14 @@ function scEditarRamoDestino(etapaNumero, ramoIdx, v) {
     ramo.proxima_etapa = null;
     ramo.status_final = null;
   }
+  // Ao contrário de texto/textarea (sem render a cada tecla, de propósito),
+  // um <select> só dispara onchange uma vez por escolha — sem re-renderizar
+  // aqui, "Salvar script" fica com o disabled/enabled da renderização
+  // anterior, então escolher um destino válido não habilita o botão (nem
+  // escolher um inválido desabilita) até algum outro clique re-renderizar
+  // por outro motivo. Isso tornava a validação de referência órfã invisível
+  // na prática — a leitura de scEditando estava certa, só a tela não refletia.
+  render();
 }
 
 function scRenderDestinoSelect(etapaNumero, ramoIdx, ramo) {
@@ -196,8 +216,18 @@ function scRenderEtapa(etapa) {
 }
 
 function scRenderEditor() {
+  // proxima_etapa precisa apontar pra uma etapa que ainda existe no script —
+  // só checar truthy deixava passar referência órfã (ex.: etapa removida
+  // depois de um ramo apontar pra ela), que só quebra em produção quando o
+  // Hermes tenta avançar pra uma etapa inexistente (ver avancar_etapa em
+  // api/hermes-campanhas.js).
+  const etapasExistentes = new Set(scEditando.etapas.map(e => e.etapa_numero));
   const podeSalvar = scEditando.nome.trim() && scEditando.etapas.every(e =>
-    e.mensagem.trim() && e.respostas_esperadas.every(r => r.palavras_chave.length && (r.proxima_etapa || r.status_final))
+    e.mensagem.trim() && e.respostas_esperadas.every(r =>
+      r.palavras_chave.length && (
+        (r.proxima_etapa && etapasExistentes.has(r.proxima_etapa)) || r.status_final
+      )
+    )
   );
   return `
     <div class="import-card">
@@ -245,7 +275,8 @@ async function scSalvarCampanha() {
 
   let campanhaId = scEditando.id;
   if (campanhaId) {
-    const { error } = await sb.from('sime_campanhas').update({ nome: scEditando.nome, updated_at: new Date().toISOString() }).eq('id', campanhaId);
+    const { data: ts } = await sb.rpc('sime_now'); // NUNCA new Date()/Date.now() — timestamp de ação sempre vem do servidor
+    const { error } = await sb.from('sime_campanhas').update({ nome: scEditando.nome, updated_at: ts }).eq('id', campanhaId);
     if (error) { showToast('⚠ ' + error.message); return; }
   } else {
     const { data, error } = await sb.from('sime_campanhas').insert({ nome: scEditando.nome, zona_id: zonaId, status: 'rascunho' }).select('id').single();
