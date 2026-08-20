@@ -58,6 +58,7 @@ export function createClient(){
     rpc(name, params){
       window.__mock.rpcChamadas.push({ name, params });
       if(name==='sime_sync_atores_from_raw') return Promise.resolve({ data:[{ atualizados:0, inativados:0 }], error:null });
+      if(name==='sime_now') return Promise.resolve({ data:'2026-08-20T15:30:00.000Z', error:null });
       return Promise.resolve({ data:null, error:null });
     },
     auth: {
@@ -319,6 +320,41 @@ async function login(p) {
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.75 Observações no modal: adicionar (append-only, com autor e carimbo) ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(250);
+  check('sem observação ainda, mostra o vazio', /Nenhuma observação registrada ainda/.test(await p.locator('#modal-body').textContent()));
+
+  await p.fill('#mm-obs-nova', 'Ligou e disse que confirma presença');
+  await p.click('#modal-body button:has-text("Adicionar observação")');
+  await p.waitForTimeout(200);
+
+  const upd1 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && typeof e.payload.observacao === 'string'));
+  check('adicionar observação grava com carimbo, autor (nome do usuário logado) e o texto', /^\[2026-08-20 15:30\] Maria \(cartório\): Ligou e disse que confirma presença$/.test(upd1?.payload?.observacao || ''), JSON.stringify(upd1));
+
+  const modalTxt1 = await p.locator('#modal-body').textContent();
+  check('observação nova aparece na lista do modal', /Ligou e disse que confirma presença/.test(modalTxt1));
+  check('campo de texto é limpo depois de adicionar', await p.inputValue('#mm-obs-nova') === '');
+
+  await p.fill('#mm-obs-nova', 'Confirmou por telefone também');
+  await p.click('#modal-body button:has-text("Adicionar observação")');
+  await p.waitForTimeout(200);
+  const modalTxt2 = await p.locator('#modal-body').textContent();
+  check('segunda observação soma à primeira (não sobrescreve)', /Ligou e disse que confirma presença/.test(modalTxt2) && /Confirmou por telefone também/.test(modalTxt2), modalTxt2.replace(/\s+/g, ' ').slice(0, 400));
+  const itensObs = await p.locator('.m-section:has-text("📝 Observações") .m-hist-item').allTextContents();
+  check('lista mostra a mais recente primeiro', itensObs[0].includes('Confirmou por telefone também'), JSON.stringify(itensObs));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

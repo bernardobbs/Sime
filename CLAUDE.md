@@ -382,6 +382,35 @@ cada um com propósito diferente:
   pessoa — mesário e apoio logístico). Antes disso, casar exigiria
   comparação fuzzy por nome; agora é exato.
 
+  **Observações e reestilo do modal (20/08/2026), a partir de referência
+  visual do cartório.** O modal ganhou seções com cabeçalho (📇 Contato, 📞
+  Tentativas de contato, 📜 Atualizações, 📝 Observações) e um bloco
+  chave-valor no topo (função/seção/título/situação) — pedido explícito do
+  cartório mostrando a tela de outro sistema como referência de estilo.
+  `sime_atores.observacao` virou algo que o cartório também escreve, não só
+  lê: `cmAdicionarObservacao()` anexa no mesmo formato que o Hermes já usa
+  (`[carimbo] Autor: texto`, append-only, nunca sobrescreve — mesma regra de
+  sempre), só trocando o autor pro nome de quem está logado
+  (`sime_usuarios.nome`, cacheado por `window.nomeDoUsuario()` em
+  `SIME_convocacao.html`, mesmo padrão de `zonaDoUsuario()`) marcado como
+  "(cartório)" pra distinguir de recado vindo do WhatsApp. `cmParseObservacoes()`
+  quebra o texto acumulado em entradas pra exibir como lista (split antes de
+  cada carimbo `[AAAA-MM-DD`, não por linha — uma mensagem de WhatsApp pode
+  ter quebra de linha própria). A observação nova NÃO entra na lista
+  "Atualizações" (que lê `sime_logs`) pra não duplicar visualmente o que já
+  aparece na seção própria — o `sime_logs` ainda é gravado, só não é
+  renderizado ali.
+
+  **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
+  além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status
+  diferente — "Enviado/Entregue" não faz sentido pra uma ligação.
+  `status_contato_alternativo` ganhou 4 valores novos
+  (`a_ligar`/`atendeu`/`nao_atendeu`/`numero_errado`) só pra esse meio;
+  `cmStatusLabelSet(meio)` escolhe qual dos dois conjuntos mostrar no
+  `<select>`, e trocar de meio zera o status anterior só quando o
+  vocabulário muda de fato (Carta↔Ofício continuam compartilhando os
+  mesmos 4 valores de sempre, então não zeram entre si).
+
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem
   `inscricao_eleitoral`; a busca por nome em `SIME_atores.html` e em

@@ -65,6 +65,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-hist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
 .m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
 .m-hist-item b{color:var(--text);}
+.m-kv{display:flex;flex-direction:column;gap:5px;background:var(--bg2);border-radius:8px;padding:10px 12px;}
+.m-kv-row{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;}
+.m-kv-row b{color:var(--text2);font-weight:700;}
+.m-kv-row span{color:var(--text);text-align:right;}
+.m-section{border-top:1px solid var(--border);padding-top:12px;}
+.m-section-hdr{font-size:.7rem;font-weight:800;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
 </style>
 </head>
 <body>
@@ -120,12 +126,23 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
 window.supabaseAtores = supabase; // mesmo nome global que sime_mesarios_sync.js/sime_resumo_secoes.js já esperam (vieram de SIME_atores.html)
 
 let _zonaCache = null;
-window.zonaDoUsuario = async function zonaDoUsuario() {
-  if (_zonaCache) return _zonaCache;
+let _nomeCache = null;
+async function _carregarUsuario() {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data } = await supabase.from('sime_usuarios').select('zona_id').eq('auth_user_id', user?.id).maybeSingle();
+  const { data } = await supabase.from('sime_usuarios').select('zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
   _zonaCache = data?.zona_id || null;
+  _nomeCache = data?.nome || null;
+}
+window.zonaDoUsuario = async function zonaDoUsuario() {
+  if (!_zonaCache) await _carregarUsuario();
   return _zonaCache;
+};
+// Autor de observações adicionadas manualmente (aba Contatar mesários) —
+// mesmo cache de sessão que zonaDoUsuario, só que devolve o nome em vez do
+// zona_id. 'Cartório' é fallback pra sessões sem sime_usuarios.nome (raro).
+window.nomeDoUsuario = async function nomeDoUsuario() {
+  if (!_nomeCache) await _carregarUsuario();
+  return _nomeCache || 'Cartório';
 };
 
 window.log = async function log(acao, secao, payload) {

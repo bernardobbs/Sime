@@ -19,8 +19,14 @@ const CM_BUCKETS = [
   { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
   { valor: 'substituido',       label: '🔁 Já substituído' },
 ];
-const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
+const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
+// Dois vocabulários de status diferentes pro mesmo campo (status_contato_alternativo)
+// — "enviado/entregue" não faz sentido pra uma ligação, e "atendeu/não atendeu"
+// não faz sentido pra uma carta. cmStatusLabelSet() escolhe qual mostrar.
 const CM_STATUS_ALT_LABEL = { a_enviar: 'A enviar', enviado: 'Enviado', entregue: 'Entregue', devolvido: 'Devolvido' };
+const CM_STATUS_LIGACAO_LABEL = { a_ligar: 'A ligar', atendeu: 'Atendeu', nao_atendeu: 'Não atendeu', numero_errado: 'Número errado' };
+const CM_STATUS_ALL_LABEL = { ...CM_STATUS_ALT_LABEL, ...CM_STATUS_LIGACAO_LABEL };
+function cmStatusLabelSet(meio) { return meio === 'ligacao' ? CM_STATUS_LIGACAO_LABEL : CM_STATUS_ALT_LABEL; }
 
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
@@ -35,7 +41,7 @@ const CM_LOG_LABEL = {
   mesario_editar_telefone: () => 'Telefone atualizado manualmente',
   mesario_editar_rastreio: () => 'Código de rastreio atualizado',
   mesario_meio_contato: (p) => `Meio de contato → ${CM_MEIO_LABEL[p.meio_contato] || p.meio_contato}`,
-  mesario_status_contato_alt: (p) => `Status do envio → ${CM_STATUS_ALT_LABEL[p.status] || p.status || '—'}`,
+  mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
 };
@@ -104,12 +110,17 @@ async function cmTogglePrecisaSubstituir(id) {
 async function cmSalvarMeio(id, meio) {
   const sb = window.supabaseAtores;
   const patch = { meio_contato: meio };
-  // Trocar pra WhatsApp não faz sentido manter um status de envio de carta/ofício pendurado.
-  if (meio === 'whatsapp') patch.status_contato_alternativo = null;
+  // Trocar de meio zera o status anterior se o vocabulário mudou — "Enviado"
+  // (carta) não tem sentido depois de trocar pra Ligação, e "Atendeu"
+  // (ligação) não tem sentido depois de trocar pra Carta/Ofício (que
+  // compartilham o mesmo vocabulário entre si, esse caso não zera).
+  const p0 = cmDados.pessoas.find(x => x.id === id);
+  if (meio === 'whatsapp' || cmStatusLabelSet(meio) !== cmStatusLabelSet(p0?.meio_contato)) {
+    patch.status_contato_alternativo = null;
+  }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (p) { p.meio_contato = meio; if (meio === 'whatsapp') p.status_contato_alternativo = null; }
+  if (p0) Object.assign(p0, patch);
   await log('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
   showToast('✓ Meio de contato atualizado');
   render();
@@ -127,6 +138,39 @@ async function cmSalvarStatusAlt(id, status) {
 
 function cmLinkRastreio(codigo) {
   return 'https://rastreamento.correios.com.br/app/index.php?objetos=' + encodeURIComponent(codigo);
+}
+
+// Quebra o texto acumulado de sime_atores.observacao em entradas individuais.
+// O formato é sempre "[AAAA-MM-DD HH:MM] Autor: texto", um atrás do outro
+// (Hermes anexa recados assim desde sempre, ver api/hermes-mesarios.js) — a
+// quebra é feita ANTES de cada carimbo (lookahead), não por linha, porque um
+// recado em si pode ter quebra de linha (mensagem de WhatsApp com Enter).
+function cmParseObservacoes(texto) {
+  if (!texto) return [];
+  return texto.split(/(?=\[\d{4}-\d{2}-\d{2})/).map(s => s.trim()).filter(Boolean);
+}
+
+// Observação manual do cartório — mesmo padrão append-only do recado que o
+// Hermes anexa (nunca sobrescreve, só acrescenta); só muda o autor no
+// carimbo ("Fulano (cartório)" em vez de "Recado via Hermes").
+async function cmAdicionarObservacao(id) {
+  const campo = document.getElementById('mm-obs-nova');
+  const texto = campo.value.trim();
+  if (!texto) return;
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const [{ data: ts }, autor] = await Promise.all([sb.rpc('sime_now'), window.nomeDoUsuario ? window.nomeDoUsuario() : 'Cartório']);
+  const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ${autor} (cartório): ${texto}`;
+  const nova = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
+  const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.observacao = nova;
+  await log('mesario_observacao_adicionada', '', { ator_id: id });
+  campo.value = '';
+  showToast('✓ Observação adicionada');
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 function cmFmtDataHist(ts) {
@@ -212,37 +256,54 @@ function cmRenderModal() {
     : cmListaHist(cmModalHist.logs, 'Nenhuma atualização registrada ainda.',
         l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc(l._label(l.payload || {}))}</div>`);
 
+  const observacoes = cmParseObservacoes(p.observacao);
+  const blocoObservacoes = cmListaHist([...observacoes].reverse(), 'Nenhuma observação registrada ainda.',
+    txt => `<div class="m-hist-item">${cmEsc(txt)}</div>`);
+
   modal.innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${cmEsc(p.nome_completo)}</div>
       <button class="close-btn" aria-label="Fechar" onclick="cmFecharModal()">✕</button>
     </div>
     <div class="m-body">
-      <div class="ic-sub" style="margin-bottom:0">
-        ${cmEsc(p.funcao_mesa || '')}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
-        ${p.inscricao_eleitoral ? ` · Título ${cmEsc(p.inscricao_eleitoral)}` : ''}
+      <div class="m-kv">
+        <div class="m-kv-row"><b>Função</b><span>${cmEsc(p.funcao_mesa || '—')}</span></div>
+        <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
+        <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}</span></div>
       </div>
-      ${p.observacao ? `<div class="ic-sub" style="background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap;margin-bottom:0">${cmEsc(p.observacao)}</div>` : ''}
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        ${p.precisa_substituir ? '<span class="import-result ir-warn" style="margin-top:0">🔁 Precisa substituto</span>' : ''}
-        <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+
+      <div class="m-section">
+        <div class="m-section-hdr">📇 Contato</div>
+        <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px;margin-bottom:10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+        <div class="form-group">
+          <label>Telefone (WhatsApp)</label>
+          <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
+        </div>
+        <div class="form-group">
+          <label>Código de rastreio (Correios)</label>
+          <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
+          ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
+        </div>
       </div>
-      <div class="form-group">
-        <label>Telefone (WhatsApp)</label>
-        <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
-      </div>
-      <div class="form-group">
-        <label>Código de rastreio (Correios)</label>
-        <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
-        ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
-      </div>
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:6px">📞 Tentativas de contato (campanhas)</div>
+
+      <div class="m-section">
+        <div class="m-section-hdr">📞 Tentativas de contato (campanhas)</div>
         ${blocoCampanhas}
       </div>
-      <div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:6px">📜 Atualizações</div>
+
+      <div class="m-section">
+        <div class="m-section-hdr">📜 Atualizações</div>
         ${blocoLogs}
+      </div>
+
+      <div class="m-section">
+        <div class="m-section-hdr">📝 Observações</div>
+        ${blocoObservacoes}
+        <div class="form-group" style="margin-top:10px">
+          <textarea id="mm-obs-nova" rows="2" placeholder="Adicionar observação…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmAdicionarObservacao('${p.id}')">➕ Adicionar observação</button>
       </div>
     </div>
     <div class="m-foot">
@@ -366,10 +427,10 @@ function renderContatarMesarios() {
               </select>
             </label>
             ${p.meio_contato && p.meio_contato !== 'whatsapp' ? `
-            <label style="font-size:.72rem;color:var(--text2)">Status do envio:
+            <label style="font-size:.72rem;color:var(--text2)">${p.meio_contato === 'ligacao' ? 'Resultado da ligação' : 'Status do envio'}:
               <select onchange="cmSalvarStatusAlt('${p.id}',this.value)" style="margin-left:4px">
                 <option value="">—</option>
-                ${Object.entries(CM_STATUS_ALT_LABEL).map(([v, l]) => `<option value="${v}" ${p.status_contato_alternativo === v ? 'selected' : ''}>${l}</option>`).join('')}
+                ${Object.entries(cmStatusLabelSet(p.meio_contato)).map(([v, l]) => `<option value="${v}" ${p.status_contato_alternativo === v ? 'selected' : ''}>${l}</option>`).join('')}
               </select>
             </label>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
