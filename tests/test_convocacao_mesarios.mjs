@@ -192,6 +192,26 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.7 Título de eleitor: aparece no card e dá pra buscar por ele ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  check('card mostra o título de eleitor de quem tem cadastrado', /046919051589/.test(await cardBruno.textContent()));
+
+  await p.fill('input[placeholder*="título de eleitor"]', '046919051589');
+  await p.waitForTimeout(200);
+  const porTitulo = await p.locator('.content').textContent();
+  check('buscar pelo número do título encontra só quem bate', /BRUNO MESARIO/.test(porTitulo) && !/ANA PRESIDENTE/.test(porTitulo), porTitulo.slice(0, 200));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.5 Criar campanha com estes: leva o filtro atual pra Disparo em massa (Atores) já pré-selecionado ──
 {
   const ctx = await b.newContext();

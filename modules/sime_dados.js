@@ -130,7 +130,7 @@ export async function getAtores({ fallback = [] } = {}) {
   return withFallback('atores', async (c) => {
     const [{ data, error }, secoes] = await Promise.all([
       c.from('sime_atores')
-        .select('id, nome_completo, telefone_whatsapp, funcao, funcao_mesa, secao_id, confirmacao, ativo')
+        .select('id, nome_completo, telefone_whatsapp, funcao, funcao_mesa, secao_id, confirmacao, ativo, inscricao_eleitoral')
         .order('nome_completo'),
       getSecoes({ fallback: [] }),
     ]);
@@ -146,6 +146,7 @@ export async function getAtores({ fallback = [] } = {}) {
         ? String(numeroPorId[a.secao_id]).padStart(4, '0') : '',
       confirmacao: a.confirmacao || 'pendente',
       ativo: a.ativo !== false,
+      inscricao: a.inscricao_eleitoral || '',
     }));
   }, fallback);
 }

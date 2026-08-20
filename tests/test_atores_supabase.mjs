@@ -22,7 +22,7 @@ const SECOES = [
 ];
 const ATORES = [
   { id:'a1', nome_completo:'GABRIELA QUEIROZ MENDES', telefone_whatsapp:'5586981080059',
-    funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'sec-16',  confirmacao:'pendente', ativo:true },
+    funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'sec-16',  confirmacao:'pendente', ativo:true, inscricao_eleitoral:'012345670001' },
   { id:'a2', nome_completo:'KECYA DANDELLA ROCHA PAZ', telefone_whatsapp:'5586994433769',
     funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'sec-123', confirmacao:'recusou',  ativo:false },
   { id:'a3', nome_completo:'JOSE DA JUNTA', telefone_whatsapp:'5586991110000',
@@ -116,6 +116,15 @@ async function abrir(arquivo, opts = {}) {
 
   const sub = await p.textContent('#h-sub');
   check('atores: contador reflete o banco', /3 atores/.test(sub), sub.trim());
+
+  check('atores: mostra o título de eleitor no card', texto.includes('012345670001'), '');
+  await p.fill('input[aria-label="Buscar atores"]', '012345670001');
+  await p.waitForTimeout(150);
+  const porTitulo = await p.textContent('#content');
+  check('atores: busca pelo título de eleitor filtra certo', porTitulo.includes('GABRIELA') && !porTitulo.includes('KECYA'), porTitulo.slice(0, 200));
+  await p.fill('input[aria-label="Buscar atores"]', '');
+  await p.waitForTimeout(150);
+
   check('atores: sem erro JS', erros.length === 0, erros.join(' | '));
   await p.close();
 }
@@ -126,6 +135,9 @@ async function abrir(arquivo, opts = {}) {
 
   // Editar: telefone desatualizado → deve chamar update em sime_atores, não só localStorage.
   await p.evaluate(() => window.abrirModal('a1'));
+  const modalTxt = await p.textContent('#modal-body');
+  const tituloInputs = p.locator('#modal-body input[disabled]');
+  check('modal de edição mostra o título de eleitor (somente leitura)', modalTxt.includes('Título de eleitor') && await tituloInputs.evaluate(el => el.value) === '012345670001', await tituloInputs.count() ? await tituloInputs.evaluate(el => el.value) : 'sem campo disabled');
   await p.fill('#m-tel', '86988887777');
   await p.evaluate(() => window.salvarAtor('a1'));
   await p.waitForFunction(() => window.__ops.some(o => o.op === 'update' && o.t === 'sime_atores'));

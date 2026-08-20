@@ -316,6 +316,14 @@ separadamente e com propósitos diferentes:
   rastreio dos Correios) — único ponto do sistema, além de
   `SIME_atores.html`, que deixa editar dado de contato de um ator.
 
+  **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
+  e o `select()` de `sime_contatar_mesarios.js` agora trazem
+  `inscricao_eleitoral`; a busca por nome em `SIME_atores.html` e em
+  "Contatar mesários" também casa pelo número do título, e o card/modal de
+  edição mostram o título quando existe. Campo somente leitura em
+  `SIME_atores.html` (`abrirModal()`) — é dado do TRE, não editável pelo
+  cartório, ao contrário de telefone/observação.
+
   **Rastreamento de Carta Registrada (20/08/2026) — sem API dos Correios.**
   Avaliado e descartado: a API oficial dos Correios pra consulta de
   rastreamento (SIGEP/Cartão de Postagem) exige contrato comercial pago —

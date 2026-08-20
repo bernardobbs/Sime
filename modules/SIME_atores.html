@@ -273,7 +273,7 @@ function filterAtores(atores){
     if(filterSecao  && a.secao!==filterSecao)   return false;
     if(searchQ){
       const q=searchQ.toLowerCase();
-      if(!a.nome.toLowerCase().includes(q) && !a.telefone.includes(q) && !a.secao.includes(q)) return false;
+      if(!a.nome.toLowerCase().includes(q) && !a.telefone.includes(q) && !a.secao.includes(q) && !(a.inscricao||'').includes(q)) return false;
     }
     return a.ativo!==false;
   });
@@ -285,7 +285,7 @@ function renderLista(atores){
   const c=document.getElementById('content');
   c.innerHTML=`
     <div class="search-row">
-      <input type="text" aria-label="Buscar atores" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar atores" placeholder="Buscar nome, telefone, seção, título de eleitor..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -303,6 +303,7 @@ function renderLista(atores){
         <div class="ac-name">${a.nome}</div>
         <div class="ac-detail">${a.secao?'Seção '+parseInt(a.secao):''} ${a.local||''}</div>
         <div class="ac-detail">${fmtTel(a.telefone)}</div>
+        ${a.inscricao?`<div class="ac-detail">Título ${a.inscricao}</div>`:''}
         <span class="ac-badge f-${a.funcao}">${FUNC_EMOJI[a.funcao]} ${FUNC_LABEL[a.funcao]}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -932,6 +933,7 @@ function abrirModal(id){
     </div>
     <div class="m-body">
       <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
+      ${a?.inscricao?`<div class="form-group"><label>Título de eleitor</label><input type="text" value="${a.inscricao}" disabled style="opacity:.7"></div>`:''}
       <div class="form-group"><label>Telefone / WhatsApp (com DDD)</label><input type="tel" id="m-tel" value="${a?.telefone||''}" placeholder="86900000000"></div>
       <div class="form-group"><label>Número da seção</label><input type="number" id="m-sec" value="${a?parseInt(a.secao):''}" placeholder="63"></div>
       <div class="form-group"><label>Função</label>
