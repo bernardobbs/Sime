@@ -476,6 +476,14 @@ cada um com propósito diferente:
 > qualquer um que loga cai no hub de módulos, não numa página específica.
 > `?tab=<nome>` é genérico (`abrirAbaDaUrl()`), não só pra `modulos`.
 >
+> **Acesso a `SIME_convocacao.html` não tem trava de perfil, decisão
+> deliberada (20/08/2026).** Qualquer login da equipe do cartório — não só
+> Coordenador Geral/Monitor de Campo — escreve lá (marcar contato incorreto,
+> mudar meio de contato, editar telefone, registrar tentativa, etc.).
+> Diferente de Admin, que restringe seções/equipe/tokens ao perfil
+> `config_equipe`: convocação de mesários é trabalho de todo mundo do
+> cartório, não de um perfil específico, então não faz sentido gatear.
+
 > **O antigo "🧑‍⚖️ Confirmação de mesários" do Admin** (modal próprio em
 > `SIME_admin.html`, aba Seções) foi removido e virou link pra
 > `SIME_convocacao.html` — o modal só sabia confirmado/recusou/substituído
