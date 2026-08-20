@@ -256,9 +256,9 @@ ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
 
 **Direto pelo navegador, sem gerar SQL**: `SIME_convocacao.html` (módulo
 próprio, separado de `SIME_atores.html` desde 20/08/2026 — antes eram duas
-abas lá dentro) → aba **🔄 Sincronizar** tem DOIS uploads separados
-(`sime_mesarios_sync.js`), pra dois arquivos que o cartório recebe
-separadamente e com propósitos diferentes:
+abas lá dentro) → aba **🔄 Sincronizar** tem TRÊS caminhos separados
+(`sime_mesarios_sync.js`), pros formatos que o cartório recebe/tem em mãos,
+cada um com propósito diferente:
 
 - **📋 roster completo (81 colunas)** — mesma lógica de
   `parse_mesarios_gsheet_csv.py`, mas em JS, gravando direto no Supabase com
@@ -288,6 +288,25 @@ separadamente e com propósitos diferentes:
   (`Ciente=1`→`confirmado`, `Ciente=2`→`contato_incorreto`) e em
   `telefone_whatsapp` — exceção deliberada à regra "só WhatsApp/Hermes muda
   confirmacao", não descuido.
+- **📋 colar lista de telefones (texto livre, 20/08/2026)** — pra quando o
+  cartório tem só uma lista solta (WhatsApp, anotação, planilha copiada), não
+  um dos dois arquivos oficiais do TRE acima. Cola texto qualquer numa
+  textarea, uma pessoa por linha; nome e outras colunas, se tiver, são
+  ignorados — só extrai **título de eleitor** (12 dígitos, tolera espaço
+  entre blocos) e **telefone**, e faz `UPDATE` de `telefone_whatsapp`
+  casando por `inscricao_eleitoral` (nunca mexe em `confirmacao`, nunca
+  inativa ninguém — mesmo modelo do "atualizar contatos" acima, só que sem
+  precisar virar CSV primeiro). Deliberadamente conservador: só aceita
+  telefone que já bate limpo num formato válido — 10-11 dígitos (DDD+8/9),
+  12-13 com `55` na frente, ou 8-9 dígitos soltos (aí assume DDD 86, seguro
+  porque as duas zonas do SIME são no Piauí, que tem DDD único pro estado
+  inteiro — não serviria um sistema genérico multi-estado). **Não tenta
+  consertar contagem de dígito errada** — achado real numa lista real
+  colada em produção: telefones com um dígito a mais depois do `55`
+  (provável artefato de cópia/formatação de planilha de origem), outros sem
+  DDD. Linha sem título ou sem telefone reconhecível fica de fora do
+  resultado, listada pra conferência manual — adivinhar teria sido pior que
+  não gravar (arriscava telefone errado no cadastro de alguém).
 
 `SIME_convocacao.html` tem mais três abas:
 - **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a

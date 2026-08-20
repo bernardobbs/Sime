@@ -338,6 +338,92 @@ async function mcAtualizar() {
   render();
 }
 
+// ══════════════════════════════════════
+// COLAR LISTA — terceiro caminho, pro caso mais comum na prática: o cartório
+// tem uma lista solta (WhatsApp, anotação, planilha copiada) com nome/título/
+// telefone, sem ser nenhum dos dois formatos oficiais do TRE acima. Em vez de
+// forçar reformatar num CSV de 16 colunas só pra atualizar telefone de um
+// punhado de gente, cola o texto direto aqui — qualquer coisa, uma linha por
+// pessoa.
+//
+// Só aceita o que dá pra reconhecer com confiança: título de eleitor (12
+// dígitos, tolera espaço entre blocos — "0351 4315 1503") e telefone que já
+// bate limpo num formato válido. NÃO tenta consertar contagem de dígito
+// errada — achado real numa lista real: alguns telefones vinham com um
+// dígito a mais depois do 55 (provável artefato de cópia/formatação de
+// planilha), outros sem DDD nenhum. Adivinhar aqui é pior que não gravar:
+// linha que não bate em nada fica de fora do resultado, listada pra
+// conferência manual, nunca vira um telefone errado no cadastro de alguém.
+function cpSoDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+function cpEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// 10-11 dígitos (DDD+8/9) já é válido direto; com "55" na frente (12-13)
+// só tira o prefixo. Sem DDD (8-9 dígitos soltos) assume 86 — as duas zonas
+// do SIME são no Piauí, que tem DDD único pro estado inteiro; não serviria
+// um sistema genérico multi-estado, mas é seguro pro escopo deste app.
+function cpNormalizarTelefone(digitos) {
+  let d = digitos;
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
+  if (d.length === 10 || d.length === 11) return d;
+  if (d.length === 8 || d.length === 9) return '86' + d;
+  return null;
+}
+
+let cpTexto = '';
+let cpResultado = null; // { linhas:[{linha,titulo,telefone,motivo}], atualizados, semMatch }
+
+function cpLimpar() { cpTexto = ''; cpResultado = null; render(); }
+
+function cpProcessarLinhas(texto) {
+  return texto.split('\n').map(l => l.trim()).filter(Boolean).map(linha => {
+    const mTitulo = linha.match(/\b(\d{4}\s?\d{4}\s?\d{4})\b/);
+    if (!mTitulo) return { linha, titulo: null, telefone: null, motivo: 'sem_titulo' };
+    const titulo = cpSoDigitos(mTitulo[1]);
+    const semTitulo = linha.replace(mTitulo[1], ' ');
+    const candidatos = semTitulo.split(/[\t,;]+/).map(s => s.trim()).filter(Boolean);
+    let telefone = null;
+    for (const c of candidatos) {
+      const d = cpSoDigitos(c);
+      if (d.length < 8) continue;
+      const norm = cpNormalizarTelefone(d);
+      if (norm) { telefone = norm; break; }
+    }
+    return telefone
+      ? { linha, titulo, telefone, motivo: null }
+      : { linha, titulo, telefone: null, motivo: 'telefone_nao_reconhecido' };
+  });
+}
+
+async function cpAtualizar() {
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) { showToast('⚠ Conta sem zona associada'); return; }
+  const linhas = cpProcessarLinhas(cpTexto);
+  const validas = linhas.filter(l => l.telefone);
+  if (!validas.length) {
+    showToast('⚠ Nenhuma linha com título + telefone reconhecidos');
+    cpResultado = { linhas, atualizados: 0, semMatch: 0 };
+    render();
+    return;
+  }
+
+  showToast('⏳ Atualizando telefones...');
+  let atualizados = 0, semMatch = 0;
+  for (const l of validas) {
+    const { data, error } = await sb.from('sime_atores').update({ telefone_whatsapp: l.telefone })
+      .eq('zona_id', zonaId).eq('inscricao_eleitoral', l.titulo).select('id');
+    if (error) { showToast('⚠ ' + error.message); return; }
+    if (data && data.length) atualizados++; else semMatch++;
+  }
+  cpResultado = { linhas, atualizados, semMatch };
+  await log('mesarios_colar_telefones', '', { total: linhas.length, reconhecidas: validas.length, atualizados, semMatch });
+  showToast(`✓ ${atualizados} telefone(s) atualizado(s)${semMatch ? ` · ${semMatch} sem cadastro correspondente` : ''}`);
+  if (window.recarregarAtores) await window.recarregarAtores();
+  render();
+}
+
 function renderSyncMesarios() {
   const c = document.getElementById('content');
   const semSessao = !window.supabaseAtores;
@@ -397,5 +483,28 @@ function renderSyncMesarios() {
         ${mcArquivo && !semSessao ? `<button class="btn btn-dark" onclick="mcAtualizar()">✓ Atualizar contatos</button>` : ''}
         ${mcArquivo ? `<button class="btn btn-out" onclick="mcLimpar()">✕ Limpar</button>` : ''}
       </div>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title">📋 Colar lista de telefones</div>
+      <div class="ic-sub">Cole um texto qualquer com <b>título de eleitor</b> e <b>telefone</b> por linha — não
+        precisa ser CSV nem seguir formato fixo (nome e outras colunas, se tiver, são ignorados). Só atualiza
+        <code>telefone_whatsapp</code>, casando por título de eleitor; nunca mexe em confirmação nem inativa
+        ninguém. Linha sem título reconhecível (12 dígitos) ou sem telefone num formato válido fica de fora —
+        listada abaixo pra conferir à mão, em vez de arriscar gravar número errado.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para atualizar.</div>' : ''}
+      <textarea id="cp-textarea" rows="8" placeholder="Cole aqui, uma pessoa por linha..." oninput="cpTexto=this.value"
+        style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.8rem;color:var(--text);font-family:inherit;resize:vertical">${cpEsc(cpTexto)}</textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        ${!semSessao ? `<button class="btn btn-dark" onclick="cpTexto=document.getElementById('cp-textarea').value;cpAtualizar()">✓ Processar e atualizar</button>` : ''}
+        ${cpTexto || cpResultado ? `<button class="btn btn-out" onclick="cpLimpar()">✕ Limpar</button>` : ''}
+      </div>
+      ${cpResultado ? `
+        <div class="import-result ir-ok" style="margin-top:10px">✅ ${cpResultado.atualizados} telefone(s) atualizado(s)${cpResultado.semMatch ? ` · ${cpResultado.semMatch} sem cadastro correspondente` : ''} de ${cpResultado.linhas.length} linha(s) coladas</div>
+        ${cpResultado.linhas.some(l => l.motivo) ? `
+        <div class="import-result ir-warn" style="margin-top:8px">
+          ${cpResultado.linhas.filter(l => l.motivo).length} linha(s) ignorada(s) — confira à mão:<br>
+          ${cpResultado.linhas.filter(l => l.motivo).map(l => `• ${cpEsc(l.linha.slice(0, 70))} — ${l.motivo === 'sem_titulo' ? 'título de eleitor não reconhecido' : 'telefone não reconhecido'}`).join('<br>')}
+        </div>` : ''}` : ''}
     </div>`;
 }

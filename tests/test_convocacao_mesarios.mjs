@@ -412,6 +412,41 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 3.5 Colar lista de telefones (texto livre, sem CSV) ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-sync-btn');
+  await p.waitForTimeout(200);
+  check('aba sincronizar mostra o textarea de colar lista', await p.locator('#cp-textarea').count() === 1);
+
+  const texto = [
+    // Bruno (título 046919051589) — telefone limpo, 11 dígitos com DDD: atualiza.
+    'BRUNO MESARIO\t0469 1905 1589\t(86) 98666-5544',
+    // Título válido mas ninguém no mock com essa inscrição: sem cadastro correspondente.
+    'FULANO SEM CADASTRO\t9999 9999 9999\t86988887777',
+    // Sem nenhum bloco de 12 dígitos reconhecível como título: ignorada.
+    'CICLANO SEM TITULO\ttelefone (86) 99999-0000',
+    // Título ok, telefone fora de qualquer formato válido (14 dígitos, o
+    // mesmo problema real encontrado numa lista de verdade): ignorada.
+    'BELTRANO TELEFONE RUIM\t0410 7737 1570\t5508699485-70951',
+  ].join('\n');
+  await p.fill('#cp-textarea', texto);
+  await p.click('button:has-text("Processar e atualizar")');
+  await p.waitForTimeout(300);
+
+  const updBruno2 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589' && e.payload.telefone_whatsapp === '86986665544'));
+  check('linha limpa (título+telefone válidos) grava só telefone_whatsapp, sem mexer em confirmacao', !!updBruno2 && !('confirmacao' in updBruno2.payload), JSON.stringify(updBruno2));
+
+  const resumoTxt = await p.locator('.content').textContent();
+  check('resumo: 1 atualizado, 1 sem cadastro correspondente, de 4 linhas coladas', /1 telefone\(s\) atualizado/.test(resumoTxt) && /1 sem cadastro correspondente/.test(resumoTxt) && /4 linha\(s\) coladas/.test(resumoTxt), resumoTxt.replace(/\s+/g, ' ').slice(0, 400));
+  check('lista as 2 linhas ignoradas pra conferência manual (título e telefone não reconhecidos)', /2 linha\(s\) ignorada/.test(resumoTxt) && /título de eleitor não reconhecido/.test(resumoTxt) && /telefone não reconhecido/.test(resumoTxt), resumoTxt.replace(/\s+/g, ' ').slice(0, 600));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 4. Histórico ──
 {
   const ctx = await b.newContext();
