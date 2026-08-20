@@ -93,7 +93,7 @@ function mock() {
     ],
     sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
     sime_campanhas_confirmacao: [
-      { id:'camp1', ator_id:'a2', mensagem_enviada:'Olá Bruno, confirme sua presença como mesário na Seção 30, Grupo Escolar A, no dia 04/10.', status:'enviado', created_at:'2026-08-18T14:00:00.000Z' },
+      { id:'camp1', ator_id:'a2', zona_id:'z7', mensagem_enviada:'Olá Bruno, confirme sua presença como mesário na Seção 30, Grupo Escolar A, no dia 04/10.', status:'enviado', created_at:'2026-08-18T14:00:00.000Z' },
     ],
   };
 }
@@ -216,6 +216,11 @@ async function login(p) {
   const cardDiego = p.locator('.import-card:has-text("DIEGO CARTA")').first();
   check('quem já está em Carta Registrada mostra o seletor de status de envio', await cardDiego.locator('select').count() === 2, String(await cardDiego.locator('select').count()));
   check('sem telefone cadastrado avisa em vez de link quebrado', /Sem telefone cadastrado/.test(await cardDiego.textContent()));
+
+  const cardBruno0 = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  check('pendente com campanha já enviada mostra "já contactado", não só "falta contactar"', /Já contactado \(1x\) — aguardando resposta/.test(await cardBruno0.textContent()), await cardBruno0.textContent());
+  const cardAna0 = p.locator('.import-card:has-text("ANA PRESIDENTE")').first();
+  check('quem já confirmou não mostra a anotação de tentativa (já resolvido)', !/Já contactado/.test(await cardAna0.textContent()));
 
   // Filtro por status
   await p.selectOption('#cm-filtro', 'pendente');

@@ -630,6 +630,24 @@ A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleiçõe
 
 Na próxima mensagem encaminharemos a imagem oficial com o passo a passo. Pedimos que leia atentamente e confirme sua participação também no site do TRE, conforme indicado na imagem.`;
 
+// Dois modelos de reforço perto do Dia D — disparo manual só (pedido
+// explícito do cartório: "somente por demanda", nunca agendamento
+// automático). Reaproveitam a mesma fila/motor dos modelos acima — só o
+// texto muda.
+const TEMPLATE_LEMBRETE_VESPERA = `Olá, {nome}! 👋
+
+Lembrete do cartório eleitoral: amanhã é o Dia D das Eleições 2026.
+
+Você atua como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Chegue com antecedência e leve um documento oficial com foto. Qualquer imprevisto, avise o cartório o quanto antes.`;
+
+const TEMPLATE_CONFIRMACAO_DIAD = `Bom dia, {nome}! ☀️
+
+Hoje é o Dia D das Eleições 2026. Você está confirmado(a) como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Por favor, responda confirmando que já está a caminho ou já chegou à seção.`;
+
 let dispTipo = 'golpe';
 let dispFuncao = '';
 let dispBusca = '';
@@ -647,6 +665,8 @@ let dispCampanhaEtapa1 = '';    // preview (só leitura) da mensagem da etapa 1 
 function dispMensagemPadrao(){
   if(dispTipo==='golpe') return TEMPLATE_GOLPE;
   if(dispTipo==='convocacao') return TEMPLATE_VERIFICACAO;
+  if(dispTipo==='lembrete_vespera') return TEMPLATE_LEMBRETE_VESPERA;
+  if(dispTipo==='confirmacao_diad') return TEMPLATE_CONFIRMACAO_DIAD;
   return '';
 }
 function dispMensagemConvocacaoPadrao(){
@@ -713,6 +733,8 @@ function renderDisparo(atores){
         <select id="dp-tipo" onchange="mudarTipoDisparo(this.value)">
           <option value="golpe" ${dispTipo==='golpe'?'selected':''}>🚨 Alerta anti-golpe</option>
           <option value="convocacao" ${dispTipo==='convocacao'?'selected':''}>📋 Convocação com confirmação</option>
+          <option value="lembrete_vespera" ${dispTipo==='lembrete_vespera'?'selected':''}>📅 Lembrete de véspera (D-1)</option>
+          <option value="confirmacao_diad" ${dispTipo==='confirmacao_diad'?'selected':''}>✅ Confirmação de presença — Dia D</option>
           <option value="script" ${dispTipo==='script'?'selected':''}>🧩 Usar script salvo</option>
           <option value="livre" ${dispTipo==='livre'?'selected':''}>✍️ Mensagem livre</option>
         </select>

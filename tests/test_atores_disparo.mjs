@@ -154,6 +154,33 @@ async function abrir(ctx, m) {
   await ctx.close();
 }
 
+// ── 7. Reforço perto do Dia D: dois modelos novos, disparo manual (sob demanda) ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+
+  await p.selectOption('#dp-tipo', 'lembrete_vespera');
+  await p.waitForTimeout(150);
+  const msgVespera = await p.inputValue('#dp-msg');
+  check('lembrete de véspera pré-preenchido', /D-1 é amanhã|Dia D|amanhã/i.test(msgVespera) && msgVespera.includes('{nome}'), msgVespera.slice(0, 80));
+
+  await p.selectOption('#dp-tipo', 'confirmacao_diad');
+  await p.waitForTimeout(150);
+  const msgDiaD = await p.inputValue('#dp-msg');
+  check('confirmação de presença do Dia D pré-preenchida', /confirmado/i.test(msgDiaD) && msgDiaD.includes('{secao}'), msgDiaD.slice(0, 80));
+
+  await p.click('#dp-btn-enviar');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn');
+  await p.waitForTimeout(300);
+  const escritas = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_campanhas_confirmacao'));
+  check('enfileira normalmente, mesmo motor dos outros modelos', escritas.length === 1 && escritas[0].payload.every(l => l.status === 'pendente'), JSON.stringify(escritas));
+  check('mensagem enfileirada já personalizada (sem chaves sobrando)', escritas[0]?.payload.every(l => !l.mensagem_enviada.includes('{nome}')), JSON.stringify(escritas[0]?.payload));
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

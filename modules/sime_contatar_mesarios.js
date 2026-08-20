@@ -63,13 +63,21 @@ async function cmCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { cmDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }] = await Promise.all([
+  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }] = await Promise.all([
     sb.from('sime_atores')
       .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
       .eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true).order('nome_completo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
+    // Só pra contar quantas campanhas JÁ SAÍRAM por pessoa — distingue, dentro
+    // do bucket "pendente", quem nunca foi contactado de quem foi contactado
+    // e não respondeu ainda (hoje esses dois casos eram indistinguíveis).
+    sb.from('sime_campanhas_confirmacao').select('ator_id').eq('zona_id', zonaId).eq('status', 'enviado'),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
+
+  const tentativasPorAtor = {};
+  for (const c of campanhas || []) tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+  for (const p of pessoas || []) p.tentativas = tentativasPorAtor[p.id] || 0;
 
   cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])) };
   render();
@@ -413,6 +421,7 @@ function renderContatarMesarios() {
               </div>
               ${p.inscricao_eleitoral ? `<div class="ic-sub" style="margin-bottom:0">Título ${cmEsc(p.inscricao_eleitoral)}</div>` : ''}
               ${p.telefone_whatsapp ? `<div class="ic-sub" style="margin-bottom:0">${linkWhatsApp(p.telefone_whatsapp) ? `<a href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">${fmtTelefone(p.telefone_whatsapp)}</a>` : fmtTelefone(p.telefone_whatsapp)}</div>` : '<div class="ic-sub" style="margin-bottom:0">Sem telefone cadastrado</div>'}
+              ${(p.confirmacao || 'pendente') === 'pendente' && p.tentativas > 0 ? `<div class="ic-sub" style="margin-bottom:0">📨 Já contactado (${p.tentativas}x) — aguardando resposta</div>` : ''}
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>

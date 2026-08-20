@@ -431,6 +431,16 @@ cada um com propósito diferente:
   o cartório clica, olha o site dos Correios, e marca o status manualmente
   em "Status do envio" (`status_contato_alternativo`) como sempre. Não há
   consulta automática nem polling — decisão deliberada, não pendência.
+
+  **"Já contactado, aguardando resposta" (20/08/2026).** Dentro do bucket
+  "pendente" (que hoje é binário: respondeu ou não), `cmCarregar()` também
+  conta quantas campanhas com `status='enviado'` cada pessoa já recebeu
+  (`sime_campanhas_confirmacao`, por `ator_id`) e mostra "📨 Já contactado
+  (Nx) — aguardando resposta" no card de quem tem pelo menos uma — só pra
+  quem ainda está `pendente` (confirmado/recusado/etc. já são um desfecho,
+  não precisam dessa nota). Não virou bucket de filtro novo — é anotação
+  visual dentro do "falta contactar / sem resposta" de sempre, não uma
+  reclassificação.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
