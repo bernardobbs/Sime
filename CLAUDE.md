@@ -311,7 +311,23 @@ separadamente e com propósitos diferentes:
   já sem quem não tem WhatsApp) e manda pra `SIME_atores.html?tab=disparo`
   com esse grupo pré-selecionado (via `sessionStorage`, lido e apagado uma
   única vez) — reaproveita o motor de campanha que já existe em Disparo em
-  massa, em vez de duplicar essa UI dentro de Convocação.
+  massa, em vez de duplicar essa UI dentro de Convocação. **Clicar no nome**
+  do mesário abre um painel de edição inline (telefone/WhatsApp e código de
+  rastreio dos Correios) — único ponto do sistema, além de
+  `SIME_atores.html`, que deixa editar dado de contato de um ator.
+
+  **Rastreamento de Carta Registrada (20/08/2026) — sem API dos Correios.**
+  Avaliado e descartado: a API oficial dos Correios pra consulta de
+  rastreamento (SIGEP/Cartão de Postagem) exige contrato comercial pago —
+  incompatível com o custo R$ 0,00/mês do projeto e com o volume baixo/
+  irregular de cartas de um cartório (não é remetente contratado, envia
+  avulso). `sime_atores.codigo_rastreio` (novo campo, texto livre — nunca
+  validado por regex, o formato varia) guarda só o número do objeto pra
+  montar o link público
+  `https://rastreamento.correios.com.br/app/index.php?objetos=<codigo>` —
+  o cartório clica, olha o site dos Correios, e marca o status manualmente
+  em "Status do envio" (`status_contato_alternativo`) como sempre. Não há
+  consulta automática nem polling — decisão deliberada, não pendência.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

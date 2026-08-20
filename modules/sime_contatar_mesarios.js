@@ -24,6 +24,7 @@ const CM_STATUS_ALT_LABEL = { a_enviar: 'A enviar', enviado: 'Enviado', entregue
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
 let cmBusca = '';
+let cmEditando = null; // id do ator com o painel de edição aberto (só um por vez)
 
 function cmEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +37,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo')
+      .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio')
       .eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true).order('nome_completo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
   ]);
@@ -79,6 +80,39 @@ async function cmSalvarStatusAlt(id, status) {
   if (p) p.status_contato_alternativo = status || null;
   await log('mesario_status_contato_alt', '', { ator_id: id, status });
   showToast('✓ Status de envio atualizado');
+}
+
+function cmToggleEditar(id) {
+  cmEditando = cmEditando === id ? null : id;
+  render();
+}
+
+async function cmSalvarTelefone(id, valor) {
+  const sb = window.supabaseAtores;
+  const limpo = String(valor || '').replace(/\D/g, '');
+  const { error } = await sb.from('sime_atores').update({ telefone_whatsapp: limpo || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (p) p.telefone_whatsapp = limpo || null;
+  await log('mesario_editar_telefone', '', { ator_id: id });
+  showToast('✓ Telefone atualizado');
+  render();
+}
+
+async function cmSalvarRastreio(id, valor) {
+  const sb = window.supabaseAtores;
+  const limpo = String(valor || '').trim().toUpperCase();
+  const { error } = await sb.from('sime_atores').update({ codigo_rastreio: limpo || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (p) p.codigo_rastreio = limpo || null;
+  await log('mesario_editar_rastreio', '', { ator_id: id });
+  showToast('✓ Código de rastreio salvo');
+  render();
+}
+
+function cmLinkRastreio(codigo) {
+  return 'https://rastreamento.correios.com.br/app/index.php?objetos=' + encodeURIComponent(codigo);
 }
 
 function cmFiltrar() {
@@ -152,7 +186,7 @@ function renderContatarMesarios() {
         <div class="import-card" style="padding:12px 14px">
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:flex-start">
             <div>
-              <div style="font-weight:800">${cmEsc(p.nome_completo)}</div>
+              <div style="font-weight:800;cursor:pointer" onclick="cmToggleEditar('${p.id}')" title="Clique para editar">${cmEsc(p.nome_completo)} <span style="font-weight:400;font-size:.78rem;color:var(--text2)">${cmEditando === p.id ? '▲' : '✎'}</span></div>
               <div class="ic-sub" style="margin-bottom:0">
                 ${cmEsc(p.funcao_mesa || '')}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
               </div>
@@ -161,6 +195,23 @@ function renderContatarMesarios() {
             <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
+          ${cmEditando === p.id ? `
+          <div class="import-card" style="background:var(--bg2);margin-top:10px;padding:10px 12px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Telefone (WhatsApp)
+                <input id="cm-tel-${p.id}" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text)">
+              </label>
+              <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarTelefone('${p.id}',document.getElementById('cm-tel-${p.id}').value)">Salvar telefone</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
+              <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Código de rastreio (Correios)
+                <input id="cm-rastreio-${p.id}" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text);text-transform:uppercase">
+              </label>
+              <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarRastreio('${p.id}',document.getElementById('cm-rastreio-${p.id}').value)">Salvar código</button>
+              ${p.codigo_rastreio ? `<a class="btn btn-out" style="font-size:.72rem;padding:6px 10px;text-decoration:none" href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener">📦 Rastrear no site dos Correios</a>` : ''}
+            </div>
+            <div class="ic-sub" style="margin-top:8px;margin-bottom:0">Os Correios não oferecem consulta automática pro nosso caso (é preciso contrato de Cartão de Postagem) — o código só monta o link acima; o status do envio (Enviado/Entregue/Devolvido) continua sendo marcado manualmente ali embaixo.</div>
+          </div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
             <label style="font-size:.72rem;color:var(--text2)">Meio de contato:
               <select onchange="cmSalvarMeio('${p.id}',this.value)" style="margin-left:4px">

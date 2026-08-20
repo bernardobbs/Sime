@@ -221,6 +221,44 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.6 Editar contato: clique no nome abre telefone + código de rastreio ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  check('painel de edição começa fechado', await cardBruno.locator('input#cm-tel-a2').count() === 0);
+
+  await cardBruno.locator('div[onclick*="cmToggleEditar"]').first().click();
+  await p.waitForTimeout(150);
+  check('clicar no nome abre o painel com telefone e código de rastreio', await cardBruno.locator('input#cm-tel-a2').count() === 1 && await cardBruno.locator('input#cm-rastreio-a2').count() === 1);
+  check('sem código ainda, não mostra link de rastrear', await cardBruno.locator('a:has-text("Rastrear no site dos Correios")').count() === 0);
+
+  await cardBruno.locator('input#cm-rastreio-a2').fill('aa123456789br');
+  await cardBruno.locator('button:has-text("Salvar código")').click();
+  await p.waitForTimeout(200);
+  const updRastreio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.codigo_rastreio === 'AA123456789BR'));
+  check('salvar código grava em maiúsculo', !!updRastreio, JSON.stringify(updRastreio));
+  const linkRastreio = cardBruno.locator('a:has-text("Rastrear no site dos Correios")');
+  check('link de rastrear aparece depois de salvar, apontando pro site oficial', /rastreamento\.correios\.com\.br.*AA123456789BR/.test(await linkRastreio.getAttribute('href') || ''), await linkRastreio.getAttribute('href'));
+
+  await cardBruno.locator('input#cm-tel-a2').fill('(86) 98888-7777');
+  await cardBruno.locator('button:has-text("Salvar telefone")').click();
+  await p.waitForTimeout(200);
+  const updTel = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.telefone_whatsapp === '86988887777'));
+  check('salvar telefone limpa formatação e grava só dígitos', !!updTel, JSON.stringify(updTel));
+
+  await cardBruno.locator('div[onclick*="cmToggleEditar"]').first().click();
+  await p.waitForTimeout(150);
+  check('clicar de novo no nome fecha o painel', await cardBruno.locator('input#cm-tel-a2').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 3. Sincronizar (reaproveitado de SIME_atores.html, agora na página própria) ──
 {
   const ctx = await b.newContext();
