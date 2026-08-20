@@ -13,14 +13,17 @@
 // Por que puxar em vez de empurrar: o Hermes roda atrás do NAT do roteador —
 // sem endereço público, então quem inicia a conexão é sempre ele, a cada ciclo.
 //
-// ── Dois fluxos de campanha ──
+// ── Três fluxos de campanha ──
 //
-// SIMPLES (mensagem_convocacao vazio): manda mensagem_enviada (+ imagem_url,
-// se tiver) e pronto — status pendente → enviado/erro. É o que sempre existiu
-// (alerta anti-golpe, mensagem livre).
+// SIMPLES (mensagem_convocacao vazio, campanha_id vazio): manda
+// mensagem_enviada (+ imagem_url, se tiver) e pronto — status
+// pendente → enviado/erro. É o que sempre existiu (alerta anti-golpe,
+// mensagem livre).
 //
-// COM CONFIRMAÇÃO DE IDENTIDADE (mensagem_convocacao preenchido): antes de
-// mandar a convocação de verdade, confirma que o número ainda é da pessoa.
+// COM CONFIRMAÇÃO DE IDENTIDADE — legado (mensagem_convocacao preenchido,
+// campanha_id vazio): antes de mandar a convocação de verdade, confirma que
+// o número ainda é da pessoa. Uma etapa fixa, SIM/NÃO hardcoded em
+// identidade.js do lado do Hermes.
 //
 //   pendente ──envia mensagem_enviada (verificação)──▶ aguardando_resposta
 //   aguardando_resposta ──resposta SIM──▶ confirmado
@@ -29,19 +32,35 @@
 //     (até MAX_TENTATIVAS; depois disso vira sem_resposta, terminal)
 //   confirmado ──envia mensagem_convocacao + imagem_url──▶ finalizado
 //
-// Quem classifica a resposta (SIM/NÃO) em linguagem natural é o Hermes
-// (keyword matching, mesmo espírito de keywords.js) — este endpoint só
-// recebe a decisão já resolvida via acao=responder.
+// SCRIPT CONVERSACIONAL POR ETAPA (campanha_id preenchido, ver
+// sql/SIME_campanhas_scripts_schema.sql e modules/campanhas/script.js do
+// Hermes): generaliza o fluxo de identidade acima pra N etapas
+// configuráveis (sime_campanha_etapas), cada uma com seus próprios ramos
+// de resposta (palavras-chave → próxima etapa ou status final). etapa_atual
+// acompanha em que etapa o item está; reenvio por timeout busca a mensagem
+// da etapa ATUAL (não sempre a etapa 1). Resposta que não casa com nenhum
+// ramo vira status 'fora_do_script' (terminal — fila de atenção, ver ação
+// 'relatorio').
+//
+// Quem classifica a resposta (SIM/NÃO, ou ramo do script) em linguagem
+// natural é o Hermes (keyword matching, mesmo espírito de keywords.js) —
+// este endpoint só recebe a decisão já resolvida via acao=responder /
+// acao=avancar_etapa.
 //
 // Ações:
 //   pendentes  → itens prontos pra alguma ação agora (mais antigos primeiro),
 //                cada um já dizendo o que fazer em proxima_acao
-//   confirmar         → avança o status (aceita novo_status; default 'enviado')
-//   erro              → marca 'erro' + incrementa tentativas, para não travar a fila
-//   responder         → grava a resposta SIM/NÃO de quem recebeu a verificação
-//   verificar_pendente → só lê: há campanha aguardando resposta desse telefone?
+//   confirmar          → avança o status (aceita novo_status; default 'enviado',
+//                         ou 'aguardando_resposta' automático se campanha_id)
+//   erro               → marca 'erro' + incrementa tentativas, para não travar a fila
+//   responder          → grava a resposta SIM/NÃO do fluxo legado de identidade
+//   obter_etapa_pendente → só lê: há etapa de SCRIPT aguardando resposta desse telefone?
+//   avancar_etapa      → grava o ramo casado pelo Hermes e avança (ou fecha) o script
+//   registrar_fora_do_script → resposta que não casou com nenhum ramo da etapa
+//   verificar_pendente → só lê: há campanha (legado OU script) aguardando resposta desse telefone?
 //   resumo            → contagem por status da zona (pro relatório horário no Telegram)
-//   relatorio         → mesma contagem, mas detalhada por pessoa (telefone/nome)
+//   relatorio         → mesma contagem, mas detalhada por pessoa (telefone/nome),
+//                       inclui a fila de atenção 'fora_do_script'
 //
 // Mesma auth por zona de hermes-update.js / hermes-mesarios.js / hermes-notificacoes.js.
 
@@ -139,6 +158,28 @@ export default async function handler(req, res) {
       .limit(LIMITE_POR_CICLO);
     if (error) return res.status(500).json({ error: error.message });
 
+    // Itens de script (campanha_id preenchido) 'aguardando_resposta' e
+    // devidos pra reenvio precisam da mensagem da ETAPA ATUAL — não de
+    // mensagem_enviada, que é só o texto da etapa 1, congelado na linha
+    // desde o envio inicial. Sem isso, reenviar um item parado na etapa 3,
+    // por exemplo, mandaria de volta o texto da etapa 1. Busca em lote
+    // (não uma query por item) pra não fazer N idas ao banco no loop abaixo.
+    const cutoffDate = new Date(cutoff);
+    const pendentesScriptParaReenviar = (data || []).filter((c) =>
+      c.status === 'aguardando_resposta' && c.campanha_id &&
+      (!c.ts_enviado || new Date(c.ts_enviado) < cutoffDate)
+    );
+    const mensagemEtapaPorChave = new Map(); // `${campanha_id}:${etapa_numero}` -> mensagem
+    if (pendentesScriptParaReenviar.length) {
+      const campanhaIds = [...new Set(pendentesScriptParaReenviar.map((c) => c.campanha_id))];
+      const { data: etapas, error: etapasErr } = await supabase
+        .from('sime_campanha_etapas')
+        .select('campanha_id, etapa_numero, mensagem')
+        .in('campanha_id', campanhaIds);
+      if (etapasErr) return res.status(500).json({ error: etapasErr.message });
+      for (const e of etapas || []) mensagemEtapaPorChave.set(`${e.campanha_id}:${e.etapa_numero}`, e.mensagem);
+    }
+
     const campanhas = [];
     for (const c of data || []) {
       let proximaAcao = null, mensagem = null, imagemUrl = null;
@@ -154,10 +195,19 @@ export default async function handler(req, res) {
         proximaAcao = c.campanha_id ? 'enviar_etapa_script' : (c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar');
         if (proximaAcao === 'enviar') imagemUrl = c.imagem_url || null;
       } else if (c.status === 'aguardando_resposta') {
-        const devido = !c.ts_enviado || new Date(c.ts_enviado) < new Date(cutoff);
+        const devido = !c.ts_enviado || new Date(c.ts_enviado) < cutoffDate;
         if (!devido) continue; // ainda dentro da janela de espera — não insiste
-        proximaAcao = 'reenviar_verificacao';
-        mensagem = c.mensagem_enviada;
+        if (c.campanha_id) {
+          // Reenvio de uma etapa de script — mensagem da etapa ATUAL, ver
+          // busca em lote acima. Etapa órfã (apagada depois de enviada) não
+          // trava a fila — só não sai daqui, igual a qualquer item sem
+          // mensagem (checado abaixo).
+          proximaAcao = 'reenviar_etapa_script';
+          mensagem = mensagemEtapaPorChave.get(`${c.campanha_id}:${c.etapa_atual}`) || null;
+        } else {
+          proximaAcao = 'reenviar_verificacao';
+          mensagem = c.mensagem_enviada;
+        }
       } else if (c.status === 'confirmado') {
         proximaAcao = 'enviar_convocacao';
         mensagem = c.mensagem_convocacao;
@@ -433,6 +483,13 @@ export default async function handler(req, res) {
         decisao_detectada: intencao || null,
         ts_respondido: ts,
         ts_enviado: ts, // conta como novo envio pra fins de RETRY_HORAS/MAX_TENTATIVAS
+        // Zera tentativas ao entrar numa etapa nova — cada etapa ganha seu
+        // próprio orçamento de MAX_TENTATIVAS reenvios. Sem isso, uma etapa
+        // 1 que precisou de 2 reenvios deixaria só 1 tentativa sobrando pra
+        // TODAS as etapas seguintes, mesmo que a pessoa tenha respondido a
+        // etapa 1 rápido (o reenvio de uma etapa não devia gastar orçamento
+        // de outra).
+        tentativas: 0,
         updated_at: ts,
       })
       .eq('id', item.id);
@@ -447,16 +504,47 @@ export default async function handler(req, res) {
 
   // ── REGISTRAR_FORA_DO_SCRIPT ── resposta que não casou com nenhuma
   // palavra-chave da etapa atual (seção 17 da especificação de melhorias).
-  // Por enquanto só registra em sime_logs — não decide nada, não muda
-  // status, não manda resposta automática.
+  // Não decide a intenção da pessoa nem manda resposta automática — mas
+  // MUDA o status pra 'fora_do_script' (terminal, sai do filtro de
+  // 'pendentes'). Antes disso só ia pro log e o item continuava
+  // 'aguardando_resposta', então o Hermes ficava reenviando a mesma etapa
+  // pra alguém que já tinha respondido (só que fora do script esperado) —
+  // e não havia nenhum jeito de listar esses casos pra revisão humana além
+  // de vasculhar sime_logs. Agora aparece em 'relatorio' como fila de
+  // atenção; classificação por IA fica pra quando essa seção da
+  // especificação for implementada (não é isto aqui).
   if (acao === 'registrar_fora_do_script') {
     if (!item_id) return res.status(400).json({ error: 'item_id é obrigatório' });
+
+    const { data: item, error: itemErr } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('id, telefone_whatsapp, ator_id, sime_atores(nome_completo)')
+      .eq('id', item_id)
+      .eq('zona_id', zonaId)
+      .maybeSingle();
+    if (itemErr) return res.status(500).json({ error: itemErr.message });
+    if (!item) return res.status(404).json({ error: 'Item não encontrado nesta zona' });
+
     const ts = await serverTs();
+    const { error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .update({
+        status: 'fora_do_script',
+        resposta_recebida: resposta_texto ? String(resposta_texto).slice(0, 500) : null,
+        ts_respondido: ts,
+        updated_at: ts,
+      })
+      .eq('id', item_id);
+    if (error) return res.status(500).json({ error: error.message });
+
     await supabase.from('sime_logs').insert({
       acao: 'campanha_script_fora_do_script', modulo: 'hermes_campanhas',
       payload: { id: item_id, zona: zona.numeroZona, resposta_texto }, ts,
     });
-    return res.status(200).json({ ok: true, registrado: true });
+    return res.status(200).json({
+      ok: true, registrado: true,
+      telefone: item.telefone_whatsapp, nome: item.sime_atores?.nome_completo || null,
+    });
   }
 
   // ── VERIFICAR_PENDENTE ── consulta (nunca muda nada) se há uma campanha
@@ -499,10 +587,16 @@ export default async function handler(req, res) {
   // whatsapp_existe é lido à parte do status: 'erro' cobre qualquer falha
   // de envio (rede, timeout), não só número inexistente — só entra em
   // nao_whatsapp quando o Hermes marcou whatsapp_existe=false de propósito.
+  //
+  // fora_do_script (desde 18/08/2026) é a fila de atenção dos scripts de
+  // campanha — respostas que não casaram com nenhuma palavra-chave da
+  // etapa (ver ação 'registrar_fora_do_script'). Traz resposta_recebida
+  // junto (as outras três colunas não precisam do texto da resposta —
+  // aqui é justamente o que um humano precisa ler pra decidir o que fazer).
   if (acao === 'relatorio') {
     const { data, error } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('telefone_whatsapp, status, whatsapp_existe, sime_atores(nome_completo)')
+      .select('telefone_whatsapp, status, whatsapp_existe, resposta_recebida, sime_atores(nome_completo)')
       .eq('zona_id', zonaId);
     if (error) return res.status(500).json({ error: error.message });
 
@@ -511,10 +605,12 @@ export default async function handler(req, res) {
     const naoWhatsapp = rows.filter((c) => c.whatsapp_existe === false).map(linha);
     const confirmaram = rows.filter((c) => ['confirmado', 'finalizado'].includes(c.status)).map(linha);
     const negaram = rows.filter((c) => c.status === 'telefone_incorreto').map(linha);
+    const foraDoScript = rows.filter((c) => c.status === 'fora_do_script')
+      .map((c) => ({ ...linha(c), resposta: c.resposta_recebida || null }));
 
     return res.status(200).json({
       ok: true, zona: zona.numeroZona, total: rows.length,
-      nao_whatsapp: naoWhatsapp, confirmaram, negaram,
+      nao_whatsapp: naoWhatsapp, confirmaram, negaram, fora_do_script: foraDoScript,
     });
   }
 
