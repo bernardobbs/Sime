@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME · Convocação de Mesários</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);}
+.tabs{background:var(--card);border-bottom:1px solid var(--border);display:flex;padding:0 12px;overflow-x:auto;}
+.tab{padding:10px 14px;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.tab.active{color:var(--text);border-bottom-color:var(--text);}
+.content{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;}
+
+.import-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:18px;}
+.ic-title{font-weight:800;margin-bottom:6px;}
+.ic-sub{font-size:.78rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.drop-zone{border:2px dashed var(--border2);border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg2);margin-bottom:12px;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:var(--blue-bg);}
+.dz-icon{font-size:2rem;margin-bottom:8px;}
+.dz-txt{font-size:.8rem;font-weight:700;color:var(--text2);}
+.dz-sub{font-size:.7rem;color:var(--text3);margin-top:4px;}
+.import-result{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:.78rem;font-weight:700;}
+.ir-ok  {background:var(--green-bg);color:var(--green);}
+.ir-err {background:var(--red-bg);color:var(--red);}
+.ir-warn{background:var(--yellow-bg);color:var(--yellow);}
+
+.btn{padding:9px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;}
+.btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+
+.form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
+.form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;}
+
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:11px;box-shadow:0 8px 30px rgba(0,0,0,.12);padding:24px;width:min(360px,92vw);}
+.login-card input{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;margin-top:8px;font-size:.9rem;font-family:inherit;color:var(--text);background:var(--bg2);}
+.login-card button.primary{width:100%;margin-top:10px;}
+
+/* MESA CARGO BADGES (usados na aba Dashboard) */
+.cargo-ok{color:var(--green);}
+.cargo-sem{color:var(--red);}
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+    <div style="font-size:.8rem;color:var(--text2);margin-bottom:8px;">Convocação de mesários exige login da equipe.</div>
+    <form id="login-form">
+      <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+      <div id="login-erro" style="color:var(--red);font-size:.78rem;min-height:1em;margin-top:6px;"></div>
+      <button class="btn btn-dark primary" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="painel-conteudo" style="display:none">
+  <div class="header">
+    <div class="logo">S</div>
+    <div class="h-info">
+      <div class="h-title">SIME · Convocação de Mesários</div>
+      <div class="h-sub" id="h-sub">carregando…</div>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <div class="tab active" id="tab-dashboard-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('dashboard',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📊 Dashboard</div>
+    <div class="tab" id="tab-contatar-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('contatar',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📞 Contatar mesários</div>
+    <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
+    <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
+  </div>
+
+  <div class="content" id="content"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="./sime_ui_utils.js"></script>
+<script src="./sime_mesarios_sync.js"></script>
+<script src="./sime_resumo_secoes.js"></script>
+<script src="./sime_contatar_mesarios.js"></script>
+<script src="./sime_historico_sync.js"></script>
+<script type="module">
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+window.supabaseAtores = supabase; // mesmo nome global que sime_mesarios_sync.js/sime_resumo_secoes.js já esperam (vieram de SIME_atores.html)
+
+let _zonaCache = null;
+window.zonaDoUsuario = async function zonaDoUsuario() {
+  if (_zonaCache) return _zonaCache;
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data } = await supabase.from('sime_usuarios').select('zona_id').eq('auth_user_id', user?.id).maybeSingle();
+  _zonaCache = data?.zona_id || null;
+  return _zonaCache;
+};
+
+window.log = async function log(acao, secao, payload) {
+  try {
+    await supabase.from('sime_logs').insert({ acao, modulo: 'convocacao', secao_id: null, payload });
+  } catch (e) { /* auditoria é melhor-esforço — não bloqueia a ação principal */ }
+};
+
+async function atualizarCabecalho() {
+  const zonaId = await zonaDoUsuario();
+  const { data: zona } = await supabase.from('sime_zonas').select('numero, nome').eq('id', zonaId).maybeSingle();
+  document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.nome}` : '—';
+}
+
+function mostrarPainel() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('painel-conteudo').style.display = '';
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erro = document.getElementById('login-erro');
+  erro.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    erro.textContent = /Failed to fetch|NetworkError/i.test(error.message || '') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.';
+    return;
+  }
+  mostrarPainel();
+  await atualizarCabecalho();
+  window.render();
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    mostrarPainel();
+    await atualizarCabecalho();
+    window.render();
+  }
+})();
+</script>
+<script>
+let curTab = 'dashboard';
+function goTab(tab, btn) {
+  curTab = tab;
+  document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); }
+  // Recarrega do banco a cada entrada — evita mostrar dado desatualizado
+  // depois de sincronizar ou de mudar status noutra aba.
+  if (tab === 'dashboard' && typeof rsDados !== 'undefined') rsDados = null;
+  if (tab === 'contatar' && typeof cmDados !== 'undefined') cmDados = null;
+  if (tab === 'historico' && typeof hsDados !== 'undefined') hsDados = null;
+  render();
+}
+function render() {
+  if (curTab === 'dashboard') { renderResumoSecoes(); return; }
+  if (curTab === 'contatar') { renderContatarMesarios(); return; }
+  if (curTab === 'sync') { renderSyncMesarios(); return; }
+  if (curTab === 'historico') { renderHistoricoSync(); return; }
+}
+window.render = render;
+</script>
+</body>
+</html>

@@ -77,7 +77,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
 /
 ├── CLAUDE.md                          ← Este arquivo
-├── modules/                           ← 16 módulos HTML
+├── modules/                           ← 20 módulos HTML
 │   ├── SIME_coordenador_preparacao.html  D-X
 │   ├── SIME_tv_preparacao.html           D-X (TV)
 │   ├── SIME_conferente.html              D-1
@@ -91,9 +91,13 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_midias.html                  Dia D
 │   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
+│   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
 │   ├── SIME_principal.html               Todos
 │   ├── SIME_tokens.html                  Pré-eleição
-│   └── SIME_paineis.html                 Todos
+│   ├── SIME_paineis.html                 Todos
+│   ├── SIME_problemas.html               Dia D
+│   ├── SIME_relatorios.html              Todos
+│   └── SIME_hermes_painel.html           Todos (métricas de campanha do Hermes)
 ├── api/
 │   ├── hermes-update.js               ← escrita de eventos de seção
 │   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
@@ -250,10 +254,11 @@ nunca é adivinhado por regra própria — vem direto da coluna "Tipo função
 eleitoral"/"Nº Função Eleitoral" do próprio arquivo (que já traz 'MRV'/'AL'),
 ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
 
-**Direto pelo navegador, sem gerar SQL**: `SIME_atores.html` → aba
-**🔄 Sincronizar mesários** aceita o CSV da planilha (formato de 81 colunas)
-por upload — mesma lógica de `parse_mesarios_gsheet_csv.py`, mas em JS
-(`sime_mesarios_sync.js`), gravando direto no Supabase com a sessão da
+**Direto pelo navegador, sem gerar SQL**: `SIME_convocacao.html` (módulo
+próprio, separado de `SIME_atores.html` desde 20/08/2026 — antes eram duas
+abas lá dentro) → aba **🔄 Sincronizar** aceita o CSV da planilha (formato de
+81 colunas) por upload — mesma lógica de `parse_mesarios_gsheet_csv.py`, mas
+em JS (`sime_mesarios_sync.js`), gravando direto no Supabase com a sessão da
 equipe (RLS `mesarios_raw_write_zona`, escopada pela zona do usuário — única
 policy de escrita em `sime_mesarios_raw`, adicionada em 20/08/2026; antes só
 existia SELECT pra `authenticated`, e só o SQL Editor com service_role
@@ -261,15 +266,44 @@ conseguia popular o staging). Deleta o staging antigo só daquela zona/UF
 (não `TRUNCATE` — preserva o staging de outra zona em paralelo) e chama a
 RPC na sequência.
 
+`SIME_convocacao.html` tem mais três abas:
+- **📊 Dashboard** (`sime_resumo_secoes.js`) — situação geral da zona em dois
+  níveis: por **local de votação** (agrega as seções que dividem o mesmo
+  prédio — `sime_secoes` não tem um id próprio de "local", o agrupamento é
+  por `local_nome`+`municipio`) e por **seção** (os 4 cargos de mesa,
+  ❌/🔶/⚠️/✅).
+- **📞 Contatar mesários** (`sime_contatar_mesarios.js`) — fila de contato
+  por status (falta contactar, confirmado, recusou, contato incorreto,
+  substituído), mostra o recado (`observacao`) de quem respondeu, e permite
+  marcar **meio de contato** (WhatsApp/Carta Registrada/Oficial de Justiça)
+  + status do envio por mesário (`sime_atores.meio_contato`/
+  `status_contato_alternativo`, `sql/SIME_atores_meio_contato.sql` — Carta/
+  Oficial de Justiça usam o endereço já no processo do TRE, o SIME só marca
+  qual meio usar e o andamento, não guarda endereço).
+- **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
+  (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
+  quantos atualizados/inativados.
+
+> **"Recusou" ≠ "não é a pessoa procurada" — e o SIME não separa isso
+> sozinho.** O Hermes grava `confirmacao='recusou'` tanto pra "sou eu mas
+> não vou atuar" quanto pra "não sou essa pessoa" (contato/CPF errado no TRE)
+> — são casos bem diferentes (o segundo precisa de busca de contato novo, o
+> primeiro precisa de substituto) mas caem no mesmo valor. Separar isso
+> automaticamente exigiria o Hermes (repositório separado) classificar a
+> frase e chamar uma ação nova — decisão de 20/08/2026: não fazer isso agora.
+> Em vez disso, o cartório lê o recado na aba "📞 Contatar mesários" e clica
+> "🔍 Marcar contato incorreto", que grava manualmente
+> `confirmacao='contato_incorreto'` — um valor que só essa tela escreve,
+> nunca o Hermes.
+
 > **O "Confirmou convocação" da planilha não vira o status de confirmação do
 > SIME.** Sobe pro staging por completude/auditoria, mas
 > `sime_sync_atores_from_raw` nunca leu (e continua sem ler)
 > `confirmou_convocacao`/`origem_resposta`/`justificativa` pra dentro de
 > `sime_atores.confirmacao` — são dois controles paralelos. O status real do
 > SIME só muda quando a pessoa responde de fato pelo WhatsApp, via
-> `api/hermes-mesarios.js`. Ver também `SIME_atores.html` → aba
-> **📊 Resumo por Seção**, que mostra o status dos 4 cargos de mesa por
-> seção usando exatamente esse campo real (não o da planilha).
+> `api/hermes-mesarios.js`. É esse campo real que a aba **📊 Dashboard**
+> mostra (não o da planilha).
 
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o

@@ -73,16 +73,64 @@ function renderResumoSecoes() {
   const semNenhum = linhas.filter(l => l.designados === 0).length;
   const completas = linhas.filter(l => l.confirmados === 4).length;
 
+  // Por local de votação — vários locais têm mais de uma seção (um prédio,
+  // várias urnas); sime_secoes só guarda local_nome (texto), sem id próprio
+  // de "local", então o agrupamento é por (local_nome + município).
+  const porLocalMap = {};
+  for (const l of linhas) {
+    const chave = `${l.secao.local_nome || '(sem local)'}|||${l.secao.municipio || ''}`;
+    if (!porLocalMap[chave]) porLocalMap[chave] = { local_nome: l.secao.local_nome, municipio: l.secao.municipio, secoes: [] };
+    porLocalMap[chave].secoes.push(l);
+  }
+  const porLocal = Object.values(porLocalMap).map(loc => {
+    const totalCargos = loc.secoes.length * RS_CARGOS.length;
+    const designados = loc.secoes.reduce((n, l) => n + l.designados, 0);
+    const confirmados = loc.secoes.reduce((n, l) => n + l.confirmados, 0);
+    const semNenhumNoLocal = loc.secoes.filter(l => l.designados === 0).length;
+    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal };
+  }).sort((a, b) => (a.local_nome || '').localeCompare(b.local_nome || ''));
+
   c.innerHTML = `
     <div class="import-card">
-      <div class="ic-title">📊 Resumo por Seção</div>
-      <div class="ic-sub">Status dos 4 cargos de mesa por seção — ❌ sem ninguém designado, 🔶 designado mas aguardando
-        confirmação por WhatsApp, ⚠️ recusou (precisa substituto), ✅ confirmado.</div>
+      <div class="ic-title">📊 Situação geral da zona</div>
+      <div class="ic-sub">Status dos 4 cargos de mesa (Presidente, 1º Mesário, 2º Mesário, 1º Secretário) — ❌ sem ninguém
+        designado, 🔶 designado mas aguardando confirmação por WhatsApp, ⚠️ recusou (precisa substituto), ✅ confirmado.</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin:10px 0;font-size:.85rem">
-        <div><b>${linhas.length}</b> seções mapeadas</div>
-        <div style="${semNenhum > 0 ? 'color:var(--red);font-weight:700' : ''}"><b>${semNenhum}</b> sem nenhum cargo designado</div>
-        <div><b>${completas}</b> com mesa completa confirmada (4/4)</div>
+        <div><b>${porLocal.length}</b> locais de votação · <b>${linhas.length}</b> seções mapeadas</div>
+        <div style="${semNenhum > 0 ? 'color:var(--red);font-weight:700' : ''}"><b>${semNenhum}</b> seções sem nenhum cargo designado</div>
+        <div><b>${completas}</b> seções com mesa completa confirmada (4/4)</div>
       </div>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title">📍 Por Local de Votação</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="text-align:left;border-bottom:1px solid var(--border2)">
+              <th style="padding:6px 8px">Local</th>
+              <th style="padding:6px 8px">Município</th>
+              <th style="padding:6px 8px">Seções</th>
+              <th style="padding:6px 8px">Cargos designados</th>
+              <th style="padding:6px 8px">Cargos confirmados</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${porLocal.map(loc => `
+              <tr style="border-bottom:1px solid var(--border2);${loc.semNenhumNoLocal > 0 ? 'background:var(--red-bg)' : loc.confirmados === loc.totalCargos ? 'background:var(--green-bg)' : ''}">
+                <td style="padding:6px 8px;font-weight:700">${loc.local_nome || '(sem local)'}</td>
+                <td style="padding:6px 8px">${loc.municipio || ''}</td>
+                <td style="padding:6px 8px">${loc.secoes.length}</td>
+                <td style="padding:6px 8px">${loc.designados}/${loc.totalCargos}</td>
+                <td style="padding:6px 8px" class="${loc.confirmados === loc.totalCargos ? 'cargo-ok' : ''}">${loc.confirmados}/${loc.totalCargos}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title">📋 Por Seção</div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
