@@ -12,11 +12,12 @@
 // se for terminal). Isso é o que modules/campanhas/script.js do Hermes lê
 // pra casar a resposta de quem recebeu a mensagem.
 //
-// A ligação com o disparo em massa (função existente confirmarDisparo())
-// fica pro próximo passo: por ora este módulo só cria/edita/salva scripts.
-// Integração: trocar o "Modelo" dp-tipo pra oferecer "🧩 Usar script salvo"
-// e, ao enfileirar, gravar campanha_id + etapa_atual=1 em vez de
-// mensagem_convocacao fixa.
+// Ligação com o disparo em massa: já feita, não é pendência. O "Modelo"
+// dp-tipo em confirmarDisparo() (SIME_atores.html) oferece "🧩 Usar script
+// salvo" e, ao enfileirar, grava campanha_id + etapa_atual=1 em vez de
+// mensagem_convocacao fixa. api/hermes-campanhas.js segue daí em diante
+// (obter_etapa_pendente/avancar_etapa). Este módulo só cria/edita/salva o
+// script em si.
 
 const STATUS_FINAL_OPCOES = [
   { v: 'confirmado', label: 'Confirmado' },
