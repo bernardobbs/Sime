@@ -301,7 +301,19 @@ separadamente e com propósitos diferentes:
   (❌ sem designação / 🔶 aguardando confirmação / ⚠️ recusou ou contato
   incorreto / 🔁 precisa ser substituído / ✅ confirmado) **com o nome de
   quem está designado** em cada cargo (20/08/2026 — antes só mostrava o
-  ícone, sem dizer quem é a pessoa) e a data da última confirmação.
+  ícone, sem dizer quem é a pessoa) e a data da última confirmação. **Clicar
+  no nome** de um mesário no drilldown abre o mesmo modal de "Contatar
+  mesários" (tentativas de contato + histórico) — `cmAbrirModal` carrega
+  `cmDados` na hora se a aba Contatar mesários ainda não tiver sido visitada
+  nesta sessão, em vez de abrir um modal vazio.
+
+  **Bug real corrigido em 20/08/2026 — % do card de local era sobre
+  designados, não confirmados.** Uma seção com mesário no cargo mas nunca
+  contactado (ou contactado e sem resposta) contava como "pronta" — o
+  cartório reportou um local em 100%/verde com pelo menos 3 seções ainda
+  incompletas. A cor/barra/percentual agora são sobre `confirmados/total`;
+  "designados" (tem alguém atribuído, confirmado ou não) continua exibido,
+  só que como nota secundária, não mais controlando a cor.
 
   **`precisa_substituir` tem prioridade visual sobre `confirmacao`.** É uma
   flag booleana própria (`sime_atores.precisa_substituir`, default `false`),
@@ -340,14 +352,16 @@ separadamente e com propósitos diferentes:
   de contato incorreto). Único ponto do sistema, além de `SIME_atores.html`,
   que deixa editar dado de contato de um ator.
 
-  **Histórico não cobre tudo, de propósito.** `hermes_confirmou_mesario` e
-  `hermes_atualizou_info` (gravados por `api/hermes-mesarios.js` quando o
-  próprio mesário responde no WhatsApp) guardam `afetados` como lista de
-  nome/seção, sem `ator_id` — casar isso com uma pessoa exigiria comparação
-  fuzzy por nome, o que é pior que não mostrar. Ficou de fora da lista
-  "Atualizações" por decisão, não esquecimento; o status atual
-  (confirmado/recusou/etc.) já aparece no badge do card, só o histórico
-  detalhado dessas trocas que não está no modal ainda.
+  **Histórico do Hermes agora entra no modal (20/08/2026 — antes ficava de
+  fora "de propósito").** `hermes_confirmou_mesario` e `hermes_atualizou_info`
+  (gravados por `api/hermes-mesarios.js` quando o próprio mesário responde no
+  WhatsApp) passaram a guardar `id` dentro de cada item de `afetados` (antes
+  só nome/seção) — o modal casa esses logs por containment
+  (`payload->afetados` contém `[{id}]`, via `.contains()`), não por
+  `payload->>ator_id` como os logs gravados pelo próprio SIME (`afetados` é
+  lista porque uma resposta pode valer pra mais de uma convocação da mesma
+  pessoa — mesário e apoio logístico). Antes disso, casar exigiria
+  comparação fuzzy por nome; agora é exato.
 
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem

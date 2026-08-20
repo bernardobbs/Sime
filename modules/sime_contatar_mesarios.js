@@ -29,6 +29,8 @@ let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
 
 const CM_CAMP_STATUS_LABEL = { pendente: 'Na fila do Hermes', enviado: 'Enviado', erro: 'Erro no envio' };
+const CM_HERMES_ACAO_LABEL = { confirmar: 'Confirmou por WhatsApp', recusar: 'Recusou por WhatsApp', substituir: 'Avisou substituição por WhatsApp' };
+// Ações que o SIME grava com payload.ator_id direto — casam por eq() simples.
 const CM_LOG_LABEL = {
   mesario_editar_telefone: () => 'Telefone atualizado manualmente',
   mesario_editar_rastreio: () => 'Código de rastreio atualizado',
@@ -36,6 +38,14 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do envio → ${CM_STATUS_ALT_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
+};
+// Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
+// direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
+// resposta pode afetar mesário E apoio logístico da mesma pessoa). Casam por
+// containment (payload->afetados @> [{id}]), não por eq() — ver cmAbrirModal.
+const CM_LOG_HERMES_LABEL = {
+  hermes_confirmou_mesario: (p) => CM_HERMES_ACAO_LABEL[p.acao] || `Respondeu por WhatsApp (${p.acao})`,
+  hermes_atualizou_info: () => 'Mandou recado por WhatsApp (anexado à observação)',
 };
 
 function cmEsc(s) {
@@ -136,26 +146,39 @@ function cmPessoaModal() {
 // na hora (sem travar no clique) e busca o histórico em paralelo, só
 // re-renderizando quando chega — cmModalId muda de novo se o usuário trocar
 // de pessoa antes da resposta voltar, então o resultado tardio é descartado.
+//
+// Também é chamado a partir do Dashboard (nome do mesário no drilldown por
+// seção, sime_resumo_secoes.js) — que pode acontecer antes da aba "Contatar
+// mesários" ter sido visitada nesta sessão, com cmDados ainda null. Carrega
+// na hora nesse caso, em vez de abrir um modal vazio.
 async function cmAbrirModal(id) {
   cmModalId = id;
   cmModalHist = null;
-  cmRenderModal();
   document.getElementById('overlay')?.classList.add('open');
+  if (!cmDados) { await cmCarregar(); if (cmModalId !== id) return; }
+  cmRenderModal();
 
   const sb = window.supabaseAtores;
-  const [{ data: campanhas }, { data: logs }] = await Promise.all([
+  const [{ data: campanhas }, { data: logsSime }, { data: logsHermes }] = await Promise.all([
     sb.from('sime_campanhas_confirmacao')
       .select('id, mensagem_enviada, status, created_at')
       .eq('ator_id', id).order('created_at', { ascending: false }).limit(10),
     sb.from('sime_logs')
       .select('ts, acao, payload')
       .eq('payload->>ator_id', id).order('ts', { ascending: false }).limit(10),
+    // Hermes não grava ator_id direto (payload.afetados é uma lista, a
+    // resposta pode valer pra mais de uma convocação da mesma pessoa) —
+    // casa por containment em vez de igualdade.
+    sb.from('sime_logs')
+      .select('ts, acao, payload')
+      .contains('payload->afetados', [{ id }]).order('ts', { ascending: false }).limit(10),
   ]);
   if (cmModalId !== id) return; // trocou de pessoa enquanto carregava
-  cmModalHist = {
-    campanhas: campanhas || [],
-    logs: (logs || []).filter(l => CM_LOG_LABEL[l.acao]),
-  };
+  const logs = [
+    ...(logsSime || []).filter(l => CM_LOG_LABEL[l.acao]).map(l => ({ ...l, _label: CM_LOG_LABEL[l.acao] })),
+    ...(logsHermes || []).filter(l => CM_LOG_HERMES_LABEL[l.acao]).map(l => ({ ...l, _label: CM_LOG_HERMES_LABEL[l.acao] })),
+  ].sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 15);
+  cmModalHist = { campanhas: campanhas || [], logs };
   cmRenderModal();
 }
 
@@ -187,7 +210,7 @@ function cmRenderModal() {
   const blocoLogs = cmModalHist === null
     ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
     : cmListaHist(cmModalHist.logs, 'Nenhuma atualização registrada ainda.',
-        l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc((CM_LOG_LABEL[l.acao] || (() => l.acao))(l.payload || {}))}</div>`);
+        l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc(l._label(l.payload || {}))}</div>`);
 
   modal.innerHTML = `
     <div class="m-hdr">

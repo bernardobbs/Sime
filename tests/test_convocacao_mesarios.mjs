@@ -16,6 +16,7 @@ class QB {
   select(_cols, opts){ if(opts && opts.count) this._count=true; return this; }
   eq(c,v){ this.f[c]=v; return this; }
   in(c,v){ this.f['__in_'+c]=v; return this; }
+  contains(c,v){ this.f['__contains_'+c]=v; return this; }
   order(){ return this; }
   limit(){ return this; }
   single(){ return this.maybeSingle(); }
@@ -25,6 +26,11 @@ class QB {
   _casa(x){
     return Object.entries(this.f).every(([k,v]) => {
       if(k.startsWith('__in_')) return v.includes(x[k.slice(5)]);
+      if(k.startsWith('__contains_')){
+        const path=k.slice(11); const [col,key]=path.split('->');
+        const arr=x[col]?.[key];
+        return Array.isArray(arr) && arr.some(item => v.every(want => Object.entries(want).every(([kk,vv]) => item[kk]===vv)));
+      }
       if(k.includes('->>')){ const [col,key]=k.split('->>'); return String(x[col]?.[key] ?? '')===String(v); }
       return x[k]===v;
     });
@@ -71,6 +77,7 @@ function mock() {
     sime_logs: [
       { ts:'2026-08-20T09:00:00.000Z', acao:'mesarios_sync_csv', modulo:'convocacao', payload:{ zona:'7', uf:'PI', registros:290, atualizados:280, inativados:5 } },
       { ts:'2026-08-19T10:00:00.000Z', acao:'mesario_meio_contato', modulo:'convocacao', payload:{ ator_id:'a2', meio_contato:'carta_registrada' } },
+      { ts:'2026-08-17T08:30:00.000Z', acao:'hermes_confirmou_mesario', modulo:'hermes_mesarios', payload:{ acao:'confirmar', telefone:'5586999990002', zona:'7', afetados:[{ id:'a2', nome:'BRUNO MESARIO', secao:'0030' }], ts:'2026-08-17T08:30:00.000Z' } },
     ],
     sime_secoes: [
       { id:'s1', numero:30, local_nome:'Grupo Escolar A', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:280 },
@@ -127,7 +134,12 @@ async function login(p) {
 
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();
   check('card do local: Grupo Escolar A mostra 2 seções', /Seções[\s\S]*?02/.test(cardGrupoA) || /\b2\b/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
-  check('card do local: Grupo Escolar A mostra 4/8 mesários designados (50%)', /4\/8/.test(cardGrupoA) && /50%/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
+  // % é sobre CONFIRMADOS (só Ana), não designados (Ana+Bruno+Carla+Diego) —
+  // achado real: seção com mesário nunca contactado batia 100%/verde antes
+  // dessa correção (20/08/2026). 1 confirmado de 8 cargos = 13%; os outros
+  // 3 designados (mas não confirmados) aparecem numa nota à parte.
+  check('card do local: Grupo Escolar A mostra 1/8 confirmados (13%), não 4/8 (50%)', /1\/8/.test(cardGrupoA) && /13%/.test(cardGrupoA) && !/50%/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
+  check('card do local: nota separada mostra os 4/8 designados (nem todos confirmaram)', /4\/8 designados/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
 
   const cardEscolaB = await p.locator('.import-card:has-text("Escola B")').first().textContent();
   check('card do local: Escola B (nenhum mesário) mostra 0/4 e 0%', /0\/4/.test(cardEscolaB) && /0%/.test(cardEscolaB), cardEscolaB.replace(/\s+/g, ' '));
@@ -153,6 +165,19 @@ async function login(p) {
   const cardSecao30 = await p.locator('.import-card:has-text("30")').first().textContent();
   check('drilldown: seção 30 mostra ✅ (Presidente confirmado)', cardSecao30.includes('✅'), cardSecao30);
   check('drilldown: seção 30 mostra o nome de quem está designado em cada cargo', /ANA/.test(cardSecao30) && /BRUNO/.test(cardSecao30), cardSecao30.replace(/\s+/g, ' '));
+
+  // Clicar no nome do mesário no Dashboard abre o mesmo modal de "Contatar
+  // mesários" (tentativas de contato) — mesmo sem essa aba ter sido visitada
+  // ainda nesta sessão (cmDados começa null, precisa carregar na hora).
+  check('modal fechado antes do clique', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+  // Bruno (não Ana) — é quem tem a tentativa de campanha na fixture, o que
+  // também confirma que o clique abriu a pessoa certa, não qualquer uma.
+  await p.locator('.import-card:has-text("30") div[onclick*="cmAbrirModal"]').filter({ hasText: 'BRUNO' }).first().click();
+  await p.waitForTimeout(300);
+  check('clicar no nome do mesário no Dashboard abre o modal (cmDados carrega na hora)', await p.evaluate(() => document.getElementById('overlay').classList.contains('open')));
+  check('modal aberto a partir do Dashboard mostra a tentativa de contato', /confirme sua presença/.test(await p.locator('#modal-body').textContent()));
+  await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
+  await p.waitForTimeout(100);
 
   await p.click('button:has-text("← Voltar")');
   await p.waitForTimeout(150);
@@ -273,6 +298,7 @@ async function login(p) {
   const modalTxt = await p.locator('#modal-body').textContent();
   check('mostra a campanha já enviada pro Bruno (tentativa de contato)', /Enviado/.test(modalTxt) && /confirme sua presença/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
   check('mostra a atualização anterior (histórico)', /Meio de contato.*Carta Registrada/.test(modalTxt.replace(/\s+/g, ' ')), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
+  check('mostra também a confirmação feita pelo próprio mesário via Hermes/WhatsApp (casada por afetados, não por ator_id)', /Confirmou por WhatsApp/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
 
   await p.fill('#mm-rastreio', 'aa123456789br');
   await p.fill('#mm-tel', '(86) 98888-7777');

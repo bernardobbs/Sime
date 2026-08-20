@@ -293,7 +293,10 @@ export default async function handler(req, res) {
       }
       await registrarLog('hermes_atualizou_info', {
         telefone: soDigitos(telefone), zona: zona.numeroZona, mensagem,
-        afetados: alvos.map(p => p.nome_completo), ts,
+        // id junto do nome (20/08/2026) — sem isso o modal de mesário em
+        // SIME_convocacao.html não tinha como casar este log com a pessoa
+        // sem comparação fuzzy por nome, e ficava de fora do histórico.
+        afetados: alvos.map(p => ({ id: p.id, nome: p.nome_completo })), ts,
       });
       return res.status(200).json({
         ok: true,
@@ -325,7 +328,8 @@ export default async function handler(req, res) {
     }
     await registrarLog('hermes_confirmou_mesario', {
       acao, telefone: soDigitos(telefone), zona: zona.numeroZona,
-      afetados: alvos.map(p => ({ nome: p.nome_completo, secao: secaoDetalhe(p, secoesPorId)?.numero || null })), ts,
+      // id junto (20/08/2026) — mesmo motivo do hermes_atualizou_info acima.
+      afetados: alvos.map(p => ({ id: p.id, nome: p.nome_completo, secao: secaoDetalhe(p, secoesPorId)?.numero || null })), ts,
     });
 
     return res.status(200).json({

@@ -27,7 +27,7 @@ async function rsCarregar() {
 
   const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { count: totalApoio }] = await Promise.all([
     sb.from('sime_secoes').select('id, numero, municipio, local_nome, eleitores').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
-    sb.from('sime_atores').select('nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
+    sb.from('sime_atores').select('id, nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
     sb.from('sime_atores').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
   ]);
   if (e1 || e2) { rsDados = { erro: (e1 || e2).message }; render(); return; }
@@ -68,13 +68,13 @@ function rsEsc(s) {
 // confirmada pode ser marcada pra substituição depois (ex.: virou inelegível)
 // — por isso esse flag tem prioridade visual sobre o confirmacao normal.
 function rsStatusCargo(ator) {
-  if (!ator) return { icone: '❌', label: 'Sem designação', cls: 'rs-sem', nome: null };
-  const nome = ator.nome_completo;
-  if (ator.precisa_substituir) return { icone: '🔁', label: `Precisa ser substituído — ${nome}`, cls: 'rs-alerta', nome };
-  if (ator.confirmacao === 'confirmado') return { icone: '✅', label: `Confirmado — ${nome}`, cls: 'rs-ok', nome };
-  if (ator.confirmacao === 'recusou') return { icone: '⚠️', label: `Recusou — precisa substituto — ${nome}`, cls: 'rs-alerta', nome };
-  if (ator.confirmacao === 'contato_incorreto') return { icone: '🔍', label: `Contato incorreto — ${nome}`, cls: 'rs-alerta', nome };
-  return { icone: '🔶', label: `Aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome }; // pendente/substituido/outros
+  if (!ator) return { icone: '❌', label: 'Sem designação', cls: 'rs-sem', nome: null, id: null };
+  const nome = ator.nome_completo, id = ator.id;
+  if (ator.precisa_substituir) return { icone: '🔁', label: `Precisa ser substituído — ${nome}`, cls: 'rs-alerta', nome, id };
+  if (ator.confirmacao === 'confirmado') return { icone: '✅', label: `Confirmado — ${nome}`, cls: 'rs-ok', nome, id };
+  if (ator.confirmacao === 'recusou') return { icone: '⚠️', label: `Recusou — precisa substituto — ${nome}`, cls: 'rs-alerta', nome, id };
+  if (ator.confirmacao === 'contato_incorreto') return { icone: '🔍', label: `Contato incorreto — ${nome}`, cls: 'rs-alerta', nome, id };
+  return { icone: '🔶', label: `Aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome, id }; // pendente/substituido/outros
 }
 
 function rsFmtData(iso) {
@@ -106,7 +106,13 @@ function rsCalcular() {
     const designados = loc.secoes.reduce((n, l) => n + l.designados, 0);
     const confirmados = loc.secoes.reduce((n, l) => n + l.confirmados, 0);
     const semNenhumNoLocal = loc.secoes.filter(l => l.designados === 0).length;
-    const pct = totalCargos ? Math.round((designados / totalCargos) * 100) : 0;
+    // pct é sobre CONFIRMADOS, não designados (corrigido 20/08/2026 — achado
+    // real em produção: uma seção com mesário na função mas nunca contactado
+    // aparecia como "designado" e o local batia 100%/verde mesmo sem ninguém
+    // confirmado, escondendo que a seção ainda precisava de trabalho).
+    // "Designados" continua calculado e exibido à parte (ver rsCardLocal) —
+    // é informação real, só não deve mais controlar a cor/barra de "pronto".
+    const pct = totalCargos ? Math.round((confirmados / totalCargos) * 100) : 0;
     return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct };
   }).sort((a, b) => (a.local_nome || '').localeCompare(b.local_nome || ''));
 
@@ -127,8 +133,9 @@ function rsCardLocal(loc) {
       <div class="ic-sub" style="margin-bottom:8px;display:flex;align-items:center;gap:4px">📍 ${loc.municipio || ''}</div>
       <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--text2);margin-bottom:4px">
         <span>Seções<br><b style="color:var(--text);font-size:.9rem">${String(loc.secoes.length).padStart(2, '0')}</b></span>
-        <span style="text-align:right">Mesários<br><b style="color:var(--text);font-size:.9rem">${loc.designados}/${loc.totalCargos}</b></span>
+        <span style="text-align:right">Confirmados<br><b style="color:var(--text);font-size:.9rem">${loc.confirmados}/${loc.totalCargos}</b></span>
       </div>
+      ${loc.designados !== loc.confirmados ? `<div class="ic-sub" style="margin-bottom:4px">${loc.designados}/${loc.totalCargos} designados (nem todos confirmaram)</div>` : ''}
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
         <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden">
           <div style="height:100%;width:${Math.min(loc.pct, 100)}%;background:${cor};border-radius:99px"></div>
@@ -147,7 +154,7 @@ function rsLinhaLocal(loc) {
         <div class="ic-sub" style="margin-bottom:0">📍 ${loc.municipio || ''}</div>
       </div>
       <div style="font-size:.76rem;color:var(--text2);white-space:nowrap">Seções: <b style="color:var(--text)">${loc.secoes.length}</b></div>
-      <div style="font-size:.76rem;color:var(--text2);white-space:nowrap">Mesários: <b style="color:var(--text)">${loc.designados}/${loc.totalCargos}</b></div>
+      <div style="font-size:.76rem;color:var(--text2);white-space:nowrap">Confirmados: <b style="color:var(--text)">${loc.confirmados}/${loc.totalCargos}</b>${loc.designados !== loc.confirmados ? ` <span style="color:var(--text3)">(${loc.designados} designados)</span>` : ''}</div>
       <div style="display:flex;align-items:center;gap:8px;width:140px">
         <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden">
           <div style="height:100%;width:${Math.min(loc.pct, 100)}%;background:${cor};border-radius:99px"></div>
@@ -168,10 +175,10 @@ function rsCardSecao(l) {
       </div>
       <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap">
         ${l.cargos.map((cg, i) => `
-          <div style="text-align:center;max-width:78px" title="${rsEsc(cg.label)}">
+          <div style="text-align:center;max-width:78px${cg.id ? ';cursor:pointer' : ''}" title="${rsEsc(cg.label)}${cg.id ? ' — clique pra ver tentativas de contato' : ''}"${cg.id ? ` onclick="event.stopPropagation();cmAbrirModal('${cg.id}')"` : ''}>
             <div style="font-size:1.1rem">${cg.icone}</div>
             <div style="font-size:.68rem;color:var(--text2);margin-top:2px">${RS_CARGOS[i]}</div>
-            ${cg.nome ? `<div style="font-size:.66rem;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
+            ${cg.nome ? `<div style="font-size:.66rem;color:${cg.id ? 'var(--blue)' : 'var(--text3)'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${cg.id ? 'text-decoration:underline' : ''}">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
           </div>`).join('')}
       </div>
       <div class="ic-sub" style="margin-top:10px;margin-bottom:0">Atualizado em ${rsFmtData(l.atualizado)}</div>
