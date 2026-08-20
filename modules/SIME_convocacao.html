@@ -52,6 +52,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* MESA CARGO BADGES (usados na aba Dashboard) */
 .cargo-ok{color:var(--green);}
 .cargo-sem{color:var(--red);}
+
+/* MODAL (mesmo padrão visual de SIME_atores.html) */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.m-title{font-weight:800;font-size:.92rem;}
+.m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+.m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.m-hist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
+.m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
+.m-hist-item b{color:var(--text);}
 </style>
 </head>
 <body>
@@ -86,6 +99,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 
   <div class="content" id="content"></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="cmFecharModal(event)">
+  <div class="modal" id="modal-body"></div>
 </div>
 
 <div class="toast" id="toast"></div>

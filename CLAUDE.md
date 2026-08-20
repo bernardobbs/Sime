@@ -312,9 +312,24 @@ separadamente e com propósitos diferentes:
   com esse grupo pré-selecionado (via `sessionStorage`, lido e apagado uma
   única vez) — reaproveita o motor de campanha que já existe em Disparo em
   massa, em vez de duplicar essa UI dentro de Convocação. **Clicar no nome**
-  do mesário abre um painel de edição inline (telefone/WhatsApp e código de
-  rastreio dos Correios) — único ponto do sistema, além de
-  `SIME_atores.html`, que deixa editar dado de contato de um ator.
+  do mesário abre um **modal** (não mais painel inline — pedido do cartório
+  em 20/08/2026) com telefone/WhatsApp e código de rastreio editáveis num
+  "Salvar" só, mais duas listas de histórico: **📞 Tentativas de contato**
+  (últimos 10 registros de `sime_campanhas_confirmacao` por `ator_id` — o
+  que o Hermes de fato tentou mandar) e **📜 Atualizações** (últimos 10
+  `sime_logs` cujo `payload->>ator_id` bate com a pessoa — telefone/rastreio
+  editados manualmente, meio de contato trocado, status de envio, marcação
+  de contato incorreto). Único ponto do sistema, além de `SIME_atores.html`,
+  que deixa editar dado de contato de um ator.
+
+  **Histórico não cobre tudo, de propósito.** `hermes_confirmou_mesario` e
+  `hermes_atualizou_info` (gravados por `api/hermes-mesarios.js` quando o
+  próprio mesário responde no WhatsApp) guardam `afetados` como lista de
+  nome/seção, sem `ator_id` — casar isso com uma pessoa exigiria comparação
+  fuzzy por nome, o que é pior que não mostrar. Ficou de fora da lista
+  "Atualizações" por decisão, não esquecimento; o status atual
+  (confirmado/recusou/etc.) já aparece no badge do card, só o histórico
+  detalhado dessas trocas que não está no modal ainda.
 
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem

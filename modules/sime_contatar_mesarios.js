@@ -24,7 +24,17 @@ const CM_STATUS_ALT_LABEL = { a_enviar: 'A enviar', enviado: 'Enviado', entregue
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
 let cmBusca = '';
-let cmEditando = null; // id do ator com o painel de edição aberto (só um por vez)
+let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
+let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
+
+const CM_CAMP_STATUS_LABEL = { pendente: 'Na fila do Hermes', enviado: 'Enviado', erro: 'Erro no envio' };
+const CM_LOG_LABEL = {
+  mesario_editar_telefone: () => 'Telefone atualizado manualmente',
+  mesario_editar_rastreio: () => 'Código de rastreio atualizado',
+  mesario_meio_contato: (p) => `Meio de contato → ${CM_MEIO_LABEL[p.meio_contato] || p.meio_contato}`,
+  mesario_status_contato_alt: (p) => `Status do envio → ${CM_STATUS_ALT_LABEL[p.status] || p.status || '—'}`,
+  mesario_contato_incorreto: () => 'Marcado como contato incorreto',
+};
 
 function cmEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -82,37 +92,135 @@ async function cmSalvarStatusAlt(id, status) {
   showToast('✓ Status de envio atualizado');
 }
 
-function cmToggleEditar(id) {
-  cmEditando = cmEditando === id ? null : id;
-  render();
-}
-
-async function cmSalvarTelefone(id, valor) {
-  const sb = window.supabaseAtores;
-  const limpo = String(valor || '').replace(/\D/g, '');
-  const { error } = await sb.from('sime_atores').update({ telefone_whatsapp: limpo || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (p) p.telefone_whatsapp = limpo || null;
-  await log('mesario_editar_telefone', '', { ator_id: id });
-  showToast('✓ Telefone atualizado');
-  render();
-}
-
-async function cmSalvarRastreio(id, valor) {
-  const sb = window.supabaseAtores;
-  const limpo = String(valor || '').trim().toUpperCase();
-  const { error } = await sb.from('sime_atores').update({ codigo_rastreio: limpo || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (p) p.codigo_rastreio = limpo || null;
-  await log('mesario_editar_rastreio', '', { ator_id: id });
-  showToast('✓ Código de rastreio salvo');
-  render();
-}
-
 function cmLinkRastreio(codigo) {
   return 'https://rastreamento.correios.com.br/app/index.php?objetos=' + encodeURIComponent(codigo);
+}
+
+function cmFmtDataHist(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function cmPessoaModal() {
+  return cmDados?.pessoas?.find(x => x.id === cmModalId) || null;
+}
+
+// Clicar no nome abre o modal: telefone/rastreio editáveis (um "Salvar" só,
+// não um por campo) + duas listas de histórico — tentativas de contato (a
+// fila de campanha do Hermes, sime_campanhas_confirmacao) e atualizações
+// (sime_logs desta tela, casando por payload->>ator_id). Renderiza a casca
+// na hora (sem travar no clique) e busca o histórico em paralelo, só
+// re-renderizando quando chega — cmModalId muda de novo se o usuário trocar
+// de pessoa antes da resposta voltar, então o resultado tardio é descartado.
+async function cmAbrirModal(id) {
+  cmModalId = id;
+  cmModalHist = null;
+  cmRenderModal();
+  document.getElementById('overlay')?.classList.add('open');
+
+  const sb = window.supabaseAtores;
+  const [{ data: campanhas }, { data: logs }] = await Promise.all([
+    sb.from('sime_campanhas_confirmacao')
+      .select('id, mensagem_enviada, status, created_at')
+      .eq('ator_id', id).order('created_at', { ascending: false }).limit(10),
+    sb.from('sime_logs')
+      .select('ts, acao, payload')
+      .eq('payload->>ator_id', id).order('ts', { ascending: false }).limit(10),
+  ]);
+  if (cmModalId !== id) return; // trocou de pessoa enquanto carregava
+  cmModalHist = {
+    campanhas: campanhas || [],
+    logs: (logs || []).filter(l => CM_LOG_LABEL[l.acao]),
+  };
+  cmRenderModal();
+}
+
+function cmFecharModal(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay')?.classList.remove('open');
+    cmModalId = null;
+    cmModalHist = null;
+  }
+}
+
+function cmListaHist(itens, vazio, linha) {
+  if (!itens.length) return `<div class="ic-sub" style="margin-bottom:0">${vazio}</div>`;
+  return `<div class="m-hist">${itens.map(linha).join('')}</div>`;
+}
+
+function cmRenderModal() {
+  const modal = document.getElementById('modal-body');
+  if (!modal) return;
+  const p = cmPessoaModal();
+  if (!p) { modal.innerHTML = ''; return; }
+  const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
+
+  const blocoCampanhas = cmModalHist === null
+    ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
+    : cmListaHist(cmModalHist.campanhas, 'Nenhuma campanha enviada pra essa pessoa ainda.',
+        c => `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`);
+
+  const blocoLogs = cmModalHist === null
+    ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
+    : cmListaHist(cmModalHist.logs, 'Nenhuma atualização registrada ainda.',
+        l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc((CM_LOG_LABEL[l.acao] || (() => l.acao))(l.payload || {}))}</div>`);
+
+  modal.innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">${cmEsc(p.nome_completo)}</div>
+      <button class="close-btn" aria-label="Fechar" onclick="cmFecharModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="ic-sub" style="margin-bottom:0">
+        ${cmEsc(p.funcao_mesa || '')}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
+        ${p.inscricao_eleitoral ? ` · Título ${cmEsc(p.inscricao_eleitoral)}` : ''}
+      </div>
+      ${p.observacao ? `<div class="ic-sub" style="background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap;margin-bottom:0">${cmEsc(p.observacao)}</div>` : ''}
+      <div class="form-group">
+        <label>Telefone (WhatsApp)</label>
+        <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
+      </div>
+      <div class="form-group">
+        <label>Código de rastreio (Correios)</label>
+        <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
+        ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
+      </div>
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:6px">📞 Tentativas de contato (campanhas)</div>
+        ${blocoCampanhas}
+      </div>
+      <div>
+        <div style="font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:6px">📜 Atualizações</div>
+        ${blocoLogs}
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn btn-out" onclick="cmFecharModal()">Fechar</button>
+      <button class="btn btn-dark" onclick="cmSalvarModal()">💾 Salvar</button>
+    </div>`;
+}
+
+async function cmSalvarModal() {
+  const id = cmModalId;
+  const p = cmPessoaModal();
+  if (!p) return;
+  const sb = window.supabaseAtores;
+  const tel = document.getElementById('mm-tel').value.replace(/\D/g, '');
+  const rastreio = document.getElementById('mm-rastreio').value.trim().toUpperCase();
+  const patch = {};
+  if (tel !== (p.telefone_whatsapp || '')) patch.telefone_whatsapp = tel || null;
+  if (rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
+  if (!Object.keys(patch).length) { cmFecharModal(); return; }
+
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  Object.assign(p, patch);
+  if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
+  if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+  showToast('✓ Dados atualizados');
+  cmFecharModal();
+  render();
 }
 
 function cmFiltrar() {
@@ -186,7 +294,7 @@ function renderContatarMesarios() {
         <div class="import-card" style="padding:12px 14px">
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:flex-start">
             <div>
-              <div style="font-weight:800;cursor:pointer" onclick="cmToggleEditar('${p.id}')" title="Clique para editar">${cmEsc(p.nome_completo)} <span style="font-weight:400;font-size:.78rem;color:var(--text2)">${cmEditando === p.id ? '▲' : '✎'}</span></div>
+              <div style="font-weight:800;cursor:pointer" onclick="cmAbrirModal('${p.id}')" title="Clique para editar e ver histórico">${cmEsc(p.nome_completo)} <span style="font-weight:400;font-size:.78rem;color:var(--text2)">✎</span></div>
               <div class="ic-sub" style="margin-bottom:0">
                 ${cmEsc(p.funcao_mesa || '')}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
               </div>
@@ -196,23 +304,6 @@ function renderContatarMesarios() {
             <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
-          ${cmEditando === p.id ? `
-          <div class="import-card" style="background:var(--bg2);margin-top:10px;padding:10px 12px">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-              <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Telefone (WhatsApp)
-                <input id="cm-tel-${p.id}" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text)">
-              </label>
-              <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarTelefone('${p.id}',document.getElementById('cm-tel-${p.id}').value)">Salvar telefone</button>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:8px">
-              <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Código de rastreio (Correios)
-                <input id="cm-rastreio-${p.id}" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text);text-transform:uppercase">
-              </label>
-              <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarRastreio('${p.id}',document.getElementById('cm-rastreio-${p.id}').value)">Salvar código</button>
-              ${p.codigo_rastreio ? `<a class="btn btn-out" style="font-size:.72rem;padding:6px 10px;text-decoration:none" href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener">📦 Rastrear no site dos Correios</a>` : ''}
-            </div>
-            <div class="ic-sub" style="margin-top:8px;margin-bottom:0">Os Correios não oferecem consulta automática pro nosso caso (é preciso contrato de Cartão de Postagem) — o código só monta o link acima; o status do envio (Enviado/Entregue/Devolvido) continua sendo marcado manualmente ali embaixo.</div>
-          </div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
             <label style="font-size:.72rem;color:var(--text2)">Meio de contato:
               <select onchange="cmSalvarMeio('${p.id}',this.value)" style="margin-left:4px">

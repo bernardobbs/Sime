@@ -23,7 +23,11 @@ class QB {
   update(p){ this._op='update'; this._payload=p; return this; }
   insert(p){ window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p }); return Promise.resolve({ error:null }); }
   _casa(x){
-    return Object.entries(this.f).every(([k,v]) => k.startsWith('__in_') ? v.includes(x[k.slice(5)]) : x[k]===v);
+    return Object.entries(this.f).every(([k,v]) => {
+      if(k.startsWith('__in_')) return v.includes(x[k.slice(5)]);
+      if(k.includes('->>')){ const [col,key]=k.split('->>'); return String(x[col]?.[key] ?? '')===String(v); }
+      return x[k]===v;
+    });
   }
   then(res){
     if(this._op==='update'){
@@ -66,6 +70,7 @@ function mock() {
     sime_zonas: [{ id:'z7', numero:7, estado:'PI', nome:'Campo Maior' }],
     sime_logs: [
       { ts:'2026-08-20T09:00:00.000Z', acao:'mesarios_sync_csv', modulo:'convocacao', payload:{ zona:'7', uf:'PI', registros:290, atualizados:280, inativados:5 } },
+      { ts:'2026-08-19T10:00:00.000Z', acao:'mesario_meio_contato', modulo:'convocacao', payload:{ ator_id:'a2', meio_contato:'carta_registrada' } },
     ],
     sime_secoes: [
       { id:'s1', numero:30, local_nome:'Grupo Escolar A', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:280 },
@@ -79,6 +84,9 @@ function mock() {
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
     ],
     sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
+    sime_campanhas_confirmacao: [
+      { id:'camp1', ator_id:'a2', mensagem_enviada:'Olá Bruno, confirme sua presença como mesário na Seção 30, Grupo Escolar A, no dia 04/10.', status:'enviado', created_at:'2026-08-18T14:00:00.000Z' },
+    ],
   };
 }
 
@@ -241,7 +249,7 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 2.6 Editar contato: clique no nome abre telefone + código de rastreio ──
+// ── 2.6 Modal do mesário: clique no nome, editar telefone/rastreio, tentativas de contato e histórico ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -249,31 +257,41 @@ async function login(p) {
   await p.click('#tab-contatar-btn');
   await p.waitForTimeout(300);
 
+  check('modal começa fechado', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
   const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
-  check('painel de edição começa fechado', await cardBruno.locator('input#cm-tel-a2').count() === 0);
+  await cardBruno.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(80);
+  check('clicar no nome abre o modal', await p.evaluate(() => document.getElementById('overlay').classList.contains('open')));
+  check('modal mostra o nome no título', /BRUNO MESARIO/.test(await p.locator('#modal-body .m-title').textContent()));
+  check('modal mostra o título de eleitor', /046919051589/.test(await p.locator('#modal-body').textContent()));
+  check('sem código ainda, não mostra link de rastrear', await p.locator('#modal-body a:has-text("Rastrear no site dos Correios")').count() === 0);
 
-  await cardBruno.locator('div[onclick*="cmToggleEditar"]').first().click();
-  await p.waitForTimeout(150);
-  check('clicar no nome abre o painel com telefone e código de rastreio', await cardBruno.locator('input#cm-tel-a2').count() === 1 && await cardBruno.locator('input#cm-rastreio-a2').count() === 1);
-  check('sem código ainda, não mostra link de rastrear', await cardBruno.locator('a:has-text("Rastrear no site dos Correios")').count() === 0);
-
-  await cardBruno.locator('input#cm-rastreio-a2').fill('aa123456789br');
-  await cardBruno.locator('button:has-text("Salvar código")').click();
+  // Histórico carrega em paralelo (começa "Carregando…", depois preenche).
   await p.waitForTimeout(200);
-  const updRastreio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.codigo_rastreio === 'AA123456789BR'));
-  check('salvar código grava em maiúsculo', !!updRastreio, JSON.stringify(updRastreio));
-  const linkRastreio = cardBruno.locator('a:has-text("Rastrear no site dos Correios")');
+  const modalTxt = await p.locator('#modal-body').textContent();
+  check('mostra a campanha já enviada pro Bruno (tentativa de contato)', /Enviado/.test(modalTxt) && /confirme sua presença/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
+  check('mostra a atualização anterior (histórico)', /Meio de contato.*Carta Registrada/.test(modalTxt.replace(/\s+/g, ' ')), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
+
+  await p.fill('#mm-rastreio', 'aa123456789br');
+  await p.fill('#mm-tel', '(86) 98888-7777');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2'));
+  check('salvar grava telefone e rastreio juntos, num update só', upd?.payload?.telefone_whatsapp === '86988887777' && upd?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(upd));
+  check('salvar fecha o modal', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  // Reabre: reflete o telefone/rastreio novos e agora mostra o link de rastrear.
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(80);
+  const linkRastreio = p.locator('#modal-body a:has-text("Rastrear no site dos Correios")');
   check('link de rastrear aparece depois de salvar, apontando pro site oficial', /rastreamento\.correios\.com\.br.*AA123456789BR/.test(await linkRastreio.getAttribute('href') || ''), await linkRastreio.getAttribute('href'));
 
-  await cardBruno.locator('input#cm-tel-a2').fill('(86) 98888-7777');
-  await cardBruno.locator('button:has-text("Salvar telefone")').click();
-  await p.waitForTimeout(200);
-  const updTel = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.telefone_whatsapp === '86988887777'));
-  check('salvar telefone limpa formatação e grava só dígitos', !!updTel, JSON.stringify(updTel));
-
-  await cardBruno.locator('div[onclick*="cmToggleEditar"]').first().click();
-  await p.waitForTimeout(150);
-  check('clicar de novo no nome fecha o painel', await cardBruno.locator('input#cm-tel-a2').count() === 0);
+  // Fechar clicando no fundo do overlay (fora do modal).
+  await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
+  await p.waitForTimeout(80);
+  check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
