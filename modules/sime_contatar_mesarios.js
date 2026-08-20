@@ -16,7 +16,8 @@ const CM_BUCKETS = [
   { valor: 'confirmado',        label: '✅ Confirmados' },
   { valor: 'recusou',           label: '⚠️ Recusou (é a pessoa certa)' },
   { valor: 'contato_incorreto', label: '🔍 Contato incorreto (não é a pessoa)' },
-  { valor: 'substituido',       label: '🔁 Substituído' },
+  { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
+  { valor: 'substituido',       label: '🔁 Já substituído' },
 ];
 const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
 const CM_STATUS_ALT_LABEL = { a_enviar: 'A enviar', enviado: 'Enviado', entregue: 'Entregue', devolvido: 'Devolvido' };
@@ -34,6 +35,7 @@ const CM_LOG_LABEL = {
   mesario_meio_contato: (p) => `Meio de contato → ${CM_MEIO_LABEL[p.meio_contato] || p.meio_contato}`,
   mesario_status_contato_alt: (p) => `Status do envio → ${CM_STATUS_ALT_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
+  mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
 };
 
 function cmEsc(s) {
@@ -47,7 +49,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral')
+      .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
       .eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true).order('nome_completo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
   ]);
@@ -66,6 +68,27 @@ async function cmMarcarContatoIncorreto(id) {
   await log('mesario_contato_incorreto', '', { ator_id: id });
   showToast('🔍 Marcado como contato incorreto — busque um novo contato');
   render();
+}
+
+// Flag manual e independente de `confirmacao` — não é o Hermes que decide
+// "essa pessoa precisa ser trocada", é o cartório (ex.: recusou e ninguém
+// mais tentou o contato, ou já foi contactado várias vezes sem resposta).
+// Por isso fica num campo próprio (precisa_substituir), não reaproveita
+// confirmacao='substituido' — esse último é o status JÁ RESOLVIDO (a pessoa
+// confirmou que vai ser trocada); este aqui é o item de trabalho "ainda
+// falta resolver".
+async function cmTogglePrecisaSubstituir(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const novo = !p.precisa_substituir;
+  const { error } = await sb.from('sime_atores').update({ precisa_substituir: novo }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.precisa_substituir = novo;
+  await log('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
+  showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
+  render();
+  if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
 }
 
 async function cmSalvarMeio(id, meio) {
@@ -177,6 +200,10 @@ function cmRenderModal() {
         ${p.inscricao_eleitoral ? ` · Título ${cmEsc(p.inscricao_eleitoral)}` : ''}
       </div>
       ${p.observacao ? `<div class="ic-sub" style="background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap;margin-bottom:0">${cmEsc(p.observacao)}</div>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${p.precisa_substituir ? '<span class="import-result ir-warn" style="margin-top:0">🔁 Precisa substituto</span>' : ''}
+        <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+      </div>
       <div class="form-group">
         <label>Telefone (WhatsApp)</label>
         <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
@@ -226,7 +253,8 @@ async function cmSalvarModal() {
 function cmFiltrar() {
   const q = cmBusca.trim().toLowerCase();
   return cmDados.pessoas.filter(p => {
-    if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
+    if (cmFiltroStatus === 'precisa_substituir') { if (!p.precisa_substituir) return false; }
+    else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
     return true;
   });
@@ -268,6 +296,7 @@ function renderContatarMesarios() {
 
   const contagem = {};
   for (const p of cmDados.pessoas) contagem[p.confirmacao || 'pendente'] = (contagem[p.confirmacao || 'pendente'] || 0) + 1;
+  contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
   const lista = cmFiltrar();
 
   c.innerHTML = `
@@ -301,7 +330,10 @@ function renderContatarMesarios() {
               ${p.inscricao_eleitoral ? `<div class="ic-sub" style="margin-bottom:0">Título ${cmEsc(p.inscricao_eleitoral)}</div>` : ''}
               ${p.telefone_whatsapp ? `<div class="ic-sub" style="margin-bottom:0">${linkWhatsApp(p.telefone_whatsapp) ? `<a href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">${fmtTelefone(p.telefone_whatsapp)}</a>` : fmtTelefone(p.telefone_whatsapp)}</div>` : '<div class="ic-sub" style="margin-bottom:0">Sem telefone cadastrado</div>'}
             </div>
-            <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+              <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
+              ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto</span>` : ''}
+            </div>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
@@ -318,6 +350,7 @@ function renderContatarMesarios() {
               </select>
             </label>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
+            <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
           </div>
         </div>`;
       }).join('') || '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Ninguém encontrado com esse filtro.</div></div>'}

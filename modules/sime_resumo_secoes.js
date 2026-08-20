@@ -27,7 +27,7 @@ async function rsCarregar() {
 
   const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { count: totalApoio }] = await Promise.all([
     sb.from('sime_secoes').select('id, numero, municipio, local_nome, eleitores').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
-    sb.from('sime_atores').select('secao_id, funcao_mesa, confirmacao, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
+    sb.from('sime_atores').select('nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
     sb.from('sime_atores').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
   ]);
   if (e1 || e2) { rsDados = { erro: (e1 || e2).message }; render(); return; }
@@ -39,11 +39,13 @@ async function rsCarregar() {
     if (!porSecao[a.secao_id]) porSecao[a.secao_id] = {};
     // Se por algum motivo houver mais de um ativo no mesmo cargo, fica o
     // "melhor" status (confirmado > pendente > recusou) — melhor mostrar
-    // otimista do que esconder que alguém já confirmou.
+    // otimista do que esconder que alguém já confirmou. Guarda o ator
+    // inteiro agora (não só a string de confirmacao) — o card da seção
+    // mostra o nome de quem está designado, não só um ícone.
     const atual = porSecao[a.secao_id][a.funcao_mesa];
-    const prioridade = { confirmado: 3, pendente: 2, substituido: 1, recusou: 1 };
-    if (!atual || (prioridade[a.confirmacao] || 0) >= (prioridade[atual] || 0)) {
-      porSecao[a.secao_id][a.funcao_mesa] = a.confirmacao;
+    const prioridade = { confirmado: 3, pendente: 2, substituido: 1, recusou: 1, contato_incorreto: 1 };
+    if (!atual || (prioridade[a.confirmacao] || 0) >= (prioridade[atual.confirmacao] || 0)) {
+      porSecao[a.secao_id][a.funcao_mesa] = a;
     }
     if (a.data_confirmacao && (!atualizadoPorSecao[a.secao_id] || a.data_confirmacao > atualizadoPorSecao[a.secao_id])) {
       atualizadoPorSecao[a.secao_id] = a.data_confirmacao;
@@ -56,12 +58,23 @@ async function rsCarregar() {
   render();
 }
 
-function rsStatusCargo(confirmacao) {
-  if (!confirmacao) return { icone: '❌', label: 'Sem designação', cls: 'rs-sem' };
-  if (confirmacao === 'confirmado') return { icone: '✅', label: 'Confirmado', cls: 'rs-ok' };
-  if (confirmacao === 'recusou') return { icone: '⚠️', label: 'Recusou — precisa substituto', cls: 'rs-alerta' };
-  if (confirmacao === 'contato_incorreto') return { icone: '🔍', label: 'Contato incorreto', cls: 'rs-alerta' };
-  return { icone: '🔶', label: 'Aguardando confirmação', cls: 'rs-aguardando' }; // pendente/substituido/outros
+function rsEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Recebe o ator inteiro (não só a string de confirmacao) pra poder mostrar o
+// nome e sinalizar precisa_substituir — flag manual do cartório, distinta de
+// confirmacao='substituido' (que é o status já resolvido). Uma pessoa
+// confirmada pode ser marcada pra substituição depois (ex.: virou inelegível)
+// — por isso esse flag tem prioridade visual sobre o confirmacao normal.
+function rsStatusCargo(ator) {
+  if (!ator) return { icone: '❌', label: 'Sem designação', cls: 'rs-sem', nome: null };
+  const nome = ator.nome_completo;
+  if (ator.precisa_substituir) return { icone: '🔁', label: `Precisa ser substituído — ${nome}`, cls: 'rs-alerta', nome };
+  if (ator.confirmacao === 'confirmado') return { icone: '✅', label: `Confirmado — ${nome}`, cls: 'rs-ok', nome };
+  if (ator.confirmacao === 'recusou') return { icone: '⚠️', label: `Recusou — precisa substituto — ${nome}`, cls: 'rs-alerta', nome };
+  if (ator.confirmacao === 'contato_incorreto') return { icone: '🔍', label: `Contato incorreto — ${nome}`, cls: 'rs-alerta', nome };
+  return { icone: '🔶', label: `Aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome }; // pendente/substituido/outros
 }
 
 function rsFmtData(iso) {
@@ -153,11 +166,12 @@ function rsCardSecao(l) {
           <div class="ic-sub" style="margin-bottom:0">eleitores — Seção ${l.secao.numero}</div>
         </div>
       </div>
-      <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap">
         ${l.cargos.map((cg, i) => `
-          <div style="text-align:center" title="${cg.label}">
+          <div style="text-align:center;max-width:78px" title="${rsEsc(cg.label)}">
             <div style="font-size:1.1rem">${cg.icone}</div>
             <div style="font-size:.68rem;color:var(--text2);margin-top:2px">${RS_CARGOS[i]}</div>
+            ${cg.nome ? `<div style="font-size:.66rem;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
           </div>`).join('')}
       </div>
       <div class="ic-sub" style="margin-top:10px;margin-bottom:0">Atualizado em ${rsFmtData(l.atualizado)}</div>

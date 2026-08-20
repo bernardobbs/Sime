@@ -298,11 +298,29 @@ separadamente e com propósitos diferentes:
   com barra de progresso (cargos designados/total), busca por nome e
   alternância grade/lista. Clicar num local abre o **drilldown por seção**:
   um card por seção com o nº de eleitores, os 4 cargos de mesa
-  (❌/🔶/⚠️/✅) e a data da última confirmação.
+  (❌ sem designação / 🔶 aguardando confirmação / ⚠️ recusou ou contato
+  incorreto / 🔁 precisa ser substituído / ✅ confirmado) **com o nome de
+  quem está designado** em cada cargo (20/08/2026 — antes só mostrava o
+  ícone, sem dizer quem é a pessoa) e a data da última confirmação.
+
+  **`precisa_substituir` tem prioridade visual sobre `confirmacao`.** É uma
+  flag booleana própria (`sime_atores.precisa_substituir`, default `false`),
+  deliberadamente separada de `confirmacao='substituido'`: esta última é o
+  status **já resolvido** (a pessoa confirmou que será trocada, geralmente
+  via Hermes); a flag é o item de trabalho **ainda em aberto** — o cartório
+  decidiu que alguém precisa ser trocado (não respondeu depois de várias
+  tentativas, ficou inelegível, etc.) mas ainda não achou substituto. Por
+  isso um mesário já `confirmado` pode ganhar a flag depois e o Dashboard
+  troca o ícone de ✅ pra 🔁 (e ele deixa de contar como "mesa completa
+  confirmada" nas estatísticas) — confirmado não é blindado contra precisar
+  de troca depois. Setada/desfeita em "Contatar mesários" (botão no card e
+  dentro do modal) ou no modal do mesário; nunca pelo Hermes.
 - **📞 Contatar mesários** (`sime_contatar_mesarios.js`) — fila de contato
   por status (falta contactar, confirmado, recusou, contato incorreto,
-  substituído), mostra o recado (`observacao`) de quem respondeu, e permite
-  marcar **meio de contato** (WhatsApp/Carta Registrada/Oficial de Justiça)
+  **precisa ser substituído** — filtro próprio, independente do bucket
+  "já substituído" — e substituído), mostra o recado (`observacao`) de quem
+  respondeu, e permite marcar **meio de contato** (WhatsApp/Carta
+  Registrada/Oficial de Justiça)
   + status do envio por mesário (`sime_atores.meio_contato`/
   `status_contato_alternativo`, `sql/SIME_atores_meio_contato.sql` — Carta/
   Oficial de Justiça usam o endereço já no processo do TRE, o SIME só marca

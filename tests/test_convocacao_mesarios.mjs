@@ -152,6 +152,7 @@ async function login(p) {
   check('drilldown: mostra a seção 30 com eleitores (280)', /280/.test(drilldown) && /30/.test(drilldown), drilldown.replace(/\s+/g, ' ').slice(0, 300));
   const cardSecao30 = await p.locator('.import-card:has-text("30")').first().textContent();
   check('drilldown: seção 30 mostra ✅ (Presidente confirmado)', cardSecao30.includes('✅'), cardSecao30);
+  check('drilldown: seção 30 mostra o nome de quem está designado em cada cargo', /ANA/.test(cardSecao30) && /BRUNO/.test(cardSecao30), cardSecao30.replace(/\s+/g, ' '));
 
   await p.click('button:has-text("← Voltar")');
   await p.waitForTimeout(150);
@@ -292,6 +293,53 @@ async function login(p) {
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.8 "Precisa ser substituído": flag manual do cartório, separada de confirmacao=substituido ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const cardAna = p.locator('.import-card:has-text("ANA PRESIDENTE")').first();
+  check('sem flag ainda, não mostra badge "Precisa substituto"', !/Precisa substituto/.test(await cardAna.textContent()));
+
+  await cardAna.locator('button:has-text("Marcar para substituir")').click();
+  await p.waitForTimeout(200);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.precisa_substituir === true));
+  check('marcar grava precisa_substituir=true (mesmo alguém já confirmado)', !!upd && upd.filtro.id === 'a1', JSON.stringify(upd));
+  check('badge "Precisa substituto" aparece no card', /Precisa substituto/.test(await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent()));
+  check('botão vira "Desmarcar substituição"', await p.locator('.import-card:has-text("ANA PRESIDENTE") button:has-text("Desmarcar substituição")').count() === 1);
+
+  // Filtro dedicado — é uma flag independente de confirmacao, não reaproveita o bucket "substituído".
+  await p.selectOption('#cm-filtro', 'precisa_substituir');
+  await p.waitForTimeout(150);
+  const filtrado = await p.locator('.content').textContent();
+  check('filtro "precisa ser substituído" mostra só quem está marcado', /ANA PRESIDENTE/.test(filtrado) && !/BRUNO MESARIO/.test(filtrado), filtrado.replace(/\s+/g, ' ').slice(0, 200));
+  await p.selectOption('#cm-filtro', '');
+  await p.waitForTimeout(150);
+
+  // O Dashboard reflete a flag com um ícone próprio (🔁), mesmo pra quem já tinha confirmado.
+  await p.click('#tab-dashboard-btn');
+  await p.waitForTimeout(300);
+  await p.click('.import-card:has-text("Grupo Escolar A")');
+  await p.waitForTimeout(200);
+  const cardSecao30 = await p.locator('.import-card:has-text("30")').first().textContent();
+  check('Dashboard: seção 30 mostra 🔁 pro Presidente marcado, não mais ✅', cardSecao30.includes('🔁') && !cardSecao30.includes('✅'), cardSecao30.replace(/\s+/g, ' '));
+
+  // Desmarcar pelo modal (mesmo botão existe lá dentro).
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.click('#modal-body button:has-text("Desmarcar substituição")');
+  await p.waitForTimeout(150);
+  check('desmarcar pelo modal atualiza o modal na hora (sem precisar fechar/reabrir)', /Marcar para substituir/.test(await p.locator('#modal-body').textContent()));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
