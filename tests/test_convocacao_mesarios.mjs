@@ -22,7 +22,16 @@ class QB {
   single(){ return this.maybeSingle(); }
   maybeSingle(){ const r=(window.__mock[this.t]||[]).filter(x=>this._casa(x)); return Promise.resolve({ data:r[0]??null, error:null }); }
   update(p){ this._op='update'; this._payload=p; return this; }
-  insert(p){ window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p }); return Promise.resolve({ error:null }); }
+  insert(p){
+    window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p });
+    // Empurra pra tabela mockada também (não só pro log de escritas) — sem
+    // isso, um insert seguido de um select (ex.: registrar tentativa de
+    // contato e a timeline recarregar na hora) nunca via a linha nova.
+    if(!window.__mock[this.t]) window.__mock[this.t]=[];
+    const linhas=(Array.isArray(p)?p:[p]).map(row=>({ id:'ins_'+Math.random().toString(36).slice(2), ...row }));
+    window.__mock[this.t].push(...linhas);
+    return Promise.resolve({ error:null, data:linhas });
+  }
   _casa(x){
     return Object.entries(this.f).every(([k,v]) => {
       if(k.startsWith('__in_')) return v.includes(x[k.slice(5)]);
@@ -90,6 +99,8 @@ function mock() {
       { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null, inscricao_eleitoral:'046919051589' },
       { id:'a3', nome_completo:'CARLA RECUSOU', telefone_whatsapp:'5586999990003', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s2', zona_id:'z7', confirmacao:'recusou', ativo:true, observacao:'Recado via Hermes: não sou essa pessoa, número errado', meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null },
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
+      { id:'a5', nome_completo:'ELIS APOIO', telefone_whatsapp:'5586999990005', funcao:'auxiliar_eleicao', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null },
+      { id:'a6', nome_completo:'FABIO APOIO', telefone_whatsapp:'5586999990006', funcao:'coord_acessibilidade', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null },
     ],
     sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
     sime_campanhas_confirmacao: [
@@ -129,8 +140,8 @@ async function login(p) {
   const dash = await p.locator('.content').textContent();
   check('stat card: 2 locais de votação', /Locais de votação\s*2/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
   check('stat card: 3 seções', /Seções\s*3/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
-  check('stat card: 4 mesários', /Mesários\s*4/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
-  check('stat card: 0 apoio logístico', /Apoio logístico\s*0/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
+  check('stat card MRV: 1 confirmado de 4, 3 faltam', /Mesários \(MRV\)\s*1\/4/.test(dash.replace(/\s+/g, ' ')) && /3 faltam confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
+  check('stat card AL: 1 confirmado de 2, 1 falta', /Apoio logístico \(AL\)\s*1\/2/.test(dash.replace(/\s+/g, ' ')) && /1 falta confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));
 
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();
@@ -325,6 +336,43 @@ async function login(p) {
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.65 Modal como hub de comunicação: wa.me, meio de contato dentro do modal, registrar tentativa manual ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+
+  const linkWa = p.locator('#modal-body a:has-text("Abrir WhatsApp")');
+  check('modal tem botão direto pro wa.me de quem tem telefone', await linkWa.count() === 1);
+  check('link do wa.me aponta pro número da pessoa', /5586999990002|86999990002|999990002/.test(await linkWa.getAttribute('href') || ''), await linkWa.getAttribute('href'));
+
+  // Meio de contato dentro do modal (não só no card) — trocar pra Ligação
+  // dispara o mesmo cmSalvarMeio de sempre e o modal se atualiza sozinho.
+  check('modal tem o seletor de meio de contato', await p.locator('#modal-body select').count() >= 1);
+  await p.selectOption('#modal-body select >> nth=0', 'ligacao');
+  await p.waitForTimeout(150);
+  const updMeio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.meio_contato === 'ligacao'));
+  check('trocar o meio dentro do modal grava igual ao card', !!updMeio, JSON.stringify(updMeio));
+  check('modal continua aberto e mostra o seletor de resultado da ligação', /Resultado da ligação/.test(await p.locator('#modal-body').textContent()));
+
+  // Registrar uma tentativa manual — vira parte da timeline de "Tentativas de contato".
+  await p.fill('#mm-tent-nota', 'Liguei às 14h, não atendeu');
+  await p.click('#modal-body button:has-text("Registrar tentativa")');
+  await p.waitForTimeout(250);
+  const updTentativa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
+  check('registrar tentativa grava log com ator_id, meio e nota', updTentativa?.payload?.payload?.ator_id === 'a2' && updTentativa?.payload?.payload?.nota === 'Liguei às 14h, não atendeu', JSON.stringify(updTentativa));
+  const modalTxtDepois = await p.locator('#modal-body').textContent();
+  check('a tentativa manual aparece na timeline de Tentativas de contato', /Liguei às 14h, não atendeu/.test(modalTxtDepois));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

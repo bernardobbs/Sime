@@ -25,12 +25,15 @@ async function rsCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { rsDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { count: totalApoio }] = await Promise.all([
+  const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { data: apoio, error: e3 }] = await Promise.all([
     sb.from('sime_secoes').select('id, numero, municipio, local_nome, eleitores').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_atores').select('id, nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
-    sb.from('sime_atores').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    // Antes era só `count` (head:true) — trocado por linha completa com
+    // confirmacao pra poder quebrar confirmados/faltam também pro apoio
+    // logístico nos stat cards, não só o total.
+    sb.from('sime_atores').select('id, confirmacao').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
   ]);
-  if (e1 || e2) { rsDados = { erro: (e1 || e2).message }; render(); return; }
+  if (e1 || e2 || e3) { rsDados = { erro: (e1 || e2 || e3).message }; render(); return; }
 
   const porSecao = {};
   const atualizadoPorSecao = {};
@@ -53,7 +56,9 @@ async function rsCarregar() {
   }
   rsDados = {
     secoes: secoes || [], porSecao, atualizadoPorSecao,
-    totalMesarios: (atores || []).length, totalApoio: totalApoio || 0,
+    totalMesarios: (atores || []).length, totalApoio: (apoio || []).length,
+    confirmadosMRV: (atores || []).filter(a => a.confirmacao === 'confirmado').length,
+    confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
   };
   render();
 }
@@ -214,12 +219,14 @@ function renderResumoSecoes() {
         <div style="font-size:1.6rem;font-weight:900">${linhas.length}</div>
       </div>
       <div class="import-card" style="border-left:4px solid #e65100;padding:14px 16px">
-        <div class="ic-sub" style="margin-bottom:2px">Mesários</div>
-        <div style="font-size:1.6rem;font-weight:900">${rsDados.totalMesarios}</div>
+        <div class="ic-sub" style="margin-bottom:2px">Mesários (MRV)</div>
+        <div style="font-size:1.6rem;font-weight:900">${rsDados.confirmadosMRV}<span style="font-size:1rem;color:var(--text3)">/${rsDados.totalMesarios}</span></div>
+        <div class="ic-sub" style="margin-bottom:0;margin-top:2px">✅ confirmados · ${rsDados.totalMesarios - rsDados.confirmadosMRV} falta${rsDados.totalMesarios - rsDados.confirmadosMRV === 1 ? '' : 'm'} confirmar</div>
       </div>
       <div class="import-card" style="border-left:4px solid #6a1b9a;padding:14px 16px">
-        <div class="ic-sub" style="margin-bottom:2px">Apoio logístico</div>
-        <div style="font-size:1.6rem;font-weight:900">${rsDados.totalApoio}</div>
+        <div class="ic-sub" style="margin-bottom:2px">Apoio logístico (AL)</div>
+        <div style="font-size:1.6rem;font-weight:900">${rsDados.confirmadosApoio}<span style="font-size:1rem;color:var(--text3)">/${rsDados.totalApoio}</span></div>
+        <div class="ic-sub" style="margin-bottom:0;margin-top:2px">✅ confirmados · ${rsDados.totalApoio - rsDados.confirmadosApoio} falta${rsDados.totalApoio - rsDados.confirmadosApoio === 1 ? '' : 'm'} confirmar</div>
       </div>
     </div>`;
 

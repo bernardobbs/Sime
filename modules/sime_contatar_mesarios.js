@@ -132,6 +132,7 @@ async function cmSalvarMeio(id, meio) {
   await log('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
   showToast('✓ Meio de contato atualizado');
   render();
+  if (cmModalId === id) cmRenderModal(); // seletor existe tanto no card quanto dentro do modal aberto
 }
 
 async function cmSalvarStatusAlt(id, status) {
@@ -142,6 +143,7 @@ async function cmSalvarStatusAlt(id, status) {
   if (p) p.status_contato_alternativo = status || null;
   await log('mesario_status_contato_alt', '', { ator_id: id, status });
   showToast('✓ Status de envio atualizado');
+  if (cmModalId === id) cmRenderModal();
 }
 
 function cmLinkRastreio(codigo) {
@@ -179,6 +181,21 @@ async function cmAdicionarObservacao(id) {
   showToast('✓ Observação adicionada');
   render();
   if (cmModalId === id) cmRenderModal();
+}
+
+// Registro manual de uma tentativa de contato (ligou, foi na casa, mandou
+// WhatsApp fora de campanha, etc.) — mesma tabela de log das outras ações
+// desta tela, mas SEM entrada em CM_LOG_LABEL (não aparece em
+// "Atualizações"): entra em "Tentativas de contato", junto com o que o
+// Hermes já mandou via campanha, pra virar uma timeline só do histórico de
+// abordagem — inclusive a evolução WhatsApp → Carta → Ofício, já que cada
+// tentativa registra o meio usado.
+async function cmRegistrarTentativa(id) {
+  const meio = document.getElementById('mm-tent-meio').value;
+  const nota = document.getElementById('mm-tent-nota').value.trim();
+  await log('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
+  showToast('✓ Tentativa registrada');
+  if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar a tentativa nova
 }
 
 function cmFmtDataHist(ts) {
@@ -227,10 +244,24 @@ async function cmAbrirModal(id) {
   ]);
   if (cmModalId !== id) return; // trocou de pessoa enquanto carregava
   const logs = [
+    // mesario_tentativa_contato fica de fora daqui de propósito — não tem
+    // entrada em CM_LOG_LABEL, então esse filtro já a exclui; ela vira parte
+    // da timeline de "tentativas" abaixo, não de "Atualizações".
     ...(logsSime || []).filter(l => CM_LOG_LABEL[l.acao]).map(l => ({ ...l, _label: CM_LOG_LABEL[l.acao] })),
     ...(logsHermes || []).filter(l => CM_LOG_HERMES_LABEL[l.acao]).map(l => ({ ...l, _label: CM_LOG_HERMES_LABEL[l.acao] })),
   ].sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 15);
-  cmModalHist = { campanhas: campanhas || [], logs };
+
+  // Timeline única de "tentativas": o que o Hermes de fato mandou via
+  // campanha (sime_campanhas_confirmacao) + o que o cartório registrou à
+  // mão (ligou, foi na casa, etc.) — junto dá pra ver a evolução do meio
+  // usado (WhatsApp → Carta → Ofício) num lugar só.
+  const tentativasManuais = (logsSime || []).filter(l => l.acao === 'mesario_tentativa_contato');
+  const tentativas = [
+    ...(campanhas || []).map(c => ({ tipo: 'campanha', ts: c.created_at, campanha: c })),
+    ...tentativasManuais.map(l => ({ tipo: 'manual', ts: l.ts, payload: l.payload || {} })),
+  ].sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 15);
+
+  cmModalHist = { tentativas, logs };
   cmRenderModal();
 }
 
@@ -254,10 +285,16 @@ function cmRenderModal() {
   if (!p) { modal.innerHTML = ''; return; }
   const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
 
-  const blocoCampanhas = cmModalHist === null
+  const blocoTentativas = cmModalHist === null
     ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
-    : cmListaHist(cmModalHist.campanhas, 'Nenhuma campanha enviada pra essa pessoa ainda.',
-        c => `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`);
+    : cmListaHist(cmModalHist.tentativas, 'Nenhuma tentativa de contato registrada ainda.', t => {
+        if (t.tipo === 'campanha') {
+          const c = t.campanha;
+          return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
+        }
+        const meioLbl = CM_MEIO_LABEL[t.payload.meio] || t.payload.meio || 'Contato';
+        return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}</div>`;
+      });
 
   const blocoLogs = cmModalHist === null
     ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
@@ -283,7 +320,10 @@ function cmRenderModal() {
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
-        <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px;margin-bottom:10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<a class="btn btn-out" style="font-size:.72rem;padding:5px 10px;text-decoration:none" href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>` : ''}
+        </div>
         <div class="form-group">
           <label>Telefone (WhatsApp)</label>
           <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
@@ -293,11 +333,36 @@ function cmRenderModal() {
           <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
           ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Meio de contato atual
+            <select onchange="cmSalvarMeio('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+              ${Object.entries(CM_MEIO_LABEL).map(([v, l]) => `<option value="${v}" ${p.meio_contato === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
+          ${p.meio_contato && p.meio_contato !== 'whatsapp' ? `
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">${p.meio_contato === 'ligacao' ? 'Resultado da ligação' : 'Status do envio'}
+            <select onchange="cmSalvarStatusAlt('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+              <option value="">—</option>
+              ${Object.entries(cmStatusLabelSet(p.meio_contato)).map(([v, l]) => `<option value="${v}" ${p.status_contato_alternativo === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>` : ''}
+        </div>
       </div>
 
       <div class="m-section">
-        <div class="m-section-hdr">📞 Tentativas de contato (campanhas)</div>
-        ${blocoCampanhas}
+        <div class="m-section-hdr">📞 Tentativas de contato</div>
+        ${blocoTentativas}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:120px">Meio usado
+            <select id="mm-tent-meio" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+              ${Object.entries(CM_MEIO_LABEL).map(([v, l]) => `<option value="${v}" ${p.meio_contato === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:160px">Nota (opcional)
+            <input id="mm-tent-nota" type="text" placeholder="ex.: não atendeu, ligar de novo à tarde" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmRegistrarTentativa('${p.id}')">➕ Registrar tentativa</button>
+        </div>
       </div>
 
       <div class="m-section">

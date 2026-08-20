@@ -311,7 +311,11 @@ cada um com propósito diferente:
 `SIME_convocacao.html` tem mais três abas:
 - **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
   partir de um mockup do cartório) — 4 cards de estatística no topo (locais
-  de votação, seções, mesários, apoio logístico) e, abaixo, cards por
+  de votação, seções, **mesários MRV confirmados/total + quantos faltam**,
+  **apoio logístico AL confirmados/total + quantos faltam** — antes os dois
+  últimos cards só mostravam o total, sem quebra por `confirmacao`; o card
+  de apoio foi de um `count` só pra buscar a linha inteira, já que agora
+  precisa contar confirmados também) e, abaixo, cards por
   **local de votação** (`sime_secoes` não tem id próprio de "local" nem
   endereço — o agrupamento é por `local_nome`+`municipio`, sem rua/povoado)
   com barra de progresso (cargos designados/total), busca por nome e
@@ -400,6 +404,28 @@ cada um com propósito diferente:
   "Atualizações" (que lê `sime_logs`) pra não duplicar visualmente o que já
   aparece na seção própria — o `sime_logs` ainda é gravado, só não é
   renderizado ali.
+
+  **Modal como ponto único de operacionalização da comunicação (20/08/2026)
+  — pedido explícito do cartório depois de ver a tela de referência.** Três
+  adições, todas dentro do modal (não só no card de fora):
+  - **💬 Abrir WhatsApp** — link `wa.me` direto pro número da pessoa (mesma
+    `linkWhatsApp()` já usada no card), pra não precisar copiar telefone.
+  - **Seletor de meio de contato + status, duplicado do card pra dentro do
+    modal** — `cmSalvarMeio`/`cmSalvarStatusAlt` ganharam um
+    `if (cmModalId === id) cmRenderModal()` no final, senão o modal aberto
+    ficava com o `<select>` desatualizado depois de mudar pelo card (ou
+    vice-versa). Trocar WhatsApp→Carta→Ofício direto do modal é o que o
+    cartório chamou de "evolução do meio de contato".
+  - **➕ Registrar tentativa** — diferente das duas listas de histórico já
+    existentes, isso é uma AÇÃO: grava um `sime_logs` novo
+    (`mesario_tentativa_contato`, payload `{ator_id, meio, nota}`) que
+    entra na mesma timeline de "Tentativas de contato", misturado com o que
+    o Hermes já mandou via campanha (`sime_campanhas_confirmacao`) — os dois
+    juntos, ordenados por data, é o que dá pra ver a evolução de abordagem
+    (WhatsApp automático → ligação manual → carta) num lugar só.
+    `mesario_tentativa_contato` fica de propósito FORA de `CM_LOG_LABEL`
+    (não aparece em "Atualizações") — só existe dentro da timeline de
+    tentativas, pra não duplicar a mesma entrada nas duas listas.
 
   **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
   além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status
