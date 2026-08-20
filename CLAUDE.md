@@ -267,11 +267,15 @@ conseguia popular o staging). Deleta o staging antigo só daquela zona/UF
 RPC na sequência.
 
 `SIME_convocacao.html` tem mais três abas:
-- **📊 Dashboard** (`sime_resumo_secoes.js`) — situação geral da zona em dois
-  níveis: por **local de votação** (agrega as seções que dividem o mesmo
-  prédio — `sime_secoes` não tem um id próprio de "local", o agrupamento é
-  por `local_nome`+`municipio`) e por **seção** (os 4 cargos de mesa,
-  ❌/🔶/⚠️/✅).
+- **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
+  partir de um mockup do cartório) — 4 cards de estatística no topo (locais
+  de votação, seções, mesários, apoio logístico) e, abaixo, cards por
+  **local de votação** (`sime_secoes` não tem id próprio de "local" nem
+  endereço — o agrupamento é por `local_nome`+`municipio`, sem rua/povoado)
+  com barra de progresso (cargos designados/total), busca por nome e
+  alternância grade/lista. Clicar num local abre o **drilldown por seção**:
+  um card por seção com o nº de eleitores, os 4 cargos de mesa
+  (❌/🔶/⚠️/✅) e a data da última confirmação.
 - **📞 Contatar mesários** (`sime_contatar_mesarios.js`) — fila de contato
   por status (falta contactar, confirmado, recusou, contato incorreto,
   substituído), mostra o recado (`observacao`) de quem respondeu, e permite
@@ -279,7 +283,12 @@ RPC na sequência.
   + status do envio por mesário (`sime_atores.meio_contato`/
   `status_contato_alternativo`, `sql/SIME_atores_meio_contato.sql` — Carta/
   Oficial de Justiça usam o endereço já no processo do TRE, o SIME só marca
-  qual meio usar e o andamento, não guarda endereço).
+  qual meio usar e o andamento, não guarda endereço). Botão **"📢 Criar
+  campanha com estes"** pega o filtro atual (ex.: só quem falta contactar,
+  já sem quem não tem WhatsApp) e manda pra `SIME_atores.html?tab=disparo`
+  com esse grupo pré-selecionado (via `sessionStorage`, lido e apagado uma
+  única vez) — reaproveita o motor de campanha que já existe em Disparo em
+  massa, em vez de duplicar essa UI dentro de Convocação.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

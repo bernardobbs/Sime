@@ -90,6 +90,19 @@ function cmFiltrar() {
   });
 }
 
+// Manda o filtro atual (ex.: só "falta contactar") pra aba Disparo em massa
+// de SIME_atores.html, já com esse grupo selecionado — reaproveita o motor
+// de campanha que já existe lá (modelo, script salvo, imagem) em vez de
+// duplicar essa UI aqui dentro. sessionStorage porque são páginas HTML
+// separadas, sem estado JS compartilhado; a chave é lida e apagada no
+// primeiro uso (não deve sobreviver a uma segunda visita da aba).
+function cmCriarCampanha() {
+  const alvo = cmFiltrar().filter(p => p.telefone_whatsapp);
+  if (!alvo.length) { showToast('⚠ Nenhum mesário com WhatsApp nesse filtro'); return; }
+  sessionStorage.setItem('sime_disparo_preselecao', JSON.stringify(alvo.map(p => p.id)));
+  location.href = './SIME_atores.html?tab=disparo';
+}
+
 function cmBadge(confirmacao) {
   const b = CM_BUCKETS.find(x => x.valor === (confirmacao || 'pendente'));
   return b ? b.label : confirmacao;
@@ -126,7 +139,10 @@ function renderContatarMesarios() {
         </select>
         <input type="text" placeholder="Buscar por nome…" value="${cmEsc(cmBusca)}" oninput="cmBusca=this.value;render()" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
-      <div class="ic-sub">${lista.length} de ${cmDados.pessoas.length} mesário(s)</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${cmDados.pessoas.length} mesário(s)</div>
+        <button class="btn btn-dark" style="font-size:.74rem;padding:6px 12px" onclick="cmCriarCampanha()">📢 Criar campanha com estes (${lista.filter(p => p.telefone_whatsapp).length})</button>
+      </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${lista.map(p => {

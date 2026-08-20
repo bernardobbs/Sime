@@ -235,7 +235,15 @@ async function log(acao,secao,payload) {
   } catch (e) { /* já ficou no espelho local acima */ }
 }
 
-let curTab='lista';
+// Abre direto na aba de Disparo quando chega link de "Criar campanha com
+// estes" (SIME_convocacao.html, aba Contatar mesários) — ver preseleção em
+// renderDisparo() abaixo.
+let curTab = new URLSearchParams(location.search).get('tab') === 'disparo' ? 'disparo' : 'lista';
+if (curTab !== 'lista') {
+  document.getElementById('tab-lista-btn')?.classList.remove('active');
+  const btn = document.getElementById('tab-' + curTab + '-btn');
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); }
+}
 let searchQ='', filterFuncao='', filterSecao='';
 let csvParsed=[];
 
@@ -670,6 +678,21 @@ function rotuloFuncaoDisp(a){
 function renderDisparo(atores){
   const c = document.getElementById('content');
   const semSessao = !window.supabaseAtores;
+  // Preseleção vinda de "Criar campanha com estes" (SIME_convocacao.html,
+  // aba Contatar mesários) — sessionStorage porque são páginas separadas,
+  // sem estado JS compartilhado. Lido e apagado uma única vez: sem isso, uma
+  // segunda visita à aba (sem vir de lá) reaplicaria a mesma seleção velha.
+  if(dispSelecionados===null){
+    const preselecao = sessionStorage.getItem('sime_disparo_preselecao');
+    if(preselecao){
+      sessionStorage.removeItem('sime_disparo_preselecao');
+      try {
+        const ids = JSON.parse(preselecao);
+        dispSelecionados = new Set(ids);
+        showToast(`✓ ${ids.length} destinatário(s) trazido(s) de Convocação`);
+      } catch(e) { /* ignora preseleção corrompida, cai no comportamento padrão abaixo */ }
+    }
+  }
   // Ao entrar na aba (ou trocar função), a seleção começa com todo mundo do
   // filtro marcado — preserva o comportamento antigo (filtro = quem recebe)
   // por padrão; desmarcar é que é a exceção, não o contrário.
