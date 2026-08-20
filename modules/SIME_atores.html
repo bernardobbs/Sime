@@ -108,6 +108,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="tab"        id="tab-externos-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('externos',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">☎️ Contatos externos</div>
   <div class="tab"        id="tab-disparo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('disparo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📢 Disparo em massa</div>
   <div class="tab"        id="tab-scripts-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('scripts',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🧩 Scripts de campanha</div>
+  <div class="tab"        id="tab-sync-mesarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync-mesarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar mesários</div>
+  <div class="tab"        id="tab-resumo-secoes-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('resumo-secoes',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📊 Resumo por Seção</div>
 </div>
 
 <div class="content" id="content"></div>
@@ -121,6 +123,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_campanha_script_editor.js"></script>
+<script src="./sime_mesarios_sync.js"></script>
+<script src="./sime_resumo_secoes.js"></script>
 <script type="module">
 // Carrega os atores do Supabase. Este módulo era 100% localStorage: a zona
 // tinha centenas de pessoas cadastradas no banco e a tela abria vazia em
@@ -129,7 +133,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 // Sem sessão (aberto direto, sem login) nada acontece e o módulo segue no
 // localStorage — o cadastro/edição local continua funcionando como antes.
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getAtores, getSecoes, getEleicaoAtiva } from './sime_dados.js';
+import { initSimeDados, getAtores, getSecoes, getEleicaoAtiva, clearSimeDadosCache } from './sime_dados.js';
 import { SIME_CONFIG } from './sime_config.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
@@ -159,6 +163,18 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
     if (window.render) window.render();
   };
   await window.recarregarExternos();
+
+  // Exposto pra quem grava atores em lote fora do fluxo normal de
+  // criar/editar (hoje: sincronizar mesários via CSV) recarregar a lista
+  // sem precisar dar F5 — mesmo padrão de recarregarExternos() acima.
+  // getAtores() é cacheado pela sessão (sime_dados.js) — sem limpar o cache
+  // aqui, chamar de novo devolveria a mesma lista de antes da sincronização.
+  window.recarregarAtores = async () => {
+    clearSimeDadosCache();
+    const a = await getAtores({ fallback: null });
+    if (a) window.ATORES_REAIS = a;
+    if (window.render) window.render();
+  };
 
   const atores = await getAtores({ fallback: null });
   if (!atores) return;
@@ -238,6 +254,9 @@ function goTab(tab,btn){
   curTab=tab;
   document.querySelectorAll('.tab').forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
   if(btn){ btn.classList.add('active'); btn.setAttribute('aria-selected','true'); }
+  // Recarrega do banco a cada entrada na aba — evita mostrar um resumo
+  // desatualizado depois de sincronizar mesários ou editar um ator em outra aba.
+  if(tab==='resumo-secoes' && typeof rsDados!=='undefined') rsDados=null;
   render();
 }
 
@@ -251,6 +270,8 @@ function render(){
   if(curTab==='guerra'){ renderGuerra(atores); return; }
   if(curTab==='disparo'){ renderDisparo(atores); return; }
   if(curTab==='scripts'){ renderScripts(); return; }
+  if(curTab==='sync-mesarios'){ renderSyncMesarios(); return; }
+  if(curTab==='resumo-secoes'){ renderResumoSecoes(); return; }
   renderLista(atores);
 }
 

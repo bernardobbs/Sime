@@ -233,23 +233,61 @@ sime_sync_atores_from_raw()   -- UPSERT em massa de mesário/apoio logístico a 
 
 ### Atualização de mesários e apoio logístico (recarga do TRE)
 
-`sime_mesarios_raw` é staging descartável — pode ser truncada e recarregada a
-qualquer momento com uma nova exportação ELO do TRE (`parse_mesarios.py` em
-`scripts/`, ou onde tiver sido salvo, gera o SQL de INSERT a partir do
-`.md` bruto, nunca digitado à mão — ver commit da carga inicial da 7ª Zona).
+`sime_mesarios_raw` é staging descartável — pode ser recarregada a qualquer
+momento com uma nova exportação do TRE. Três formatos de origem, três
+scripts em `scripts/` (todos rodam em disco e só imprimem contagem
+agregada — nome/CPF/telefone nunca passam pelo console, muito menos por
+chat, ver docstring de cada um):
+
+| Origem | Script | Uso |
+|---|---|---|
+| Dump ELO `.md` (largura fixa, 81 colunas) | `parse_mesarios.py` | `python3 parse_mesarios.py saida.sql mesariosmrv.md mesariosal.md` |
+| CSV exportado da planilha "convocação mesários" (abas `base geral MRV`/`Base Geral Apoio especializado` — mesmo cabeçalho de 81 colunas do ELO, confirmado em 20/08/2026, inclui `Confirmou convocação`/`Origem da resposta`/`Justificativa`) | `parse_mesarios_gsheet_csv.py` | `python3 parse_mesarios_gsheet_csv.py saida.sql mrv.csv apoio.csv` |
+| CSV "MRV simples" (16 colunas, sem os campos de acompanhamento — outra exportação do TRE, mais enxuta) | `parse_mesarios_csv.py` | `python3 parse_mesarios_csv.py saida.sql arquivo.csv 7 PI` |
+
+Os três geram o mesmo INSERT pronto pra colar no SQL Editor. `tipo_registro`
+nunca é adivinhado por regra própria — vem direto da coluna "Tipo função
+eleitoral"/"Nº Função Eleitoral" do próprio arquivo (que já traz 'MRV'/'AL'),
+ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
+
+**Direto pelo navegador, sem gerar SQL**: `SIME_atores.html` → aba
+**🔄 Sincronizar mesários** aceita o CSV da planilha (formato de 81 colunas)
+por upload — mesma lógica de `parse_mesarios_gsheet_csv.py`, mas em JS
+(`sime_mesarios_sync.js`), gravando direto no Supabase com a sessão da
+equipe (RLS `mesarios_raw_write_zona`, escopada pela zona do usuário — única
+policy de escrita em `sime_mesarios_raw`, adicionada em 20/08/2026; antes só
+existia SELECT pra `authenticated`, e só o SQL Editor com service_role
+conseguia popular o staging). Deleta o staging antigo só daquela zona/UF
+(não `TRUNCATE` — preserva o staging de outra zona em paralelo) e chama a
+RPC na sequência.
+
+> **O "Confirmou convocação" da planilha não vira o status de confirmação do
+> SIME.** Sobe pro staging por completude/auditoria, mas
+> `sime_sync_atores_from_raw` nunca leu (e continua sem ler)
+> `confirmou_convocacao`/`origem_resposta`/`justificativa` pra dentro de
+> `sime_atores.confirmacao` — são dois controles paralelos. O status real do
+> SIME só muda quando a pessoa responde de fato pelo WhatsApp, via
+> `api/hermes-mesarios.js`. Ver também `SIME_atores.html` → aba
+> **📊 Resumo por Seção**, que mostra o status dos 4 cargos de mesa por
+> seção usando exatamente esse campo real (não o da planilha).
 
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
 `id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
 histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`/
 `whatsapp_*`. Quem sai da nova exportação vira `ativo=false`, não é apagado.
+Casa o local de trabalho por `lower(municipio)` (não `initcap()` — corrigido
+em 20/08/2026: `initcap('JATOBÁ DO PIAUÍ')` capitaliza o conectivo "Do", que
+não bate com `sime_secoes.municipio='Jatobá do Piauí'` gravado em minúsculo;
+o join nunca casava pra esse município e ~120 mesários de lá entravam sem
+`secao_id`).
 
 ```sql
--- 1. truncar e recarregar o staging com a exportação nova
-truncate sime_mesarios_raw;
--- rodar o INSERT gerado pelo parser (gera o .sql a partir do .md, nunca à mão)
+-- via SQL Editor (service_role), pra dump ELO/CSV colado manualmente:
+delete from sime_mesarios_raw where zona_eleitoral_trabalho='7' and uf_trabalho='PI';
+-- rodar o INSERT gerado por qualquer um dos três parsers acima
 
--- 2. sincronizar (idempotente — pode rodar quantas vezes precisar)
+-- sincronizar (idempotente — pode rodar quantas vezes precisar)
 select * from sime_sync_atores_from_raw(7, 'PI');  -- 7ª Zona
 select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 ```
