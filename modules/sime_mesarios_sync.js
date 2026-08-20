@@ -240,6 +240,104 @@ async function msSincronizar() {
   render();
 }
 
+// ══════════════════════════════════════
+// ATUALIZAR CONTATOS — segundo formato, arquivo separado do roster acima.
+// 16 colunas (Zona/Seção/Nome/Inscrição/Situação/Localidade/Nº Local/Nome
+// Local/Cód. Objeto Local/Nº Função Eleitoral/Função Eleitoral/Data
+// Atualização/Ciente/whatsapp/celular/telefone2) — export mais simples do
+// TRE, sem os campos de acompanhamento do dump ELO completo.
+//
+// Por que é uma tela separada, não outra aba do drop-zone acima: esse
+// arquivo normalmente é um RECORTE (ex.: só quem respondeu "não sou essa
+// pessoa"), não o roster completo da zona. Passá-lo pelo mesmo pipeline de
+// sime_mesarios_raw + sime_sync_atores_from_raw inativaria por engano todo
+// mundo que não está nesse recorte — sime_sync_atores_from_raw trata
+// "ausente do arquivo" como "saiu". Por isso aqui é UPDATE direto em
+// sime_atores, casando por inscricao_eleitoral, só em quem está no arquivo.
+//
+// Ciente (confirmado empiricamente em 20/08/2026 cruzando 3 arquivos reais
+// da zona — 0/1/2 nunca documentado formalmente pelo TRE): 0=sem contato,
+// 1=confirmou convocação, 2=informou não ser a pessoa procurada.
+//
+// Decisão de 20/08/2026: diferente do roster de 81 colunas (que nunca toca
+// confirmacao — só WhatsApp/Hermes muda isso), este arquivo é
+// explicitamente sobre status de contato, então ESCREVE em
+// sime_atores.confirmacao (Ciente=1→confirmado, Ciente=2→contato_incorreto)
+// e em telefone_whatsapp — exceção deliberada à regra geral, não descuido.
+const MC_HEADERS = [
+  'Zona', 'Seção', 'Nome', 'Inscrição', 'Situação', 'Localidade', 'Nº Local',
+  'Nome Local', 'Cód. Objeto Local', 'Nº Função Eleitoral', 'Função Eleitoral',
+  'Data Atualização', 'Ciente', 'whatsapp', 'celular', 'telefone2',
+];
+
+let mcArquivo = null;   // { nome, linhas:[{...}] }
+let mcResultado = null; // { atualizados, semMatch, total, porCiente }
+
+function mcSoDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+
+function mcLimpar() { mcArquivo = null; mcResultado = null; render(); }
+
+function mcHandleFile(fileList) {
+  const file = (fileList || [])[0];
+  if (!file || !file.name.toLowerCase().endsWith('.csv')) { showToast('⚠ Selecione um arquivo .csv'); return; }
+  const r = new FileReader();
+  r.onload = (e) => {
+    const linhasRaw = msParseCSV(e.target.result);
+    if (!linhasRaw.length) { showToast(`⚠ ${file.name}: arquivo vazio`); return; }
+    const header = linhasRaw[0];
+    const faltando = MC_HEADERS.filter((h) => !header.includes(h));
+    if (faltando.length) {
+      showToast(`⚠ ${file.name}: ${faltando.length} coluna(s) esperada(s) não encontrada(s) — não é o formato de atualização de contatos`);
+      return;
+    }
+    const idx = {};
+    header.forEach((h, i) => { idx[h] = i; });
+    const linhas = linhasRaw.slice(1).map((cols) => ({
+      inscricao: (cols[idx['Inscrição']] || '').trim(),
+      ciente: (cols[idx['Ciente']] || '').trim(),
+      whatsapp: (cols[idx['whatsapp']] || '').trim(),
+      celular: (cols[idx['celular']] || '').trim(),
+      telefone2: (cols[idx['telefone2']] || '').trim(),
+    }));
+    mcArquivo = { nome: file.name, linhas };
+    mcResultado = null;
+    render();
+  };
+  r.readAsText(file, 'UTF-8');
+}
+
+async function mcAtualizar() {
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) { showToast('⚠ Conta sem zona associada'); return; }
+  if (!mcArquivo || !mcArquivo.linhas.length) { showToast('⚠ Nenhum registro carregado'); return; }
+
+  showToast('⏳ Atualizando contatos...');
+  let atualizados = 0, semMatch = 0;
+  const porCiente = {};
+  for (const l of mcArquivo.linhas) {
+    if (l.ciente) porCiente[l.ciente] = (porCiente[l.ciente] || 0) + 1;
+    if (!l.inscricao) continue;
+    const patch = {};
+    const tel = mcSoDigitos(l.whatsapp) || mcSoDigitos(l.celular) || mcSoDigitos(l.telefone2);
+    if (tel) patch.telefone_whatsapp = tel;
+    if (l.ciente === '1') patch.confirmacao = 'confirmado';
+    else if (l.ciente === '2') patch.confirmacao = 'contato_incorreto';
+    if (!Object.keys(patch).length) continue;
+
+    const { data, error } = await sb.from('sime_atores').update(patch)
+      .eq('zona_id', zonaId).eq('inscricao_eleitoral', l.inscricao).select('id');
+    if (error) { showToast('⚠ ' + error.message); return; }
+    if (data && data.length) atualizados += data.length; else semMatch++;
+  }
+
+  mcResultado = { atualizados, semMatch, total: mcArquivo.linhas.length, porCiente };
+  await log('mesarios_atualizar_contatos', '', mcResultado);
+  showToast(`✓ ${atualizados} contato(s) atualizado(s)${semMatch ? ` · ${semMatch} sem cadastro correspondente` : ''}`);
+  if (window.recarregarAtores) await window.recarregarAtores();
+  render();
+}
+
 function renderSyncMesarios() {
   const c = document.getElementById('content');
   const semSessao = !window.supabaseAtores;
@@ -271,6 +369,33 @@ function renderSyncMesarios() {
       <div style="display:flex;gap:8px;margin-top:10px;">
         ${msArquivos.length && !semSessao ? `<button class="btn btn-dark" onclick="msSincronizar()">✓ Sincronizar com o SIME</button>` : ''}
         ${msArquivos.length ? `<button class="btn btn-out" onclick="msLimpar()">✕ Limpar</button>` : ''}
+      </div>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title">📞 Atualizar contatos (Ciente)</div>
+      <div class="ic-sub">Arquivo separado, formato mais simples (16 colunas, com a coluna <code>Ciente</code>) — geralmente um
+        recorte (ex.: só quem respondeu "não sou essa pessoa"), não o roster inteiro. Atualiza telefone e status de
+        <b>quem está no arquivo</b>, casando por Inscrição — nunca inativa ninguém, mesmo quem não aparece aqui.
+        <code>Ciente=1</code> vira confirmado, <code>Ciente=2</code> vira contato incorreto.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para atualizar.</div>' : ''}
+      <div class="drop-zone" id="mc-drop-zone" onclick="document.getElementById('mc-csv-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="event.preventDefault();this.classList.remove('drag');mcHandleFile(event.dataTransfer.files)">
+        <div class="dz-icon">📞</div>
+        <div class="dz-txt">Clique ou arraste o CSV de contatos aqui</div>
+        <div class="dz-sub">Um arquivo por vez</div>
+      </div>
+      <input type="file" id="mc-csv-input" accept=".csv" style="display:none" onchange="mcHandleFile(this.files)">
+      ${mcArquivo ? `
+        <div class="import-result ir-ok" style="margin-top:10px">
+          📄 ${mcArquivo.nome} — ${mcArquivo.linhas.length} linha(s)
+        </div>` : ''}
+      ${mcResultado ? `<div class="import-result ir-ok" style="margin-top:10px">✅ ${mcResultado.atualizados} atualizado(s)${mcResultado.semMatch ? ` · ${mcResultado.semMatch} sem cadastro correspondente` : ''} de ${mcResultado.total} no arquivo</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        ${mcArquivo && !semSessao ? `<button class="btn btn-dark" onclick="mcAtualizar()">✓ Atualizar contatos</button>` : ''}
+        ${mcArquivo ? `<button class="btn btn-out" onclick="mcLimpar()">✕ Limpar</button>` : ''}
       </div>
     </div>`;
 }

@@ -229,6 +229,37 @@ async function entrar(p) {
   await p.close();
 }
 
+// ── ?tab=modulos abre direto na aba Módulos (landing padrão do site, vercel.json) ──
+{
+  const p = await b.newPage();
+  const erros = [];
+  p.on('pageerror', e => erros.push(String(e)));
+  await p.route('**/vendor/supabase-js.esm.js', route =>
+    route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB({ perfil: 'coordenador', zona_id: 'z-7' }) }));
+  await p.goto(`${BASE}/SIME_principal.html?tab=modulos`, { waitUntil: 'load' });
+  await p.waitForTimeout(300);
+  await p.fill('#login-email', 'a@b.c');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForFunction(() => document.getElementById('login-overlay').style.display === 'none', { timeout: 15000 });
+  await p.waitForTimeout(300);
+
+  check('?tab=modulos: aba Módulos fica visível após logar', await p.isVisible('#tab-modulos'));
+  check('?tab=modulos: aba Eleição (padrão) fica escondida', !(await p.isVisible('#tab-eleicao')));
+  check('?tab=modulos: botão Módulos marcado como ativo', await p.locator('#tab-modulos-btn.active').count() === 1);
+  check('?tab=modulos: sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
+// ── sem ?tab: continua abrindo em Eleição, como sempre foi ──
+{
+  const { p, erros } = await abrir({ perfil: 'coordenador', zona_id: 'z-7' });
+  await entrar(p);
+  check('sem ?tab: aba Eleição continua sendo a padrão', await p.isVisible('#tab-eleicao'));
+  check('sem ?tab: sem erro JS', erros.length === 0, erros.join(' | '));
+  await p.close();
+}
+
 await b.close();
 
 const falhou = results.filter(r => !r.ok);

@@ -92,7 +92,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
 │   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
-│   ├── SIME_principal.html               Todos
+│   ├── SIME_principal.html               Todos — landing padrão do site (/ redireciona pra cá)
 │   ├── SIME_tokens.html                  Pré-eleição
 │   ├── SIME_paineis.html                 Todos
 │   ├── SIME_problemas.html               Dia D
@@ -256,15 +256,38 @@ ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
 
 **Direto pelo navegador, sem gerar SQL**: `SIME_convocacao.html` (módulo
 próprio, separado de `SIME_atores.html` desde 20/08/2026 — antes eram duas
-abas lá dentro) → aba **🔄 Sincronizar** aceita o CSV da planilha (formato de
-81 colunas) por upload — mesma lógica de `parse_mesarios_gsheet_csv.py`, mas
-em JS (`sime_mesarios_sync.js`), gravando direto no Supabase com a sessão da
-equipe (RLS `mesarios_raw_write_zona`, escopada pela zona do usuário — única
-policy de escrita em `sime_mesarios_raw`, adicionada em 20/08/2026; antes só
-existia SELECT pra `authenticated`, e só o SQL Editor com service_role
-conseguia popular o staging). Deleta o staging antigo só daquela zona/UF
-(não `TRUNCATE` — preserva o staging de outra zona em paralelo) e chama a
-RPC na sequência.
+abas lá dentro) → aba **🔄 Sincronizar** tem DOIS uploads separados
+(`sime_mesarios_sync.js`), pra dois arquivos que o cartório recebe
+separadamente e com propósitos diferentes:
+
+- **📋 roster completo (81 colunas)** — mesma lógica de
+  `parse_mesarios_gsheet_csv.py`, mas em JS, gravando direto no Supabase com
+  a sessão da equipe (RLS `mesarios_raw_write_zona`, escopada pela zona do
+  usuário — única policy de escrita em `sime_mesarios_raw`, adicionada em
+  20/08/2026; antes só existia SELECT pra `authenticated`, e só o SQL Editor
+  com service_role conseguia popular o staging). Deleta o staging antigo só
+  daquela zona/UF (não `TRUNCATE` — preserva o staging de outra zona em
+  paralelo), reinsere e chama `sime_sync_atores_from_raw` — que faz o diff
+  completo (UPSERT + `ativo=false` em quem saiu). Pressupõe que o arquivo é
+  o roster **inteiro** da zona.
+- **📞 atualizar contatos (16 colunas, com `Ciente`)** — formato mais
+  simples do TRE (`Zona/Seção/Nome/Inscrição/Situação/Localidade/Nº
+  Local/Nome Local/Cód. Objeto Local/Nº Função Eleitoral/Função
+  Eleitoral/Data Atualização/Ciente/whatsapp/celular/telefone2`), geralmente
+  um **recorte** (ex.: só quem respondeu "não sou essa pessoa"), não o
+  roster inteiro — por isso NÃO passa pelo pipeline acima: passar um
+  recorte pelo diff completo inativaria por engano todo mundo ausente do
+  arquivo. Em vez disso, é `UPDATE` direto em `sime_atores`, casando por
+  `inscricao_eleitoral`, só em quem está no arquivo.
+  `Ciente` (confirmado empiricamente em 20/08/2026 cruzando 3 arquivos reais
+  da zona — nunca documentado formalmente pelo TRE): `0`=sem contato,
+  `1`=confirmou convocação, `2`=informou não ser a pessoa procurada. Decisão
+  deliberada de 20/08/2026: diferente do roster de 81 colunas (que nunca
+  toca `confirmacao`), este arquivo é explicitamente sobre status de
+  contato, então **escreve** em `sime_atores.confirmacao`
+  (`Ciente=1`→`confirmado`, `Ciente=2`→`contato_incorreto`) e em
+  `telefone_whatsapp` — exceção deliberada à regra "só WhatsApp/Hermes muda
+  confirmacao", não descuido.
 
 `SIME_convocacao.html` tem mais três abas:
 - **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
@@ -292,6 +315,17 @@ RPC na sequência.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
+
+> **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
+> pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
+> qualquer um que loga cai no hub de módulos, não numa página específica.
+> `?tab=<nome>` é genérico (`abrirAbaDaUrl()`), não só pra `modulos`.
+>
+> **O antigo "🧑‍⚖️ Confirmação de mesários" do Admin** (modal próprio em
+> `SIME_admin.html`, aba Seções) foi removido e virou link pra
+> `SIME_convocacao.html` — o modal só sabia confirmado/recusou/substituído
+> (sem contato incorreto, sem meio alternativo, sem dashboard por
+> local/seção) e duplicava o que a página nova já faz melhor.
 
 > **"Recusou" ≠ "não é a pessoa procurada" — e o SIME não separa isso
 > sozinho.** O Hermes grava `confirmacao='recusou'` tanto pra "sou eu mas
@@ -334,6 +368,32 @@ delete from sime_mesarios_raw where zona_eleitoral_trabalho='7' and uf_trabalho=
 select * from sime_sync_atores_from_raw(7, 'PI');  -- 7ª Zona
 select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 ```
+
+> **Rodar de novo em staging já existente conserta dado antigo.** O fix do
+> `initcap()`→`lower()` acima só passou a valer na PRÓXIMA sincronização —
+> não retroagiu sozinho. Descoberto em 20/08/2026 quando a seção 245
+> (Jatobá do Piauí) apareceu com os 4 cargos ❌ no Dashboard mesmo com gente
+> cadastrada: os 682 registros de `sime_mesarios_raw` da 7ª Zona estavam
+> parados desde 03/08, de antes do fix, e ninguém tinha rodado
+> `sime_sync_atores_from_raw` de novo depois dele. Bastou rodar de novo
+> sobre o staging já existente (sem precisar reenviar arquivo) — 682
+> atualizados, 0 sem `secao_id` no final. Se aparecer seção "toda ❌" com
+> gente que deveria estar lá, suspeitar disso antes de procurar bug novo.
+
+**Confirmação por telefone é diferente de confirmação por arquivo.**
+`sime_atores.confirmacao` só muda por duas vias, e cada uma sabe algo que a
+outra não sabe:
+- **WhatsApp/Hermes** (`api/hermes-mesarios.js`) — a pessoa respondeu de
+  verdade pelo número cadastrado. Fonte mais confiável para "confirmado" e
+  "recusou" (é a pessoa falando por si).
+- **Arquivo de 16 colunas com `Ciente`** (aba 📞 Atualizar contatos, ver
+  acima) — o TRE já correu atrás desse contato por outro canal. Única fonte
+  pra "contato incorreto" em massa (`Ciente=2`), já que o Hermes não tem
+  como aprender isso sozinho quando o número nem é da pessoa.
+
+O roster de 81 colunas fica de fora dessa lista de propósito — nunca deve
+escrever em `confirmacao`, mesmo carregando `confirmou_convocacao` pro
+staging (só auditoria).
 
 ---
 

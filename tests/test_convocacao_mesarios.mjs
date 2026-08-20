@@ -29,9 +29,9 @@ class QB {
     if(this._op==='update'){
       window.__mock.escritas.push({ op:'update', tabela:this.t, payload:this._payload, filtro:{...this.f} });
       const rows=(window.__mock[this.t]||[]);
-      const idx=rows.findIndex(x=>this._casa(x));
-      if(idx>-1) rows[idx]={...rows[idx], ...this._payload};
-      return res({ error:null });
+      const atingidas=[];
+      rows.forEach((x,idx)=>{ if(this._casa(x)){ rows[idx]={...x, ...this._payload}; atingidas.push(rows[idx]); } });
+      return res({ data: atingidas, error:null });
     }
     const r=(window.__mock[this.t]||[]).filter(x=>this._casa(x));
     return res({ data:r, error:null, count: r.length });
@@ -74,7 +74,7 @@ function mock() {
     ],
     sime_atores: [
       { id:'a1', nome_completo:'ANA PRESIDENTE', telefone_whatsapp:'5586999990001', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s1', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:'2026-08-15T10:00:00Z' },
-      { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null },
+      { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null, inscricao_eleitoral:'046919051589' },
       { id:'a3', nome_completo:'CARLA RECUSOU', telefone_whatsapp:'5586999990003', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s2', zona_id:'z7', confirmacao:'recusou', ativo:true, observacao:'Recado via Hermes: não sou essa pessoa, número errado', meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null },
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
     ],
@@ -229,6 +229,35 @@ async function login(p) {
   await p.click('#tab-sync-btn');
   await p.waitForTimeout(200);
   check('aba sincronizar renderiza a zona de upload', await p.locator('#ms-csv-input').count() === 1);
+
+  // ── Atualizar contatos (formato de 16 colunas, com Ciente) ──
+  const mcHeaders = ['Zona','Seção','Nome','Inscrição','Situação','Localidade','Nº Local','Nome Local','Cód. Objeto Local','Nº Função Eleitoral','Função Eleitoral','Data Atualização','Ciente','whatsapp','celular','telefone2'];
+  const mcRow = (over) => mcHeaders.map(h => over[h] ?? '').join(',');
+  const mcCsv = [
+    mcHeaders.join(','),
+    // casa com BRUNO (inscricao_eleitoral='046919051589') — Ciente=1, telefone novo
+    mcRow({ 'Inscrição':'046919051589', 'Ciente':'1', 'whatsapp':'86988887777' }),
+    // não casa com ninguém do mock
+    mcRow({ 'Inscrição':'999999999999', 'Ciente':'2', 'whatsapp':'86977776666' }),
+  ].join('\n');
+  const mcPath = '/tmp/_sime_test_contatos.csv';
+  writeFileSync(mcPath, mcCsv, 'utf8');
+  await p.setInputFiles('#mc-csv-input', mcPath);
+  await p.waitForTimeout(300);
+  unlinkSync(mcPath);
+
+  check('carrega o arquivo de contatos (2 linhas)', /2 linha\(s\)/.test(await p.locator('.content').textContent()));
+  await p.click('button:has-text("✓ Atualizar contatos")');
+  await p.waitForTimeout(300);
+
+  const updBruno = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589'));
+  check('atualiza confirmacao=confirmado pra Ciente=1', updBruno?.payload?.confirmacao === 'confirmado', JSON.stringify(updBruno));
+  check('atualiza telefone junto', updBruno?.payload?.telefone_whatsapp === '86988887777', JSON.stringify(updBruno));
+  check('Bruno realmente mudou no mock (não só o log de escrita)', await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2').confirmacao) === 'confirmado');
+
+  const resumo = await p.locator('.content').textContent();
+  check('mostra 1 atualizado e 1 sem cadastro correspondente', /1.*atualizado/.test(resumo) && /1.*sem cadastro correspondente/.test(resumo), resumo.replace(/\s+/g, ' ').slice(0, 400));
+
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

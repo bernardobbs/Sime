@@ -298,7 +298,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     </select>
     <button class="btn btn-dark" onclick="openNewEvent()">+ Lançar ocorrência</button>
     <button class="btn btn-out" onclick="openSecoesManager()">⚙️ Gerenciar seções</button>
-    <button class="btn btn-out" onclick="openMesariosManager()">🧑‍⚖️ Confirmação de mesários</button>
+    <a class="btn btn-out" href="./SIME_convocacao.html" style="text-decoration:none;display:inline-flex;align-items:center">🧑‍⚖️ Confirmação de mesários</a>
   </div>
   <div class="table-wrap">
     <table class="data-table">
@@ -1920,119 +1920,6 @@ function excluirSecao(id){
     await openSecoesManager();
     if(window.carregarDadosReais) await carregarDadosReais();
   }, { titulo:'Excluir seção', labelOk:'🗑 Excluir', classeOk:'btn-red' });
-}
-
-// ══════════════════════════════════════════════
-// CONFIRMAÇÃO DE MESÁRIOS
-// Verificação pré-eleição: cada mesário confirma (ou não) que permanece na função.
-// Campo sime_atores.confirmacao: pendente | confirmado | recusou | substituido.
-// Mantém sime_atores.ativo em sincronia (recusou/substituido ⇒ ativo=false).
-// ══════════════════════════════════════════════
-let _mesariosCache = [];
-let _mesFiltroStatus = '';
-let _mesBusca = '';
-const CONF_LABEL = { pendente:'⏳ Pendente', confirmado:'✅ Confirmado', recusou:'🚫 Recusou', substituido:'🔄 Substituído' };
-
-function mesSecaoNum(obs){
-  const m = /Se[çc][ãa]o\s*vota[çc][ãa]o:\s*(\d+)/i.exec(obs||'');
-  return m ? String(m[1]).padStart(4,'0') : '—';
-}
-function mesFuncaoTxt(obs){
-  const m = /Fun[çc][ãa]o:\s*([^|]+)/i.exec(obs||'');
-  return m ? m[1].trim() : '—';
-}
-
-async function openMesariosManager(){
-  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
-  let sessao=null;
-  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
-  if(!sessao){ showToast('⚠ Faça login para gerenciar mesários'); return; }
-  const { data, error } = await supabase.from('sime_atores')
-    .select('id,nome_completo,telefone_whatsapp,observacao,confirmacao,ativo')
-    .eq('funcao','mesario').order('nome_completo');
-  if(error){ showToast('⚠ Falha ao carregar mesários'); return; }
-  _mesariosCache = data||[];
-  renderMesariosManager();
-}
-
-function renderMesariosManager(){
-  const total=_mesariosCache.length;
-  const cont={pendente:0,confirmado:0,recusou:0,substituido:0};
-  _mesariosCache.forEach(m=>{ cont[m.confirmacao]=(cont[m.confirmacao]||0)+1; });
-  const busca=_mesBusca.trim().toLowerCase();
-  const lista=_mesariosCache.filter(m=>{
-    if(_mesFiltroStatus && m.confirmacao!==_mesFiltroStatus) return false;
-    if(busca){
-      const alvo=(m.nome_completo+' '+mesSecaoNum(m.observacao)).toLowerCase();
-      if(!alvo.includes(busca)) return false;
-    }
-    return true;
-  });
-  const linhas=lista.map(m=>`
-    <tr>
-      <td>${mesSecaoNum(m.observacao)}</td>
-      <td>${m.nome_completo}<div style="color:var(--text3);font-size:.72rem">${mesFuncaoTxt(m.observacao)}</div></td>
-      <td style="white-space:nowrap">${CONF_LABEL[m.confirmacao]||m.confirmacao}</td>
-      <td style="white-space:nowrap">
-        <div style="display:flex;gap:7px">
-          <button class="btn btn-out btn-xs" title="Confirmado" aria-label="Marcar como confirmado" onclick="setConfirmacao('${m.id}','confirmado')">✅</button>
-          <button class="btn btn-out btn-xs" title="Recusou" aria-label="Marcar como recusou" onclick="setConfirmacao('${m.id}','recusou')">🚫</button>
-          <button class="btn btn-out btn-xs" title="Substituído" aria-label="Marcar como substituído" onclick="setConfirmacao('${m.id}','substituido')">🔄</button>
-          <button class="btn btn-out btn-xs" title="Voltar a pendente" aria-label="Voltar a pendente" onclick="setConfirmacao('${m.id}','pendente')">⏳</button>
-        </div>
-      </td>
-    </tr>`).join('');
-  const opt=(v,txt)=>`<option value="${v}" ${_mesFiltroStatus===v?'selected':''}>${txt}</option>`;
-  document.getElementById('modal-body').innerHTML=`
-    <div class="modal-hdr">
-      <div><div class="modal-title">Confirmação de mesários (${total})</div>
-      <div style="color:var(--text3);font-size:.78rem">
-        ⏳ ${cont.pendente} pendente · ✅ ${cont.confirmado} confirmado · 🚫 ${cont.recusou} recusou · 🔄 ${cont.substituido} substituído</div></div>
-      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body" style="max-height:62vh;overflow:auto">
-      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <input type="text" id="mes-busca" placeholder="Buscar nome ou seção…" value="${_mesBusca.replace(/"/g,'&quot;')}"
-               oninput="_mesBusca=this.value;renderMesariosManager();document.getElementById('mes-busca').focus()"
-               style="flex:1;min-width:160px;padding:6px 8px">
-        <select id="mes-status" onchange="_mesFiltroStatus=this.value;renderMesariosManager()">
-          ${opt('','Todos os status')}${opt('pendente','⏳ Pendente')}${opt('confirmado','✅ Confirmado')}${opt('recusou','🚫 Recusou')}${opt('substituido','🔄 Substituído')}
-        </select>
-      </div>
-      <table class="data-table" style="width:100%;font-size:.8rem">
-        <thead><tr><th>Seção</th><th>Nome / função</th><th>Status</th><th>Marcar</th></tr></thead>
-        <tbody>${linhas||'<tr><td colspan=4 style="text-align:center;color:var(--text3);padding:16px">Nenhum mesário no filtro.</td></tr>'}</tbody>
-      </table>
-    </div>
-    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
-  document.getElementById('overlay').classList.add('open');
-}
-
-function setConfirmacao(id, status){
-  // recusou/substituido ⇒ a pessoa não vai atuar (ativo=false); demais ⇒ ativo=true.
-  const ativo = !(status==='recusou' || status==='substituido');
-  // A confirmação reaproveita o overlay do gerenciador de mesários (já
-  // aberto) — não fecha o overlay, só volta pra lista (renderMesariosManager)
-  // ao terminar, sucesso ou erro.
-  const aplicar = async () => {
-    const { error } = await supabase.from('sime_atores')
-      .update({ confirmacao:status, ativo }).eq('id',id);
-    if(error){ showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao salvar')); renderMesariosManager(); return; }
-    const local=_mesariosCache.find(m=>m.id===id);
-    if(local){ local.confirmacao=status; local.ativo=ativo; }
-    showToast('✓ '+(CONF_LABEL[status]||status));
-    renderMesariosManager();
-  };
-  // Botões pequenos e colados (✅🚫🔄⏳) — um toque impreciso trocava
-  // "Confirmado" por "Recusou" sem aviso, desativando o mesário na hora.
-  // Confirmação só pro caminho destrutivo, não pra 'confirmado'/'pendente'.
-  if(!ativo){
-    const local=_mesariosCache.find(m=>m.id===id);
-    const nome = local?.nome_completo || 'este mesário';
-    pedirConfirmacao(`Marcar ${nome} como "${CONF_LABEL[status]||status}"? Isso desativa a convocação dele.`, aplicar, { titulo:'Confirmar mudança', labelOk:'Confirmar', classeOk:'btn-red' });
-    return;
-  }
-  aplicar();
 }
 
 // ══════════════════════════════════════════════

@@ -189,7 +189,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('eleicao',this)">🗓️ Eleição</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
-  <button class="nav-tab"        onclick="goTab('modulos',this)">🔗 Módulos</button>
+  <button class="nav-tab" id="tab-modulos-btn" onclick="goTab('modulos',this)">🔗 Módulos</button>
   <button class="nav-tab"        onclick="goTab('usuarios',this)">👥 Usuários</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
 </div>
@@ -558,15 +558,27 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
   await carregarZonas();
   esconderLogin();
+  abrirAbaDaUrl();
 });
 
 // Contingência: a configuração da eleição vive em localStorage, então o painel
 // continua utilizável sem sessão — só não resolve a zona nem lista zonas.
-document.getElementById('login-offline').addEventListener('click', esconderLogin);
+document.getElementById('login-offline').addEventListener('click', () => { esconderLogin(); abrirAbaDaUrl(); });
+
+// Landing padrão do site (vercel.json redireciona "/" pra cá com
+// ?tab=modulos) — sem o parâmetro, mantém "Eleição" como sempre foi. goTab()
+// exige o <button> clicado (usa .this pra marcar active), então resolve o
+// botão por id em vez de reusar um clique de verdade.
+function abrirAbaDaUrl() {
+  const tab = new URLSearchParams(location.search).get('tab');
+  if (!tab || tab === 'eleicao') return;
+  const btn = document.getElementById('tab-' + tab + '-btn');
+  if (btn && btn.style.display !== 'none') goTab(tab, btn);
+}
 
 (async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) { await carregarZonas(); esconderLogin(); }
+  if (session) { await carregarZonas(); esconderLogin(); abrirAbaDaUrl(); }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
