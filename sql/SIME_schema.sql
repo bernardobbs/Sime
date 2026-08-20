@@ -905,7 +905,13 @@ BEGIN
     LEFT JOIN sime_secoes s
       ON s.zona_id = v_zona_id
       AND s.numero = NULLIF(f.secao_local_trabalho, '')::int
-      AND s.municipio = initcap(f.nome_municipio_local_trabalho)
+      -- lower(), não initcap(): initcap('JATOBÁ DO PIAUÍ') vira 'Jatobá Do
+      -- Piauí' (capitaliza o conectivo "Do"), mas sime_secoes.municipio
+      -- grava 'Jatobá do Piauí' (minúsculo) — o join nunca casava pra esse
+      -- município, e o mesário entrava em sime_atores sem secao_id (função
+      -- ficava certa, só a seção que sumia). lower() em ambos os lados não
+      -- tem esse problema com conectivos em português.
+      AND lower(s.municipio) = lower(f.nome_municipio_local_trabalho)
     WHERE f.rn = 1
     ON CONFLICT (inscricao_eleitoral, funcao) WHERE inscricao_eleitoral IS NOT NULL
     DO UPDATE SET

@@ -5,3 +5,7 @@ node_modules/
 *.log
 __pycache__/
 *.pyc
+
+# SQL gerado por scripts/parse_mesarios*.py a partir de exportações reais do
+# TRE (nome/CPF/telefone de mesário) — nunca deve ir pro histórico do repo.
+scripts/output/
