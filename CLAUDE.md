@@ -925,6 +925,21 @@ select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 > conferência manual) — só o valor de SAÍDA para o que já era aceito virou
 > canônico, com "55" e o dígito 9 quando faltava.
 
+> **Segunda varredura de normalização em massa (21/08/2026, mesmo dia,
+> `sql/SIME_telefones_normalizacao.sql`).** O cartório usou o site ao vivo
+> na janela entre a primeira varredura e os 3 caminhos de import ficarem
+> corrigidos (item acima) — 237 números novos entraram fora do padrão
+> nesse meio-tempo. Como `sime_sync_atores_from_raw` nunca sobrescreve um
+> `telefone_whatsapp` já preenchido (ver bug corrigido), um número ruim
+> gravado uma vez fica errado pra sempre até uma varredura manual — não é
+> bug voltando, é a mesma troca deliberada de sempre. Reaplicado usando a
+> função `sime_normalizar_telefone_whatsapp()` direto (em vez de reescrever
+> o CASE), confirmado idempotente (0 candidatos na checagem seguinte).
+> Moral prática: **rodar essa varredura periodicamente** (não só uma vez)
+> enquanto o cartório seguir usando os 3 caminhos de import em paralelo às
+> minhas correções — é esperado que um pouco de dado não-canônico volte a
+> aparecer entre uma sessão de trabalho e outra.
+
 **Confirmação por telefone é diferente de confirmação por arquivo.**
 `sime_atores.confirmacao` só muda por duas vias, e cada uma sabe algo que a
 outra não sabe:

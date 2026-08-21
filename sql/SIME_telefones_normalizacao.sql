@@ -98,3 +98,37 @@ returning a.id;
 -- E 1 com 14 dígitos (ANA KAROLIINE DA SILVA ALVES, "55869994881793") —
 -- dígito a mais, não corrigido automaticamente; revisão manual do cartório
 -- pra confirmar qual dígito sobra antes de editar.
+
+-- ── Segunda varredura (21/08/2026, mesmo dia) ──────────────────────────
+-- Pedido de novo pelo cartório ("procure na base e normalize todos os
+-- contatos para whatsapp"). Achado: o cartório estava usando o site ao
+-- vivo enquanto os 3 caminhos de importação (Atualizar contatos, colar
+-- lista, roster do TRE) ainda não normalizavam na escrita — esse uso real,
+-- na janela entre a varredura acima e o fix dos 3 caminhos ficar no ar
+-- (ver CLAUDE.md, "Todo import normaliza telefone pro padrão WhatsApp
+-- agora"), gravou 237 números novos fora do padrão. Como o upsert do
+-- roster (sime_sync_atores_from_raw) só preenche telefone_whatsapp quando
+-- o campo está vazio (nunca sobrescreve), um número ruim gravado uma vez
+-- fica permanentemente errado até uma varredura manual como esta — não é
+-- bug, é a mesma troca deliberada de "nunca desfazer correção manual".
+--
+-- Reaproveita a função sime_normalizar_telefone_whatsapp() (criada nesse
+-- meio-tempo pro roster/JS) em vez de reescrever o CASE acima — mesma
+-- heurística, já testada. Idempotente por natureza (mesma cláusula
+-- IS DISTINCT FROM):
+--
+--   update sime_atores a
+--   set telefone_whatsapp = sime_normalizar_telefone_whatsapp(a.telefone_whatsapp)
+--   where a.ativo = true and a.telefone_whatsapp is not null and a.telefone_whatsapp <> ''
+--     and sime_normalizar_telefone_whatsapp(a.telefone_whatsapp) is distinct from a.telefone_whatsapp
+--   returning a.id;
+--
+-- Resultado real: 237 registros atualizados. Rodada a checagem de novo
+-- logo em seguida (mesma query, sem o UPDATE) — 0 candidatos restantes,
+-- confirma que não sobrou nada pra essa varredura. Sobraram os mesmos 8
+-- casos que exigem revisão humana, não são bug: 6 fixos válidos "55"+DDD+8
+-- (mais 3 que apareceram desde a primeira varredura — SAMARA DA CUNHA
+-- OLIVEIRA, JULIANO JOSÉ DA SILVA VIEIRA CARDOSO, ANDRÉA DE SOUSA ARAÚJO —
+-- todos fixos de verdade, subscriber começando 3, corretamente preservados
+-- sem o dígito 9), o placeholder da MARIA DE FATIMA e o caso de 14 dígitos
+-- da ANA KAROLIINE (os dois já citados acima, ainda pendentes).
