@@ -489,17 +489,47 @@ cada um com propósito diferente:
   o backfill do que já tinha sido gravado assim antes do fix — já aplicado
   em produção nas duas zonas.
 
-  **Mensagem pré-preenchida no botão "💬 Abrir WhatsApp" do modal
-  (21/08/2026)** — pedido do cartório: indo de nome em nome confirmar se o
-  telefone cadastrado ainda é da pessoa certa, digitar a mesma pergunta toda
-  vez que abre uma conversa nova era repetitivo. `cmMsgConfirmarContato(p)`
-  monta "Bom dia, esse contato é de {NOME} ?" e `linkWhatsApp()` (já aceitava
-  um 2º argumento de mensagem, só não era usado aqui) preenche via `?text=`
-  do link `wa.me` — a pessoa que vai enviar ainda precisa clicar "Enviar" no
-  WhatsApp, isso não manda nada sozinho. Só no botão dedicado do modal; o
-  link do telefone no card da lista continua sem mensagem (contextos
-  diferentes — o card é só "abrir a conversa", o botão do modal é
+  **Link do WhatsApp pré-preenchido, copiado em vez de aberto (21/08/2026,
+  ajustado no mesmo dia)** — pedido do cartório: indo de nome em nome
+  confirmar se o telefone cadastrado ainda é da pessoa certa, digitar a
+  mesma pergunta toda vez que abre uma conversa nova era repetitivo.
+  `cmMsgConfirmarContato(p)` monta "Bom dia, esse contato é de {NOME} ?" e
+  `linkWhatsApp()` (já aceitava um 2º argumento de mensagem, só não era
+  usado aqui) preenche via `?text=` do link `wa.me`. Primeira versão abria o
+  link direto (`<a target="_blank">`); o cartório pediu pra trocar por
+  **copiar** (`cmCopiarLinkWhatsApp`, `navigator.clipboard.writeText`) —
+  abrir aba/app novo a cada clique, pessoa após pessoa, era mais disruptivo
+  do que precisava; copiado, o link pode ir pra onde for mais conveniente
+  (ex.: um WhatsApp Web já aberto). Ainda precisa colar e enviar manualmente
+  — isso não manda nada sozinho. Só no botão dedicado do modal; o link do
+  telefone no card da lista continua sendo um link normal, sem mensagem
+  (contextos diferentes — o card é só "abrir a conversa", o botão do modal é
   especificamente o fluxo de "confirmar que é essa pessoa").
+
+  **Copiar o link do WhatsApp já registra a tentativa sozinho (21/08/2026)**
+  — pedido direto: "atualizar automaticamente que tentei contato". Antes,
+  copiar o link e registrar que houve uma tentativa eram duas ações
+  separadas (a segunda exigia preencher a Nota manualmente). Agora
+  `cmCopiarLinkWhatsApp()` chama `cmRegistrarTentativaCore(id, 'whatsapp',
+  'Copiou o link do WhatsApp pra confirmar contato')` na sequência e
+  recarrega a timeline do modal — clicar em copiar já é, por si só, uma
+  tentativa de contato registrada, sem passo extra.
+
+  **Bug real reportado em 21/08/2026 — "clico em Salvar e o modal não
+  fecha".** Investigando, `cmSalvarModal()` não tinha nenhum try/catch ao
+  redor do `await sb.from('sime_atores').update(patch)...`. Um erro de
+  BANCO (RLS, constraint) não derruba esse await — a chamada resolve
+  normalmente com `{data, error}`, e isso já era tratado (toast + mantém
+  modal aberto). Mas uma falha de REDE de verdade (sem sinal, timeout —
+  cenário que o próprio projeto já assume como normal, ver filosofia
+  offline-first) FAZ o `await` lançar uma exceção de verdade — sem
+  try/catch, ela saía sem tratamento nenhum: nenhum toast aparecia, e
+  `cmFecharModal()` (a última linha da função) nunca era alcançado. Do
+  ponto de vista de quem clicou, parecia que o botão simplesmente não fazia
+  nada. `cmSalvarModal()` agora envolve as escritas num try/catch: em
+  qualquer falha inesperada, mostra "⚠ Falha ao salvar — verifique a
+  conexão e tente de novo" e MANTÉM o modal aberto (não descarta o que a
+  pessoa digitou) em vez de falhar em silêncio.
 
   **Código de rastreio só aparece no modal quando o meio é Carta Registrada
   (21/08/2026) — antes aparecia sempre, inclusive pra WhatsApp/Ligação/
@@ -562,6 +592,27 @@ cada um com propósito diferente:
   Salvar sem tocar em nada, e regravava a versão sem "55" no banco. Corrigido
   normalizando os dois lados com `telSemPais()` antes de comparar, e
   gravando de volta com "55" quando realmente muda.
+
+  **Normalização em massa de `telefone_whatsapp` (21/08/2026)** — investigar
+  o bug acima levantou que ~32% dos 723 atores ativos com telefone (232
+  registros) não estavam no formato "55"+DDD+9dígitos que o resto do sistema
+  assume. Rodado via SQL Editor (não é uma migração — `sql/
+  SIME_telefones_normalizacao.sql` documenta a query e o resultado, não
+  reaplica sozinha): 229 registros corrigidos, cobrindo formatos com DDD+9
+  faltando só o "55" (86, já seguro por definição), sem DDD nenhum (assume
+  86 — as duas zonas do SIME são só no Piauí, DDD único, mesma premissa já
+  usada no parser de "colar lista"), formato antigo de celular sem o dígito
+  9 (regra: subscriber começando 6-9 é celular pré-2016 e ganha o 9; 2-5 é
+  fixo e não ganha), e um "0" extra na frente por erro de digitação. Nenhuma
+  premissa foi assumida sem checar exceção primeiro (COUNT contra os 723
+  registros antes de aplicar). Ficaram de fora, de propósito, por exigirem
+  adivinhar em vez de deduzir: **1 placeholder `"000000000000"`** (não é um
+  número — não vira um número inventado; MARIA DE FATIMA GOMES EDUVIRGES
+  precisa que o cartório confirme se ela tem telefone de verdade ou se o
+  campo deve ficar `NULL`) e **1 registro de 14 dígitos** (ANA KAROLIINE DA
+  SILVA ALVES, `"55869994881793"` — um dígito a mais depois do "55", mesmo
+  artefato de cópia/planilha já documentado alhures; corrigir exigiria
+  adivinhar QUAL dígito é o duplicado).
 
   **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
   além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status

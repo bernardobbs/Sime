@@ -44,7 +44,13 @@ class QB {
       return x[k]===v;
     });
   }
-  then(res){
+  then(res, rej){
+    // Simula uma falha de REDE de verdade (não um erro de banco) — o await
+    // rejeita de propósito, pra testar que cmSalvarModal() não fica em
+    // silêncio quando isso acontece (bug real reportado em 21/08/2026).
+    if(window.__mock.forcarErroRedeTabela === this.t && this._op === 'update'){
+      return (rej || (()=>{}))(new Error('Falha de rede simulada'));
+    }
     if(this._op==='update'){
       window.__mock.escritas.push({ op:'update', tabela:this.t, payload:this._payload, filtro:{...this.f} });
       const rows=(window.__mock[this.t]||[]);
@@ -374,13 +380,34 @@ async function login(p) {
   await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(300);
 
-  const linkWa = p.locator('#modal-body a:has-text("Abrir WhatsApp")');
-  check('modal tem botão direto pro wa.me de quem tem telefone', await linkWa.count() === 1);
-  check('link do wa.me aponta pro número da pessoa', /5586999990002|86999990002|999990002/.test(await linkWa.getAttribute('href') || ''), await linkWa.getAttribute('href'));
+  // Copia o link (em vez de abrir, 21/08/2026 — indo de nome em nome, abrir
+  // uma aba/app novo a cada clique era mais disruptivo do que precisava).
+  // navigator.clipboard não funciona em Chromium headless sem concessão de
+  // permissão — mocka aqui só pra capturar o texto escrito.
+  // navigator.clipboard só tem getter no protótipo real (sem setter) — uma
+  // atribuição direta é ignorada em silêncio. Object.defineProperty troca o
+  // descritor de fato.
+  await p.evaluate(() => {
+    window.__clipboardText = null;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
+  });
+  const btnCopiarWa = p.locator('#modal-body button:has-text("Copiar link do WhatsApp")');
+  check('modal tem botão de copiar link do wa.me de quem tem telefone', await btnCopiarWa.count() === 1);
+  await btnCopiarWa.click();
+  await p.waitForTimeout(100);
+  const linkCopiado = await p.evaluate(() => window.__clipboardText);
+  check('link copiado aponta pro número da pessoa', /5586999990002|86999990002|999990002/.test(linkCopiado || ''), linkCopiado);
   // Pedido de 21/08/2026: mensagem pré-preenchida (?text=) perguntando se o
   // contato é da pessoa certa — evita digitar a mesma pergunta a cada
   // conversa nova aberta indo de nome em nome.
-  check('link do wa.me já vem com a mensagem de confirmação pré-preenchida', (await linkWa.getAttribute('href') || '').includes('?text=' + encodeURIComponent('Bom dia, esse contato é de BRUNO MESARIO ?')), await linkWa.getAttribute('href'));
+  check('link copiado já vem com a mensagem de confirmação pré-preenchida', (linkCopiado || '').includes('?text=' + encodeURIComponent('Bom dia, esse contato é de BRUNO MESARIO ?')), linkCopiado);
+  // Pedido de 21/08/2026: copiar o link do WhatsApp já deve contar como
+  // tentativa de contato, sem precisar preencher a Nota separada.
+  const tentativaAutoWa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato' && e.payload.payload?.meio === 'whatsapp'));
+  check('copiar o link do WhatsApp já registra a tentativa sozinho', !!tentativaAutoWa && tentativaAutoWa.payload.payload.ator_id === 'a2', JSON.stringify(tentativaAutoWa));
+  await p.waitForTimeout(150);
+  const modalTxtWa = await p.locator('#modal-body').textContent();
+  check('a tentativa automática do WhatsApp aparece na timeline', /Copiou o link do WhatsApp/.test(modalTxtWa), modalTxtWa.replace(/\s+/g, ' ').slice(0, 300));
 
   // Meio de contato dentro do modal (não só no card) — trocar pra Ligação
   // dispara o mesmo cmSalvarMeio de sempre e o modal se atualiza sozinho.
@@ -395,7 +422,9 @@ async function login(p) {
   await p.fill('#mm-tent-nota', 'Liguei às 14h, não atendeu');
   await p.click('#modal-body button:has-text("Registrar tentativa")');
   await p.waitForTimeout(250);
-  const updTentativa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
+  // .find() por acao sozinho pegaria a tentativa automática do WhatsApp
+  // (registrada mais cedo neste mesmo bloco) — filtra também pela nota.
+  const updTentativa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato' && e.payload.payload?.nota === 'Liguei às 14h, não atendeu'));
   check('registrar tentativa grava log com ator_id, meio e nota', updTentativa?.payload?.payload?.ator_id === 'a2' && updTentativa?.payload?.payload?.nota === 'Liguei às 14h, não atendeu', JSON.stringify(updTentativa));
   // Bug real corrigido em 21/08/2026: o insert nunca preenchia eleicao_id, e
   // a policy de SELECT de sime_logs (eleicao_id IN (...)) nunca casa com
@@ -450,6 +479,42 @@ async function login(p) {
   check('Salvar sem editar o telefone NÃO reescreve telefone_whatsapp (nem tira o 55 por engano)', !updTelAna, JSON.stringify(updTelAna));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.67 Bug real (21/08/2026): "Salvar" com falha de rede não fica em silêncio ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+
+  // sb.from(...).update(...) não rejeita em erro de BANCO (resolve
+  // {data,error}, já tratado) — mas uma falha de REDE de verdade (sem sinal,
+  // timeout) faz o await lançar exceção. Antes do fix, cmSalvarModal() não
+  // tinha try/catch: a exceção saía sem tratamento, cmFecharModal() nunca
+  // era alcançado e não aparecia toast nenhum — parecia que o clique não fez
+  // nada. window.__mock.forcarErroRedeTabela (ver STUB) simula essa falha.
+  await p.evaluate(() => { window.__mock.forcarErroRedeTabela = 'sime_atores'; });
+  await p.fill('#mm-tel', '(86) 90000-1111');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+
+  check('falha de rede mostra um toast (não fica em silêncio)', /Falha ao salvar/.test(await p.locator('.toast').textContent().catch(() => '')), await p.locator('.toast').textContent().catch(() => ''));
+  check('modal continua aberto (não perde a edição em andamento)', await p.evaluate(() => document.getElementById('overlay').classList.contains('open')));
+
+  // Tirando a falha simulada, "Salvar" volta a funcionar normalmente.
+  await p.evaluate(() => { window.__mock.forcarErroRedeTabela = null; });
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+  check('sem a falha, salvar volta a fechar o modal normalmente', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS (a exceção fica só dentro do try/catch, não estoura pra fora)', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
 

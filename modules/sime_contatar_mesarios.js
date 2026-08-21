@@ -23,14 +23,34 @@ A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleiçõe
 
 Qualquer dúvida, entre em contato com o cartório eleitoral.`;
 
-// Mensagem pronta pro botão "💬 Abrir WhatsApp" do modal (21/08/2026) — o
-// cartório vai de nome em nome confirmando se o telefone cadastrado ainda é
-// da pessoa certa, e digitar essa mesma pergunta toda vez que abre uma
-// conversa nova era repetitivo. Pré-preenchida via ?text= do wa.me
-// (linkWhatsApp já aceita 2º argumento) — a pessoa ainda precisa clicar
-// "Enviar" no WhatsApp, isso não manda nada sozinho.
+// Mensagem pronta pro botão "🔗 Copiar link do WhatsApp" do modal
+// (21/08/2026) — o cartório vai de nome em nome confirmando se o telefone
+// cadastrado ainda é da pessoa certa, e digitar essa mesma pergunta toda vez
+// que abre uma conversa nova era repetitivo. Pré-preenchida via ?text= do
+// wa.me (linkWhatsApp já aceita 2º argumento) — a pessoa ainda precisa colar
+// e enviar no WhatsApp, isso não manda nada sozinho.
 function cmMsgConfirmarContato(p) {
   return `Bom dia, esse contato é de ${p.nome_completo} ?`;
+}
+
+// Copia o link (em vez de abrir), pedido do cartório em 21/08/2026: indo de
+// nome em nome, abrir uma aba/app novo do WhatsApp a cada clique era mais
+// disruptivo do que precisava — cola o link já pronto (com a mensagem) onde
+// for mais conveniente (WhatsApp Web já aberto, etc.). Copiar o link já É
+// uma tentativa de contato — registra sozinho na timeline (mesmo dia,
+// pedido direto: "atualizar automaticamente que tentei contato"), sem
+// precisar preencher a caixa de Nota separada só pra isso.
+async function cmCopiarLinkWhatsApp(id) {
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const link = linkWhatsApp(p.telefone_whatsapp, cmMsgConfirmarContato(p));
+  if (!link) return;
+  navigator.clipboard?.writeText(link).then(
+    () => showToast('🔗 Link copiado — cole onde precisar'),
+    () => showToast('⚠ Não deu pra copiar automaticamente'),
+  );
+  await cmRegistrarTentativaCore(id, 'whatsapp', 'Copiou o link do WhatsApp pra confirmar contato');
+  if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar a tentativa nova
 }
 
 function cmPersonalizarMensagem(msg, p, sec) {
@@ -440,7 +460,7 @@ function cmRenderModal() {
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
-          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<a class="btn btn-out" style="font-size:.72rem;padding:5px 10px;text-decoration:none" href="${linkWhatsApp(p.telefone_whatsapp, cmMsgConfirmarContato(p))}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>` : ''}
+          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmCopiarLinkWhatsApp('${p.id}')">🔗 Copiar link do WhatsApp</button>` : ''}
         </div>
         <div class="form-group">
           <label>Telefone (WhatsApp)</label>
@@ -544,18 +564,33 @@ async function cmSalvarModal() {
     return;
   }
 
-  if (Object.keys(patch).length) {
-    const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
-    Object.assign(p, patch);
-    if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
-    if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+  // Bug real reportado em 21/08/2026: "clico em Salvar e o modal não fecha".
+  // sb.from(...).update(...) não rejeita em erro de banco (resolve
+  // {data,error} normalmente, já tratado acima) — mas um erro de REDE de
+  // verdade (sem sinal, timeout) FAZ o await rejeitar, e isso não tinha
+  // try/catch nenhum: a exceção saía sem tratamento, cmFecharModal() nunca
+  // era alcançado, e não aparecia toast nenhum — parecia que o clique não
+  // fez nada. Envolve tudo num try/catch: em qualquer falha inesperada,
+  // mostra o motivo e MANTÉM o modal aberto (não perde o que a pessoa
+  // digitou), em vez de falhar em silêncio.
+  try {
+    if (Object.keys(patch).length) {
+      const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+      if (error) { showToast('⚠ ' + error.message); return; }
+      Object.assign(p, patch);
+      if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
+      if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+    }
+    if (notaTentativa) {
+      const meioEl = document.getElementById('mm-tent-meio');
+      await cmRegistrarTentativaCore(id, meioEl ? meioEl.value : (p.meio_contato || 'whatsapp'), notaTentativa);
+    }
+    if (obsNova) await cmAppendObservacao(id, obsNova);
+  } catch (e) {
+    showToast('⚠ Falha ao salvar — verifique a conexão e tente de novo');
+    console.error('cmSalvarModal', e);
+    return;
   }
-  if (notaTentativa) {
-    const meioEl = document.getElementById('mm-tent-meio');
-    await cmRegistrarTentativaCore(id, meioEl ? meioEl.value : (p.meio_contato || 'whatsapp'), notaTentativa);
-  }
-  if (obsNova) await cmAppendObservacao(id, obsNova);
 
   showToast('✓ Dados atualizados');
   cmFecharModal();
