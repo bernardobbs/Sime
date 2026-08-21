@@ -144,6 +144,20 @@ const CM_LOG_HERMES_LABEL = {
   hermes_atualizou_info: () => 'Mandou recado por WhatsApp (anexado à observação)',
 };
 
+// Toda ação registrada por esta tela passa por aqui em vez de chamar log()
+// direto — achado real em 21/08/2026: nenhuma tentativa/atualização gravava
+// QUEM do cartório fez a ação (ex.: "telefone atualizado manualmente" sem
+// dizer quem atualizou), só a observação (cmAppendObservacao) já cravava o
+// autor no próprio texto. window.nomeDoUsuario() é cacheado (sime_usuarios
+// da sessão), então chamar de novo a cada ação não custa uma consulta nova.
+async function cmAutorAtual() {
+  return window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+}
+async function cmLog(acao, secao, payload) {
+  const autor = await cmAutorAtual();
+  await log(acao, secao, { ...payload, autor });
+}
+
 function cmEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -183,7 +197,7 @@ async function cmMarcarContatoIncorreto(id) {
   if (error) { showToast('⚠ ' + error.message); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.confirmacao = 'contato_incorreto';
-  await log('mesario_contato_incorreto', '', { ator_id: id });
+  await cmLog('mesario_contato_incorreto', '', { ator_id: id });
   showToast('🔍 Marcado como contato incorreto — busque um novo contato');
   render();
 }
@@ -219,10 +233,10 @@ async function cmConfirmarEEnviar(id) {
       render(); if (cmModalId === id) cmRenderModal();
       return;
     }
-    await log('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: true });
+    await cmLog('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: true });
     showToast('✅ Confirmado — mensagem enfileirada, o Hermes envia');
   } else {
-    await log('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: false });
+    await cmLog('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: false });
     showToast('✅ Confirmado — sem telefone cadastrado, mensagem não foi enfileirada');
   }
   render();
@@ -244,7 +258,7 @@ async function cmTogglePrecisaSubstituir(id) {
   const { error } = await sb.from('sime_atores').update({ precisa_substituir: novo }).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
   p.precisa_substituir = novo;
-  await log('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
+  await cmLog('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
   render();
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
@@ -264,7 +278,7 @@ async function cmSalvarMeio(id, meio) {
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
   if (p0) Object.assign(p0, patch);
-  await log('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
+  await cmLog('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
   showToast('✓ Meio de contato atualizado');
   render();
   if (cmModalId === id) cmRenderModal(); // seletor existe tanto no card quanto dentro do modal aberto
@@ -276,7 +290,7 @@ async function cmSalvarStatusAlt(id, status) {
   if (error) { showToast('⚠ ' + error.message); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.status_contato_alternativo = status || null;
-  await log('mesario_status_contato_alt', '', { ator_id: id, status });
+  await cmLog('mesario_status_contato_alt', '', { ator_id: id, status });
   showToast('✓ Status de envio atualizado');
   if (cmModalId === id) cmRenderModal();
 }
@@ -310,7 +324,7 @@ async function cmAppendObservacao(id, texto) {
   const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return false; }
   p.observacao = nova;
-  await log('mesario_observacao_adicionada', '', { ator_id: id });
+  await cmLog('mesario_observacao_adicionada', '', { ator_id: id });
   return true;
 }
 
@@ -335,7 +349,7 @@ async function cmAdicionarObservacao(id) {
 // tentativa registra o meio usado.
 // Núcleo compartilhado com o "Salvar" geral do modal — ver cmSalvarModal.
 async function cmRegistrarTentativaCore(id, meio, nota) {
-  await log('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
+  await cmLog('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
 }
 
 async function cmRegistrarTentativa(id) {
@@ -479,7 +493,7 @@ async function cmAdicionarTelefoneAlt(id) {
   if (error) { showToast('⚠ ' + error.message); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.telefone_alternativo = valor;
-  await log('mesario_telefone_alt_adicionado', '', { ator_id: id });
+  await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
   showToast('✓ Telefone alternativo adicionado');
   if (cmModalId === id) await cmAbrirModal(id);
   render();
@@ -491,7 +505,7 @@ async function cmRemoverTelefoneAlt(id) {
   if (error) { showToast('⚠ ' + error.message); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.telefone_alternativo = null;
-  await log('mesario_telefone_alt_removido', '', { ator_id: id });
+  await cmLog('mesario_telefone_alt_removido', '', { ator_id: id });
   showToast('✓ Telefone alternativo removido');
   if (cmModalId === id) await cmAbrirModal(id);
   render();
@@ -503,6 +517,14 @@ function cmFecharModal(e) {
     cmModalId = null;
     cmModalHist = null;
   }
+}
+
+// "por Fulano" ao final de um item de histórico — só aparece quando o
+// payload tem autor (achado real em 21/08/2026: entradas gravadas antes
+// desse campo existir não têm de onde vir esse dado, então ficam sem o
+// "por" mesmo, em vez de inventar "Cartório" genérico pra elas).
+function cmPorAutor(payload) {
+  return payload?.autor ? ` <span style="color:var(--text2)">(por ${cmEsc(payload.autor)})</span>` : '';
 }
 
 function cmListaHist(itens, vazio, linha) {
@@ -525,13 +547,13 @@ function cmRenderModal() {
           return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
         }
         const meioLbl = CM_MEIO_LABEL[t.payload.meio] || t.payload.meio || 'Contato';
-        return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}</div>`;
+        return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}${cmPorAutor(t.payload)}</div>`;
       });
 
   const blocoLogs = cmModalHist === null
     ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
     : cmListaHist(cmModalHist.logs, 'Nenhuma atualização registrada ainda.',
-        l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc(l._label(l.payload || {}))}</div>`);
+        l => `<div class="m-hist-item"><b>${cmFmtDataHist(l.ts)}</b> — ${cmEsc(l._label(l.payload || {}))}${cmPorAutor(l.payload)}</div>`);
 
   const observacoes = cmParseObservacoes(p.observacao);
   const blocoObservacoes = cmListaHist([...observacoes].reverse(), 'Nenhuma observação registrada ainda.',
@@ -697,9 +719,9 @@ async function cmSalvarModal() {
       const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
       if (error) { showToast('⚠ ' + error.message); return; }
       Object.assign(p, patch);
-      if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
-      if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
-      if ('telefone_alternativo' in patch) await log('mesario_telefone_alt_adicionado', '', { ator_id: id });
+      if ('telefone_whatsapp' in patch) await cmLog('mesario_editar_telefone', '', { ator_id: id });
+      if ('codigo_rastreio' in patch) await cmLog('mesario_editar_rastreio', '', { ator_id: id });
+      if ('telefone_alternativo' in patch) await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
     }
     if (notaTentativa) {
       const meioEl = document.getElementById('mm-tent-meio');

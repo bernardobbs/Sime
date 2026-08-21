@@ -569,6 +569,29 @@ cada um com propósito diferente:
   sempre). "Atualizar no ELO" continua manual — o SIME não escreve na
   planilha do TRE, isso é fora do sistema.
 
+  **Toda ação desta tela agora grava QUEM fez, não só O QUE foi feito
+  (21/08/2026) — achado real reportado pelo cartório num caso concreto
+  (ADRIANA PAZ OLIVEIRA): "tentou contactar" e "telefone atualizado
+  manualmente" apareciam na timeline sem dizer quem do cartório fez.** Só
+  `cmAppendObservacao` (Observações) já cravava o autor — mas embutido no
+  próprio texto do carimbo (`[data] Fulano (cartório): ...`), nunca como
+  campo à parte no log; nenhuma das outras ações (registrar tentativa,
+  copiar link do WhatsApp, editar telefone/rastreio, trocar meio de
+  contato, marcar contato incorreto/precisa-substituir, confirmar
+  manualmente, adicionar/remover telefone alternativo) gravava autor
+  nenhum. Toda chamada a `log()` nesta tela passou a ir por `cmLog()`
+  (`sime_contatar_mesarios.js`), que injeta `payload.autor =
+  window.nomeDoUsuario()` (mesmo helper cacheado que a Observação já usava)
+  antes de gravar — sem tocar no contrato de `acao`/demais campos do
+  payload, então nada que já lia esses logs quebra. As duas timelines do
+  modal (**📞 Tentativas de contato** e **📜 Atualizações**) mostram
+  "(por Fulano)" ao final de cada item via `cmPorAutor()`, só quando o
+  payload tem `autor` — entradas gravadas ANTES deste fix (produção já tem
+  histórico assim) não têm de onde vir esse dado, então ficam sem o "(por
+  ...)" mesmo, em vez de inventar um autor genérico pra elas. Campanhas
+  automáticas do Hermes (📢 na timeline de tentativas) continuam sem autor
+  de propósito — não foi uma pessoa do cartório que mandou aquela.
+
   **Bug real reportado em 21/08/2026 — "clico em Salvar e o modal não
   fecha".** Investigando, `cmSalvarModal()` não tinha nenhum try/catch ao
   redor do `await sb.from('sime_atores').update(patch)...`. Um erro de
@@ -787,13 +810,46 @@ cada um com propósito diferente:
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
 `id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
-histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`/
-`whatsapp_*`. Quem sai da nova exportação vira `ativo=false`, não é apagado.
+histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`.
+Quem sai da nova exportação vira `ativo=false`, não é apagado.
 Casa o local de trabalho por `lower(municipio)` (não `initcap()` — corrigido
 em 20/08/2026: `initcap('JATOBÁ DO PIAUÍ')` capitaliza o conectivo "Do", que
 não bate com `sime_secoes.municipio='Jatobá do Piauí'` gravado em minúsculo;
 o join nunca casava pra esse município e ~120 mesários de lá entravam sem
 `secao_id`).
+
+> **Bug real corrigido em 21/08/2026 — `telefone_whatsapp` era sobrescrito a
+> cada resync, desfazendo correção/normalização manual.** O comentário do
+> código já prometia "preserva sempre... whatsapp\_\*", mas o `DO UPDATE SET`
+> gravava `telefone_whatsapp = EXCLUDED.telefone_whatsapp` sem condição —
+> ou seja, toda vez que a pessoa continuava na exportação do TRE, o número
+> corrigido/normalizado no SIME (edição manual pelo modal, ou a normalização
+> em massa de 229 registros já aplicada em produção, ver
+> `sql/SIME_telefones_normalizacao.sql`) era substituído de volta pelo
+> `COALESCE` cru dos 4 campos de telefone do próprio arquivo do TRE — mesmo
+> sem o cartório ter mudado nada. Corrigido pra
+> `COALESCE(NULLIF(sime_atores.telefone_whatsapp, ''), EXCLUDED.telefone_whatsapp)`:
+> só entra o valor do TRE se o campo ainda estiver vazio (nunca teve telefone
+> ou foi limpo); um telefone já preenchido nunca mais é tocado pelo resync —
+> corrigir de fato passa a exigir uma ação manual (modal, "atualizar
+> contatos" ou "colar lista"), nunca o roster de 81 colunas.
+
+> **Bug real corrigido em 21/08/2026 — subir só UMA das duas planilhas do
+> TRE inativava por engano quem era da outra.** MRV (`base geral MRV`) e
+> Apoio especializado (`Base Geral Apoio especializado`) são duas
+> abas/arquivos separados, e o cartório nem sempre tem os dois em mãos na
+> mesma sessão de upload (ex.: só a MRV foi atualizada esta semana). Antes,
+> `msSincronizar()` (`modules/sime_mesarios_sync.js`) apagava **todo** o
+> staging da zona/UF em `sime_mesarios_raw` antes de reinserir — subindo só
+> a MRV, o staging da Apoio (gravado numa sincronização anterior) sumia
+> junto, e `sime_sync_atores_from_raw`, ao não achar mais ninguém daquele
+> tipo no staging, marcava `ativo=false` em toda a Apoio da zona, mesmo que
+> ninguém tivesse de fato saído da exportação oficial. Corrigido escopando o
+> `delete()` também por `tipo_registro` (`IN` só dos tipos — 'MRV'/'AL' —
+> presentes nos arquivos carregados nesta sincronização): subir só a MRV
+> agora só mexe no staging da MRV; o staging da Apoio, gravado numa sessão
+> anterior, continua intacto e segue valendo pro cálculo de quem ficou
+> inativo.
 
 ```sql
 -- via SQL Editor (service_role), pra dump ELO/CSV colado manualmente:

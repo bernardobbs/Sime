@@ -204,8 +204,21 @@ async function msSincronizar() {
 
   // Substitui só o staging desta zona/UF — não truncate (a 94ª pode ter
   // dado próprio em paralelo), e é seguro repetir (idempotente).
+  //
+  // MRV e Apoio especializado são DUAS planilhas/abas separadas do TRE — o
+  // cartório pode (e costuma) subir só uma de cada vez, ex.: só a MRV
+  // atualizada, sem reanexar a Apoio que não mudou nesta rodada. Apagar o
+  // staging INTEIRO da zona/UF aqui apagaria junto os registros do OUTRO
+  // tipo que não vieram nesta leva — e sime_sync_atores_from_raw, ao não
+  // achar mais ninguém daquele tipo no staging, inativaria por engano quem
+  // só não fez parte DESTE upload (achado real em 21/08/2026: "sincronizar
+  // não deve resetar quem já estava e permaneceu na planilha"). Por isso o
+  // delete é escopado só ao(s) tipo_registro ('MRV'/'AL') que efetivamente
+  // vieram nos arquivos carregados agora — o staging do outro tipo, gravado
+  // numa sincronização anterior, continua intacto e segue valendo.
+  const tiposPresentes = [...new Set(todasLinhas.map(l => l.tipo_funcao_eleitoral).filter(Boolean))];
   const { error: delErr } = await sb.from('sime_mesarios_raw')
-    .delete().eq('zona_eleitoral_trabalho', zonaNumero).eq('uf_trabalho', uf);
+    .delete().eq('zona_eleitoral_trabalho', zonaNumero).eq('uf_trabalho', uf).in('tipo_registro', tiposPresentes);
   if (delErr) { showToast('⚠ ' + delErr.message); return; }
 
   const linhasParaInserir = todasLinhas.map(l => {

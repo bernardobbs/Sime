@@ -22,6 +22,7 @@ class QB {
   single(){ return this.maybeSingle(); }
   maybeSingle(){ const r=(window.__mock[this.t]||[]).filter(x=>this._casa(x)); return Promise.resolve({ data:r[0]??null, error:null }); }
   update(p){ this._op='update'; this._payload=p; return this; }
+  delete(){ this._op='delete'; return this; }
   insert(p){
     window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p });
     // Empurra pra tabela mockada também (não só pro log de escritas) — sem
@@ -57,6 +58,13 @@ class QB {
       const atingidas=[];
       rows.forEach((x,idx)=>{ if(this._casa(x)){ rows[idx]={...x, ...this._payload}; atingidas.push(rows[idx]); } });
       return res({ data: atingidas, error:null });
+    }
+    if(this._op==='delete'){
+      window.__mock.escritas.push({ op:'delete', tabela:this.t, filtro:{...this.f} });
+      const rows=(window.__mock[this.t]||[]);
+      const restantes = rows.filter(x=>!this._casa(x));
+      window.__mock[this.t] = restantes;
+      return res({ data:null, error:null });
     }
     const r=(window.__mock[this.t]||[]).filter(x=>this._casa(x));
     return res({ data:r, error:null, count: r.length });
@@ -535,6 +543,17 @@ async function login(p) {
   check('registrar tentativa preenche eleicao_id (senão fica invisível pela RLS de sime_logs)', updTentativa?.payload?.eleicao_id === 'el7', JSON.stringify(updTentativa));
   const modalTxtDepois = await p.locator('#modal-body').textContent();
   check('a tentativa manual aparece na timeline de Tentativas de contato', /Liguei às 14h, não atendeu/.test(modalTxtDepois));
+  // Achado real em 21/08/2026: nenhuma tentativa/atualização dizia QUEM do
+  // cartório fez a ação — corrigido gravando payload.autor (nomeDoUsuario())
+  // em toda ação desta tela, e mostrando "(por Fulano)" nas duas timelines.
+  check('tentativa manual grava quem registrou (autor)', updTentativa?.payload?.payload?.autor === 'Maria', JSON.stringify(updTentativa));
+  check('timeline de tentativas mostra "(por Maria)"', /Liguei às 14h, não atendeu \(por Maria\)/.test(modalTxtDepois.replace(/\s+/g, ' ')), modalTxtDepois.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Trocar o meio de contato (linha 526 acima) também precisa registrar autor.
+  const updMeioAutor = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_meio_contato'));
+  check('trocar meio de contato grava quem fez (autor)', updMeioAutor?.payload?.payload?.autor === 'Maria', JSON.stringify(updMeioAutor));
+  const modalTxtLogs = await p.locator('#modal-body').textContent();
+  check('lista de Atualizações mostra "(por Maria)" pro meio de contato trocado', /Meio de contato.*\(por Maria\)/.test(modalTxtLogs.replace(/\s+/g, ' ')), modalTxtLogs.replace(/\s+/g, ' ').slice(0, 500));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -862,6 +881,50 @@ async function login(p) {
 
   const resumo = await p.locator('.content').textContent();
   check('mostra 1 atualizado e 1 sem cadastro correspondente', /1.*atualizado/.test(resumo) && /1.*sem cadastro correspondente/.test(resumo), resumo.replace(/\s+/g, ' ').slice(0, 400));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 3.4 Sincronizar mesários: subir só 1 das 2 planilhas (MRV ou Apoio) não
+// pode inativar a outra — bug real corrigido em 21/08/2026. Antes, o delete
+// de staging apagava TODA a zona/UF antes de reinserir; subindo só a MRV
+// (sem reanexar a Apoio, que o cartório não tinha em mãos nessa rodada), o
+// staging da Apoio sumia e sime_sync_atores_from_raw inativava por engano
+// quem era só do outro tipo. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Staging pré-existente de uma sincronização ANTERIOR da Apoio especializado
+  // — precisa sobreviver a um upload de hoje que só traz a MRV.
+  m.sime_mesarios_raw = [
+    { id: 'rawAL1', inscricao: '555555555555', zona_eleitoral_trabalho: '7', uf_trabalho: 'PI', tipo_registro: 'AL' },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-sync-btn');
+  await p.waitForTimeout(200);
+
+  const msHeaders = ["Processo Eleitoral","Pleito","UF de trabalho","Zona eleitoral de trabalho","Inscrição","CPF (eleitor)","CPF (dados mesário)","Nome civil","Nome Social","Data de nascimento","Tipo telefone 1 (eleitor)","Telefone 1 (eleitor)","Tipo telefone 2 (eleitor)","Telefone 2 (eleitor)","Telefone contato (eleitor)","Tipo telefone pessoal (dados mesário)","Telefone pessoal (dados mesário)","Tipo telefone comercial (dados mesário)","Telefone comercial (dados mesário)","E-mail (eleitor)","E-mail (dados mesário)","Tipo correspondência","Grau de instrução (eleitor)","Grau de instrução (dados mesário)","Ocupação (eleitor)","Ocupação (dados mesário)","Excluído de eleição futura","Data limite exclusão de eleição futura","Observação (dados mesário)","Possui carro","Experiência","ASE 205","UF do endereço do eleitor","Código município do endereço do eleitor","Nome município do endereço do eleitor","Endereço do eleitor","Bairro do eleitor","CEP do eleitor","Zona eleitoral do eleitor","UF (dados mesário)","Código município (dados mesário)","Nome município (dados mesário)","Endereço (dados mesário)","Bairro (dados mesário)","CEP (dados mesário)","UF comercial (dados mesário)","Código município comercial (dados mesário)","Nome município comercial (dados mesário)","Endereço comercial (dados mesário)","Bairro comercial (dados mesário)","CEP comercial (dados mesário)","Nome de empresa","Função na empresa","Código município local de trabalho","Nome município local de trabalho","Bairro","CEP","Número do Local de votação local de trabalho","Nome do local de votação local de trabalho","Descrição local de trabalho","Seção local de trabalho","MRJ local de trabalho","UF de votação do eleitor","Código município de votação do eleitor","Nome município de votação do eleitor","Bairro de votação do eleitor","CEP de votação do eleitor","Número do local de votação do eleitor","Nome do local de votação do eleitor","Número da seção de votação do eleitor","Tipo função eleitoral","Descrição função eleitoral","Data atribuição","Data convocação","Data nomeação","Data atualização (dados mesário)","Data último RAE","Confirmou convocação","Origem da resposta","Data de resposta","Justificativa"];
+  const msRow = (over) => msHeaders.map(h => over[h] ?? '').join(',');
+  const msCsv = [
+    msHeaders.join(','),
+    msRow({ 'UF de trabalho':'PI', 'Zona eleitoral de trabalho':'7', 'Inscrição':'046919051589', 'Nome civil':'BRUNO MESARIO', 'Seção local de trabalho':'0030', 'Nome município local de trabalho':'Campo Maior', 'Tipo função eleitoral':'MRV', 'Descrição função eleitoral':'Presidente' }),
+  ].join('\n');
+  const msPath = '/tmp/_sime_test_mrv.csv';
+  writeFileSync(msPath, msCsv, 'utf8');
+  await p.setInputFiles('#ms-csv-input', msPath);
+  await p.waitForTimeout(300);
+  unlinkSync(msPath);
+
+  check('carrega o arquivo MRV (1 linha)', /1 registro/.test((await p.locator('.content').textContent()).replace(/\s+/g, ' ')));
+  await p.click('button:has-text("✓ Sincronizar com o SIME")');
+  await p.waitForTimeout(300);
+
+  const delChamada = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'delete' && e.tabela === 'sime_mesarios_raw'));
+  check('delete do staging é escopado só ao tipo_registro presente no upload (MRV)', JSON.stringify(delChamada?.filtro?.__in_tipo_registro) === JSON.stringify(['MRV']), JSON.stringify(delChamada));
+  const rawSobrevivente = await p.evaluate(() => window.__mock.sime_mesarios_raw.find(r => r.id === 'rawAL1'));
+  check('staging da Apoio (upload anterior) sobrevive a um sync que só trouxe MRV', !!rawSobrevivente, JSON.stringify(rawSobrevivente));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

@@ -916,7 +916,12 @@ BEGIN
     ON CONFLICT (inscricao_eleitoral, funcao) WHERE inscricao_eleitoral IS NOT NULL
     DO UPDATE SET
       nome_completo     = EXCLUDED.nome_completo,
-      telefone_whatsapp = EXCLUDED.telefone_whatsapp,
+      -- NUNCA sobrescreve um telefone já preenchido: só entra o valor do TRE
+      -- se sime_atores.telefone_whatsapp ainda estiver vazio. Achado real em
+      -- 21/08/2026 — o COALESCE do TRE (acima) não sabe de correção manual
+      -- nem da normalização em massa aplicada em produção (formato "55"+DDD+
+      -- 9 dígitos); sobrescrever sempre desfazia esse trabalho a cada resync.
+      telefone_whatsapp = COALESCE(NULLIF(sime_atores.telefone_whatsapp, ''), EXCLUDED.telefone_whatsapp),
       secao_id          = EXCLUDED.secao_id,
       funcao_mesa       = EXCLUDED.funcao_mesa,
       zona_id           = EXCLUDED.zona_id,
