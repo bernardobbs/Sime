@@ -118,7 +118,7 @@ function mock() {
     ],
     sime_atores: [
       { id:'a1', nome_completo:'ANA PRESIDENTE', telefone_whatsapp:'5586999990001', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s1', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:'2026-08-15T10:00:00Z' },
-      { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null, inscricao_eleitoral:'046919051589' },
+      { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null, inscricao_eleitoral:'046919051589', tem_relato_terceiro_pendente:true },
       { id:'a3', nome_completo:'CARLA RECUSOU', telefone_whatsapp:'5586999990003', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s2', zona_id:'z7', confirmacao:'recusou', ativo:true, observacao:'Recado via Hermes: não sou essa pessoa, número errado', meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null },
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
       { id:'a5', nome_completo:'ELIS APOIO', telefone_whatsapp:'5586999990005', funcao:'auxiliar_eleicao', secao_id:'s1', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null },
@@ -846,6 +846,50 @@ async function login(p) {
   const updCarla = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'confirmado'));
   check('confirmar pelo modal também grava confirmacao=confirmado', !!updCarla, JSON.stringify(updCarla));
   check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar participação")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.86 "Relato de terceiro pendente": flag gravada pelo Hermes
+// (acao='relatar_terceiro'), surfaced com badge/filtro/botão de resolver —
+// mesmo padrão de precisa_substituir (achado real 21/08/2026: sem isso, o
+// cartório só via o relato abrindo o modal de cada pessoa, um por um). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const cardBruno0 = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  check('badge "Relato de terceiro pendente" aparece no card (flag já vem true do fixture)', /Relato de terceiro pendente/.test(await cardBruno0.textContent()));
+  check('outro card sem a flag não mostra o badge', !/Relato de terceiro pendente/.test(await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent()));
+
+  // Filtro dedicado — bucket próprio em CM_BUCKETS, não reaproveita nenhum status de confirmacao.
+  await p.selectOption('#cm-filtro', 'relato_terceiro_pendente');
+  await p.waitForTimeout(150);
+  const filtrado = await p.locator('.content').textContent();
+  check('filtro "relato de terceiro" mostra só BRUNO', /BRUNO MESARIO/.test(filtrado) && !/ANA PRESIDENTE/.test(filtrado), filtrado.replace(/\s+/g, ' ').slice(0, 200));
+  await p.selectOption('#cm-filtro', '');
+  await p.waitForTimeout(150);
+
+  // Modal também mostra o badge na linha "Situação".
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  check('modal mostra "Relato de terceiro pendente" na Situação', /Relato de terceiro pendente/.test(await p.locator('.m-kv-row:has-text("Situação")').textContent()));
+  check('modal tem o botão "Marcar relato como resolvido"', await p.locator('#modal-body button:has-text("Marcar relato como resolvido")').count() === 1);
+
+  await p.click('#modal-body button:has-text("Marcar relato como resolvido")');
+  await p.waitForTimeout(200);
+
+  const updResolvido = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.tem_relato_terceiro_pendente === false));
+  check('resolver grava tem_relato_terceiro_pendente=false', !!updResolvido && updResolvido.filtro.id === 'a2', JSON.stringify(updResolvido));
+  const logResolvido = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_relato_terceiro_resolvido' && e.payload.payload.ator_id === 'a2'));
+  check('resolver grava log mesario_relato_terceiro_resolvido', !!logResolvido, JSON.stringify(logResolvido));
+  check('modal atualiza na hora: botão de resolver some, badge some da Situação', await p.locator('#modal-body button:has-text("Marcar relato como resolvido")').count() === 0 && !/Relato de terceiro pendente/.test(await p.locator('.m-kv-row:has-text("Situação")').textContent()));
+
+  check('badge some do card também (sem precisar recarregar)', !/Relato de terceiro pendente/.test(await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent()));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

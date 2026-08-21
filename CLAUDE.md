@@ -1340,6 +1340,26 @@ pré-filtro por palavras-gatilho ("não vai poder", "avisa que", "pediu pra
 avisar" etc.) antes de gastar cota de IA, IA extrai nome+status, chamado em
 paralelo tanto no roteamento de GRUPO quanto de DM (`modules/whatsapp/router.js`).
 
+**Flag `tem_relato_terceiro_pendente` (21/08/2026, `sql/
+SIME_atores_relato_terceiro_pendente.sql`)** — achado real ao perguntar "como
+saberei os relatos de terceiros": o carimbo em `observacao` já ficava
+gravado, mas invisível a menos que o cartório abrisse o modal daquela pessoa
+especificamente — não tinha como saber QUEM tem relato pendente sem olhar um
+por um. Mesmo espírito de `precisa_substituir` (flag booleana própria,
+independente de `confirmacao`, `default false`): `api/hermes-mesarios.js`
+grava `tem_relato_terceiro_pendente=true` junto com o carimbo em
+`observacao` quando `relatar_terceiro` encontra a pessoa (nas duas linhas,
+se ela tiver mesário + apoio). Em `sime_contatar_mesarios.js`: badge
+"⚠️ Relato de terceiro pendente" no card e na linha "Situação" do modal,
+bucket próprio em `CM_BUCKETS` (`relato_terceiro_pendente`, filtro
+independente de qualquer valor de `confirmacao`) e botão "✓ Marcar relato
+como resolvido" (`cmResolverRelatoTerceiro`, card e modal) que só desmarca a
+flag — nunca mexe em `confirmacao` nem apaga o carimbo já anexado em
+`observacao` (fica como registro histórico de que o relato existiu e foi
+checado), gravando `mesario_relato_terceiro_resolvido` em `sime_logs`. Uso
+esperado: o cartório vê o badge, confirma com a PRÓPRIA pessoa (telefone,
+WhatsApp, presencial) o que o terceiro relatou, e só então desmarca.
+
 ### Endpoint Vercel — contatos por papel (escalonamento)
 ```
 POST /api/hermes-contatos

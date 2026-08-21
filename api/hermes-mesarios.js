@@ -391,8 +391,16 @@ export default async function handler(req, res) {
       const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ⚠️ Relato de terceiro (via ${origem || 'WhatsApp'}${telefone_relator ? `, tel. ${soDigitos(telefone_relator)}` : ''}): ${mensagem} — PRECISA CONFIRMAR COM A PESSOA`;
       for (const p of alvos) {
         const novaObs = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
+        // tem_relato_terceiro_pendente (21/08/2026) — o carimbo em observacao
+        // sozinho só aparece pra quem já abriu o modal dessa pessoa; a flag
+        // dá pra filtrar/destacar em "Contatar mesários" quem tem relato
+        // esperando confirmação, sem precisar abrir um por um. Mesmo
+        // espírito de precisa_substituir (flag manual, separada de
+        // confirmacao) — o cartório desmarca depois de confirmar com a
+        // própria pessoa (ver cmResolverRelatoTerceiro em
+        // sime_contatar_mesarios.js).
         const { error: upErr } = await supabase.from('sime_atores')
-          .update({ observacao: novaObs })
+          .update({ observacao: novaObs, tem_relato_terceiro_pendente: true })
           .eq('id', p.id);
         if (upErr) throw upErr;
       }

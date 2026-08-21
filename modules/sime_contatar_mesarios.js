@@ -73,6 +73,7 @@ const CM_BUCKETS = [
   { valor: 'contato_incorreto', label: '🔍 Contato incorreto (não é a pessoa)' },
   { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
   { valor: 'substituido',       label: '🔁 Já substituído' },
+  { valor: 'relato_terceiro_pendente', label: '⚠️ Relato de terceiro — precisa confirmar' },
 ];
 // Filtro por função (21/08/2026) — desde que apoio logístico entrou na
 // mesma fila de mesário, dá pra querer ver só um tipo de cada vez.
@@ -123,6 +124,7 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
+  mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
@@ -168,7 +170,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, tem_relato_terceiro_pendente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -253,6 +255,25 @@ async function cmTogglePrecisaSubstituir(id) {
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
   render();
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
+}
+
+// Só desmarca a flag (ver tem_relato_terceiro_pendente, gravada por
+// relatar_terceiro em api/hermes-mesarios.js) — nunca mexe em confirmacao
+// nem apaga o carimbo já anexado em observacao (fica lá como registro
+// histórico de que o relato existiu e foi checado). Uso: o cartório já
+// entrou em contato com a PRÓPRIA pessoa e confirmou (ou descartou) o que
+// o terceiro relatou.
+async function cmResolverRelatoTerceiro(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const { error } = await sb.from('sime_atores').update({ tem_relato_terceiro_pendente: false }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.tem_relato_terceiro_pendente = false;
+  await cmLog('mesario_relato_terceiro_resolvido', '', { ator_id: id });
+  showToast('✓ Relato de terceiro marcado como resolvido');
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 async function cmSalvarMeio(id, meio) {
@@ -561,7 +582,7 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
       ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
@@ -573,6 +594,7 @@ function cmRenderModal() {
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+          ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
         <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — cada um pode ser tentado direto (copia o link do WhatsApp já com a mensagem de confirmação e registra a tentativa sozinho):</div>
         <div class="m-hist" style="margin-bottom:10px">
@@ -735,6 +757,7 @@ function cmFiltrar() {
   const q = cmBusca.trim().toLowerCase();
   return cmDados.pessoas.filter(p => {
     if (cmFiltroStatus === 'precisa_substituir') { if (!p.precisa_substituir) return false; }
+    else if (cmFiltroStatus === 'relato_terceiro_pendente') { if (!p.tem_relato_terceiro_pendente) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
@@ -779,6 +802,7 @@ function renderContatarMesarios() {
   const contagem = {};
   for (const p of cmDados.pessoas) contagem[p.confirmacao || 'pendente'] = (contagem[p.confirmacao || 'pendente'] || 0) + 1;
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
+  contagem.relato_terceiro_pendente = cmDados.pessoas.filter(p => p.tem_relato_terceiro_pendente).length;
   const contagemFuncao = {};
   for (const p of cmDados.pessoas) contagemFuncao[p.funcao] = (contagemFuncao[p.funcao] || 0) + 1;
   const lista = cmFiltrar();
@@ -828,6 +852,7 @@ function renderContatarMesarios() {
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
               ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto</span>` : ''}
+              ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
             </div>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
@@ -847,6 +872,7 @@ function renderContatarMesarios() {
             ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarParticipacao('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — só marca confirmado, não manda mensagem nenhuma">✅ Confirmar participação</button>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+            ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
           </div>
         </div>`;
       }).join('') || '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Ninguém encontrado com esse filtro.</div></div>'}
