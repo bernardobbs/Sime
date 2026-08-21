@@ -151,6 +151,39 @@ r = await call('POST', Z7, { acao: 'relatar_terceiro', nome: 'diego', mensagem: 
 check('relatar_terceiro ambíguo (2 pessoas distintas) → 409, não grava em ninguém', r.code === 409 && r.body.ambiguo === true && r.body.candidatos.length === 2, JSON.stringify(r.body));
 check('ambíguo não grava observação em nenhum dos dois', !globalThis.__SUPA.atores[3].observacao && !globalThis.__SUPA.atores[5].observacao);
 
+// ── ATUALIZAR_TELEFONE_TERCEIRO — alguém encaminha "Nome + telefone" que
+// descobriu por fora sobre OUTRA pessoa (achado real 21/08/2026: cartório
+// testou encaminhar contatos de mesário pro WhatsApp do Hermes e nada
+// acontecia). Casa por NOME como relatar_terceiro, mas grava telefone_alternativo
+// em vez de observação — nunca telefone_whatsapp. ──
+resetDB();
+r = await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', nome: 'DIEGO ALVES', telefone: '86999998888', telefone_relator: '558699990000', origem: 'DM' });
+check('atualizar_telefone_terceiro → 200, encontrado 2 (mesário + apoio)', r.code === 200 && r.body.encontrado === 2, JSON.stringify(r.body));
+check('grava telefone_alternativo normalizado ("55"+DDD+9) nas DUAS linhas, NUNCA telefone_whatsapp', globalThis.__SUPA.atores[3].telefone_alternativo === '5586999998888' && globalThis.__SUPA.atores[4].telefone_alternativo === '5586999998888' && globalThis.__SUPA.atores[3].telefone_whatsapp === '558611110004', JSON.stringify([globalThis.__SUPA.atores[3].telefone_alternativo, globalThis.__SUPA.atores[4].telefone_alternativo, globalThis.__SUPA.atores[3].telefone_whatsapp]));
+check('NUNCA muda confirmacao=', globalThis.__SUPA.atores[3].confirmacao === 'pendente' && globalThis.__SUPA.atores[4].confirmacao === 'pendente');
+check('registra log hermes_atualizou_telefone_terceiro com telefone_novo/telefone_relator/origem/afetados', globalThis.__SUPA.logs.some(l => l.acao === 'hermes_atualizou_telefone_terceiro' && l.payload.telefone_novo === '5586999998888' && l.payload.telefone_relator === '558699990000' && l.payload.origem === 'DM' && l.payload.afetados.length === 2), JSON.stringify(globalThis.__SUPA.logs));
+
+resetDB();
+check('atualizar_telefone_terceiro sem nome → 400', (await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', telefone: '86999998888' })).code === 400);
+resetDB();
+check('atualizar_telefone_terceiro sem telefone → 400', (await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', nome: 'DIEGO ALVES' })).code === 400);
+
+resetDB();
+r = await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', nome: 'DIEGO ALVES', telefone: '123' });
+check('telefone irreconhecível → 422, não adivinha, não grava', r.code === 422 && r.body.ok === false && r.body.erro === 'telefone_invalido' && !globalThis.__SUPA.atores[3].telefone_alternativo, JSON.stringify(r.body));
+
+resetDB();
+r = await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', nome: 'FULANO INEXISTENTE', telefone: '86999998888' });
+check('atualizar_telefone_terceiro nome não encontrado → 404', r.code === 404 && r.body.encontrado === 0, JSON.stringify(r.body));
+
+// Ambíguo — mesmo cuidado de relatar_terceiro: nome batendo em 2 pessoas
+// distintas não adivinha qual, não grava telefone em ninguém.
+resetDB();
+globalThis.__SUPA.atores.push({ id: 'm5', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'DIEGO SILVA', telefone_whatsapp: '558611110005', observacao: null, confirmacao: 'pendente', ativo: true, secao_id: null, funcao_mesa: null });
+r = await call('POST', Z7, { acao: 'atualizar_telefone_terceiro', nome: 'diego', telefone: '86999998888' });
+check('atualizar_telefone_terceiro ambíguo (2 pessoas distintas) → 409, não grava em ninguém', r.code === 409 && r.body.ambiguo === true && r.body.candidatos.length === 2, JSON.stringify(r.body));
+check('ambíguo não grava telefone_alternativo em nenhum dos dois', !globalThis.__SUPA.atores[3].telefone_alternativo && !globalThis.__SUPA.atores[5].telefone_alternativo);
+
 // ── CONFIRMAR ──
 resetDB();
 r = await call('POST', Z7, { acao: 'confirmar', telefone: '558611110001' });

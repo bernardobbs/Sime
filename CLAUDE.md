@@ -1340,6 +1340,29 @@ pré-filtro por palavras-gatilho ("não vai poder", "avisa que", "pediu pra
 avisar" etc.) antes de gastar cota de IA, IA extrai nome+status, chamado em
 paralelo tanto no roteamento de GRUPO quanto de DM (`modules/whatsapp/router.js`).
 
+**`atualizar_telefone_terceiro` (21/08/2026)** — pedido direto depois que o
+cartório testou encaminhar contatos de mesário (nome + telefone) pro
+WhatsApp do Hermes esperando que isso atualizasse algo: hoje não atualizava
+nada. Diferente de `relatar_terceiro` (que é sobre a SITUAÇÃO da pessoa e
+nunca grava telefone): aqui o dado **é** um telefone. Casa por nome (mesmo
+critério de `buscar_nome`/`relatar_terceiro`) e só grava automaticamente
+quando bate em EXATAMENTE 1 pessoa — grava só em `telefone_alternativo`,
+**nunca** em `telefone_whatsapp` (o que Hermes/campanha usam por padrão),
+então nem um nome batendo errado sobrescreveria o telefone principal. Nome
+ambíguo (409) ou não encontrado (404) não adivinha; telefone fora do
+formato reconhecível (422, mesmo critério de aceitação de "colar lista" —
+8/9/10/11/12-13-com-55 dígitos) também não grava. Lado Hermes:
+`modules/whatsapp/atualizarContatoTerceiro.js` — sem IA, reconhece só por
+FORMATO (mensagem de exatamente 2 linhas: nome na primeira, telefone na
+segunda — o jeito típico de um contato encaminhado como texto no WhatsApp),
+removendo saudação da frente do nome se tiver ("Boa noite, Fulano" →
+"Fulano"). Roda em paralelo com `relatoTerceiro.js` tanto em grupo quanto em
+DM — não conflitam, porque o pré-filtro de cada um é mutuamente exclusivo
+(um exige frase de status, o outro exige formato de contato). Como já usa
+`telefone_alternativo`, o campo aparece automaticamente na lista de
+telefones do modal de "Contatar mesários" (`cmListaTelefones`) — nenhuma UI
+nova foi necessária do lado SIME.
+
 **Flag `tem_relato_terceiro_pendente` (21/08/2026, `sql/
 SIME_atores_relato_terceiro_pendente.sql`)** — achado real ao perguntar "como
 saberei os relatos de terceiros": o carimbo em `observacao` já ficava

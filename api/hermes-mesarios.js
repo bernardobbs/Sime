@@ -19,6 +19,17 @@
 //                          "precisa confirmar" (nunca muda confirmacao=,
 //                          diferente de 'atualizar'/'confirmar'/'recusar', que
 //                          são sempre a própria pessoa falando por si)
+//   - acao='atualizar_telefone_terceiro' → alguém encaminha "Nome + telefone"
+//                          que descobriu por fora sobre OUTRA pessoa (achado
+//                          real 21/08/2026: cartório testou encaminhando
+//                          contatos pro WhatsApp do Hermes). Diferente de
+//                          relatar_terceiro (que é sobre a SITUAÇÃO da
+//                          pessoa e nunca grava telefone), aqui o dado É um
+//                          telefone — só grava automaticamente quando o nome
+//                          bate em EXATAMENTE 1 pessoa, e só em
+//                          telefone_alternativo (nunca sobrescreve o
+//                          telefone_whatsapp principal, que é o que
+//                          Hermes/campanha usam por padrão)
 //   - acao='confirmar' → marca sime_atores.confirmacao='confirmado' (permanece)
 //   - acao='recusar'   → 'recusou'     (+ ativo=false — não vai atuar)
 //   - acao='substituir'→ 'substituido' (+ ativo=false)
@@ -80,6 +91,36 @@ async function registrarLog(acao, payload) {
 
 // Só dígitos — normaliza telefone pra comparar (mesma ideia de sime_importar_ator).
 function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+
+// Mesma heurística de normalizarTelefoneWhatsapp() em sime_ui_utils.js — pro
+// padrão WhatsApp ("55"+DDD+9 dígitos) ficar idêntico em todo caminho de
+// import, incluindo este (ver "Todo import normaliza telefone" no CLAUDE.md).
+function normalizarTelefoneWhatsapp(raw) {
+  const d = soDigitos(raw);
+  if (!d) return '';
+  if (d === '000000000000') return raw;
+  const len = d.length;
+  if (len === 13 && d.slice(0, 2) === '55') return d;
+  if (len === 11) return '55' + d;
+  if (len === 10) return /[6-9]/.test(d[2]) ? '55' + d.slice(0, 2) + '9' + d.slice(2) : '55' + d;
+  if (len === 9 && d[0] === '9') return '5586' + d;
+  if (len === 8) return /[6-9]/.test(d[0]) ? '55869' + d : '5586' + d;
+  if (len === 12 && d[0] === '0') return '55' + d.slice(1);
+  if (len === 12 && d.slice(0, 2) === '55') return /[6-9]/.test(d[4]) ? d.slice(0, 4) + '9' + d.slice(4) : d;
+  return d;
+}
+// Mesmo critério de aceitação de cpNormalizarTelefone() ("colar lista de
+// telefones") — deliberadamente conservador: rejeita (null) qualquer
+// comprimento fora do que dá pra deduzir sem adivinhar (ex.: artefato de
+// cópia com um dígito a mais). Usado só quando o telefone vem de terceiro,
+// nunca da própria pessoa confirmando o dado.
+function normalizarTelefoneParaGravar(raw) {
+  const d = soDigitos(raw);
+  const len = d.length;
+  const aceito = len === 8 || len === 9 || len === 10 || len === 11
+    || ((len === 12 || len === 13) && d.startsWith('55'));
+  return aceito ? normalizarTelefoneWhatsapp(d) : null;
+}
 // Extrai o número da seção do texto em observacao ("Seção votação: NNN") —
 // só usado como fallback pra registros antigos, de antes do secao_id vir
 // preenchido de verdade pela carga do TRE (sime_sync_atores_from_raw).
@@ -163,7 +204,7 @@ export default async function handler(req, res) {
   }
 
   const { acao, secao, status, telefone, mensagem, nome, telefone_relator, origem } = req.body || {};
-  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|buscar_nome|atualizar|relatar_terceiro|confirmar|recusar|substituir)' });
+  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|buscar_nome|atualizar|relatar_terceiro|atualizar_telefone_terceiro|confirmar|recusar|substituir)' });
 
   const zonaId = await buscarZonaId(zona.numeroZona);
   if (!zonaId) {
@@ -407,6 +448,71 @@ export default async function handler(req, res) {
       await registrarLog('hermes_relato_terceiro', {
         nome_alvo: alvos[0].nome_completo, telefone_relator: telefone_relator ? soDigitos(telefone_relator) : null,
         zona: zona.numeroZona, mensagem, origem: origem || null,
+        afetados: alvos.map(p => ({ id: p.id, nome: p.nome_completo })), ts,
+      });
+      return res.status(200).json({
+        ok: true, encontrado: alvos.length, nomes: alvos.map(p => p.nome_completo),
+      });
+    }
+
+    // ── ATUALIZAR_TELEFONE_TERCEIRO — alguém encaminha "Nome + telefone" que
+    // descobriu por fora sobre OUTRA pessoa (achado real 21/08/2026: o
+    // cartório testou encaminhar contatos pro WhatsApp do Hermes — hoje isso
+    // não alimentava nada). Diferente de relatar_terceiro (que é sobre a
+    // SITUAÇÃO da pessoa e nunca grava telefone): aqui o dado É um telefone.
+    // Casa por NOME (mesmo critério de buscar_nome/relatar_terceiro) — só
+    // grava automaticamente quando bate em EXATAMENTE 1 pessoa; nome
+    // ambíguo ou não encontrado não adivinha (mesma cautela de sempre).
+    // Grava só em telefone_alternativo, NUNCA em telefone_whatsapp — mesmo
+    // um nome errado não sobrescreveria o telefone principal que
+    // Hermes/campanha usam por padrão (ver
+    // sql/SIME_atores_telefone_alternativo.sql).
+    if (acao === 'atualizar_telefone_terceiro') {
+      if (!nome) return res.status(400).json({ error: 'nome é obrigatório para atualizar_telefone_terceiro' });
+      if (!telefone) return res.status(400).json({ error: 'telefone é obrigatório para atualizar_telefone_terceiro' });
+      const alvo = nome.trim().toLowerCase();
+      if (alvo.length < 3) {
+        return res.status(400).json({ error: 'nome muito curto para buscar (mínimo 3 caracteres)' });
+      }
+
+      const telNormalizado = normalizarTelefoneParaGravar(telefone);
+      if (!telNormalizado) {
+        return res.status(422).json({
+          ok: false, erro: 'telefone_invalido',
+          mensagem_wa: `Não consegui reconhecer um telefone válido em "${telefone}" — confira o formato e tente de novo.`,
+        });
+      }
+
+      const candidatos = pessoas.filter(p => (p.nome_completo || '').toLowerCase().includes(alvo));
+      const porNome = agruparPorNome(candidatos);
+
+      if (porNome.size === 0) {
+        return res.status(404).json({
+          ok: false, encontrado: 0,
+          mensagem_wa: `Não encontrei ninguém chamado "${nome}" na lista de convocados desta zona.`,
+        });
+      }
+      // Ambíguo — mais de uma pessoa distinta bate no nome. Não adivinha
+      // qual: gravar telefone na pessoa errada é pior que não gravar.
+      if (porNome.size > 1) {
+        return res.status(409).json({
+          ok: false, ambiguo: true, encontrado: candidatos.length,
+          candidatos: [...porNome.keys()],
+        });
+      }
+
+      const [alvos] = [...porNome.values()];
+      const ts = await serverTs();
+      for (const p of alvos) {
+        const { error: upErr } = await supabase.from('sime_atores')
+          .update({ telefone_alternativo: telNormalizado })
+          .eq('id', p.id);
+        if (upErr) throw upErr;
+      }
+      await registrarLog('hermes_atualizou_telefone_terceiro', {
+        nome_alvo: alvos[0].nome_completo, telefone_novo: telNormalizado,
+        telefone_relator: telefone_relator ? soDigitos(telefone_relator) : null,
+        zona: zona.numeroZona, origem: origem || null,
         afetados: alvos.map(p => ({ id: p.id, nome: p.nome_completo })), ts,
       });
       return res.status(200).json({
