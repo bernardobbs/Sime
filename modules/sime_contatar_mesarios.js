@@ -10,19 +10,6 @@
 // confirmacao, sql/SIME_atores_meio_contato.sql). O cartório lê o recado
 // (observação, anexado por api/hermes-mesarios.js ação 'atualizar') e decide.
 
-// Mensagem de convocação — mesmo texto-base do modelo "Convocação com
-// confirmação" de SIME_atores.html (TEMPLATE_CONVOCACAO_TEXTO), adaptado
-// pra envio de etapa única: aqui não existe "próxima mensagem" porque não
-// há verificação SIM/NÃO antes — a confirmação já veio de outra fonte (TRE,
-// ligação, presencial), então o Hermes só entrega o conteúdo, sem esperar
-// resposta. Duplicado em vez de importado porque as duas páginas são HTML
-// estático sem bundler — mesmo padrão do resto do projeto.
-const CM_TEMPLATE_CONVOCACAO = `Olá, {nome}.
-
-A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleições 2026, como {funcao} na Seção {secao} — {local}, {municipio}.
-
-Qualquer dúvida, entre em contato com o cartório eleitoral.`;
-
 // Mensagem pronta pro botão "🔗 Copiar link do WhatsApp" do modal
 // (21/08/2026) — o cartório vai de nome em nome confirmando se o telefone
 // cadastrado ainda é da pessoa certa, e digitar essa mesma pergunta toda vez
@@ -64,15 +51,6 @@ async function cmCopiarLinkWhatsApp(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   await cmCopiarLinkWhatsAppNumero(id, p.telefone_whatsapp);
-}
-
-function cmPersonalizarMensagem(msg, p, sec) {
-  return msg
-    .replaceAll('{nome}', p.nome_completo || '')
-    .replaceAll('{funcao}', cmRotuloFuncao(p))
-    .replaceAll('{secao}', sec ? String(sec.numero) : '')
-    .replaceAll('{local}', sec?.local_nome || 'local a confirmar')
-    .replaceAll('{municipio}', sec?.municipio || '');
 }
 
 // Mesário tem cargo de mesa (funcao_mesa: Presidente/1º Mesário/...); apoio
@@ -131,7 +109,7 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
-  mesario_confirmado_manual: (p) => p.com_mensagem ? 'Confirmado manualmente pelo cartório — mensagem de convocação enfileirada pro Hermes' : 'Confirmado manualmente pelo cartório (sem telefone — mensagem não enfileirada)',
+  mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
 };
@@ -206,39 +184,26 @@ async function cmMarcarContatoIncorreto(id) {
 // ligou e a pessoa confirmou, confirmou pessoalmente, etc.) — pensado pro
 // fluxo "ir de pessoa em pessoa" quando a campanha automática do TRE/Hermes
 // não alcançou todo mundo. Marca confirmacao='confirmado' igual o Hermes
-// marcaria, e enfileira a mensagem de convocação em
-// sime_campanhas_confirmacao pro Hermes entregar — sem passar pelo
-// vaivém de verificação SIM/NÃO do modelo de campanha em massa, porque a
-// identidade já foi confirmada por outro canal.
-async function cmConfirmarEEnviar(id) {
+// marcaria — SÓ isso.
+//
+// Bug real corrigido em 21/08/2026: até aqui, este botão também enfileirava
+// a mensagem de convocação em sime_campanhas_confirmacao pro Hermes
+// entregar (pensado pra fechar o ciclo automaticamente). O cartório pediu
+// pra parar — confirmar participação por aqui não deve criar fila de envio
+// nenhuma, só marcar. Se quiser mandar mensagem de verdade, o caminho é o
+// motor de campanha em massa de SIME_atores.html (disparo com verificação
+// SIM/NÃO), não este atalho.
+async function cmConfirmarParticipacao(id) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { data: ts } = await sb.rpc('sime_now');
-  const { error: e1 } = await sb.from('sime_atores').update({ confirmacao: 'confirmado', data_confirmacao: ts }).eq('id', id);
-  if (e1) { showToast('⚠ ' + e1.message); return; }
+  const { error } = await sb.from('sime_atores').update({ confirmacao: 'confirmado', data_confirmacao: ts }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
   p.confirmacao = 'confirmado';
   p.data_confirmacao = ts;
-
-  if (p.telefone_whatsapp) {
-    const zonaId = await zonaDoUsuario();
-    const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
-    const mensagem = cmPersonalizarMensagem(CM_TEMPLATE_CONVOCACAO, p, sec);
-    const { error: e2 } = await sb.from('sime_campanhas_confirmacao').insert({
-      ator_id: id, telefone_whatsapp: p.telefone_whatsapp, zona_id: zonaId,
-      mensagem_enviada: mensagem, status: 'pendente',
-    });
-    if (e2) {
-      showToast('⚠ Confirmado, mas falhou ao enfileirar a mensagem: ' + e2.message);
-      render(); if (cmModalId === id) cmRenderModal();
-      return;
-    }
-    await cmLog('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: true });
-    showToast('✅ Confirmado — mensagem enfileirada, o Hermes envia');
-  } else {
-    await cmLog('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: false });
-    showToast('✅ Confirmado — sem telefone cadastrado, mensagem não foi enfileirada');
-  }
+  await cmLog('mesario_confirmado_manual', '', { ator_id: id });
+  showToast('✅ Participação confirmada');
   render();
   if (cmModalId === id) cmRenderModal();
 }
@@ -573,7 +538,7 @@ function cmRenderModal() {
       </div>
 
       ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
-      <button class="btn btn-dark" style="width:100%;padding:10px;font-size:.8rem" onclick="cmConfirmarEEnviar('${p.id}')">✅ Confirmar convocação${p.telefone_whatsapp ? ' — Hermes envia os detalhes' : ' (sem telefone — só marca confirmado)'}</button>
+      <button class="btn btn-dark" style="width:100%;padding:10px;font-size:.8rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmar participação</button>
       <div class="ic-sub" style="margin-bottom:0">Use quando já souber que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — não depende de resposta automática por WhatsApp.</div>
       ` : ''}
 
@@ -845,7 +810,7 @@ function renderContatarMesarios() {
                 ${Object.entries(cmStatusLabelSet(p.meio_contato)).map(([v, l]) => `<option value="${v}" ${p.status_contato_alternativo === v ? 'selected' : ''}>${l}</option>`).join('')}
               </select>
             </label>` : ''}
-            ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarEEnviar('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — marca confirmado e o Hermes manda a mensagem de convocação">✅ Confirmar${p.telefone_whatsapp ? ' e enviar mensagem' : ''}</button>` : ''}
+            ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarParticipacao('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — só marca confirmado, não manda mensagem nenhuma">✅ Confirmar participação</button>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
           </div>

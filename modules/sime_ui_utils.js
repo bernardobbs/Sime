@@ -85,3 +85,42 @@ function linkWhatsApp(telefone, mensagem) {
   const txt = mensagem ? '?text=' + encodeURIComponent(mensagem) : '';
   return `https://wa.me/55${d}${txt}`;
 }
+
+// Normaliza QUALQUER telefone recebido de importação (Ciente, colar lista,
+// planilha do TRE) pro padrão "55"+DDD+8/9 dígitos que o resto do sistema
+// assume em sime_atores.telefone_whatsapp — mesma heurística aplicada na
+// normalização em massa de produção em 21/08/2026 (ver
+// sql/SIME_telefones_normalizacao.sql e a função gêmea
+// sime_normalizar_telefone_whatsapp() no banco). Pedido do cartório no
+// mesmo dia: "sempre que importar o contato, normalizar pro formato
+// WhatsApp" — antes cada caminho de importação gravava um formato
+// diferente (uns sem o "55", alguns sem o dígito 9 de celular antigo).
+//
+// "Celular ganhou o 9º dígito bem antes de 2016 pra linhas que já
+// começavam 6-9; fixo começa 2-5 e nunca ganhou o 9" — mesma regra
+// verificada nos 723 registros de produção antes da normalização em massa.
+// Placeholder "000000000000" nunca vira um número inventado. Formato de 14
+// dígitos (um a mais depois do "55", artefato de cópia de planilha) ou
+// outro caso fora do previsto: devolve só os dígitos, sem tentar adivinhar
+// qual sobra — melhor esforço, não uma rejeição (diferente do parser de
+// "colar lista", que prefere descartar a arriscar).
+function normalizarTelefoneWhatsapp(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d === '000000000000') return raw;
+  const len = d.length;
+  if (len === 13 && d.slice(0, 2) === '55') return d;
+  if (len === 11) return '55' + d;
+  if (len === 10) {
+    return /[6-9]/.test(d[2]) ? '55' + d.slice(0, 2) + '9' + d.slice(2) : '55' + d;
+  }
+  if (len === 9 && d[0] === '9') return '5586' + d;
+  if (len === 8) {
+    return /[6-9]/.test(d[0]) ? '55869' + d : '5586' + d;
+  }
+  if (len === 12 && d[0] === '0') return '55' + d.slice(1);
+  if (len === 12 && d.slice(0, 2) === '55') {
+    return /[6-9]/.test(d[4]) ? d.slice(0, 4) + '9' + d.slice(4) : d;
+  }
+  return d;
+}

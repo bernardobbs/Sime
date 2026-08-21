@@ -337,8 +337,31 @@ cada um com propósito diferente:
     Total de vagas (faixa de fundo, cinza) → Convocados (barra mais curta
     por cima, azul) → Confirmados (a mais curta de todas, verde) —
     `rsBarraFunil()`.
-  - Nenhum dos dois aparece no drilldown por local — série específica pra
-    visão de conjunto, repetir dentro do drilldown seria redundante.
+  - **Tabela "🏘️ Progresso por município e função" (21/08/2026)** — pedido
+    direto do cartório: "saber por cidade e por função se já está com todas
+    as funções preenchidas e se já foi confirmado". A barra-funil e as
+    pizzas são só da ZONA inteira; uma zona do SIME cobre vários municípios
+    (ex.: 7ª Zona = Campo Maior + Jatobá do Piauí + Sigefredo Pacheco), e
+    até então não tinha como ver esse recorte sem entrar local por local no
+    drilldown. `rsCalcular()` agrega os mesmos números de `porLocal` (que já
+    carrega `.municipio` em cada entrada) por município — uma linha por
+    município, sem recalcular nada do zero. Cada grupo (MRV/Coord./
+    Auxiliar) mostra DUAS contagens lado a lado, porque são perguntas
+    diferentes: "confirmados/total" (cor verde se bateu o total, vermelha
+    se ninguém) e, só quando diverge, uma nota "(N pr.)" = preenchido —
+    tem alguém designado ali, confirmado ou não (mesmo padrão de
+    `rsCardLocal`, que já separa designados de confirmados). Coluna
+    **Situação** resume os 3 grupos num só selo: ✅ tudo confirmado (as 3
+    funções bateram 100% confirmadas) / 🔶 preenchido mas falta confirmar
+    (as 3 têm gente designada, mas nem tudo confirmado) / ❌ ainda falta
+    preencher (pelo menos uma função tem vaga vazia). `rsSituacaoMunicipio()`
+    calcula os dois booleanos (preenchido/confirmado) por grupo antes de
+    decidir o selo. Tabela HTML de verdade (`<table>`), não `.import-card`
+    em grade — mesmo padrão já usado no Relatório ELO, mais legível pra
+    comparar município a município numa lista.
+  - Nenhum dos três (funil, tabela por município, pizzas) aparece no
+    drilldown por local — série específica pra visão de conjunto, repetir
+    dentro do drilldown seria redundante.
   Depois dos gráficos, os 4 cards de estatística no topo (locais
   de votação, seções, **mesários MRV confirmados/total + quantos faltam**,
   **apoio logístico AL confirmados/total + quantos faltam** — antes os dois
@@ -434,23 +457,22 @@ cada um com propósito diferente:
   aparece na seção própria — o `sime_logs` ainda é gravado, só não é
   renderizado ali.
 
-  **Confirmar manualmente com envio automático (21/08/2026) — o TRE tem
+  **Confirmar manualmente (21/08/2026, revertido no mesmo dia) — o TRE tem
   campanha própria, mas nem sempre alcança todo mundo; é de lá (ou de
   ligação/presencial) que o cartório sabe quem já confirmou sem ter passado
-  pelo WhatsApp do SIME.** Botão **"✅ Confirmar"** (card e modal, some
-  depois de confirmado) — pensado pro fluxo "ir de pessoa em pessoa": marca
-  `confirmacao='confirmado'` igual o Hermes marcaria, e se a pessoa tem
-  telefone, enfileira em `sime_campanhas_confirmacao` a mensagem de
-  convocação já personalizada ({nome}/{funcao}/{secao}/{local}/{municipio},
-  mesmo texto-base do modelo "Convocação" de `SIME_atores.html`, duplicado
-  aqui por serem páginas HTML separadas sem bundler) — o Hermes entrega no
-  próximo ciclo. **Sem o vaivém de verificação SIM/NÃO do modelo de campanha
-  em massa** (que existe pra confirmar que o número ainda é da pessoa antes
-  de mandar o conteúdo) — aqui a identidade já foi confirmada por outro
-  canal, então é etapa única: `mensagem_enviada` já sai com o conteúdo
-  final, `mensagem_convocacao` fica `null`. Sem telefone cadastrado, só
-  marca confirmado (nada pra enfileirar) — o botão já avisa isso trocando
-  o texto ("✅ Confirmar" em vez de "✅ Confirmar e enviar mensagem").
+  pelo WhatsApp do SIME.** Botão **"✅ Confirmar participação"** (card e
+  modal, some depois de confirmado) — pensado pro fluxo "ir de pessoa em
+  pessoa": marca `confirmacao='confirmado'` igual o Hermes marcaria. Só
+  isso. Primeira versão (mesmo dia) também enfileirava em
+  `sime_campanhas_confirmacao` uma mensagem de convocação automática pro
+  Hermes entregar — o cartório pediu pra tirar: confirmar participação por
+  aqui não deve criar fila de envio nenhuma. `cmConfirmarEEnviar` (que
+  fazia as duas coisas) virou `cmConfirmarParticipacao` (só a primeira);
+  `CM_TEMPLATE_CONVOCACAO`/`cmPersonalizarMensagem` (o texto que era
+  enfileirado) foram removidos por ficarem sem nenhum uso. Quem quiser
+  mandar mensagem de verdade continua tendo o motor de campanha em massa de
+  `SIME_atores.html` (disparo com verificação SIM/NÃO) — este botão nunca
+  foi pensado pra substituir aquele fluxo.
 
   **Apoio logístico entrou na mesma fila de contato (21/08/2026) — achado
   real: era contado no card do Dashboard, mas não tinha como contactar/
@@ -755,14 +777,16 @@ cada um com propósito diferente:
   **Confirmação em lote a partir de dados do próprio ELO (21/08/2026)** — o
   caminho inverso também acontece: o cartório olha o ELO e vê gente que
   **já confirmou por lá** (WhatsApp, Título Net, presencial) mas o SIME ainda
-  não sabe. Tratado como uma aplicação em lote do mesmo `UPDATE` que
-  `cmConfirmarEEnviar()` faz um de cada vez (`confirmacao='confirmado'` +
-  `data_confirmacao`), casando por título de eleitor. **Sem enfileirar
-  mensagem de convocação automaticamente nesse fluxo em lote** — achado real
-  ao aplicar isso pela primeira vez: as pessoas dessa lista específica não
-  tinham `secao_id`/local designado no SIME, e o template de mensagem
-  (`cmPersonalizarMensagem`) sem seção/local produz um texto quebrado
-  ("...na Seção  — local a confirmar, ."). Decisão: só sincronizar o status;
+  não sabe. Tratado, na época, como uma aplicação em lote do mesmo `UPDATE`
+  que o botão de confirmar fazia um de cada vez (`confirmacao='confirmado'`
+  + `data_confirmacao`), casando por título de eleitor — **sem enfileirar
+  mensagem nenhuma** (achado real ao aplicar isso pela primeira vez: as
+  pessoas dessa lista específica não tinham `secao_id`/local designado no
+  SIME, e o template de mensagem sem seção/local produzia um texto quebrado
+  — "...na Seção  — local a confirmar, ."). Essa cautela virou regra geral
+  no mesmo dia: o botão "Confirmar" (hoje `cmConfirmarParticipacao()`) foi
+  revertido pra nunca mais enfileirar mensagem nenhuma, nem um de cada vez —
+  ver bloco acima. Decisão: só sincronizar o status;
   enfileirar mensagem fica pra quando a pessoa já tiver local designado (ou
   pelo botão "✅ Confirmar" de sempre, um de cada vez, onde o cartório vê o
   resultado na hora antes de continuar).
@@ -871,6 +895,28 @@ select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
 > sobre o staging já existente (sem precisar reenviar arquivo) — 682
 > atualizados, 0 sem `secao_id` no final. Se aparecer seção "toda ❌" com
 > gente que deveria estar lá, suspeitar disso antes de procurar bug novo.
+
+> **Todo import normaliza telefone pro padrão WhatsApp agora (21/08/2026)**
+> — pedido do cartório depois da normalização em massa de produção:
+> "sempre que importar o contato, normalizar todos os contatos pro formato
+> WhatsApp". Antes, cada um dos 3 caminhos de importação gravava um formato
+> diferente em `telefone_whatsapp` — `mcAtualizar()` (Atualizar contatos)
+> gravava os dígitos crus do arquivo sem "55"; `cpAtualizar()`/
+> `cpNormalizarTelefone()` (colar lista) devolvia sem "55" e sem o dígito 9
+> de celular antigo; e a própria `sime_sync_atores_from_raw()` (roster de
+> 81 colunas) inseria o COALESCE cru do TRE, também sem "55". Só o modal de
+> edição (`cmSalvarModal()`) já gravava no padrão certo. Os três agora usam
+> a mesma heurística da normalização em massa (`sql/SIME_telefones_normalizacao.sql`):
+> `normalizarTelefoneWhatsapp()` em JS (`sime_ui_utils.js`, carregada antes
+> dos demais scripts em `SIME_convocacao.html`) e sua gêmea em SQL
+> `sime_normalizar_telefone_whatsapp()` (usada dentro do INSERT de
+> `sime_sync_atores_from_raw`, só pra gente NOVA — o preenchimento só
+> entra quando `telefone_whatsapp` já está vazio, ver bug corrigido acima).
+> `cpNormalizarTelefone()` manteve exatamente o mesmo critério de aceitação
+> de sempre (rejeita comprimentos fora de 8/9/10/11/12-13-com-55 — ex.: o
+> caso de 14 dígitos de artefato de cópia continua descartado, listado pra
+> conferência manual) — só o valor de SAÍDA para o que já era aceito virou
+> canônico, com "55" e o dígito 9 quando faltava.
 
 **Confirmação por telefone é diferente de confirmação por arquivo.**
 `sime_atores.confirmacao` só muda por duas vias, e cada uma sabe algo que a

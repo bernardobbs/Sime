@@ -165,9 +165,41 @@ function rsCalcular() {
   const locaisComAuxiliar = porLocal.filter(l => l.temAuxiliar).length;
   const locaisComAuxiliarConfirmado = porLocal.filter(l => l.temAuxiliarConfirmado).length;
 
+  // Por MUNICÍPIO, não só por local de votação (pedido do cartório em
+  // 21/08/2026: "saber por cidade e por função se já está com todas as
+  // funções preenchidas e se já foi confirmado") — cada zona do SIME cobre
+  // vários municípios (ex.: 7ª Zona = Campo Maior + Jatobá do Piauí +
+  // Sigefredo Pacheco), e um local de votação sozinho não deixa ver esse
+  // recorte. Agrega os mesmos números de porLocal (cargo-slot pra MRV, 1
+  // vaga/local pra Coord./Auxiliar) por município, sem recalcular nada do
+  // zero — porLocal já carrega .municipio em cada entrada.
+  const porMunicipioMap = {};
+  for (const loc of porLocal) {
+    const chave = loc.municipio || '(sem município)';
+    if (!porMunicipioMap[chave]) {
+      porMunicipioMap[chave] = {
+        municipio: chave, locais: 0,
+        mrvTotalCargos: 0, mrvDesignados: 0, mrvConfirmados: 0,
+        locaisComCoord: 0, locaisComCoordConfirmado: 0,
+        locaisComAuxiliar: 0, locaisComAuxiliarConfirmado: 0,
+      };
+    }
+    const m = porMunicipioMap[chave];
+    m.locais++;
+    m.mrvTotalCargos += loc.totalCargos;
+    m.mrvDesignados += loc.designados;
+    m.mrvConfirmados += loc.confirmados;
+    if (loc.temCoord) m.locaisComCoord++;
+    if (loc.temCoordConfirmado) m.locaisComCoordConfirmado++;
+    if (loc.temAuxiliar) m.locaisComAuxiliar++;
+    if (loc.temAuxiliarConfirmado) m.locaisComAuxiliarConfirmado++;
+  }
+  const porMunicipio = Object.values(porMunicipioMap).sort((a, b) => a.municipio.localeCompare(b.municipio));
+
   return {
     linhas, porLocal, mrvTotalCargos, mrvDesignados, mrvConfirmadoCargos,
     locaisComCoord, locaisComCoordConfirmado, locaisComAuxiliar, locaisComAuxiliarConfirmado,
+    porMunicipio,
   };
 }
 
@@ -245,6 +277,68 @@ function rsBarraFunil(total, convocados, confirmados) {
         <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corTotal};display:inline-block;flex-shrink:0"></span>Total de vagas: <b>${total}</b></div>
         <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConvocado};display:inline-block;flex-shrink:0"></span>Convocados: <b>${convocados}</b></div>
         <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConfirmado};display:inline-block;flex-shrink:0"></span>Confirmados: <b>${confirmados}</b></div>
+      </div>
+    </div>`;
+}
+
+// "Preenchido" = tem alguém designado pra vaga (confirmado ou não);
+// "confirmado" = quem está designado já confirmou. As duas coisas são
+// perguntas DIFERENTES que o cartório faz ("já tem gente pra todo cargo?"
+// vs "essa gente já confirmou?"), por isso cada função de grupo mostra as
+// duas contagens lado a lado, não uma só.
+function rsSituacaoMunicipio(m) {
+  const mrvPreenchido = m.mrvTotalCargos > 0 && m.mrvDesignados === m.mrvTotalCargos;
+  const mrvConfirmado = m.mrvTotalCargos > 0 && m.mrvConfirmados === m.mrvTotalCargos;
+  const coordPreenchido = m.locais > 0 && m.locaisComCoord === m.locais;
+  const coordConfirmado = m.locais > 0 && m.locaisComCoordConfirmado === m.locais;
+  const auxPreenchido = m.locais > 0 && m.locaisComAuxiliar === m.locais;
+  const auxConfirmado = m.locais > 0 && m.locaisComAuxiliarConfirmado === m.locais;
+  const tudoConfirmado = mrvConfirmado && coordConfirmado && auxConfirmado;
+  const tudoPreenchido = mrvPreenchido && coordPreenchido && auxPreenchido;
+  return { mrvPreenchido, mrvConfirmado, coordPreenchido, coordConfirmado, auxPreenchido, auxConfirmado, tudoConfirmado, tudoPreenchido };
+}
+
+// "X/Y confirmados" + nota "(Z preenchidos)" só quando confirmado < preenchido
+// — mesmo padrão de rsCardLocal (designados só aparece quando diverge de
+// confirmados, pra não repetir o mesmo número duas vezes à toa).
+function rsCelulaGrupo(confirmados, preenchidos, total) {
+  const cor = total === 0 ? 'var(--text3)' : confirmados === total ? 'var(--green)' : preenchidos === 0 ? 'var(--red)' : 'var(--text)';
+  return `<span style="color:${cor};font-weight:700">${confirmados}/${total}</span>${preenchidos !== confirmados ? ` <span style="color:var(--text3);font-size:.9em">(${preenchidos} pr.)</span>` : ''}`;
+}
+
+function rsTabelaMunicipios(porMunicipio) {
+  if (!porMunicipio.length) return '';
+  return `
+    <div class="import-card">
+      <div class="ic-title">🏘️ Progresso por município e função</div>
+      <div class="ic-sub">Vagas de MRV são por cargo de mesa (4 por seção); Coordenador de Acessibilidade e
+        Auxiliar de Eleição são 1 por local de votação. "pr." = preenchido (tem alguém designado, confirmado ou não).</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="text-align:left;border-bottom:1px solid var(--border2)">
+              <th style="padding:6px 8px">Município</th>
+              <th style="padding:6px 8px">MRV</th>
+              <th style="padding:6px 8px">Coord. Acessibilidade</th>
+              <th style="padding:6px 8px">Auxiliar de Eleição</th>
+              <th style="padding:6px 8px">Situação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${porMunicipio.map(m => {
+              const s = rsSituacaoMunicipio(m);
+              const situacao = s.tudoConfirmado ? '✅ Tudo confirmado' : s.tudoPreenchido ? '🔶 Preenchido, falta confirmar' : '❌ Ainda falta preencher';
+              return `
+              <tr style="border-bottom:1px solid var(--border2)">
+                <td style="padding:6px 8px;font-weight:700">${rsEsc(m.municipio)}</td>
+                <td style="padding:6px 8px">${rsCelulaGrupo(m.mrvConfirmados, m.mrvDesignados, m.mrvTotalCargos)}</td>
+                <td style="padding:6px 8px">${rsCelulaGrupo(m.locaisComCoordConfirmado, m.locaisComCoord, m.locais)}</td>
+                <td style="padding:6px 8px">${rsCelulaGrupo(m.locaisComAuxiliarConfirmado, m.locaisComAuxiliar, m.locais)}</td>
+                <td style="padding:6px 8px">${situacao}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
     </div>`;
 }
@@ -334,6 +428,7 @@ function renderResumoSecoes() {
   const {
     linhas, porLocal, mrvTotalCargos, mrvDesignados, mrvConfirmadoCargos,
     locaisComCoord, locaisComCoordConfirmado, locaisComAuxiliar, locaisComAuxiliarConfirmado,
+    porMunicipio,
   } = rsCalcular();
 
   // Redesenhado em 21/08/2026 a pedido do cartório: 3 pizzas (MRV / Coord.
@@ -411,6 +506,7 @@ function renderResumoSecoes() {
 
   c.innerHTML = `
     ${funilHTML}
+    ${rsTabelaMunicipios(porMunicipio)}
     ${pizzasHTML}
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">

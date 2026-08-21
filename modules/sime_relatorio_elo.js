@@ -1,6 +1,6 @@
 // ══════════════════════════════════════
 // RELATÓRIO ELO — quem o SIME já sabe que confirmou (por WhatsApp ou
-// manualmente, ver cmConfirmarEEnviar em sime_contatar_mesarios.js) mas cujo
+// manualmente, ver cmConfirmarParticipacao em sime_contatar_mesarios.js) mas cujo
 // registro no ELO (sime_mesarios_raw, staging da planilha do TRE) ainda não
 // reflete isso. Pedido do cartório em 21/08/2026, depois de uma consulta
 // pontual no banco mostrar 14 pessoas nessa situação — virou tela própria

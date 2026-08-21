@@ -207,6 +207,17 @@ async function login(p) {
   check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 3);
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));
 
+  // Tabela "por município e função" (21/08/2026) — nesta fixture só existe
+  // Campo Maior, então é uma única linha, mas já valida os mesmos números
+  // batidos acima (MRV 1/12, Coord 0/2 via GEORGE designado, Auxiliar 1/2
+  // via ELIS confirmada — ver comentários da barra-funil/pizzas acima).
+  check('Dashboard tem a tabela por município', /Progresso por município e função/.test(dash));
+  const linhaCampoMaior = await p.locator('table tr:has-text("Campo Maior")').first().textContent();
+  check('tabela por município: Campo Maior — MRV 1/12 (4 pr.)', /1\/12/.test(linhaCampoMaior) && /4 pr\./.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
+  check('tabela por município: Campo Maior — Coord. 0/2 (1 pr., via GEORGE)', /0\/2/.test(linhaCampoMaior) && /1 pr\./.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
+  check('tabela por município: Campo Maior — Auxiliar 1/2 (via ELIS, sem nota "pr." pois confirmados=designados)', /1\/2/.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
+  check('tabela por município: Campo Maior ainda falta preencher (❌)', /❌/.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
+
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();
   check('card do local: Grupo Escolar A mostra 2 seções', /Seções[\s\S]*?02/.test(cardGrupoA) || /\b2\b/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
   // % é sobre CONFIRMADOS (só Ana), não designados (Ana+Bruno+Carla+Diego) —
@@ -257,6 +268,61 @@ async function login(p) {
   await p.click('button:has-text("← Voltar")');
   await p.waitForTimeout(150);
   check('voltar: volta pra grade de locais', /Grupo Escolar A/.test(await p.locator('.content').textContent()) && await p.locator('button:has-text("← Voltar")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 1.5 Dashboard por município: zona com mais de um município (achado real
+// — a fixture compartilhada só tem Campo Maior; toda zona de verdade do SIME
+// cobre vários municípios, ex. 7ª Zona = Campo Maior + Jatobá do Piauí). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Fixture isolada, própria pra este teste (não mexe na compartilhada) —
+  // 2 municípios com estados bem diferentes: Campo Maior 100% preenchido E
+  // confirmado (MRV + Coord + Auxiliar); Jatobá do Piauí 100% PREENCHIDO mas
+  // nada confirmado — dá pra ver os 3 estados de rsSituacaoMunicipio: ✅
+  // tudo confirmado, 🔶 preenchido mas falta confirmar (e, na fixture normal
+  // acima, ❌ nem preenchido).
+  m.sime_secoes = [
+    { id:'mA', numero:10, local_nome:'Local A', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:100 },
+    { id:'mB', numero:20, local_nome:'Local B', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:100 },
+    { id:'mJ', numero:30, local_nome:'Local C', municipio:'Jatobá do Piauí', zona_id:'z7', ativo:true, eleitores:100 },
+  ];
+  const cargo = (id, secao_id, funcao_mesa, confirmacao) => ({ id, nome_completo: id, telefone_whatsapp:'', funcao:'mesario', funcao_mesa, secao_id, zona_id:'z7', confirmacao, ativo:true });
+  m.sime_atores = [
+    // Campo Maior — Local A e Local B, mesa completa e confirmada nas duas.
+    cargo('cmA1','mA','Presidente','confirmado'), cargo('cmA2','mA','1º Mesário','confirmado'),
+    cargo('cmA3','mA','2º Mesário','confirmado'), cargo('cmA4','mA','1º Secretário','confirmado'),
+    cargo('cmB1','mB','Presidente','confirmado'), cargo('cmB2','mB','1º Mesário','confirmado'),
+    cargo('cmB3','mB','2º Mesário','confirmado'), cargo('cmB4','mB','1º Secretário','confirmado'),
+    { id:'cmCoordA', nome_completo:'COORD A', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'mA', zona_id:'z7', confirmacao:'confirmado', ativo:true },
+    { id:'cmCoordB', nome_completo:'COORD B', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'mB', zona_id:'z7', confirmacao:'confirmado', ativo:true },
+    { id:'cmAuxA', nome_completo:'AUX A', telefone_whatsapp:'', funcao:'auxiliar_eleicao', secao_id:'mA', zona_id:'z7', confirmacao:'confirmado', ativo:true },
+    { id:'cmAuxB', nome_completo:'AUX B', telefone_whatsapp:'', funcao:'auxiliar_eleicao', secao_id:'mB', zona_id:'z7', confirmacao:'confirmado', ativo:true },
+    // Jatobá do Piauí — Local C: mesa toda DESIGNADA, só o Presidente confirmado.
+    cargo('jatP','mJ','Presidente','confirmado'), cargo('jat1','mJ','1º Mesário','pendente'),
+    cargo('jat2','mJ','2º Mesário','pendente'), cargo('jat3','mJ','1º Secretário','pendente'),
+    { id:'jatCoord', nome_completo:'COORD JATOBA', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'mJ', zona_id:'z7', confirmacao:'pendente', ativo:true },
+    { id:'jatAux', nome_completo:'AUX JATOBA', telefone_whatsapp:'', funcao:'auxiliar_eleicao', secao_id:'mJ', zona_id:'z7', confirmacao:'pendente', ativo:true },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+
+  const dash = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('tabela por município lista Campo Maior e Jatobá do Piauí', /Campo Maior/.test(dash) && /Jatobá do Piauí/.test(dash));
+
+  const linhaCM = await p.locator('table tr:has-text("Campo Maior")').first().textContent();
+  check('Campo Maior: MRV 8/8 (sem nota de designados — todos confirmados)', /8\/8/.test(linhaCM) && !/pr\./.test(linhaCM), linhaCM.replace(/\s+/g, ' '));
+  check('Campo Maior: Coord. 2/2 e Auxiliar 2/2', (linhaCM.match(/2\/2/g) || []).length === 2, linhaCM.replace(/\s+/g, ' '));
+  check('Campo Maior: ✅ Tudo confirmado', /✅ Tudo confirmado/.test(linhaCM), linhaCM.replace(/\s+/g, ' '));
+
+  const linhaJat = await p.locator('table tr:has-text("Jatobá do Piauí")').first().textContent();
+  check('Jatobá do Piauí: MRV 1/4 (4 pr. — mesa toda designada, só 1 confirmado)', /1\/4/.test(linhaJat) && /4 pr\./.test(linhaJat), linhaJat.replace(/\s+/g, ' '));
+  check('Jatobá do Piauí: Coord. 0/1 (1 pr.) e Auxiliar 0/1 (1 pr.)', (linhaJat.match(/0\/1/g) || []).length === 2 && (linhaJat.match(/1 pr\./g) || []).length === 2, linhaJat.replace(/\s+/g, ' '));
+  check('Jatobá do Piauí: 🔶 preenchido mas falta confirmar (não ✅, não ❌)', /🔶 Preenchido, falta confirmar/.test(linhaJat), linhaJat.replace(/\s+/g, ' '));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -720,7 +786,9 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 2.85 Confirmar manualmente: marca confirmado e enfileira a mensagem de convocação pro Hermes ──
+// ── 2.85 Confirmar participação: só marca confirmado, NÃO enfileira mensagem
+// nenhuma pro Hermes — bug real corrigido em 21/08/2026 (o cartório reportou
+// que o botão estava criando fila automática de mensagem sem ter pedido). ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -728,40 +796,37 @@ async function login(p) {
   await p.click('#tab-contatar-btn');
   await p.waitForTimeout(300);
 
-  // BRUNO (a2) tem telefone — confirmar deve gravar confirmacao E enfileirar mensagem.
+  // BRUNO (a2) tem telefone — confirmar grava confirmacao e NÃO enfileira nada.
   const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
-  check('botão mostra "e enviar mensagem" pra quem tem telefone', /Confirmar e enviar mensagem/.test(await cardBruno.textContent()));
-  await cardBruno.locator('button:has-text("Confirmar e enviar mensagem")').click();
+  check('botão é só "Confirmar participação", sem prometer mensagem', /✅ Confirmar participação/.test(await cardBruno.textContent()) && !/enviar mensagem/i.test(await cardBruno.textContent()));
+  await cardBruno.locator('button:has-text("Confirmar participação")').click();
   await p.waitForTimeout(250);
 
   const updConf = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.confirmacao === 'confirmado'));
   check('confirmar grava confirmacao=confirmado', !!updConf, JSON.stringify(updConf));
   const insMsg = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_campanhas_confirmacao' && e.payload.ator_id === 'a2'));
-  check('enfileira em sime_campanhas_confirmacao com status pendente', insMsg?.payload?.status === 'pendente', JSON.stringify(insMsg));
-  const msgTxt = insMsg?.payload?.mensagem_enviada || '';
-  check('mensagem personalizada traz nome, função e seção da pessoa', /BRUNO MESARIO/.test(msgTxt) && /1º Mesário/.test(msgTxt) && /Seção 30/.test(msgTxt) && /Grupo Escolar A/.test(msgTxt), msgTxt);
-  check('botão "Confirmar" some depois de confirmado', await p.locator('.import-card:has-text("BRUNO MESARIO") button:has-text("Confirmar")').count() === 0);
+  check('NÃO enfileira mensagem nenhuma em sime_campanhas_confirmacao', !insMsg, JSON.stringify(insMsg));
+  check('botão "Confirmar participação" some depois de confirmado', await p.locator('.import-card:has-text("BRUNO MESARIO") button:has-text("Confirmar participação")').count() === 0);
 
-  // DIEGO (a4) não tem telefone — confirma mas NÃO enfileira mensagem (nada pra mandar).
+  // DIEGO (a4) não tem telefone — mesmo botão, mesmo resultado (só confirma).
   const cardDiego = p.locator('.import-card:has-text("DIEGO CARTA")').first();
-  check('sem telefone, botão não promete enviar mensagem', /^✅ Confirmar$/.test((await cardDiego.locator('button:has-text("Confirmar")').textContent()).trim()));
-  await cardDiego.locator('button:has-text("Confirmar")').click();
+  await cardDiego.locator('button:has-text("Confirmar participação")').click();
   await p.waitForTimeout(250);
   const updDiego = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a4' && e.payload.confirmacao === 'confirmado'));
   check('Diego (sem telefone) também é marcado confirmado', !!updDiego, JSON.stringify(updDiego));
   const insDiego = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_campanhas_confirmacao' && e.payload.ator_id === 'a4'));
-  check('mas nada é enfileirado pro Diego (sem telefone pra mandar)', !insDiego);
+  check('e também não enfileira nada pro Diego', !insDiego);
 
   // O mesmo botão existe dentro do modal, pra quem ainda não confirmou.
   const cardCarla = p.locator('.import-card:has-text("CARLA RECUSOU")').first();
   await cardCarla.locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(150);
-  check('modal mostra o botão de confirmar pra quem ainda não confirmou', await p.locator('#modal-body button:has-text("Confirmar convocação")').count() === 1);
-  await p.click('#modal-body button:has-text("Confirmar convocação")');
+  check('modal mostra o botão de confirmar pra quem ainda não confirmou', await p.locator('#modal-body button:has-text("Confirmar participação")').count() === 1);
+  await p.click('#modal-body button:has-text("Confirmar participação")');
   await p.waitForTimeout(250);
   const updCarla = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'confirmado'));
   check('confirmar pelo modal também grava confirmacao=confirmado', !!updCarla, JSON.stringify(updCarla));
-  check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar convocação")').count() === 0);
+  check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar participação")').count() === 0);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -854,6 +919,33 @@ async function login(p) {
   await p.waitForTimeout(200);
   check('aba sincronizar renderiza a zona de upload', await p.locator('#ms-csv-input').count() === 1);
 
+  // ── normalizarTelefoneWhatsapp() — heurística usada por TODO import
+  // (Ciente, colar lista, roster do TRE), pedido do cartório em 21/08/2026:
+  // "sempre que importar o contato, normalizar pro formato WhatsApp". ──
+  const normCasos = await p.evaluate(() => ({
+    ja13: normalizarTelefoneWhatsapp('5586988887777'),
+    len11SoFaltava55: normalizarTelefoneWhatsapp('86988887777'),
+    // 10 dígitos, celular antigo sem o 9 (3º dígito 6-9) — soma "55" + "9".
+    len10CelularAntigo: normalizarTelefoneWhatsapp('8677776666'),
+    // 10 dígitos, fixo (3º dígito 2-5) — só soma "55", nunca ganha o 9.
+    len10Fixo: normalizarTelefoneWhatsapp('8633334444'),
+    // 9 dígitos já celular completo, sem DDD — assume 86.
+    len9SemDDD: normalizarTelefoneWhatsapp('988887777'),
+    // 8 dígitos, celular antigo sem DDD nem o 9 — assume 86 + soma o 9.
+    len8CelularAntigo: normalizarTelefoneWhatsapp('77776666'),
+    // placeholder — nunca vira um número inventado.
+    placeholder: normalizarTelefoneWhatsapp('000000000000'),
+    vazio: normalizarTelefoneWhatsapp(''),
+  }));
+  check('já em "55"+DDD+9: mantém como está', normCasos.ja13 === '5586988887777', JSON.stringify(normCasos.ja13));
+  check('DDD+9 sem "55": só soma o "55"', normCasos.len11SoFaltava55 === '5586988887777', JSON.stringify(normCasos.len11SoFaltava55));
+  check('DDD+8 celular antigo: soma "55" e o dígito 9', normCasos.len10CelularAntigo === '5586977776666', JSON.stringify(normCasos.len10CelularAntigo));
+  check('DDD+8 fixo: só soma "55", não inventa o 9', normCasos.len10Fixo === '558633334444', JSON.stringify(normCasos.len10Fixo));
+  check('9 dígitos sem DDD: assume 86', normCasos.len9SemDDD === '5586988887777', JSON.stringify(normCasos.len9SemDDD));
+  check('8 dígitos celular antigo sem DDD: assume 86 e soma o 9', normCasos.len8CelularAntigo === '5586977776666', JSON.stringify(normCasos.len8CelularAntigo));
+  check('placeholder "000000000000" nunca vira número inventado', normCasos.placeholder === '000000000000', JSON.stringify(normCasos.placeholder));
+  check('vazio continua vazio', normCasos.vazio === '', JSON.stringify(normCasos.vazio));
+
   // ── Atualizar contatos (formato de 16 colunas, com Ciente) ──
   const mcHeaders = ['Zona','Seção','Nome','Inscrição','Situação','Localidade','Nº Local','Nome Local','Cód. Objeto Local','Nº Função Eleitoral','Função Eleitoral','Data Atualização','Ciente','whatsapp','celular','telefone2'];
   const mcRow = (over) => mcHeaders.map(h => over[h] ?? '').join(',');
@@ -876,7 +968,9 @@ async function login(p) {
 
   const updBruno = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589'));
   check('atualiza confirmacao=confirmado pra Ciente=1', updBruno?.payload?.confirmacao === 'confirmado', JSON.stringify(updBruno));
-  check('atualiza telefone junto', updBruno?.payload?.telefone_whatsapp === '86988887777', JSON.stringify(updBruno));
+  // Com "55" na frente (21/08/2026) — antes gravava os dígitos crus do
+  // arquivo, fora do padrão que o resto do sistema assume.
+  check('atualiza telefone junto, já normalizado com 55', updBruno?.payload?.telefone_whatsapp === '5586988887777', JSON.stringify(updBruno));
   check('Bruno realmente mudou no mock (não só o log de escrita)', await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2').confirmacao) === 'confirmado');
 
   const resumo = await p.locator('.content').textContent();
@@ -954,8 +1048,9 @@ async function login(p) {
   await p.click('button:has-text("Processar e atualizar")');
   await p.waitForTimeout(300);
 
-  const updBruno2 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589' && e.payload.telefone_whatsapp === '86986665544'));
-  check('linha limpa (título+telefone válidos) grava só telefone_whatsapp, sem mexer em confirmacao', !!updBruno2 && !('confirmacao' in updBruno2.payload), JSON.stringify(updBruno2));
+  // Com "55" na frente (21/08/2026) — mesma normalização de mcAtualizar.
+  const updBruno2 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589' && e.payload.telefone_whatsapp === '5586986665544'));
+  check('linha limpa (título+telefone válidos) grava telefone_whatsapp normalizado com 55, sem mexer em confirmacao', !!updBruno2 && !('confirmacao' in updBruno2.payload), JSON.stringify(updBruno2));
 
   const resumoTxt = await p.locator('.content').textContent();
   check('resumo: 1 atualizado, 1 sem cadastro correspondente, de 4 linhas coladas', /1 telefone\(s\) atualizado/.test(resumoTxt) && /1 sem cadastro correspondente/.test(resumoTxt) && /4 linha\(s\) coladas/.test(resumoTxt), resumoTxt.replace(/\s+/g, ' ').slice(0, 400));

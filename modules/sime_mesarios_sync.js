@@ -332,8 +332,11 @@ async function mcAtualizar() {
     if (l.ciente) porCiente[l.ciente] = (porCiente[l.ciente] || 0) + 1;
     if (!l.inscricao) continue;
     const patch = {};
-    const tel = mcSoDigitos(l.whatsapp) || mcSoDigitos(l.celular) || mcSoDigitos(l.telefone2);
-    if (tel) patch.telefone_whatsapp = tel;
+    // Normaliza pro padrão "55"+DDD+8/9 (21/08/2026) — antes gravava os
+    // dígitos crus do arquivo, sem "55" e sem o dígito 9 de celular antigo,
+    // fora do padrão que o resto do sistema assume em telefone_whatsapp.
+    const telBruto = [l.whatsapp, l.celular, l.telefone2].find(v => mcSoDigitos(v));
+    if (telBruto) patch.telefone_whatsapp = normalizarTelefoneWhatsapp(telBruto);
     if (l.ciente === '1') patch.confirmacao = 'confirmado';
     else if (l.ciente === '2') patch.confirmacao = 'contato_incorreto';
     if (!Object.keys(patch).length) continue;
@@ -372,16 +375,25 @@ function cpEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// 10-11 dígitos (DDD+8/9) já é válido direto; com "55" na frente (12-13)
-// só tira o prefixo. Sem DDD (8-9 dígitos soltos) assume 86 — as duas zonas
-// do SIME são no Piauí, que tem DDD único pro estado inteiro; não serviria
-// um sistema genérico multi-estado, mas é seguro pro escopo deste app.
+// 10-11 dígitos (DDD+8/9) é reconhecido direto; com "55" na frente (12-13)
+// também; sem DDD (8-9 dígitos soltos) assume 86 — as duas zonas do SIME
+// são no Piauí, que tem DDD único pro estado inteiro; não serviria um
+// sistema genérico multi-estado, mas é seguro pro escopo deste app.
+// Fora desses tamanhos (ex.: 14 dígitos, artefato de cópia de planilha) fica
+// de fora — aqui o risco de aceitar errado é maior que o de descartar
+// (candidato vem de texto livre, pode ser confundido com outro número da
+// linha), diferente de mcAtualizar()/msSincronizar(), que sempre têm campo
+// dedicado pro telefone.
+//
+// Mesmo gate de tamanho de sempre, só que agora delega o formato final pra
+// normalizarTelefoneWhatsapp() (21/08/2026) — antes devolvia os dígitos sem
+// o "55" e sem o dígito 9 de celular antigo, fora do padrão que o resto do
+// sistema assume em telefone_whatsapp.
 function cpNormalizarTelefone(digitos) {
-  let d = digitos;
-  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
-  if (d.length === 10 || d.length === 11) return d;
-  if (d.length === 8 || d.length === 9) return '86' + d;
-  return null;
+  const len = digitos.length;
+  const aceito = len === 8 || len === 9 || len === 10 || len === 11
+    || ((len === 12 || len === 13) && digitos.startsWith('55'));
+  return aceito ? normalizarTelefoneWhatsapp(digitos) : null;
 }
 
 let cpTexto = '';

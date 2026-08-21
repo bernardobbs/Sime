@@ -843,6 +843,47 @@ $$ LANGUAGE plpgsql;
 -- status_convocacao/whatsapp_* — não fazem parte do SET do upsert. Quem sai
 -- da nova exportação (substituído de verdade) vira ativo=false, não é
 -- apagado — mantém histórico e não quebra FK.
+-- Normaliza QUALQUER telefone pro padrão "55"+DDD+8/9 dígitos que
+-- sime_atores.telefone_whatsapp assume em todo o resto do sistema — mesma
+-- heurística da normalização em massa aplicada em produção em 21/08/2026
+-- (ver sql/SIME_telefones_normalizacao.sql) e da gêmea em JS
+-- (normalizarTelefoneWhatsapp, sime_ui_utils.js). Usada aqui pro roster de
+-- 81 colunas (pedido do cartório: "sempre que importar, normalizar pro
+-- formato WhatsApp" — antes o COALESCE abaixo gravava os dígitos crus do
+-- TRE, sem "55" e sem o dígito 9 de celular antigo).
+CREATE OR REPLACE FUNCTION sime_normalizar_telefone_whatsapp(p_telefone TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  d TEXT := regexp_replace(coalesce(p_telefone, ''), '\D', '', 'g');
+  len INT := length(d);
+BEGIN
+  IF d = '' THEN RETURN NULL; END IF;
+  IF d = '000000000000' THEN RETURN p_telefone; END IF;
+  IF len = 13 AND left(d, 2) = '55' THEN RETURN d; END IF;
+  IF len = 11 THEN RETURN '55' || d; END IF;
+  IF len = 10 THEN
+    IF substring(d from 3 for 1) IN ('6','7','8','9') THEN
+      RETURN '55' || substring(d from 1 for 2) || '9' || substring(d from 3 for 8);
+    ELSE
+      RETURN '55' || d;
+    END IF;
+  END IF;
+  IF len = 9 AND left(d, 1) = '9' THEN RETURN '5586' || d; END IF;
+  IF len = 8 THEN
+    IF left(d, 1) IN ('6','7','8','9') THEN RETURN '55869' || d; ELSE RETURN '5586' || d; END IF;
+  END IF;
+  IF len = 12 AND left(d, 1) = '0' THEN RETURN '55' || substring(d from 2); END IF;
+  IF len = 12 AND left(d, 2) = '55' THEN
+    IF substring(d from 5 for 1) IN ('6','7','8','9') THEN
+      RETURN substring(d from 1 for 4) || '9' || substring(d from 5 for 8);
+    ELSE
+      RETURN d;
+    END IF;
+  END IF;
+  RETURN d; -- 14 dígitos ou outro caso não previsto: melhor esforço, mantém os dígitos crus
+END;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
+
 CREATE OR REPLACE FUNCTION sime_sync_atores_from_raw(p_zona_numero INT, p_uf TEXT DEFAULT 'PI')
 RETURNS TABLE(atualizados INT, inativados INT) AS $$
 DECLARE
@@ -889,11 +930,13 @@ BEGIN
     )
     SELECT
       v_zona_id, v_eleicao_id, f.nome_civil,
-      COALESCE(
-        NULLIF(regexp_replace(f.telefone_pessoal_mesario, '\D', '', 'g'), ''),
-        NULLIF(regexp_replace(f.telefone_1_eleitor, '\D', '', 'g'), ''),
-        NULLIF(regexp_replace(f.telefone_2_eleitor, '\D', '', 'g'), ''),
-        NULLIF(regexp_replace(f.telefone_contato_eleitor, '\D', '', 'g'), '')
+      sime_normalizar_telefone_whatsapp(
+        COALESCE(
+          NULLIF(regexp_replace(f.telefone_pessoal_mesario, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_1_eleitor, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_2_eleitor, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_contato_eleitor, '\D', '', 'g'), '')
+        )
       ),
       s.id,
       f.funcao_calc,
