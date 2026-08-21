@@ -530,6 +530,45 @@ cada um com propósito diferente:
   recarrega a timeline do modal — clicar em copiar já é, por si só, uma
   tentativa de contato registrada, sem passo extra.
 
+  **Lista única de telefones — principal + alternativos do TRE + cadastrado
+  à mão (21/08/2026)** — achado real: um mesário pode ter mais de um
+  telefone de contato. A planilha do TRE (ELO) já traz até 5 campos por
+  pessoa (`telefone_pessoal_mesario`, `telefone_1_eleitor`,
+  `telefone_2_eleitor`, `telefone_contato_eleitor`,
+  `telefone_comercial_mesario`, todos em `sime_mesarios_raw`), mas
+  `sime_sync_atores_from_raw()` só grava UM em
+  `sime_atores.telefone_whatsapp` — `COALESCE(telefone_pessoal_mesario,
+  telefone_1_eleitor, telefone_2_eleitor, telefone_contato_eleitor)`, nessa
+  ordem (`telefone_comercial_mesario` nem entra no COALESCE) — e os outros
+  ficavam invisíveis pro cartório, mesmo intactos no staging. `cmListaTelefones(p, raw)`
+  junta tudo numa lista só (principal + os do TRE que forem diferentes dele
+  + `sime_atores.telefone_alternativo`, se tiver — ver
+  `sql/SIME_atores_telefone_alternativo.sql`), sempre casando por título de
+  eleitor (`inscricao_eleitoral`/`inscricao` — `ator_id` do staging nunca foi
+  preenchido em produção) e deduplicando por dígito (sem o "55", já que o
+  TRE não segue convenção nenhuma de formato).
+
+  Cada telefone da lista tem seu próprio botão **"🔗 Copiar"** — pedido
+  direto: "o botão de copiar vir antes de cada número, apresentando todos os
+  números do mesário", pra realmente dar pra **tentar contato por qualquer
+  um deles**, não só ver como referência (versão anterior, do mesmo dia, só
+  copiava o texto cru sem montar link nem registrar tentativa —
+  substituída). `cmCopiarLinkWhatsAppNumero(id, numero)` generaliza
+  `cmCopiarLinkWhatsApp()` pra aceitar qualquer número: monta o link `wa.me`
+  já com a mensagem de confirmação PRA AQUELE número específico e registra
+  a tentativa igual ao principal.
+
+  **`telefone_alternativo` (novo campo em `sime_atores`)** — pra quando o
+  cartório descobre um número que não está em NENHUM campo oficial do TRE
+  (ligou pra um parente, alguém do local informou outro contato). Campo
+  "+ Adicionar telefone" no modal (`cmAdicionarTelefoneAlt`) grava ali sem
+  mexer no `telefone_whatsapp` principal (que continua sendo o que
+  Hermes/campanha em massa usam por padrão) — só esse item da lista tem
+  botão de remover (✕), já que é o único que o cartório "possui" de fato (os
+  do TRE são só leitura do staging, o principal se edita pelo campo de
+  sempre). "Atualizar no ELO" continua manual — o SIME não escreve na
+  planilha do TRE, isso é fora do sistema.
+
   **Bug real reportado em 21/08/2026 — "clico em Salvar e o modal não
   fecha".** Investigando, `cmSalvarModal()` não tinha nenhum try/catch ao
   redor do `await sb.from('sime_atores').update(patch)...`. Um erro de

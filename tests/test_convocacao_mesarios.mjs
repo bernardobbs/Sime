@@ -404,7 +404,7 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 2.62 Telefones alternativos do cadastro do TRE (achado real 21/08/2026: um mesário pode ter mais de um telefone no ELO) ──
+// ── 2.62 Lista única de telefones — principal + alternativos do TRE + cadastrado à mão (21/08/2026) ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -416,28 +416,53 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const modalTxt = await p.locator('#modal-body').textContent();
-  check('modal mostra a seção de telefones alternativos do TRE', /Outros telefones no cadastro do TRE/.test(modalTxt));
-  check('mostra o telefone alternativo (telefone_1_eleitor, diferente do salvo)', /Telefone 1 \(eleitor\)/.test(modalTxt) && /\(86\) 97777-8888/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
+  check('lista única mostra o telefone principal', /WhatsApp \(principal\)/.test(modalTxt) && /\(86\) 99999-0002/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
+  check('lista única também mostra o telefone alternativo do TRE (telefone_1_eleitor, diferente do salvo)', /Telefone 1 \(eleitor\)/.test(modalTxt) && /\(86\) 97777-8888/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
 
-  // Copiar um telefone alternativo não registra tentativa nem mexe no
-  // telefone salvo — é só referência.
+  // Pedido direto (21/08/2026): "o botão de copiar vir antes de cada número"
+  // — copiar QUALQUER telefone da lista (não só o principal) monta o link do
+  // wa.me PRA AQUELE número e já registra a tentativa sozinha, pra realmente
+  // dar pra "tentar contactar o número", não só ver ele como referência.
   await p.evaluate(() => {
     window.__clipboardText = null;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
   });
-  await p.locator('#modal-body .m-hist-item button:has-text("Copiar")').first().click();
-  await p.waitForTimeout(100);
+  const linhaAlternativo = p.locator('#modal-body .m-hist-item', { hasText: 'Telefone 1 (eleitor)' });
+  await linhaAlternativo.locator('button:has-text("Copiar")').click();
+  await p.waitForTimeout(150);
   const copiado = await p.evaluate(() => window.__clipboardText);
-  check('copiar telefone alternativo copia o valor certo', copiado === '5586977778888', copiado);
-  const tentativaIndevida = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
-  check('copiar telefone alternativo NÃO registra tentativa de contato sozinho', !tentativaIndevida, JSON.stringify(tentativaIndevida));
+  check('copiar o telefone alternativo monta o link do wa.me PRA ESSE número (não o principal)', (copiado || '').includes('5586977778888') && !(copiado || '').includes('5586999990002'), copiado);
+  const tentativaAlt = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
+  check('copiar o telefone alternativo TAMBÉM registra tentativa de contato (antes não registrava)', !!tentativaAlt && tentativaAlt.payload.payload.ator_id === 'a2', JSON.stringify(tentativaAlt));
 
-  // Ana não tem nenhuma linha em sime_mesarios_raw — não deve mostrar a seção.
+  // Cadastrar um telefone extra que não veio de nenhuma fonte oficial —
+  // pedido direto: "poderíamos ter uma forma de cadastrar outro telefone".
+  await p.waitForTimeout(150); // modal recarrega depois de copiar
+  await p.fill('#mm-tel-alt-novo', '(86) 90000-1234');
+  await p.click('#modal-body button:has-text("Adicionar telefone")');
+  await p.waitForTimeout(200);
+  const updAlt = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_alternativo));
+  check('adicionar telefone alternativo grava com 55 (convenção do banco)', updAlt?.payload?.telefone_alternativo === '5586900001234', JSON.stringify(updAlt));
+  const modalComAlt = await p.locator('#modal-body').textContent();
+  check('telefone alternativo cadastrado à mão aparece na lista única', /Telefone alternativo \(cartório\)/.test(modalComAlt) && /\(86\) 90000-1234/.test(modalComAlt), modalComAlt.replace(/\s+/g, ' ').slice(0, 500));
+
+  // Remover o que foi cadastrado à mão.
+  const linhaManual = p.locator('#modal-body .m-hist-item', { hasText: 'Telefone alternativo (cartório)' });
+  check('só o cadastrado à mão tem botão de remover (não o do TRE nem o principal)', await linhaManual.locator('button[title="Remover telefone alternativo"]').count() === 1);
+  await linhaManual.locator('button[title="Remover telefone alternativo"]').click();
+  await p.waitForTimeout(200);
+  const updRemocao = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_alternativo === null));
+  check('remover telefone alternativo grava null', !!updRemocao, JSON.stringify(updRemocao));
+  check('telefone alternativo removido some da lista', !/Telefone alternativo \(cartório\)/.test(await p.locator('#modal-body').textContent()));
+
+  // Ana não tem nenhuma linha em sime_mesarios_raw nem telefone_alternativo —
+  // a lista única mostra só o principal dela.
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(300);
-  check('sem registro correspondente no TRE, não mostra a seção de telefones alternativos', !/Outros telefones no cadastro do TRE/.test(await p.locator('#modal-body').textContent()));
+  const modalAna = await p.locator('#modal-body').textContent();
+  check('Ana (sem registro no TRE, sem alternativo) só mostra o telefone principal na lista', /WhatsApp \(principal\)/.test(modalAna) && !/Telefone 1 \(eleitor\)/.test(modalAna) && !/Telefone alternativo \(cartório\)/.test(modalAna), modalAna.replace(/\s+/g, ' ').slice(0, 400));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -465,7 +490,9 @@ async function login(p) {
     window.__clipboardText = null;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
   });
-  const btnCopiarWa = p.locator('#modal-body button:has-text("Copiar link do WhatsApp")');
+  // Botão de copiar do telefone principal — agora faz parte da lista única
+  // de telefones (21/08/2026), não é mais uma ação separada no topo.
+  const btnCopiarWa = p.locator('#modal-body .m-hist-item', { hasText: 'WhatsApp (principal)' }).locator('button:has-text("Copiar")');
   check('modal tem botão de copiar link do wa.me de quem tem telefone', await btnCopiarWa.count() === 1);
   await btnCopiarWa.click();
   await p.waitForTimeout(100);

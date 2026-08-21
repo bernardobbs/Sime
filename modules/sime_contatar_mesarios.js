@@ -40,28 +40,30 @@ function cmMsgConfirmarContato(p) {
 // uma tentativa de contato — registra sozinho na timeline (mesmo dia,
 // pedido direto: "atualizar automaticamente que tentei contato"), sem
 // precisar preencher a caixa de Nota separada só pra isso.
-async function cmCopiarLinkWhatsApp(id) {
+//
+// Generalizado pra aceitar QUALQUER número da pessoa, não só o principal
+// (mesmo dia, pedido direto: "o botão de copiar vir antes de cada número,
+// apresentando todos os números do mesário") — cada telefone conhecido
+// (principal, alternativos do TRE, ou o que o cartório cadastrou à mão)
+// vira uma tentativa de contato de verdade quando o cartório copia o link
+// pra ele, não só uma cópia de texto sem registro.
+async function cmCopiarLinkWhatsAppNumero(id, numero, notaExtra) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
-  const link = linkWhatsApp(p.telefone_whatsapp, cmMsgConfirmarContato(p));
+  const link = linkWhatsApp(numero, cmMsgConfirmarContato(p));
   if (!link) return;
   navigator.clipboard?.writeText(link).then(
     () => showToast('🔗 Link copiado — cole onde precisar'),
     () => showToast('⚠ Não deu pra copiar automaticamente'),
   );
-  await cmRegistrarTentativaCore(id, 'whatsapp', 'Copiou o link do WhatsApp pra confirmar contato');
+  await cmRegistrarTentativaCore(id, 'whatsapp', notaExtra || 'Copiou o link do WhatsApp pra confirmar contato');
   if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar a tentativa nova
 }
 
-// Copiar genérico (21/08/2026) — usado pelos telefones alternativos do TRE
-// no modal; não registra tentativa (diferente de cmCopiarLinkWhatsApp) —
-// só copiar um número de referência não é, por si só, uma tentativa de
-// contato.
-function cmCopiarTexto(texto) {
-  navigator.clipboard?.writeText(texto).then(
-    () => showToast('📋 Copiado'),
-    () => showToast('⚠ Não deu pra copiar automaticamente'),
-  );
+async function cmCopiarLinkWhatsApp(id) {
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  await cmCopiarLinkWhatsAppNumero(id, p.telefone_whatsapp);
 }
 
 function cmPersonalizarMensagem(msg, p, sec) {
@@ -130,6 +132,8 @@ const CM_LOG_LABEL = {
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
   mesario_confirmado_manual: (p) => p.com_mensagem ? 'Confirmado manualmente pelo cartório — mensagem de convocação enfileirada pro Hermes' : 'Confirmado manualmente pelo cartório (sem telefone — mensagem não enfileirada)',
+  mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
+  mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -151,7 +155,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -380,21 +384,26 @@ const CM_RAW_TEL_CAMPOS = [
   ['telefone_comercial_mesario', 'Telefone comercial (mesário)'],
 ];
 
-// Extrai os telefones do cadastro do TRE que são DIFERENTES do que já está
-// salvo em telefone_whatsapp — dedupe contra o atual e entre si (comparando
-// só dígitos, sem o "55", já que o TRE não segue convenção nenhuma de
-// formato).
-function cmOutrosTelefones(raw, telefoneAtual) {
-  if (!raw) return [];
-  const vistos = new Set([telSemPais(telefoneAtual || '')].filter(Boolean));
-  const outros = [];
-  for (const [campo, label] of CM_RAW_TEL_CAMPOS) {
-    const digitos = telSemPais(raw[campo] || '');
-    if (!digitos || digitos.length < 8 || vistos.has(digitos)) continue;
+// Lista ÚNICA com todos os telefones conhecidos da pessoa — principal +
+// alternativos do TRE (ELO) + o que o cartório cadastrou à mão
+// (telefone_alternativo, quando o número não veio de nenhuma fonte oficial)
+// — pedido direto em 21/08/2026: "o botão de copiar vir antes de cada
+// número, apresentando todos os números do mesário". Dedupe contra o
+// principal e entre si (comparando só dígitos, sem o "55", já que o TRE não
+// segue convenção nenhuma de formato).
+function cmListaTelefones(p, raw) {
+  const vistos = new Set();
+  const lista = [];
+  const add = (label, valor, extra) => {
+    const digitos = telSemPais(valor || '');
+    if (!digitos || digitos.length < 8 || vistos.has(digitos)) return;
     vistos.add(digitos);
-    outros.push({ label, valor: raw[campo] });
-  }
-  return outros;
+    lista.push({ label, valor, ...extra });
+  };
+  add('WhatsApp (principal)', p.telefone_whatsapp, { principal: true });
+  if (raw) for (const [campo, label] of CM_RAW_TEL_CAMPOS) add(label, raw[campo]);
+  add('Telefone alternativo (cartório)', p.telefone_alternativo, { removivel: true });
+  return lista;
 }
 
 async function cmAbrirModal(id) {
@@ -448,10 +457,44 @@ async function cmAbrirModal(id) {
     ...tentativasManuais.map(l => ({ tipo: 'manual', ts: l.ts, payload: l.payload || {} })),
   ].sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 15);
 
-  const outrosTelefones = cmOutrosTelefones(rawResult?.data, p?.telefone_whatsapp);
+  const telefones = cmListaTelefones(p, rawResult?.data);
 
-  cmModalHist = { tentativas, logs, outrosTelefones };
+  cmModalHist = { tentativas, logs, telefones };
   cmRenderModal();
+}
+
+// Telefone extra que o cartório descobriu por fora (ligação, parente,
+// alguém do local de votação) — quando NÃO está em nenhum campo oficial do
+// TRE. Pedido direto em 21/08/2026: "poderíamos ter uma forma de cadastrar
+// outro telefone". Fica em sime_atores (first-class, não se perde numa
+// recarga de sime_mesarios_raw), separado do telefone_whatsapp principal —
+// o Hermes/campanha em massa continua usando só o principal.
+async function cmAdicionarTelefoneAlt(id) {
+  const campo = document.getElementById('mm-tel-alt-novo');
+  const digitos = telSemPais(campo.value);
+  if (!digitos || digitos.length < 10) { showToast('⚠ Telefone inválido'); return; }
+  const sb = window.supabaseAtores;
+  const valor = '55' + digitos;
+  const { error } = await sb.from('sime_atores').update({ telefone_alternativo: valor }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (p) p.telefone_alternativo = valor;
+  await log('mesario_telefone_alt_adicionado', '', { ator_id: id });
+  showToast('✓ Telefone alternativo adicionado');
+  if (cmModalId === id) await cmAbrirModal(id);
+  render();
+}
+
+async function cmRemoverTelefoneAlt(id) {
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ telefone_alternativo: null }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (p) p.telefone_alternativo = null;
+  await log('mesario_telefone_alt_removido', '', { ator_id: id });
+  showToast('✓ Telefone alternativo removido');
+  if (cmModalId === id) await cmAbrirModal(id);
+  render();
 }
 
 function cmFecharModal(e) {
@@ -516,17 +559,26 @@ function cmRenderModal() {
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
-          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmCopiarLinkWhatsApp('${p.id}')">🔗 Copiar link do WhatsApp</button>` : ''}
+        </div>
+        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — cada um pode ser tentado direto (copia o link do WhatsApp já com a mensagem de confirmação e registra a tentativa sozinho):</div>
+        <div class="m-hist" style="margin-bottom:10px">
+          ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => `
+          <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')">🔗 Copiar</button>
+            <span style="flex:1">${cmEsc(t.label)}: <b>${cmEsc(fmtTelefone(t.valor))}</b></span>
+            ${t.removivel ? `<button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmRemoverTelefoneAlt('${p.id}')" title="Remover telefone alternativo">✕</button>` : ''}
+          </div>`).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">+ Adicionar outro telefone (fora do cadastro do TRE)
+            <input id="mm-tel-alt-novo" type="text" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmAdicionarTelefoneAlt('${p.id}')">➕ Adicionar telefone</button>
         </div>
         <div class="form-group">
-          <label>Telefone (WhatsApp)</label>
+          <label>Telefone (WhatsApp) — principal</label>
           <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
         </div>
-        ${cmModalHist?.outrosTelefones?.length ? `
-        <div class="ic-sub" style="margin-bottom:4px;margin-top:2px">📋 Outros telefones no cadastro do TRE (referência — não muda o telefone salvo sozinho):</div>
-        <div class="m-hist" style="margin-bottom:10px">
-          ${cmModalHist.outrosTelefones.map(t => `<div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${cmEsc(t.label)}: <b>${cmEsc(fmtTelefone(t.valor))}</b></span><button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmCopiarTexto('${cmEsc(t.valor).replace(/'/g, "\\'")}')">📋 Copiar</button></div>`).join('')}
-        </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Meio de contato atual
             <select onchange="cmSalvarMeio('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
@@ -607,13 +659,19 @@ async function cmSalvarModal() {
   const patch = {};
   if (telMudou) patch.telefone_whatsapp = telDigitado ? '55' + telDigitado : null;
   if (rastreioEl && rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
+  // Mesma lógica do telefone principal: só grava se realmente digitou algo
+  // novo (não sobrescreve com vazio o que já tinha por engano).
+  const telAltEl = document.getElementById('mm-tel-alt-novo');
+  const telAltDigitado = telAltEl ? telSemPais(telAltEl.value) : '';
+  if (telAltDigitado && telAltDigitado.length >= 10) patch.telefone_alternativo = '55' + telAltDigitado;
 
   // "Salvar" recolhe também o que ficou digitado nas caixas de ação rápida
-  // (tentativa/observação) mesmo sem clicar no botão próprio de cada uma —
-  // achado real (21/08/2026): a pessoa digita numa dessas caixas e clica no
-  // "Salvar" do rodapé (o botão mais visível, parece "salvar a tela toda"),
-  // e o texto sumia sem aviso porque só telefone/rastreio eram cobertos
-  // aqui. Sem isso ficaria fácil perder uma nota ou observação por engano.
+  // (tentativa/observação/telefone alternativo) mesmo sem clicar no botão
+  // próprio de cada uma — achado real (21/08/2026): a pessoa digita numa
+  // dessas caixas e clica no "Salvar" do rodapé (o botão mais visível,
+  // parece "salvar a tela toda"), e o texto sumia sem aviso porque só
+  // telefone/rastreio eram cobertos aqui. Sem isso ficaria fácil perder uma
+  // nota, observação ou telefone por engano.
   const notaTentativaEl = document.getElementById('mm-tent-nota');
   const notaTentativa = notaTentativaEl ? notaTentativaEl.value.trim() : '';
   const obsNovaEl = document.getElementById('mm-obs-nova');
@@ -641,6 +699,7 @@ async function cmSalvarModal() {
       Object.assign(p, patch);
       if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
       if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+      if ('telefone_alternativo' in patch) await log('mesario_telefone_alt_adicionado', '', { ator_id: id });
     }
     if (notaTentativa) {
       const meioEl = document.getElementById('mm-tent-meio');
