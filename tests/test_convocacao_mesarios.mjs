@@ -84,6 +84,10 @@ function mock() {
     escritas: [], rpcChamadas: [],
     sime_usuarios: [{ id:'u-maria', nome:'Maria', perfil:'coordenador', zona_id:'z7', ativo:true, auth_user_id:'auth-maria' }],
     sime_zonas: [{ id:'z7', numero:7, estado:'PI', nome:'Campo Maior' }],
+    // Necessário pra getEleicaoAtiva() (sime_dados.js), que log() agora chama
+    // pra preencher eleicao_id no insert — ver bug real de 21/08/2026 (RLS de
+    // SELECT em sime_logs exige eleicao_id IN (...), NULL nunca casava).
+    sime_eleicoes: [{ id:'el7', zona_id:'z7', turno:1, ativa:true, nome:'Eleições 2026' }],
     sime_logs: [
       { ts:'2026-08-20T09:00:00.000Z', acao:'mesarios_sync_csv', modulo:'convocacao', payload:{ zona:'7', uf:'PI', registros:290, atualizados:280, inativados:5 } },
       { ts:'2026-08-19T10:00:00.000Z', acao:'mesario_meio_contato', modulo:'convocacao', payload:{ ator_id:'a2', meio_contato:'carta_registrada' } },
@@ -373,6 +377,10 @@ async function login(p) {
   const linkWa = p.locator('#modal-body a:has-text("Abrir WhatsApp")');
   check('modal tem botão direto pro wa.me de quem tem telefone', await linkWa.count() === 1);
   check('link do wa.me aponta pro número da pessoa', /5586999990002|86999990002|999990002/.test(await linkWa.getAttribute('href') || ''), await linkWa.getAttribute('href'));
+  // Pedido de 21/08/2026: mensagem pré-preenchida (?text=) perguntando se o
+  // contato é da pessoa certa — evita digitar a mesma pergunta a cada
+  // conversa nova aberta indo de nome em nome.
+  check('link do wa.me já vem com a mensagem de confirmação pré-preenchida', (await linkWa.getAttribute('href') || '').includes('?text=' + encodeURIComponent('Bom dia, esse contato é de BRUNO MESARIO ?')), await linkWa.getAttribute('href'));
 
   // Meio de contato dentro do modal (não só no card) — trocar pra Ligação
   // dispara o mesmo cmSalvarMeio de sempre e o modal se atualiza sozinho.
@@ -389,6 +397,12 @@ async function login(p) {
   await p.waitForTimeout(250);
   const updTentativa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
   check('registrar tentativa grava log com ator_id, meio e nota', updTentativa?.payload?.payload?.ator_id === 'a2' && updTentativa?.payload?.payload?.nota === 'Liguei às 14h, não atendeu', JSON.stringify(updTentativa));
+  // Bug real corrigido em 21/08/2026: o insert nunca preenchia eleicao_id, e
+  // a policy de SELECT de sime_logs (eleicao_id IN (...)) nunca casa com
+  // NULL — a tentativa "sumia" pra sempre na releitura, mesmo com a escrita
+  // tendo sucedido (é o que causava "Registrar tentativa" parecer não
+  // funcionar). Sem eleicao_id no insert, este check falha de novo.
+  check('registrar tentativa preenche eleicao_id (senão fica invisível pela RLS de sime_logs)', updTentativa?.payload?.eleicao_id === 'el7', JSON.stringify(updTentativa));
   const modalTxtDepois = await p.locator('#modal-body').textContent();
   check('a tentativa manual aparece na timeline de Tentativas de contato', /Liguei às 14h, não atendeu/.test(modalTxtDepois));
 

@@ -121,9 +121,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
+import { initSimeDados, getEleicaoAtiva } from './sime_dados.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
 window.supabaseAtores = supabase; // mesmo nome global que sime_mesarios_sync.js/sime_resumo_secoes.js já esperam (vieram de SIME_atores.html)
+initSimeDados(supabase); // necessário pra getEleicaoAtiva() funcionar — sem isso ela sempre cai no fallback (ver log() abaixo)
 
 let _zonaCache = null;
 let _nomeCache = null;
@@ -137,6 +139,25 @@ window.zonaDoUsuario = async function zonaDoUsuario() {
   if (!_zonaCache) await _carregarUsuario();
   return _zonaCache;
 };
+
+// Bug real corrigido em 21/08/2026: log() gravava eleicao_id=null sempre (não
+// existia esse campo aqui) — a policy de SELECT de sime_logs é
+// `eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona visível)`, e NULL
+// nunca casa com um IN, então TODO log gravado por esta página (tentativa de
+// contato, observação, edição de telefone, histórico de sincronização) *
+// gravava* com sucesso mas ficava invisível pra sempre na releitura — sintoma
+// real reportado pelo cartório: "Registrar tentativa" dá toast de sucesso, a
+// lista de Tentativas de contato nunca mostra nada. sql/SIME_logs_eleicao_id_fix.sql
+// tem o backfill dos registros que já foram gravados assim antes do fix.
+let _eleicaoIdCache = null;
+async function _eleicaoIdAtual() {
+  if (_eleicaoIdCache) return _eleicaoIdCache;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) return null;
+  const eleicao = await getEleicaoAtiva({ fallback: null, zonaId });
+  _eleicaoIdCache = eleicao?.id || null;
+  return _eleicaoIdCache;
+}
 // Autor de observações adicionadas manualmente (aba Contatar mesários) —
 // mesmo cache de sessão que zonaDoUsuario, só que devolve o nome em vez do
 // zona_id. 'Cartório' é fallback pra sessões sem sime_usuarios.nome (raro).
@@ -147,7 +168,8 @@ window.nomeDoUsuario = async function nomeDoUsuario() {
 
 window.log = async function log(acao, secao, payload) {
   try {
-    await supabase.from('sime_logs').insert({ acao, modulo: 'convocacao', secao_id: null, payload });
+    const eleicaoId = await _eleicaoIdAtual();
+    await supabase.from('sime_logs').insert({ acao, modulo: 'convocacao', secao_id: null, eleicao_id: eleicaoId, payload });
   } catch (e) { /* auditoria é melhor-esforço — não bloqueia a ação principal */ }
 };
 

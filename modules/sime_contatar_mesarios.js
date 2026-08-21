@@ -23,6 +23,16 @@ A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleiçõe
 
 Qualquer dúvida, entre em contato com o cartório eleitoral.`;
 
+// Mensagem pronta pro botão "💬 Abrir WhatsApp" do modal (21/08/2026) — o
+// cartório vai de nome em nome confirmando se o telefone cadastrado ainda é
+// da pessoa certa, e digitar essa mesma pergunta toda vez que abre uma
+// conversa nova era repetitivo. Pré-preenchida via ?text= do wa.me
+// (linkWhatsApp já aceita 2º argumento) — a pessoa ainda precisa clicar
+// "Enviar" no WhatsApp, isso não manda nada sozinho.
+function cmMsgConfirmarContato(p) {
+  return `Bom dia, esse contato é de ${p.nome_completo} ?`;
+}
+
 function cmPersonalizarMensagem(msg, p, sec) {
   return msg
     .replaceAll('{nome}', p.nome_completo || '')
@@ -430,7 +440,7 @@ function cmRenderModal() {
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
-          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<a class="btn btn-out" style="font-size:.72rem;padding:5px 10px;text-decoration:none" href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>` : ''}
+          ${p.telefone_whatsapp && linkWhatsApp(p.telefone_whatsapp) ? `<a class="btn btn-out" style="font-size:.72rem;padding:5px 10px;text-decoration:none" href="${linkWhatsApp(p.telefone_whatsapp, cmMsgConfirmarContato(p))}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>` : ''}
         </div>
         <div class="form-group">
           <label>Telefone (WhatsApp)</label>

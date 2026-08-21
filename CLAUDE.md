@@ -461,6 +461,46 @@ cada um com propósito diferente:
   logístico entrou na mesma lista — sem isso não dava pra separar os dois
   grupos pra trabalhar um de cada vez.
 
+  **Bug real, grave, corrigido em 21/08/2026 — "Registrar tentativa" (e toda
+  ação registrada por esta página) gravava com sucesso mas ficava invisível
+  pra sempre na releitura.** Sintoma reportado pelo cartório: clicar
+  "Registrar tentativa" mostrava o toast de sucesso, mas a lista "Tentativas
+  de contato" continuava sempre "Nenhuma tentativa registrada ainda" — mesmo
+  depois de reabrir o modal. Causa raiz: `window.log()` (usado por toda
+  `SIME_convocacao.html` — tentativa, observação, edição de telefone,
+  confirmação manual, e o log de `sime_mesarios_sync.js` que alimenta a aba
+  Histórico) nunca preenchia `eleicao_id` no insert em `sime_logs`. A policy
+  de SELECT dessa tabela é `eleicao_id IN (SELECT id FROM sime_eleicoes
+  WHERE zona visível)` — `NULL IN (...)` nunca é verdadeiro em SQL, então
+  todo registro gravado com `eleicao_id` nulo ficava permanentemente
+  invisível pra qualquer sessão autenticada (só um `service_role`, que
+  ignora RLS, conseguia ver). A policy de INSERT é `WITH CHECK (true)`, por
+  isso a escrita nunca falhava e o toast sempre dizia sucesso — o bug era
+  inteiramente silencioso. Confirmado em produção antes do fix: 6
+  `mesario_tentativa_contato`, 8 `mesario_editar_telefone`, 2
+  `mesarios_sync_csv`, entre outros, todos com `eleicao_id` nulo. O mesmo
+  defeito existia em `log()` de `SIME_atores.html` (usada por
+  `SIME_relatorios.html`) — corrigido junto. As duas páginas agora resolvem
+  a eleição ativa da zona do usuário (`getEleicaoAtiva()` de
+  `sime_dados.js`, cacheada) e preenchem `eleicao_id` no insert;
+  `SIME_convocacao.html` precisou passar a chamar `initSimeDados(supabase)`,
+  que não fazia antes (sem isso, `getEleicaoAtiva()` sempre cai no fallback
+  `null` e reproduziria o mesmo bug). `sql/SIME_logs_eleicao_id_fix.sql` tem
+  o backfill do que já tinha sido gravado assim antes do fix — já aplicado
+  em produção nas duas zonas.
+
+  **Mensagem pré-preenchida no botão "💬 Abrir WhatsApp" do modal
+  (21/08/2026)** — pedido do cartório: indo de nome em nome confirmar se o
+  telefone cadastrado ainda é da pessoa certa, digitar a mesma pergunta toda
+  vez que abre uma conversa nova era repetitivo. `cmMsgConfirmarContato(p)`
+  monta "Bom dia, esse contato é de {NOME} ?" e `linkWhatsApp()` (já aceitava
+  um 2º argumento de mensagem, só não era usado aqui) preenche via `?text=`
+  do link `wa.me` — a pessoa que vai enviar ainda precisa clicar "Enviar" no
+  WhatsApp, isso não manda nada sozinho. Só no botão dedicado do modal; o
+  link do telefone no card da lista continua sem mensagem (contextos
+  diferentes — o card é só "abrir a conversa", o botão do modal é
+  especificamente o fluxo de "confirmar que é essa pessoa").
+
   **Código de rastreio só aparece no modal quando o meio é Carta Registrada
   (21/08/2026) — antes aparecia sempre, inclusive pra WhatsApp/Ligação/
   Ofício, onde rastreio dos Correios não tem sentido nenhum** (achado do

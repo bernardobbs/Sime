@@ -221,6 +221,22 @@ function serverTs()    { return Date.now(); }
 // isto gravava só em sime_logs_v1, um log que nunca saía do navegador de
 // quem clicou "CONTATAR" no Modo Guerra, e a auditoria do cartório nunca via
 // esses acionamentos. Mantém o espelho local como fallback se a rede falhar.
+// Bug real corrigido em 21/08/2026 (achado investigando "tentativas de
+// contato não aparecem" em SIME_convocacao.html, mesmo defeito aqui): o
+// insert nunca preenchia eleicao_id, e a policy de SELECT de sime_logs é
+// `eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona visível)` — NULL
+// nunca casa com IN, então todo log gravado por esta página ficava invisível
+// pra sempre na releitura (ex.: SIME_relatorios.html). Ver
+// sql/SIME_logs_eleicao_id_fix.sql pro backfill do que já foi gravado assim.
+let _logEleicaoIdCache = null;
+async function _logEleicaoIdAtual() {
+  if (_logEleicaoIdCache) return _logEleicaoIdCache;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId || !window.getEleicaoAtivaDaZona) return null;
+  const eleicao = await window.getEleicaoAtivaDaZona(zonaId);
+  _logEleicaoIdCache = eleicao?.id || null;
+  return _logEleicaoIdCache;
+}
 async function log(acao,secao,payload) {
   const logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
   logs.unshift({acao,modulo:'atores',secao,payload,ts:serverTs()});
@@ -231,7 +247,8 @@ async function log(acao,secao,payload) {
   if (!sb) return; // sem sessão — fica só o local, como antes
   const secaoId = window.SECAO_ID_POR_NUMERO?.[secao] || null;
   try {
-    await sb.from('sime_logs').insert({ acao, modulo: 'atores', secao_id: secaoId, payload });
+    const eleicaoId = await _logEleicaoIdAtual();
+    await sb.from('sime_logs').insert({ acao, modulo: 'atores', secao_id: secaoId, eleicao_id: eleicaoId, payload });
   } catch (e) { /* já ficou no espelho local acima */ }
 }
 
