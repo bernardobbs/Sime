@@ -61,6 +61,11 @@
 //   resumo            → contagem por status da zona (pro relatório horário no Telegram)
 //   relatorio         → mesma contagem, mas detalhada por pessoa (telefone/nome),
 //                       inclui a fila de atenção 'fora_do_script'
+//   listar_fora_do_script_periodo → itens 'fora_do_script' num período
+//                       (desde/ate, ISO), cada um já com a etapa
+//                       correspondente (respostas_esperadas) — usado pra
+//                       sugerir novas palavras-chave por IA (nunca aplica
+//                       sozinho, só sugere)
 //
 // Mesma auth por zona de hermes-update.js / hermes-mesarios.js / hermes-notificacoes.js.
 
@@ -132,6 +137,7 @@ export default async function handler(req, res) {
     acao = 'pendentes', ids = [], erro_msg, whatsapp_existe, novo_status,
     telefone, decisao, resposta_texto,
     item_id, proxima_etapa, intencao, status_final,
+    desde, ate,
   } = req.body || {};
 
   // ── PENDENTES ──
@@ -612,6 +618,68 @@ export default async function handler(req, res) {
       ok: true, zona: zona.numeroZona, total: rows.length,
       nao_whatsapp: naoWhatsapp, confirmaram, negaram, fora_do_script: foraDoScript,
     });
+  }
+
+  // ── LISTAR_FORA_DO_SCRIPT_PERIODO ── (desde 19/08/2026) pedido do dono
+  // do projeto: "quero que todas as mensagens do dia anterior virem
+  // aprendizado para o script conversacional" — confirmado, ao perguntar o
+  // escopo, que é especificamente sobre as respostas que caíram fora do
+  // script (não o log geral de conversa), pra sugerir novas palavras-chave
+  // por IA. Diferente de 'relatorio' (fila de atenção sem filtro de data,
+  // achatada): aqui filtra por `ts_respondido` num período (`desde`/`ate`,
+  // ISO) e já traz, JUNTO de cada item, a etapa correspondente
+  // (respostas_esperadas — os ramos/palavras-chave já cadastrados), pra
+  // quem chama poder montar um prompt de IA por etapa sem precisar de uma
+  // segunda ida ao banco por item. Só lê — não decide nada, não muda
+  // status (isso é papel de 'avancar_etapa', chamado só depois que um
+  // humano aprovar uma sugestão e editar o script de verdade).
+  if (acao === 'listar_fora_do_script_periodo') {
+    if (!desde || !ate) return res.status(400).json({ error: 'desde e ate são obrigatórios (ISO 8601)' });
+
+    const { data, error } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('id, telefone_whatsapp, campanha_id, etapa_atual, resposta_recebida, ts_respondido, sime_atores(nome_completo)')
+      .eq('zona_id', zonaId)
+      .eq('status', 'fora_do_script')
+      .gte('ts_respondido', desde)
+      .lt('ts_respondido', ate)
+      .not('campanha_id', 'is', null);
+    if (error) return res.status(500).json({ error: error.message });
+
+    const itens = data || [];
+    if (itens.length === 0) return res.status(200).json({ ok: true, itens: [] });
+
+    // Etapas em lote (mesmo padrão de 'pendentes' acima) — evita uma query
+    // por item quando vários itens do período são da mesma etapa.
+    const chaves = [...new Set(itens.map((i) => `${i.campanha_id}:${i.etapa_atual}`))];
+    const campanhaIds = [...new Set(itens.map((i) => i.campanha_id))];
+    const { data: etapas, error: etapasErr } = await supabase
+      .from('sime_campanha_etapas')
+      .select('campanha_id, etapa_numero, respostas_esperadas')
+      .in('campanha_id', campanhaIds);
+    if (etapasErr) return res.status(500).json({ error: etapasErr.message });
+    const etapaPorChave = new Map((etapas || []).map((e) => [`${e.campanha_id}:${e.etapa_numero}`, e]));
+
+    const { data: campanhasInfo } = await supabase
+      .from('sime_campanhas')
+      .select('id, nome')
+      .in('id', campanhaIds);
+    const nomeCampanhaPorId = new Map((campanhasInfo || []).map((c) => [c.id, c.nome]));
+
+    const resultado = itens
+      .filter((i) => etapaPorChave.has(`${i.campanha_id}:${i.etapa_atual}`)) // etapa órfã (apagada depois) — ignora, não trava nada
+      .map((i) => ({
+        id: i.id,
+        telefone: i.telefone_whatsapp,
+        nome: i.sime_atores?.nome_completo || null,
+        resposta: i.resposta_recebida,
+        campanha_id: i.campanha_id,
+        campanha_nome: nomeCampanhaPorId.get(i.campanha_id) || null,
+        etapa_numero: i.etapa_atual,
+        respostas_esperadas: etapaPorChave.get(`${i.campanha_id}:${i.etapa_atual}`).respostas_esperadas,
+      }));
+
+    return res.status(200).json({ ok: true, itens: resultado });
   }
 
   return res.status(400).json({ error: `Ação desconhecida: ${acao}` });
