@@ -6,6 +6,10 @@
 // service_role), mas opera sobre PESSOAS (sime_atores), não sobre seções:
 //   - acao='listar'      → devolve as pessoas da zona (nome, telefone, seção, status)
 //   - acao='consultar'   → autoatendimento: 1 telefone → convocação + seção pronta pro WhatsApp
+//                          (+ imagem_url, se essa pessoa já tiver uma campanha
+//                          de convocação com imagem configurada — usado pelo
+//                          Hermes quando alguém se identifica como mesário
+//                          espontaneamente, sem ter sido perguntado antes)
 //   - acao='buscar_nome' → autoatendimento por nome (substring, case-insensitive) →
 //                          mesmo formato de resposta do 'consultar', pra quem não
 //                          está mandando do próprio telefone cadastrado
@@ -184,7 +188,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── CONSULTAR — autoatendimento ("oi") ──
+    // ── CONSULTAR — autoatendimento ("oi", ou o Hermes reconhecendo alguém
+    // se identificando como mesário espontaneamente) ──
     if (acao === 'consultar') {
       if (!telefone) return res.status(400).json({ error: 'telefone é obrigatório para consultar' });
       const alvos = pessoas.filter(p => telefoneCasa(p.telefone_whatsapp, telefone));
@@ -195,6 +200,27 @@ export default async function handler(req, res) {
           mensagem_wa: 'Não encontrei seu telefone na lista de convocados desta zona. Fale com o cartório.',
         });
       }
+
+      // Imagem de "como confirmar a convocação" (21/08/2026): não existe um
+      // campo próprio pra isso em sime_atores — reaproveita a imagem já
+      // configurada na campanha de convocação mais recente dessa pessoa
+      // (sime_campanhas_confirmacao.imagem_url, a mesma que dispatch.js do
+      // Hermes manda no fluxo normal de campanha). Se a pessoa nunca teve
+      // uma campanha com imagem configurada, fica null e o Hermes manda só
+      // o texto — nunca é erro, é só "sem imagem disponível".
+      const atorIds = alvos.map(p => p.id).filter(Boolean);
+      let imagemUrl = null;
+      if (atorIds.length > 0) {
+        const { data: campanhaRows } = await supabase
+          .from('sime_campanhas_confirmacao')
+          .select('imagem_url, created_at')
+          .in('ator_id', atorIds)
+          .not('imagem_url', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        imagemUrl = campanhaRows?.[0]?.imagem_url || null;
+      }
+
       return res.status(200).json({
         ok: true,
         encontrado: alvos.length,
@@ -206,6 +232,7 @@ export default async function handler(req, res) {
           confirmacao: p.confirmacao,
         })),
         mensagem_wa: mensagemConsulta(alvos, secoesPorId),
+        imagem_url: imagemUrl,
       });
     }
 
