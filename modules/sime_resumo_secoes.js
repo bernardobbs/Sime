@@ -174,8 +174,8 @@ function rsCardSecao(l) {
     <div class="import-card" style="padding:14px 16px;border-left:4px solid ${l.confirmados === 4 ? 'var(--green)' : l.designados === 0 ? 'var(--red)' : 'var(--blue)'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div>
-          <div style="font-size:1.6rem;font-weight:900">${l.secao.eleitores ?? '—'}</div>
-          <div class="ic-sub" style="margin-bottom:0">eleitores — Seção ${l.secao.numero}</div>
+          <div style="font-size:1.6rem;font-weight:900">Seção ${l.secao.numero}</div>
+          <div class="ic-sub" style="margin-bottom:0">${l.secao.eleitores ?? '—'} eleitores</div>
         </div>
       </div>
       <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap">
