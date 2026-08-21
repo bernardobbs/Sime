@@ -207,16 +207,24 @@ async function login(p) {
   check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 3);
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));
 
-  // Tabela "por município e função" (21/08/2026) — nesta fixture só existe
-  // Campo Maior, então é uma única linha, mas já valida os mesmos números
-  // batidos acima (MRV 1/12, Coord 0/2 via GEORGE designado, Auxiliar 1/2
-  // via ELIS confirmada — ver comentários da barra-funil/pizzas acima).
-  check('Dashboard tem a tabela por município', /Progresso por município e função/.test(dash));
+  // Tabela "por município e função" (21/08/2026) — fechada por padrão desde
+  // 21/08/2026 (pedido do cartório: o topo do Dashboard ficou denso demais),
+  // expande num cabeçalho clicável. Nesta fixture só existe Campo Maior,
+  // então é uma única linha, mas já valida os mesmos números batidos acima
+  // (MRV 1/12, Coord 0/2 via GEORGE designado, Auxiliar 1/2 via ELIS
+  // confirmada — ver comentários da barra-funil/pizzas acima).
+  check('Dashboard tem o cabeçalho da tabela por município (fechado)', /Progresso por município e função/.test(dash));
+  check('fechada por padrão: tabela não aparece antes de clicar', await p.locator('table:has-text("Campo Maior")').count() === 0);
+  await p.click('.ic-title:has-text("Progresso por município e função")');
+  await p.waitForTimeout(150);
   const linhaCampoMaior = await p.locator('table tr:has-text("Campo Maior")').first().textContent();
   check('tabela por município: Campo Maior — MRV 1/12 (4 pr.)', /1\/12/.test(linhaCampoMaior) && /4 pr\./.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
   check('tabela por município: Campo Maior — Coord. 0/2 (1 pr., via GEORGE)', /0\/2/.test(linhaCampoMaior) && /1 pr\./.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
   check('tabela por município: Campo Maior — Auxiliar 1/2 (via ELIS, sem nota "pr." pois confirmados=designados)', /1\/2/.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
   check('tabela por município: Campo Maior ainda falta preencher (❌)', /❌/.test(linhaCampoMaior), linhaCampoMaior.replace(/\s+/g, ' '));
+  await p.click('.ic-title:has-text("Progresso por município e função")');
+  await p.waitForTimeout(150);
+  check('clicar de novo recolhe a tabela', await p.locator('table:has-text("Campo Maior")').count() === 0);
 
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();
   check('card do local: Grupo Escolar A mostra 2 seções', /Seções[\s\S]*?02/.test(cardGrupoA) || /\b2\b/.test(cardGrupoA), cardGrupoA.replace(/\s+/g, ' '));
@@ -311,6 +319,9 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(300);
 
+  // Tabela fechada por padrão (21/08/2026) — precisa clicar pra expandir.
+  await p.click('.ic-title:has-text("Progresso por município e função")');
+  await p.waitForTimeout(150);
   const dash = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
   check('tabela por município lista Campo Maior e Jatobá do Piauí', /Campo Maior/.test(dash) && /Jatobá do Piauí/.test(dash));
 

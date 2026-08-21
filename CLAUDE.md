@@ -358,7 +358,14 @@ cada um com propósito diferente:
     calcula os dois booleanos (preenchido/confirmado) por grupo antes de
     decidir o selo. Tabela HTML de verdade (`<table>`), não `.import-card`
     em grade — mesmo padrão já usado no Relatório ELO, mais legível pra
-    comparar município a município numa lista.
+    comparar município a município numa lista. **Fechada por padrão**
+    (mesmo dia, ajuste rápido a pedido do cartório: "ficou denso demais no
+    topo") — cabeçalho clicável tipo disclosure (▸/▾, `rsToggleMunicipios()`
+    / `rsMunicipiosAberto`), corpo da tabela só entra no HTML quando
+    expandida, não só escondido por CSS. Cogitou-se substituir por gráficos
+    de pizza (um por município), mas descartado: com várias cidades vira
+    muitos gráficos pequenos, mais difícil comparar todas de uma vez do que
+    numa tabela — o problema era densidade visual, não o formato.
   - Nenhum dos três (funil, tabela por município, pizzas) aparece no
     drilldown por local — série específica pra visão de conjunto, repetir
     dentro do drilldown seria redundante.

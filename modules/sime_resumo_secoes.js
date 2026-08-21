@@ -19,6 +19,12 @@ let rsDados = null;      // { secoes:[...], porSecao:{}, totalMesarios, totalApo
 let rsBusca = '';
 let rsModo = 'grade';    // 'grade' | 'lista'
 let rsLocalAberto = null; // chave `${local_nome}|||${municipio}` do local em drilldown, ou null
+// Fechada por padrão (21/08/2026) — a tabela por município deixava o topo
+// do Dashboard denso demais competindo com a barra-funil e as pizzas;
+// pedido do cartório pra virar uma seção recolhível em vez de sumir ou
+// virar mais gráficos.
+let rsMunicipiosAberto = false;
+function rsToggleMunicipios() { rsMunicipiosAberto = !rsMunicipiosAberto; render(); }
 
 async function rsCarregar() {
   const sb = window.supabaseAtores;
@@ -308,9 +314,17 @@ function rsCelulaGrupo(confirmados, preenchidos, total) {
 
 function rsTabelaMunicipios(porMunicipio) {
   if (!porMunicipio.length) return '';
+  // Fechada por padrão (21/08/2026, ver rsMunicipiosAberto) — cabeçalho
+  // clicável tipo "▸/▾", mesmo padrão de disclosure já usado noutras telas
+  // do SIME. O corpo (tabela) só entra no HTML quando aberta — não só
+  // escondido por CSS — pra não pesar o Dashboard com uma tabela grande
+  // toda vez que ele carrega.
   return `
     <div class="import-card">
-      <div class="ic-title">🏘️ Progresso por município e função</div>
+      <div class="ic-title" style="cursor:pointer;display:flex;align-items:center;gap:6px" onclick="rsToggleMunicipios()">
+        <span>${rsMunicipiosAberto ? '▾' : '▸'}</span> 🏘️ Progresso por município e função
+      </div>
+      ${rsMunicipiosAberto ? `
       <div class="ic-sub">Vagas de MRV são por cargo de mesa (4 por seção); Coordenador de Acessibilidade e
         Auxiliar de Eleição são 1 por local de votação. "pr." = preenchido (tem alguém designado, confirmado ou não).</div>
       <div style="overflow-x:auto">
@@ -339,7 +353,7 @@ function rsTabelaMunicipios(porMunicipio) {
             }).join('')}
           </tbody>
         </table>
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
