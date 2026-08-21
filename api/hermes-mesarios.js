@@ -14,6 +14,11 @@
 //                          mesmo formato de resposta do 'consultar', pra quem não
 //                          está mandando do próprio telefone cadastrado
 //   - acao='atualizar' → guarda um recado livre da pessoa (observacao) pro cartório revisar
+//   - acao='relatar_terceiro' → alguém (grupo ou DM) reporta a situação de OUTRA
+//                          pessoa, nomeada — anexa em observacao, marcado
+//                          "precisa confirmar" (nunca muda confirmacao=,
+//                          diferente de 'atualizar'/'confirmar'/'recusar', que
+//                          são sempre a própria pessoa falando por si)
 //   - acao='confirmar' → marca sime_atores.confirmacao='confirmado' (permanece)
 //   - acao='recusar'   → 'recusou'     (+ ativo=false — não vai atuar)
 //   - acao='substituir'→ 'substituido' (+ ativo=false)
@@ -99,6 +104,19 @@ function telefoneCasa(cadastro, alvo) {
   return a === b || a.slice(-8) === b.slice(-8);
 }
 
+// Agrupa uma lista de pessoas (já filtrada por substring de nome) por
+// nome_completo — a mesma pessoa pode ter mais de uma convocação (mesário
+// e apoio logístico), não deve virar "gente diferente" no agrupamento.
+// Extraído de 'buscar_nome' pra reaproveitar em 'relatar_terceiro'.
+function agruparPorNome(alvos) {
+  const porNome = new Map();
+  for (const p of alvos) {
+    if (!porNome.has(p.nome_completo)) porNome.set(p.nome_completo, []);
+    porNome.get(p.nome_completo).push(p);
+  }
+  return porNome;
+}
+
 // Rótulo de função pronto pra frase em português.
 function rotuloFuncao(pessoa) {
   if (pessoa.funcao === 'mesario') return pessoa.funcao_mesa || 'mesário(a)';
@@ -144,8 +162,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { acao, secao, status, telefone, mensagem, nome } = req.body || {};
-  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|buscar_nome|atualizar|confirmar|recusar|substituir)' });
+  const { acao, secao, status, telefone, mensagem, nome, telefone_relator, origem } = req.body || {};
+  if (!acao) return res.status(400).json({ error: 'acao é obrigatória (listar|consultar|buscar_nome|atualizar|relatar_terceiro|confirmar|recusar|substituir)' });
 
   const zonaId = await buscarZonaId(zona.numeroZona);
   if (!zonaId) {
@@ -329,6 +347,62 @@ export default async function handler(req, res) {
         ok: true,
         encontrado: alvos.length,
         mensagem_wa: 'Anotado! Vou repassar pro cartório. Obrigado por avisar.',
+      });
+    }
+
+    // ── RELATAR_TERCEIRO — outro mesário reporta a situação de um COLEGA,
+    // nomeado (grupo ou DM) — "o Fulano não vai poder", "avisa que a Maria
+    // desistiu". Diferente de 'atualizar'/'confirmar'/'recusar' (sempre a
+    // própria pessoa, identificada pelo telefone dela): aqui quem manda a
+    // mensagem (telefone_relator) não é o alvo (nome) — então NUNCA muda
+    // confirmacao=, só anexa em observacao com marca "precisa confirmar",
+    // pro cartório verificar com a pessoa antes de agir. Casa por NOME
+    // (substring, mesmo critério de 'buscar_nome') porque quem relata
+    // raramente sabe o telefone cadastrado do colega.
+    if (acao === 'relatar_terceiro') {
+      if (!nome) return res.status(400).json({ error: 'nome é obrigatório para relatar_terceiro' });
+      if (!mensagem) return res.status(400).json({ error: 'mensagem é obrigatória para relatar_terceiro' });
+      const alvo = nome.trim().toLowerCase();
+      if (alvo.length < 3) {
+        return res.status(400).json({ error: 'nome muito curto para buscar (mínimo 3 caracteres)' });
+      }
+      const candidatos = pessoas.filter(p => (p.nome_completo || '').toLowerCase().includes(alvo));
+      const porNome = agruparPorNome(candidatos);
+
+      if (porNome.size === 0) {
+        return res.status(404).json({
+          ok: false, encontrado: 0,
+          mensagem_wa: `Não encontrei ninguém chamado "${nome}" na lista de convocados desta zona.`,
+        });
+      }
+      // Ambíguo — mais de uma pessoa distinta bate no nome. Não adivinha
+      // qual: um relato de terceiro já é segundo-mão, gravar na pessoa
+      // errada seria pior que não gravar. Fica pro Hermes avisar no
+      // Telegram e o cartório resolver manualmente.
+      if (porNome.size > 1) {
+        return res.status(409).json({
+          ok: false, ambiguo: true, encontrado: candidatos.length,
+          candidatos: [...porNome.keys()],
+        });
+      }
+
+      const [alvos] = [...porNome.values()];
+      const ts = await serverTs();
+      const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ⚠️ Relato de terceiro (via ${origem || 'WhatsApp'}${telefone_relator ? `, tel. ${soDigitos(telefone_relator)}` : ''}): ${mensagem} — PRECISA CONFIRMAR COM A PESSOA`;
+      for (const p of alvos) {
+        const novaObs = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
+        const { error: upErr } = await supabase.from('sime_atores')
+          .update({ observacao: novaObs })
+          .eq('id', p.id);
+        if (upErr) throw upErr;
+      }
+      await registrarLog('hermes_relato_terceiro', {
+        nome_alvo: alvos[0].nome_completo, telefone_relator: telefone_relator ? soDigitos(telefone_relator) : null,
+        zona: zona.numeroZona, mensagem, origem: origem || null,
+        afetados: alvos.map(p => ({ id: p.id, nome: p.nome_completo })), ts,
+      });
+      return res.status(200).json({
+        ok: true, encontrado: alvos.length, nomes: alvos.map(p => p.nome_completo),
       });
     }
 

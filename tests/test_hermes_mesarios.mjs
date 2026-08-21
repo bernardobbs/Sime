@@ -123,6 +123,33 @@ check('atualizar sem telefone → 400', (await call('POST', Z7, { acao: 'atualiz
 resetDB();
 check('atualizar telefone não encontrado → 404', (await call('POST', Z7, { acao: 'atualizar', telefone: '5599999999', mensagem: 'x' })).code === 404);
 
+// ── RELATAR_TERCEIRO — outro mesário reporta a situação de um COLEGA
+// (grupo/DM), casando por NOME (não telefone) — nunca muda confirmacao=,
+// só vira observação marcada "precisa confirmar" (21/08/2026). ──
+resetDB();
+r = await call('POST', Z7, { acao: 'relatar_terceiro', nome: 'DIEGO ALVES', mensagem: 'ele me pediu pra avisar que não vai poder ser mesário', telefone_relator: '558699990000', origem: 'grupo Campo Maior' });
+check('relatar_terceiro → 200, encontrado 2 (mesário + apoio)', r.code === 200 && r.body.encontrado === 2, JSON.stringify(r.body));
+check('anexa em observação nas DUAS linhas (DIEGO tem 2 papéis)', globalThis.__SUPA.atores[3].observacao?.includes('Relato de terceiro') && globalThis.__SUPA.atores[4].observacao?.includes('Relato de terceiro'), JSON.stringify([globalThis.__SUPA.atores[3].observacao, globalThis.__SUPA.atores[4].observacao]));
+check('observação cita a origem, o telefone do relator e "PRECISA CONFIRMAR"', /grupo Campo Maior/.test(globalThis.__SUPA.atores[3].observacao) && /558699990000/.test(globalThis.__SUPA.atores[3].observacao) && /PRECISA CONFIRMAR/.test(globalThis.__SUPA.atores[3].observacao), globalThis.__SUPA.atores[3].observacao);
+check('NUNCA muda confirmacao= (diferente de atualizar/confirmar)', globalThis.__SUPA.atores[3].confirmacao === 'pendente' && globalThis.__SUPA.atores[4].confirmacao === 'pendente');
+check('registra log hermes_relato_terceiro com telefone_relator/origem/afetados', globalThis.__SUPA.logs.some(l => l.acao === 'hermes_relato_terceiro' && l.payload.telefone_relator === '558699990000' && l.payload.origem === 'grupo Campo Maior' && l.payload.afetados.length === 2), JSON.stringify(globalThis.__SUPA.logs));
+
+resetDB();
+check('relatar_terceiro sem nome → 400', (await call('POST', Z7, { acao: 'relatar_terceiro', mensagem: 'x' })).code === 400);
+resetDB();
+check('relatar_terceiro sem mensagem → 400', (await call('POST', Z7, { acao: 'relatar_terceiro', nome: 'DIEGO ALVES' })).code === 400);
+resetDB();
+r = await call('POST', Z7, { acao: 'relatar_terceiro', nome: 'FULANO INEXISTENTE', mensagem: 'x' });
+check('relatar_terceiro nome não encontrado → 404', r.code === 404 && r.body.encontrado === 0, JSON.stringify(r.body));
+
+// Ambíguo — dois DIEGOs distintos, não adivinha qual (segundo-mão errado é
+// pior que não gravar).
+resetDB();
+globalThis.__SUPA.atores.push({ id: 'm5', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'DIEGO SILVA', telefone_whatsapp: '558611110005', observacao: null, confirmacao: 'pendente', ativo: true, secao_id: null, funcao_mesa: null });
+r = await call('POST', Z7, { acao: 'relatar_terceiro', nome: 'diego', mensagem: 'não vai poder' });
+check('relatar_terceiro ambíguo (2 pessoas distintas) → 409, não grava em ninguém', r.code === 409 && r.body.ambiguo === true && r.body.candidatos.length === 2, JSON.stringify(r.body));
+check('ambíguo não grava observação em nenhum dos dois', !globalThis.__SUPA.atores[3].observacao && !globalThis.__SUPA.atores[5].observacao);
+
 // ── CONFIRMAR ──
 resetDB();
 r = await call('POST', Z7, { acao: 'confirmar', telefone: '558611110001' });

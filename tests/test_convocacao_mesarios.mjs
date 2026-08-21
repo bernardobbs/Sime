@@ -106,6 +106,10 @@ function mock() {
       { ts:'2026-08-20T09:00:00.000Z', acao:'mesarios_sync_csv', modulo:'convocacao', payload:{ zona:'7', uf:'PI', registros:290, atualizados:280, inativados:5 } },
       { ts:'2026-08-19T10:00:00.000Z', acao:'mesario_meio_contato', modulo:'convocacao', payload:{ ator_id:'a2', meio_contato:'carta_registrada' } },
       { ts:'2026-08-17T08:30:00.000Z', acao:'hermes_confirmou_mesario', modulo:'hermes_mesarios', payload:{ acao:'confirmar', telefone:'5586999990002', zona:'7', afetados:[{ id:'a2', nome:'BRUNO MESARIO', secao:'0030' }], ts:'2026-08-17T08:30:00.000Z' } },
+      // Relato de terceiro (21/08/2026) — outro mesário reportou isso sobre
+      // BRUNO via WhatsApp, não ele mesmo. Precisa aparecer com rótulo
+      // distinto ("precisa confirmar"), não como se fosse recado dele.
+      { ts:'2026-08-16T07:00:00.000Z', acao:'hermes_relato_terceiro', modulo:'hermes_mesarios', payload:{ nome_alvo:'BRUNO MESARIO', telefone_relator:'5586988887777', zona:'7', mensagem:'ele me pediu pra avisar que não vai poder', origem:'grupo Campo Maior', afetados:[{ id:'a2', nome:'BRUNO MESARIO' }], ts:'2026-08-16T07:00:00.000Z' } },
     ],
     sime_secoes: [
       { id:'s1', numero:30, local_nome:'Grupo Escolar A', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:280 },
@@ -631,6 +635,10 @@ async function login(p) {
   check('trocar meio de contato grava quem fez (autor)', updMeioAutor?.payload?.payload?.autor === 'Maria', JSON.stringify(updMeioAutor));
   const modalTxtLogs = await p.locator('#modal-body').textContent();
   check('lista de Atualizações mostra "(por Maria)" pro meio de contato trocado', /Meio de contato.*\(por Maria\)/.test(modalTxtLogs.replace(/\s+/g, ' ')), modalTxtLogs.replace(/\s+/g, ' ').slice(0, 500));
+  // Relato de terceiro (fixture: hermes_relato_terceiro sobre BRUNO/a2) — tem
+  // que aparecer com rótulo distinto do recado da própria pessoa, avisando
+  // que precisa confirmar (21/08/2026).
+  check('Atualizações distingue relato de terceiro — avisa "precisa confirmar"', /Relato de terceiro.*grupo Campo Maior.*PRECISA CONFIRMAR/.test(modalTxtLogs.replace(/\s+/g, ' ')), modalTxtLogs.replace(/\s+/g, ' ').slice(0, 600));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

@@ -1218,7 +1218,7 @@ inteiro ainda.
 >
 > | Skill | Estado real no Pi |
 > |---|---|
-> | `sime_mesarios` | confirmação/recusa grava via `/api/hermes-mesarios`; gatilho automático de busca por nome (`buscar_nome`) suprimido em 06/08/2026 (disparava em cima de conversa comum); autoatendimento por telefone (`consultar`, alguém manda "oi") não está ligado |
+> | `sime_mesarios` | confirmação/recusa em PRIMEIRA pessoa grava via `/api/hermes-mesarios`, em grupo monitorado (`modules/whatsapp/confirmacao.js`) e por autoidentificação espontânea em DM (`modules/campanhas/autoidentificacao.js`, frases fixas tipo "sou mesário" → `consultar`); gatilho automático de busca por nome livre (`buscar_nome`) continua suprimido desde 06/08/2026 (disparava em cima de conversa comum). **Relato de TERCEIRO (21/08/2026, `modules/whatsapp/relatoTerceiro.js`)** — novo: monitora grupo E DM por alguém reportando a situação de um COLEGA nomeado (não de si mesmo); nunca confirma sozinho, só marca "precisa confirmar" via `relatar_terceiro` (ver acima). Esta linha documentava o estado de 03/08/2026 e ficou desatualizada em relação ao runtime real — corrigida em 21/08/2026 ao investigar este pedido. |
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
@@ -1301,12 +1301,14 @@ Eventos suportados:
 ```
 POST /api/hermes-mesarios
 Authorization: Bearer HERMES_SECRET_ZONA_<numero>
-Body: { acao, secao?, status?, telefone?, mensagem? }
+Body: { acao, secao?, status?, telefone?, mensagem?, nome?, telefone_relator?, origem? }
 
 Ações:
   listar                           → lista mesários + apoio logístico da zona (nome, telefone, seção, status)
   consultar                        → autoatendimento: telefone → função + seção (se MRV), pronto pra WhatsApp
-  atualizar                        → anexa recado livre da pessoa em observacao (nunca sobrescreve dado do TRE)
+  buscar_nome                      → autoatendimento por nome (substring), pra quem não manda do próprio telefone
+  atualizar                        → anexa recado livre da PRÓPRIA pessoa em observacao (por telefone dela)
+  relatar_terceiro                 → outro mesário reporta a situação de um COLEGA nomeado (por nome, não telefone)
   confirmar | recusar | substituir → grava sime_atores.confirmacao (por telefone)
 ```
 
@@ -1316,6 +1318,27 @@ logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a se�
 (número/local/município, via `secao_id`). Termina convidando a mandar correção,
 que vai pra `atualizar` — ver `SIME_hermes_skill_mesarios.md` no
 repositório `bernardobbs/hermes`.
+
+**`relatar_terceiro` (21/08/2026)** — pedido direto: "o hermes agente deve
+ficar monitorando as mensagens do grupo e dm que chegarem para poder
+atualizar os contatos. indicar que foi atualização vinda de mesários e
+precisa confirmar." Diferente de `atualizar`/`confirmar`/`recusar`/
+`substituir` (sempre a PRÓPRIA pessoa, identificada pelo `telefone` dela),
+aqui quem manda a mensagem (`telefone_relator`) reporta sobre OUTRA pessoa,
+identificada por `nome` (substring, mesmo critério de `buscar_nome` — quem
+relata raramente sabe o telefone cadastrado do colega). Por isso **nunca
+muda `confirmacao=`** — só anexa em `observacao` um carimbo com a origem
+(grupo/DM), o telefone de quem relatou e a marca **"PRECISA CONFIRMAR COM A
+PESSOA"**, pro cartório verificar antes de agir (segundo-mão errado é pior
+que não registrar). Ambíguo (2+ pessoas distintas batendo no nome) devolve
+`409` sem gravar em ninguém — não adivinha qual. `sime_contatar_mesarios.js`
+(`CM_LOG_HERMES_LABEL.hermes_relato_terceiro`) mostra esse log na aba
+"📜 Atualizações" do modal com rótulo próprio ("⚠️ Relato de terceiro... —
+PRECISA CONFIRMAR"), distinto de um recado da própria pessoa. Lado Hermes:
+`modules/whatsapp/relatoTerceiro.js` (repositório `bernardobbs/hermes`) —
+pré-filtro por palavras-gatilho ("não vai poder", "avisa que", "pediu pra
+avisar" etc.) antes de gastar cota de IA, IA extrai nome+status, chamado em
+paralelo tanto no roteamento de GRUPO quanto de DM (`modules/whatsapp/router.js`).
 
 ### Endpoint Vercel — contatos por papel (escalonamento)
 ```

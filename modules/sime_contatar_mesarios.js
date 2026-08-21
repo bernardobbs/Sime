@@ -134,6 +134,13 @@ const CM_LOG_LABEL = {
 const CM_LOG_HERMES_LABEL = {
   hermes_confirmou_mesario: (p) => CM_HERMES_ACAO_LABEL[p.acao] || `Respondeu por WhatsApp (${p.acao})`,
   hermes_atualizou_info: () => 'Mandou recado por WhatsApp (anexado à observação)',
+  // Relato de TERCEIRO (21/08/2026) — outro mesário reportou isso sobre esta
+  // pessoa (grupo ou DM), não ela mesma falando. Rótulo deixa isso explícito
+  // ("via terceiro" + "precisa confirmar") pra não passar por um recado da
+  // própria pessoa — o texto completo (com origem e telefone de quem
+  // relatou) já está anexado em observacao, ver acao='relatar_terceiro' em
+  // api/hermes-mesarios.js.
+  hermes_relato_terceiro: (p) => `⚠️ Relato de terceiro via WhatsApp (${p.origem || 'grupo/DM'}) — PRECISA CONFIRMAR`,
 };
 
 // Toda ação registrada por esta tela passa por aqui em vez de chamar log()
