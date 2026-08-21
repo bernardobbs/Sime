@@ -99,7 +99,21 @@ let cmBusca = '';
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
 
-const CM_CAMP_STATUS_LABEL = { pendente: 'Na fila do Hermes', enviado: 'Enviado', erro: 'Erro no envio' };
+const CM_CAMP_STATUS_LABEL = {
+  pendente: 'Na fila do Hermes',
+  aguardando_resposta: 'Aguardando resposta',
+  confirmado: 'Confirmou identidade (indo enviar convocação)',
+  enviado: 'Enviado',
+  finalizado: 'Convocação entregue',
+  telefone_incorreto: 'Telefone incorreto',
+  sem_resposta: 'Sem resposta (esgotou tentativas)',
+  fora_do_script: 'Fora do script (fila de atenção)',
+  erro: 'Erro no envio',
+};
+// Ordem de exibição da barra de status da fila (21/08/2026, pedido do dono
+// do projeto: "quero ir acompanhando a situação da fila pelo sime" — hoje
+// só dava pra ver status por pessoa, abrindo o histórico uma a uma).
+const CM_CAMP_STATUS_ORDEM = ['pendente', 'aguardando_resposta', 'confirmado', 'enviado', 'finalizado', 'telefone_incorreto', 'sem_resposta', 'fora_do_script', 'erro'];
 const CM_HERMES_ACAO_LABEL = { confirmar: 'Confirmou por WhatsApp', recusar: 'Recusou por WhatsApp', substituir: 'Avisou substituição por WhatsApp' };
 // Ações que o SIME grava com payload.ator_id direto — casam por eq() simples.
 const CM_LOG_LABEL = {
@@ -154,18 +168,23 @@ async function cmCarregar() {
       // do mesmo jeito e não tinham como, só pelas ferramentas genéricas de Atores).
       .eq('zona_id', zonaId).in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao']).eq('ativo', true).order('nome_completo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
-    // Só pra contar quantas campanhas JÁ SAÍRAM por pessoa — distingue, dentro
-    // do bucket "pendente", quem nunca foi contactado de quem foi contactado
-    // e não respondeu ainda (hoje esses dois casos eram indistinguíveis).
-    sb.from('sime_campanhas_confirmacao').select('ator_id').eq('zona_id', zonaId).eq('status', 'enviado'),
+    // ator_id+status de TODA a fila da zona (não só 'enviado' como antes) —
+    // dá pra (a) contar quantas campanhas JÁ SAÍRAM por pessoa (como já
+    // fazia) e (b) montar a barra de status agregada da fila inteira (ver
+    // CM_CAMP_STATUS_ORDEM acima), sem precisar de uma segunda consulta.
+    sb.from('sime_campanhas_confirmacao').select('ator_id, status').eq('zona_id', zonaId),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
 
   const tentativasPorAtor = {};
-  for (const c of campanhas || []) tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+  const statusFila = {};
+  for (const c of campanhas || []) {
+    if (c.status === 'enviado') tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+    statusFila[c.status] = (statusFila[c.status] || 0) + 1;
+  }
   for (const p of pessoas || []) p.tentativas = tentativasPorAtor[p.id] || 0;
 
-  cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])) };
+  cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])), statusFila };
   render();
 }
 
@@ -396,7 +415,7 @@ async function cmAbrirModal(id) {
   const p = cmPessoaModal();
   const [{ data: campanhas }, { data: logsSime }, { data: logsHermes }, rawResult] = await Promise.all([
     sb.from('sime_campanhas_confirmacao')
-      .select('id, mensagem_enviada, status, created_at')
+      .select('id, mensagem_enviada, status, erro_msg, created_at')
       .eq('ator_id', id).order('created_at', { ascending: false }).limit(10),
     sb.from('sime_logs')
       .select('ts, acao, payload')
@@ -509,7 +528,8 @@ function cmRenderModal() {
     : cmListaHist(cmModalHist.tentativas, 'Nenhuma tentativa de contato registrada ainda.', t => {
         if (t.tipo === 'campanha') {
           const c = t.campanha;
-          return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
+          const erroTxt = c.status === 'erro' && c.erro_msg ? ` <span style="color:var(--red,#c00)">(motivo: ${cmEsc(c.erro_msg)})</span>` : '';
+          return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${erroTxt}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
         }
         const meioLbl = CM_MEIO_LABEL[t.payload.meio] || t.payload.meio || 'Contato';
         return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}${cmPorAutor(t.payload)}</div>`;
@@ -761,6 +781,13 @@ function renderContatarMesarios() {
       <div class="ic-title">📞 Contatar mesários</div>
       <div class="ic-sub">Mesários e apoio logístico — quem falta contactar, quem recusou, e quem precisa de outro meio de
         contato (Carta Registrada/Oficial de Justiça) quando o WhatsApp não funciona.</div>
+      ${CM_CAMP_STATUS_ORDEM.some(s => cmDados.statusFila[s]) ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${CM_CAMP_STATUS_ORDEM.filter(s => cmDados.statusFila[s]).map(s => `
+          <span title="${cmEsc(CM_CAMP_STATUS_LABEL[s] || s)}" style="font-size:.72rem;padding:4px 9px;border-radius:99px;border:1px solid var(--border2);background:${s === 'erro' ? 'var(--red-bg,#fee)' : 'var(--bg2)'};color:${s === 'erro' ? 'var(--red,#c00)' : 'var(--text)'}">
+            ${s === 'erro' ? '⚠️' : '•'} ${cmEsc(CM_CAMP_STATUS_LABEL[s] || s)}: <b>${cmDados.statusFila[s]}</b>
+          </span>`).join('')}
+      </div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <select id="cm-filtro" onchange="cmFiltroStatus=this.value;render()">
           ${CM_BUCKETS.map(b => `<option value="${b.valor}" ${cmFiltroStatus === b.valor ? 'selected' : ''}>${b.label}${b.valor ? ` (${contagem[b.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
