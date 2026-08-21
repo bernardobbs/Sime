@@ -1352,16 +1352,24 @@ então nem um nome batendo errado sobrescreveria o telefone principal. Nome
 ambíguo (409) ou não encontrado (404) não adivinha; telefone fora do
 formato reconhecível (422, mesmo critério de aceitação de "colar lista" —
 8/9/10/11/12-13-com-55 dígitos) também não grava. Lado Hermes:
-`modules/whatsapp/atualizarContatoTerceiro.js` — sem IA, reconhece só por
-FORMATO (mensagem de exatamente 2 linhas: nome na primeira, telefone na
-segunda — o jeito típico de um contato encaminhado como texto no WhatsApp),
-removendo saudação da frente do nome se tiver ("Boa noite, Fulano" →
-"Fulano"). Roda em paralelo com `relatoTerceiro.js` tanto em grupo quanto em
-DM — não conflitam, porque o pré-filtro de cada um é mutuamente exclusivo
-(um exige frase de status, o outro exige formato de contato). Como já usa
-`telefone_alternativo`, o campo aparece automaticamente na lista de
-telefones do modal de "Contatar mesários" (`cmListaTelefones`) — nenhuma UI
-nova foi necessária do lado SIME.
+`modules/whatsapp/atualizarContatoTerceiro.js` — sem IA, cobre DUAS formas
+de chegar: (1) texto colado/digitado, reconhecido só por FORMATO (mensagem
+de exatamente 2 linhas: nome na primeira, telefone na segunda), removendo
+saudação da frente do nome se tiver ("Boa noite, Fulano" → "Fulano"); e (2)
+**contato COMPARTILHADO de verdade** (`contactMessage`/`contactsArrayMessage`
+do Baileys, adicionado no mesmo dia ao testar em campo e descobrir que um
+cartão de contato de verdade — diferente de texto colado — não tem `text`
+nenhum pro roteador extrair, precisando de um caminho próprio): usa o
+`displayName` do cartão como nome e extrai o telefone do `vcard` (prioriza
+o parâmetro `waid=`, já no formato do WhatsApp; cai pro número escrito
+depois do `:` da linha `TEL` só se `waid=` não existir). Um cartão sem
+telefone reconhecível no vCard é ignorado. Roda em paralelo com
+`relatoTerceiro.js` tanto em grupo quanto em DM — não conflitam, porque o
+pré-filtro de cada um é mutuamente exclusivo (um exige frase de status, o
+outro exige formato de contato/vCard). Como já usa `telefone_alternativo`,
+o campo aparece automaticamente na lista de telefones do modal de
+"Contatar mesários" (`cmListaTelefones`) — nenhuma UI nova foi necessária
+do lado SIME.
 
 **Flag `tem_relato_terceiro_pendente` (21/08/2026, `sql/
 SIME_atores_relato_terceiro_pendente.sql`)** — achado real ao perguntar "como
