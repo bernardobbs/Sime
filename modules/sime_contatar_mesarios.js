@@ -53,6 +53,15 @@ const CM_BUCKETS = [
   { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
   { valor: 'substituido',       label: '🔁 Já substituído' },
 ];
+// Filtro por função (21/08/2026) — desde que apoio logístico entrou na
+// mesma fila de mesário, dá pra querer ver só um tipo de cada vez.
+// Independente do filtro por status (CM_BUCKETS) — os dois se combinam.
+const CM_FUNCAO_FILTRO = [
+  { valor: '', label: 'Todas as funções' },
+  { valor: 'mesario', label: 'Mesário (MRV)' },
+  { valor: 'coord_acessibilidade', label: 'Coordenador(a) de Acessibilidade' },
+  { valor: 'auxiliar_eleicao', label: 'Auxiliar de Eleição (apoio logístico)' },
+];
 const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
 // Dois vocabulários de status diferentes pro mesmo campo (status_contato_alternativo)
 // — "enviado/entregue" não faz sentido pra uma ligação, e "atendeu/não atendeu"
@@ -64,6 +73,7 @@ function cmStatusLabelSet(meio) { return meio === 'ligacao' ? CM_STATUS_LIGACAO_
 
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
+let cmFiltroFuncao = '';
 let cmBusca = '';
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
@@ -243,20 +253,28 @@ function cmParseObservacoes(texto) {
 // Observação manual do cartório — mesmo padrão append-only do recado que o
 // Hermes anexa (nunca sobrescreve, só acrescenta); só muda o autor no
 // carimbo ("Fulano (cartório)" em vez de "Recado via Hermes").
-async function cmAdicionarObservacao(id) {
-  const campo = document.getElementById('mm-obs-nova');
-  const texto = campo.value.trim();
-  if (!texto) return;
+// Núcleo compartilhado entre o botão próprio ("➕ Adicionar observação") e o
+// "Salvar" geral do modal — que também recolhe esse campo, ver cmSalvarModal.
+async function cmAppendObservacao(id, texto) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
-  if (!p) return;
+  if (!p) return false;
   const [{ data: ts }, autor] = await Promise.all([sb.rpc('sime_now'), window.nomeDoUsuario ? window.nomeDoUsuario() : 'Cartório']);
   const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ${autor} (cartório): ${texto}`;
   const nova = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
   const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + error.message); return false; }
   p.observacao = nova;
   await log('mesario_observacao_adicionada', '', { ator_id: id });
+  return true;
+}
+
+async function cmAdicionarObservacao(id) {
+  const campo = document.getElementById('mm-obs-nova');
+  const texto = campo.value.trim();
+  if (!texto) return;
+  const ok = await cmAppendObservacao(id, texto);
+  if (!ok) return;
   campo.value = '';
   showToast('✓ Observação adicionada');
   render();
@@ -270,10 +288,15 @@ async function cmAdicionarObservacao(id) {
 // Hermes já mandou via campanha, pra virar uma timeline só do histórico de
 // abordagem — inclusive a evolução WhatsApp → Carta → Ofício, já que cada
 // tentativa registra o meio usado.
+// Núcleo compartilhado com o "Salvar" geral do modal — ver cmSalvarModal.
+async function cmRegistrarTentativaCore(id, meio, nota) {
+  await log('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
+}
+
 async function cmRegistrarTentativa(id) {
   const meio = document.getElementById('mm-tent-meio').value;
   const nota = document.getElementById('mm-tent-nota').value.trim();
-  await log('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
+  await cmRegistrarTentativaCore(id, meio, nota);
   showToast('✓ Tentativa registrada');
   if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar a tentativa nova
 }
@@ -476,21 +499,54 @@ async function cmSalvarModal() {
   const p = cmPessoaModal();
   if (!p) return;
   const sb = window.supabaseAtores;
-  const tel = document.getElementById('mm-tel').value.replace(/\D/g, '');
+  // Bug real corrigido em 21/08/2026: o campo mostra o telefone formatado
+  // por fmtTelefone(), que já tira o "55" da frente (telSemPais) — comparar
+  // esse valor direto com p.telefone_whatsapp (guardado COM 55) sempre dava
+  // "mudou", mesmo sem editar nada, e reescrevia o telefone sem o 55 a cada
+  // "Salvar". Normaliza os dois lados do mesmo jeito antes de comparar, e
+  // grava de volta no formato com 55 (mesma convenção do resto do sistema —
+  // Ciente/colar-lista já gravam assim).
+  const telDigitado = telSemPais(document.getElementById('mm-tel').value);
+  const telAtual = telSemPais(p.telefone_whatsapp || '');
+  const telMudou = telDigitado !== telAtual;
   // Campo só existe no DOM quando meio_contato==='carta_registrada' — fora
   // disso não mexe em codigo_rastreio (preserva o que já tinha).
   const rastreioEl = document.getElementById('mm-rastreio');
   const rastreio = rastreioEl ? rastreioEl.value.trim().toUpperCase() : (p.codigo_rastreio || '');
   const patch = {};
-  if (tel !== (p.telefone_whatsapp || '')) patch.telefone_whatsapp = tel || null;
+  if (telMudou) patch.telefone_whatsapp = telDigitado ? '55' + telDigitado : null;
   if (rastreioEl && rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
-  if (!Object.keys(patch).length) { cmFecharModal(); return; }
 
-  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  Object.assign(p, patch);
-  if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
-  if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+  // "Salvar" recolhe também o que ficou digitado nas caixas de ação rápida
+  // (tentativa/observação) mesmo sem clicar no botão próprio de cada uma —
+  // achado real (21/08/2026): a pessoa digita numa dessas caixas e clica no
+  // "Salvar" do rodapé (o botão mais visível, parece "salvar a tela toda"),
+  // e o texto sumia sem aviso porque só telefone/rastreio eram cobertos
+  // aqui. Sem isso ficaria fácil perder uma nota ou observação por engano.
+  const notaTentativaEl = document.getElementById('mm-tent-nota');
+  const notaTentativa = notaTentativaEl ? notaTentativaEl.value.trim() : '';
+  const obsNovaEl = document.getElementById('mm-obs-nova');
+  const obsNova = obsNovaEl ? obsNovaEl.value.trim() : '';
+
+  if (!Object.keys(patch).length && !notaTentativa && !obsNova) {
+    showToast('Nada para salvar');
+    cmFecharModal();
+    return;
+  }
+
+  if (Object.keys(patch).length) {
+    const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    Object.assign(p, patch);
+    if ('telefone_whatsapp' in patch) await log('mesario_editar_telefone', '', { ator_id: id });
+    if ('codigo_rastreio' in patch) await log('mesario_editar_rastreio', '', { ator_id: id });
+  }
+  if (notaTentativa) {
+    const meioEl = document.getElementById('mm-tent-meio');
+    await cmRegistrarTentativaCore(id, meioEl ? meioEl.value : (p.meio_contato || 'whatsapp'), notaTentativa);
+  }
+  if (obsNova) await cmAppendObservacao(id, obsNova);
+
   showToast('✓ Dados atualizados');
   cmFecharModal();
   render();
@@ -501,6 +557,7 @@ function cmFiltrar() {
   return cmDados.pessoas.filter(p => {
     if (cmFiltroStatus === 'precisa_substituir') { if (!p.precisa_substituir) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
+    if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
     return true;
   });
@@ -543,6 +600,8 @@ function renderContatarMesarios() {
   const contagem = {};
   for (const p of cmDados.pessoas) contagem[p.confirmacao || 'pendente'] = (contagem[p.confirmacao || 'pendente'] || 0) + 1;
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
+  const contagemFuncao = {};
+  for (const p of cmDados.pessoas) contagemFuncao[p.funcao] = (contagemFuncao[p.funcao] || 0) + 1;
   const lista = cmFiltrar();
 
   c.innerHTML = `
@@ -553,6 +612,9 @@ function renderContatarMesarios() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <select id="cm-filtro" onchange="cmFiltroStatus=this.value;render()">
           ${CM_BUCKETS.map(b => `<option value="${b.valor}" ${cmFiltroStatus === b.valor ? 'selected' : ''}>${b.label}${b.valor ? ` (${contagem[b.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
+        </select>
+        <select id="cm-filtro-funcao" onchange="cmFiltroFuncao=this.value;render()">
+          ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${cmFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
         </select>
         <input type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmBusca=this.value;render()" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>

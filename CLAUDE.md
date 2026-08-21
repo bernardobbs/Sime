@@ -453,6 +453,14 @@ cada um com propósito diferente:
   faz sentido encaixar apoio logístico ali; ele continua só no stat card
   agregado do topo.
 
+  **Filtro por função (21/08/2026)** — segundo `<select>` na fila de
+  contato (`cm-filtro-funcao`), independente do filtro por status
+  (`CM_BUCKETS`): Todas as funções / Mesário (MRV) / Coordenador(a) de
+  Acessibilidade / Auxiliar de Eleição. Os dois filtros se combinam (ex.:
+  "falta contactar" + "só apoio logístico"). Pedido direto depois que apoio
+  logístico entrou na mesma lista — sem isso não dava pra separar os dois
+  grupos pra trabalhar um de cada vez.
+
   **Código de rastreio só aparece no modal quando o meio é Carta Registrada
   (21/08/2026) — antes aparecia sempre, inclusive pra WhatsApp/Ligação/
   Ofício, onde rastreio dos Correios não tem sentido nenhum** (achado do
@@ -485,6 +493,35 @@ cada um com propósito diferente:
     `mesario_tentativa_contato` fica de propósito FORA de `CM_LOG_LABEL`
     (não aparece em "Atualizações") — só existe dentro da timeline de
     tentativas, pra não duplicar a mesma entrada nas duas listas.
+
+  **Bug real corrigido em 21/08/2026 — "Salvar" perdia nota de tentativa/
+  observação digitada, sem aviso.** O modal tem 3 caixas de texto com ação
+  própria (telefone+rastreio → botão "💾 Salvar" do rodapé; nota de
+  tentativa → "➕ Registrar tentativa"; observação → "➕ Adicionar
+  observação") — cartório reportou ter digitado algo e "não salvou": a
+  pessoa digitava numa das caixas de ação rápida e clicava no "Salvar"
+  geral (o botão mais visível, no rodapé, parece "salvar a tela toda"), e
+  esse botão só cobria telefone/rastreio — o texto se perdia em silêncio,
+  sem erro nem aviso. `cmSalvarModal()` agora também recolhe
+  `#mm-tent-nota`/`#mm-obs-nova` se tiverem algo digitado (reaproveitando
+  `cmRegistrarTentativaCore`/`cmAppendObservacao`, extraídos dos botões
+  próprios pra não duplicar lógica) — os botões específicos continuam
+  funcionando igual, só que agora "Salvar" também é uma rede de segurança.
+  Além disso, salvar sem nenhuma alteração (nem telefone, nem rastreio, nem
+  as duas caixas) mostra "Nada para salvar" em vez de fechar o modal calado
+  — fechar sem nenhum feedback também parecia "não fez nada".
+
+  **Bug mais sério, achado investigando o de cima: "Salvar" reescrevia o
+  telefone (tirando o "55") a cada clique, mesmo sem editar nada.** O campo
+  telefone mostra o valor formatado por `fmtTelefone()`, que já tira o "55"
+  da frente pra exibir "(86) 9xxxx-xxxx"; mas `sime_atores.telefone_whatsapp`
+  é guardado COM "55" (mesma convenção do resto do sistema — Ciente/
+  colar-lista já gravam assim). `cmSalvarModal()` comparava esses dois
+  valores direto — sem "55" de um lado, com "55" do outro — então SEMPRE
+  achava que o telefone tinha mudado, mesmo só abrindo o modal e clicando
+  Salvar sem tocar em nada, e regravava a versão sem "55" no banco. Corrigido
+  normalizando os dois lados com `telSemPais()` antes de comparar, e
+  gravando de volta com "55" quando realmente muda.
 
   **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
   além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status

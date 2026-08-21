@@ -337,7 +337,11 @@ async function login(p) {
   await p.waitForTimeout(200);
 
   const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && 'telefone_whatsapp' in e.payload));
-  check('salvar grava telefone e rastreio juntos, num update só', upd?.payload?.telefone_whatsapp === '86988887777' && upd?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(upd));
+  // Grava COM o 55 na frente (21/08/2026) — mesma convenção do resto do
+  // sistema (Ciente/colar-lista); antes desse fix, comparar o campo (exibido
+  // sem 55) com o valor guardado (com 55) sempre achava "mudou" e regravava
+  // sem o 55 a cada Salvar, mesmo sem editar nada.
+  check('salvar grava telefone (com 55, convenção do banco) e rastreio juntos, num update só', upd?.payload?.telefone_whatsapp === '5586988887777' && upd?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(upd));
   check('salvar fecha o modal', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
 
   // Reabre: reflete o telefone/rastreio novos e agora mostra o link de rastrear.
@@ -387,6 +391,49 @@ async function login(p) {
   check('registrar tentativa grava log com ator_id, meio e nota', updTentativa?.payload?.payload?.ator_id === 'a2' && updTentativa?.payload?.payload?.nota === 'Liguei às 14h, não atendeu', JSON.stringify(updTentativa));
   const modalTxtDepois = await p.locator('#modal-body').textContent();
   check('a tentativa manual aparece na timeline de Tentativas de contato', /Liguei às 14h, não atendeu/.test(modalTxtDepois));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.66 "Salvar" geral não perde nota de tentativa/observação digitada e não salva ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // Achado real (21/08/2026): usuário digita numa caixa de tentativa/observação
+  // e clica no "💾 Salvar" do rodapé (não no botão específico) — o texto se
+  // perdia em silêncio porque só telefone/rastreio eram cobertos ali.
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+
+  await p.fill('#mm-tent-nota', 'Enviado pelo contato da escola');
+  await p.fill('#mm-obs-nova', 'Falou que vai confirmar amanhã');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(250);
+
+  const tentativaGravada = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato' && e.payload.payload.nota === 'Enviado pelo contato da escola'));
+  check('Salvar geral também grava a nota de tentativa pendente (não perde mais)', !!tentativaGravada, JSON.stringify(tentativaGravada));
+  const obsGravada = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && (e.payload.observacao || '').includes('Falou que vai confirmar amanhã')));
+  check('Salvar geral também grava a observação pendente (não perde mais)', !!obsGravada, JSON.stringify(obsGravada));
+
+  // Sem nada digitado/alterado, "Salvar" ainda dá algum feedback (não fecha
+  // em silêncio, o que parecia "não fez nada" pro usuário).
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+  const toastTxt = await p.locator('.toast').textContent().catch(() => '');
+  check('Salvar sem nenhuma alteração avisa "Nada para salvar" em vez de fechar mudo', /Nada para salvar/.test(toastTxt), toastTxt);
+  // Bug real (21/08/2026): o campo mostra o telefone SEM o "55" (fmtTelefone
+  // tira o país pra exibir formatado), mas o banco guarda COM "55" — comparar
+  // os dois direto sempre achava "mudou" e reescrevia o telefone sem o 55 a
+  // cada Salvar, mesmo sem editar nada. Ana tem '5586999990001' guardado.
+  const updTelAna = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && 'telefone_whatsapp' in e.payload));
+  check('Salvar sem editar o telefone NÃO reescreve telefone_whatsapp (nem tira o 55 por engano)', !updTelAna, JSON.stringify(updTelAna));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -537,6 +584,23 @@ async function login(p) {
   check('apoio logístico (auxiliar_eleicao) mostra rótulo de função, não vazio/undefined', /Auxiliar de Serviços Eleitorais/.test(cardElis), cardElis.replace(/\s+/g, ' '));
   const cardFabio = await p.locator('.import-card:has-text("FABIO APOIO")').first().textContent();
   check('apoio logístico (coord_acessibilidade) mostra rótulo de função próprio', /Coordenador\(a\) de Acessibilidade/.test(cardFabio), cardFabio.replace(/\s+/g, ' '));
+
+  // Filtro por função (21/08/2026) — independente do filtro de status, os dois se combinam.
+  check('filtro de função tem as 4 opções (todas/mesário/coord. acessibilidade/auxiliar)', await p.locator('#cm-filtro-funcao option').count() === 4);
+  await p.selectOption('#cm-filtro-funcao', 'auxiliar_eleicao');
+  await p.waitForTimeout(150);
+  const soAuxiliar = await p.locator('.content').textContent();
+  check('filtro "Auxiliar de Eleição" mostra só ELIS, esconde mesários e o outro apoio', /ELIS APOIO/.test(soAuxiliar) && !/FABIO APOIO/.test(soAuxiliar) && !/BRUNO MESARIO/.test(soAuxiliar), soAuxiliar.replace(/\s+/g, ' ').slice(0, 200));
+
+  await p.selectOption('#cm-filtro-funcao', 'mesario');
+  await p.waitForTimeout(150);
+  const soMesario = await p.locator('.content').textContent();
+  check('filtro "Mesário" esconde os dois de apoio logístico', /BRUNO MESARIO/.test(soMesario) && !/ELIS APOIO/.test(soMesario) && !/FABIO APOIO/.test(soMesario), soMesario.replace(/\s+/g, ' ').slice(0, 200));
+
+  await p.selectOption('#cm-filtro-funcao', '');
+  await p.waitForTimeout(150);
+  const todosDeVolta = await p.locator('.content').textContent();
+  check('voltando pra "Todas as funções" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosDeVolta) && /ELIS APOIO/.test(todosDeVolta) && /FABIO APOIO/.test(todosDeVolta));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
