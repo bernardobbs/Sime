@@ -1371,6 +1371,18 @@ o campo aparece automaticamente na lista de telefones do modal de
 "Contatar mesários" (`cmListaTelefones`) — nenhuma UI nova foi necessária
 do lado SIME.
 
+**Correção depois de um contato vira SUGESTÃO no Telegram, nunca gravação
+automática (21/08/2026, só lado Hermes — nenhuma mudança no SIME).** Achado
+em campo: depois de compartilhar um contato, é comum vir uma frase solta
+esclarecendo o nome ("Esse é da Esther Mariele", "Vaniele Honório de
+Carvalho 👆") — texto livre demais pra gravar sozinho com segurança.
+`atualizarContatoTerceiro.sugerirSeReferenciaContato()` (repositório
+`bernardobbs/hermes`) detecta isso (reply formal ao cartão, ou frase
+deítica — "esse é"/emoji apontando — logo depois de um cartão no mesmo
+chat, cache de 10 min) e manda só um aviso no Telegram com o contato
+original + a frase, pro cartório decidir se atualiza manualmente pelo SIME
+(nenhum endpoint novo — usa a mesma tela de sempre).
+
 **Flag `tem_relato_terceiro_pendente` (21/08/2026, `sql/
 SIME_atores_relato_terceiro_pendente.sql`)** — achado real ao perguntar "como
 saberei os relatos de terceiros": o carimbo em `observacao` já ficava
