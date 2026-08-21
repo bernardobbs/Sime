@@ -111,10 +111,26 @@ function mock() {
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
       { id:'a5', nome_completo:'ELIS APOIO', telefone_whatsapp:'5586999990005', funcao:'auxiliar_eleicao', secao_id:'s1', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null },
       { id:'a6', nome_completo:'FABIO APOIO', telefone_whatsapp:'5586999990006', funcao:'coord_acessibilidade', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null },
+      // Coordenador de Acessibilidade COM secao_id (diferente de FABIO,
+      // deliberadamente sem) — só pra ter alguém "designado mas não
+      // confirmado" nesse grupo e exercitar as 3 fatias da pizza nova do
+      // Dashboard (21/08/2026). Sem telefone de propósito, pra não mudar a
+      // contagem "(2)" do teste de campanha em massa (2.5) que já soma só
+      // BRUNO+FABIO como "pendente com WhatsApp".
+      { id:'a7', nome_completo:'GEORGE COORD', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null },
     ],
     sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
     sime_campanhas_confirmacao: [
       { id:'camp1', ator_id:'a2', zona_id:'z7', mensagem_enviada:'Olá Bruno, confirme sua presença como mesário na Seção 30, Grupo Escolar A, no dia 04/10.', status:'enviado', created_at:'2026-08-18T14:00:00.000Z' },
+    ],
+    // Telefones alternativos do TRE (21/08/2026) — o cadastro real do ELO
+    // tem até 5 campos de telefone por pessoa, mas só um vira
+    // telefone_whatsapp; os outros continuam aqui no staging. Bruno tem um
+    // telefone_1_eleitor DIFERENTE do que está salvo, pra testar que o modal
+    // mostra isso como referência. Casa por `inscricao` (não ator_id — esse
+    // nunca foi preenchido em produção, ver achado real de 21/08/2026).
+    sime_mesarios_raw: [
+      { id:'raw1', inscricao:'046919051589', telefone_pessoal_mesario:'', telefone_1_eleitor:'5586977778888', telefone_2_eleitor:'', telefone_contato_eleitor:'', telefone_comercial_mesario:'', importado_em:'2026-08-20T09:00:00.000Z' },
     ],
   };
 }
@@ -151,17 +167,36 @@ async function login(p) {
   check('stat card: 2 locais de votação', /Locais de votação\s*2/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
   check('stat card: 3 seções', /Seções\s*3/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
   check('stat card MRV: 1 confirmado de 4, 3 faltam', /Mesários \(MRV\)\s*1\/4/.test(dash.replace(/\s+/g, ' ')) && /3 faltam confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
-  check('stat card AL: 1 confirmado de 2, 1 falta', /Apoio logístico \(AL\)\s*1\/2/.test(dash.replace(/\s+/g, ' ')) && /1 falta confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
+  // Apoio (headcount combinado, stat card) agora são 3: ELIS (auxiliar,
+  // confirmado), FABIO e GEORGE (coord_acessibilidade, ambos pendentes) —
+  // GEORGE existe só pra dar às pizzas novas do Dashboard um caso "designado
+  // mas não confirmado" no grupo Coord. de Acessibilidade (ver fixture a7).
+  check('stat card AL: 1 confirmado de 3, 2 faltam', /Apoio logístico \(AL\)\s*1\/3/.test(dash.replace(/\s+/g, ' ')) && /2 faltam confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
 
-  // Pizzas: MRV é por CARGO (4 por seção x 3 seções = 12) — Ana+Bruno (s1) e
-  // Carla+Diego (s2) designados = 4, Escola B (s3) vazia = 8 vazios.
+  // Redesenho de 21/08/2026: barra-funil da zona inteira (Total/Convocados/
+  // Confirmados somando MRV+Coord+Auxiliar) + 3 pizzas de 3 fatias
+  // (Confirmado/Convocado/Vazio), uma por grupo — substitui o desenho
+  // anterior de 4 pizzas de 2 fatias.
   const dashFlat = dash.replace(/\s+/g, ' ');
-  check('pizza MRV nomeado x vazio: 4 nomeados, 8 vazios (de 12 cargos)', /MRV — cargos nomeados x vazios/.test(dashFlat) && /Nomeado:\s*4/.test(dashFlat) && /Vazio:\s*8/.test(dashFlat), dashFlat.slice(0, 600));
-  check('pizza MRV confirmado x total: 1 confirmado, 3 ainda não', /MRV — confirmados x total/.test(dashFlat) && /Confirmado:\s*1/.test(dashFlat) && /Ainda não:\s*3/.test(dashFlat), dashFlat.slice(0, 600));
-  // ELIS (apoio) tem secao_id da Grupo Escolar A — só esse local "tem apoio"; Escola B fica sem.
-  check('pizza AL nomeado x vazio: 1 local com apoio, 1 sem (de 2 locais)', /Apoio logístico — locais com apoio x sem/.test(dashFlat) && /Com apoio:\s*1/.test(dashFlat) && /Sem apoio:\s*1/.test(dashFlat), dashFlat.slice(0, 600));
-  check('pizza AL confirmado x total: 1 confirmado, 1 ainda não', /Apoio logístico — confirmados x total/.test(dashFlat) && /Ainda não:\s*1/.test(dashFlat), dashFlat.slice(0, 600));
-  check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 4);
+  // Funil: MRV totalCargos=12 (3 seções×4) + 2 locais×2 funções(coord+aux)=4 → 16 total.
+  // Convocados = mrvDesignados(4) + locaisComCoord(1, Grupo Escolar A via GEORGE) + locaisComAuxiliar(1, via ELIS) = 6.
+  // Confirmados = mrvConfirmadoCargos(1, só ANA) + locaisComCoordConfirmado(0) + locaisComAuxiliarConfirmado(1) = 2.
+  check('barra-funil da zona: Total 16, Convocados 6, Confirmados 2', /Total de vagas:\s*16/.test(dashFlat) && /Convocados:\s*6/.test(dashFlat) && /Confirmados:\s*2/.test(dashFlat), dashFlat.slice(0, 500));
+
+  const cardPizzaMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().textContent();
+  check('pizza MRV (3 fatias): confirmado 1, convocado 3, vazio 8, total 12', /Confirmado:\s*1/.test(cardPizzaMRV) && /Convocado:\s*3/.test(cardPizzaMRV) && /Vazio:\s*8/.test(cardPizzaMRV) && /Total:\s*12/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
+
+  // .last() (não .first()) — a barra-funil acima também menciona os nomes
+  // dos 3 grupos no título ("MRV + Coordenadores de Acessibilidade +
+  // Auxiliares de Eleição"), então :has-text() bate nela primeiro; a pizza
+  // de verdade vem depois no DOM.
+  const cardPizzaCoord = await p.locator('.import-card:has-text("Coordenadores de Acessibilidade")').last().textContent();
+  check('pizza Coord. de Acessibilidade (3 fatias): confirmado 0, convocado 1 (GEORGE), vazio 1 (Escola B)', /Confirmado:\s*0/.test(cardPizzaCoord) && /Convocado:\s*1/.test(cardPizzaCoord) && /Vazio:\s*1/.test(cardPizzaCoord) && /Total:\s*2/.test(cardPizzaCoord), cardPizzaCoord.replace(/\s+/g, ' '));
+
+  const cardPizzaAux = await p.locator('.import-card:has-text("Auxiliares de Eleição")').last().textContent();
+  check('pizza Auxiliar de Eleição (3 fatias): confirmado 1 (ELIS), convocado 0, vazio 1 (Escola B)', /Confirmado:\s*1/.test(cardPizzaAux) && /Convocado:\s*0/.test(cardPizzaAux) && /Vazio:\s*1/.test(cardPizzaAux) && /Total:\s*2/.test(cardPizzaAux), cardPizzaAux.replace(/\s+/g, ' '));
+
+  check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 3);
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));
 
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();
@@ -364,6 +399,45 @@ async function login(p) {
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.62 Telefones alternativos do cadastro do TRE (achado real 21/08/2026: um mesário pode ter mais de um telefone no ELO) ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+
+  const modalTxt = await p.locator('#modal-body').textContent();
+  check('modal mostra a seção de telefones alternativos do TRE', /Outros telefones no cadastro do TRE/.test(modalTxt));
+  check('mostra o telefone alternativo (telefone_1_eleitor, diferente do salvo)', /Telefone 1 \(eleitor\)/.test(modalTxt) && /\(86\) 97777-8888/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
+
+  // Copiar um telefone alternativo não registra tentativa nem mexe no
+  // telefone salvo — é só referência.
+  await p.evaluate(() => {
+    window.__clipboardText = null;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
+  });
+  await p.locator('#modal-body .m-hist-item button:has-text("Copiar")').first().click();
+  await p.waitForTimeout(100);
+  const copiado = await p.evaluate(() => window.__clipboardText);
+  check('copiar telefone alternativo copia o valor certo', copiado === '5586977778888', copiado);
+  const tentativaIndevida = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato'));
+  check('copiar telefone alternativo NÃO registra tentativa de contato sozinho', !tentativaIndevida, JSON.stringify(tentativaIndevida));
+
+  // Ana não tem nenhuma linha em sime_mesarios_raw — não deve mostrar a seção.
+  await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
+  await p.waitForTimeout(80);
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+  check('sem registro correspondente no TRE, não mostra a seção de telefones alternativos', !/Outros telefones no cadastro do TRE/.test(await p.locator('#modal-body').textContent()));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -796,6 +870,45 @@ async function login(p) {
   const resumoTxt = await p.locator('.content').textContent();
   check('resumo: 1 atualizado, 1 sem cadastro correspondente, de 4 linhas coladas', /1 telefone\(s\) atualizado/.test(resumoTxt) && /1 sem cadastro correspondente/.test(resumoTxt) && /4 linha\(s\) coladas/.test(resumoTxt), resumoTxt.replace(/\s+/g, ' ').slice(0, 400));
   check('lista as 2 linhas ignoradas pra conferência manual (título e telefone não reconhecidos)', /2 linha\(s\) ignorada/.test(resumoTxt) && /título de eleitor não reconhecido/.test(resumoTxt) && /telefone não reconhecido/.test(resumoTxt), resumoTxt.replace(/\s+/g, ' ').slice(0, 600));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 3.6 Relatório ELO — atualizações pendentes na planilha do TRE ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Fixture local (não mexe no mock() compartilhado com os demais testes,
+  // que já dependem das contagens atuais de sime_atores/pizzas/stat cards).
+  m.sime_atores.push(
+    { id:'a8', nome_completo:'HELENA CONFIRMADA', telefone_whatsapp:'5586999990008', funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'s3', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'111111111111' },
+    { id:'a9', nome_completo:'IVO CONFLITO', telefone_whatsapp:'5586999990009', funcao:'mesario', funcao_mesa:'Presidente', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'222222222222' },
+    { id:'a10', nome_completo:'JULIA SEM REGISTRO NO ELO', telefone_whatsapp:'5586999990010', funcao:'auxiliar_eleicao', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'333333333333' },
+    { id:'a11', nome_completo:'KAIO JA SINCRONIZADO', telefone_whatsapp:'5586999990011', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'444444444444' },
+  );
+  m.sime_mesarios_raw = [
+    { id:'raw2', inscricao:'111111111111', confirmou_convocacao: null, origem_resposta: null, data_resposta: null },
+    { id:'raw3', inscricao:'222222222222', confirmou_convocacao: 'Não', origem_resposta: 'Não', data_resposta: '17/08/2026' },
+    // KAIO: já "Sim" no ELO — não deve aparecer no relatório.
+    { id:'raw4', inscricao:'444444444444', confirmou_convocacao: 'Sim', origem_resposta: 'WhatsApp', data_resposta: '10/08/2026' },
+    // JULIA não tem NENHUMA linha em sime_mesarios_raw — "sem registro no ELO".
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-relatorio-elo-btn');
+  await p.waitForTimeout(300);
+
+  const txt = await p.locator('.content').textContent();
+  const flat = txt.replace(/\s+/g, ' ');
+  check('relatório ELO mostra HELENA (sem resposta registrada no ELO)', /HELENA CONFIRMADA/.test(flat) && /Sem resposta registrada no ELO/.test(flat), flat.slice(0, 900));
+  check('relatório ELO mostra IVO com alerta (ELO diz "Não")', /IVO CONFLITO/.test(flat) && /ELO diz "Não"/.test(flat), flat.slice(0, 900));
+  check('relatório ELO mostra JULIA (sem registro nenhum no ELO)', /JULIA SEM REGISTRO NO ELO/.test(flat) && /Sem registro no ELO/.test(flat), flat.slice(0, 900));
+  check('relatório ELO NÃO mostra KAIO (ELO já diz "Sim")', !/KAIO JA SINCRONIZADO/.test(flat), flat.slice(0, 900));
+  check('relatório ELO avisa quantos casos têm conflito (1)', /1 caso\(s\) com resposta "Não"/.test(flat), flat.slice(0, 300));
+  check('BRUNO/CARLA/DIEGO (não confirmados) não aparecem no relatório', !/BRUNO MESARIO/.test(flat) && !/CARLA RECUSOU/.test(flat) && !/DIEGO CARTA/.test(flat));
+  // ANA é confirmado mas não tem inscricao_eleitoral na fixture — sem título, não dá pra cruzar com o ELO.
+  check('ANA (confirmado, mas sem título de eleitor) não aparece — não dá pra cruzar sem título', !/ANA PRESIDENTE/.test(flat));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

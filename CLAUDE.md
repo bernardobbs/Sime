@@ -310,21 +310,36 @@ cada um com propósito diferente:
 
 `SIME_convocacao.html` tem mais três abas:
 - **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
-  partir de um mockup do cartório) — logo acima dos stat cards, **4
-  gráficos de pizza** (pedido do cartório em 21/08/2026, SVG puro — sem lib
-  de gráfico, projeto é sem framework): MRV cargos nomeados x vazios, MRV
-  confirmados x total, apoio logístico locais-com-apoio x sem, apoio
-  logístico confirmados x total. "Nomeado x vazio" tem semântica diferente
-  pros dois: MRV é por **cargo de mesa** (4 por seção — tem alguém
-  designado ali ou não, `rsCalcular()` já somava isso como `designados`/
-  `totalCargos` pros cards de local, só nunca tinha virado um total geral);
-  apoio logístico não tem cargo fixo, então virou "esse **local** tem pelo
-  menos um apoio designado?" — usa o mesmo agrupamento por local_nome+
-  município dos cards de baixo, casando `secao_id` de cada apoio
-  (`sime_atores.secao_id`, agora trazido na consulta) contra as seções de
-  cada local. Só aparece na visão geral, não no drilldown por local — série
-  específica pra visão de conjunto, repetir dentro do drilldown seria
-  redundante. Depois dos gráficos, os 4 cards de estatística no topo (locais
+  partir de um mockup do cartório) — logo acima dos stat cards, uma
+  **barra-funil da zona inteira** e **3 gráficos de pizza** (redesenhados em
+  21/08/2026 — a pedido do cartório, substituindo o desenho de 4 pizzas de
+  2 fatias que existia desde o dia anterior; SVG puro, sem lib de gráfico,
+  projeto é sem framework):
+  - **3 pizzas, uma por grupo** — MRV (Mesários) / Coordenadores de
+    Acessibilidade / Auxiliares de Eleição (apoio logístico) — cada uma com
+    **3 fatias mutuamente exclusivas que somam o Total daquele grupo**:
+    Confirmado (verde) / Convocado — designado mas ainda não confirmado
+    (azul) / Vazio — ninguém designado (cinza). Antes eram 2 pizzas por
+    grupo (nomeado×vazio separada de confirmado×total); agora é uma pizza
+    só, mais completa. "Total" tem semântica diferente pros dois tipos de
+    grupo: MRV é por **cargo de mesa** (4 por seção — `rsCalcular()` já
+    somava isso como `designados`/`totalCargos` pros cards de local, só
+    nunca tinha virado pizza própria); Coordenador de Acessibilidade e
+    Auxiliar de Eleição não têm cargo fixo no schema, então a vaga virou
+    **1 por local de votação** (mesma premissa de "esse prédio tem alguém
+    desse tipo?" que já existia no desenho anterior combinado, agora com
+    Coordenador e Auxiliar **separados um do outro** em vez de um bucket só
+    de "apoio logístico" — a query em `rsCarregar()` passou a trazer
+    `funcao` junto pra dar pra distinguir).
+  - **Barra-funil acima das pizzas** — resume a zona inteira (MRV + Coord. +
+    Auxiliar somados) em 3 estágios sobrepostos na MESMA faixa horizontal
+    (não 3 barras separadas, já que cada estágio é subconjunto do anterior):
+    Total de vagas (faixa de fundo, cinza) → Convocados (barra mais curta
+    por cima, azul) → Confirmados (a mais curta de todas, verde) —
+    `rsBarraFunil()`.
+  - Nenhum dos dois aparece no drilldown por local — série específica pra
+    visão de conjunto, repetir dentro do drilldown seria redundante.
+  Depois dos gráficos, os 4 cards de estatística no topo (locais
   de votação, seções, **mesários MRV confirmados/total + quantos faltam**,
   **apoio logístico AL confirmados/total + quantos faltam** — antes os dois
   últimos cards só mostravam o total, sem quebra por `confirmacao`; o card
@@ -657,6 +672,38 @@ cada um com propósito diferente:
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
+- **📄 Relatório ELO** (`sime_relatorio_elo.js`, 21/08/2026) — quem o SIME já
+  sabe que confirmou (`sime_atores.confirmacao='confirmado'`, por WhatsApp ou
+  manualmente) mas cujo registro na planilha do TRE (ELO, staging em
+  `sime_mesarios_raw`) ainda não reflete isso. Nasceu de uma consulta pontual
+  no banco (14 pessoas encontradas na 7ª Zona na primeira vez) que virou tela
+  própria pra não precisar pedir de novo. Junta por **título de eleitor**
+  (`sime_atores.inscricao_eleitoral = sime_mesarios_raw.inscricao`) — não por
+  `ator_id`, que nunca foi preenchido no staging em produção (a sincronização
+  casa por inscrição, não grava o id de volta lá). Três situações mostradas:
+  **"Sem registro no ELO"** (a pessoa não aparece na exportação mais recente
+  do TRE — situação mais comum), **"Sem resposta registrada no ELO"** (existe
+  no ELO mas `confirmou_convocacao` está nulo) e **⚠️ "ELO diz 'Não'"**
+  (existe uma resposta explícita diferente da do SIME — destacado em
+  amarelo e contado à parte, porque isso é uma divergência real que merece
+  conferir com a pessoa antes de simplesmente atualizar o ELO, não só uma
+  lacuna). Quem não tem título de eleitor cadastrado fica de fora — sem
+  título não dá pra cruzar com o ELO de jeito nenhum.
+
+  **Confirmação em lote a partir de dados do próprio ELO (21/08/2026)** — o
+  caminho inverso também acontece: o cartório olha o ELO e vê gente que
+  **já confirmou por lá** (WhatsApp, Título Net, presencial) mas o SIME ainda
+  não sabe. Tratado como uma aplicação em lote do mesmo `UPDATE` que
+  `cmConfirmarEEnviar()` faz um de cada vez (`confirmacao='confirmado'` +
+  `data_confirmacao`), casando por título de eleitor. **Sem enfileirar
+  mensagem de convocação automaticamente nesse fluxo em lote** — achado real
+  ao aplicar isso pela primeira vez: as pessoas dessa lista específica não
+  tinham `secao_id`/local designado no SIME, e o template de mensagem
+  (`cmPersonalizarMensagem`) sem seção/local produz um texto quebrado
+  ("...na Seção  — local a confirmar, ."). Decisão: só sincronizar o status;
+  enfileirar mensagem fica pra quando a pessoa já tiver local designado (ou
+  pelo botão "✅ Confirmar" de sempre, um de cada vez, onde o cartório vê o
+  resultado na hora antes de continuar).
 
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —

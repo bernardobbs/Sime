@@ -102,6 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-contatar-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('contatar',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📞 Contatar mesários</div>
     <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
     <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
+    <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
   </div>
 
   <div class="content" id="content"></div>
@@ -118,6 +119,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_resumo_secoes.js"></script>
 <script src="./sime_contatar_mesarios.js"></script>
 <script src="./sime_historico_sync.js"></script>
+<script src="./sime_relatorio_elo.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -220,6 +222,7 @@ function goTab(tab, btn) {
   if (tab === 'dashboard' && typeof rsDados !== 'undefined') rsDados = null;
   if (tab === 'contatar' && typeof cmDados !== 'undefined') cmDados = null;
   if (tab === 'historico' && typeof hsDados !== 'undefined') hsDados = null;
+  if (tab === 'relatorio-elo' && typeof reDados !== 'undefined') reDados = null;
   render();
 }
 function render() {
@@ -227,6 +230,7 @@ function render() {
   if (curTab === 'contatar') { renderContatarMesarios(); return; }
   if (curTab === 'sync') { renderSyncMesarios(); return; }
   if (curTab === 'historico') { renderHistoricoSync(); return; }
+  if (curTab === 'relatorio-elo') { renderRelatorioElo(); return; }
 }
 window.render = render;
 </script>

@@ -35,9 +35,25 @@ async function rsCarregar() {
     // menos um apoio logístico designado, pro gráfico de pizza "nomeado x
     // vazio" (apoio não tem cargo fixo tipo mesário, então "vazio" aqui é
     // por local, não por cargo).
-    sb.from('sime_atores').select('id, confirmacao, secao_id').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    // funcao junto (21/08/2026) — as pizzas novas separam Coordenador de
+    // Acessibilidade de Auxiliar de Eleição (antes só existia o bucket
+    // combinado "apoio logístico"); sem a função aqui não dava pra saber
+    // qual dos dois cada linha representa.
+    sb.from('sime_atores').select('id, confirmacao, secao_id, funcao').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
   ]);
   if (e1 || e2 || e3) { rsDados = { erro: (e1 || e2 || e3).message }; render(); return; }
+
+  // Por local, quem tem alguém designado/confirmado de CADA função de apoio
+  // separadamente — 1 vaga por local pra cada uma (mesma premissa já usada
+  // pro bucket combinado: nem coordenador de acessibilidade nem auxiliar de
+  // eleição têm cargo fixo no schema, então a "vaga" é por prédio).
+  const secaoIdsPorFuncaoTodos = { coord_acessibilidade: new Set(), auxiliar_eleicao: new Set() };
+  const secaoIdsPorFuncaoConfirmado = { coord_acessibilidade: new Set(), auxiliar_eleicao: new Set() };
+  for (const a of apoio || []) {
+    if (!a.secao_id || !secaoIdsPorFuncaoTodos[a.funcao]) continue;
+    secaoIdsPorFuncaoTodos[a.funcao].add(a.secao_id);
+    if (a.confirmacao === 'confirmado') secaoIdsPorFuncaoConfirmado[a.funcao].add(a.secao_id);
+  }
 
   const porSecao = {};
   const atualizadoPorSecao = {};
@@ -63,7 +79,7 @@ async function rsCarregar() {
     totalMesarios: (atores || []).length, totalApoio: (apoio || []).length,
     confirmadosMRV: (atores || []).filter(a => a.confirmacao === 'confirmado').length,
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
-    secaoIdsComApoio: new Set((apoio || []).map(a => a.secao_id).filter(Boolean)),
+    secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado,
   };
   render();
 }
@@ -123,8 +139,15 @@ function rsCalcular() {
     // "Designados" continua calculado e exibido à parte (ver rsCardLocal) —
     // é informação real, só não deve mais controlar a cor/barra de "pronto".
     const pct = totalCargos ? Math.round((confirmados / totalCargos) * 100) : 0;
-    const temApoio = loc.secoes.some(l => rsDados.secaoIdsComApoio.has(l.secao.id));
-    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct, temApoio };
+    // Coordenador de Acessibilidade e Auxiliar de Eleição, separados
+    // (21/08/2026) — antes existia um "temApoio" combinando os dois; as
+    // pizzas novas mostram cada função à parte, cada uma com sua própria
+    // vaga por local.
+    const temCoord = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoTodos.coord_acessibilidade.has(l.secao.id));
+    const temCoordConfirmado = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoConfirmado.coord_acessibilidade.has(l.secao.id));
+    const temAuxiliar = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoTodos.auxiliar_eleicao.has(l.secao.id));
+    const temAuxiliarConfirmado = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoConfirmado.auxiliar_eleicao.has(l.secao.id));
+    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct, temCoord, temCoordConfirmado, temAuxiliar, temAuxiliarConfirmado };
   }).sort((a, b) => (a.local_nome || '').localeCompare(b.local_nome || ''));
 
   // Totais pros gráficos de pizza (nomeado x vazio, confirmado x total) —
@@ -133,42 +156,95 @@ function rsCalcular() {
   // naquele prédio ou não), usando o mesmo agrupamento de porLocal.
   const mrvTotalCargos = linhas.length * RS_CARGOS.length;
   const mrvDesignados = linhas.reduce((n, l) => n + l.designados, 0);
-  const locaisComApoio = porLocal.filter(l => l.temApoio).length;
+  // Cargo-slot, não headcount — consistente com mrvDesignados/mrvTotalCargos
+  // acima (rsDados.confirmadosMRV conta ATORES confirmados, não cargos; nas
+  // pizzas novas de 3 fatias as 3 partes têm que somar mrvTotalCargos).
+  const mrvConfirmadoCargos = linhas.reduce((n, l) => n + l.confirmados, 0);
+  const locaisComCoord = porLocal.filter(l => l.temCoord).length;
+  const locaisComCoordConfirmado = porLocal.filter(l => l.temCoordConfirmado).length;
+  const locaisComAuxiliar = porLocal.filter(l => l.temAuxiliar).length;
+  const locaisComAuxiliarConfirmado = porLocal.filter(l => l.temAuxiliarConfirmado).length;
 
-  return { linhas, porLocal, mrvTotalCargos, mrvDesignados, locaisComApoio };
+  return {
+    linhas, porLocal, mrvTotalCargos, mrvDesignados, mrvConfirmadoCargos,
+    locaisComCoord, locaisComCoordConfirmado, locaisComAuxiliar, locaisComAuxiliarConfirmado,
+  };
 }
 
-// Donut simples em SVG puro (sem lib de gráfico — projeto é sem framework).
-// r=15.9155 é o truque clássico: 2*pi*r ≈ 100, então stroke-dasharray pode
-// usar porcentagem direto, sem calcular circunferência real.
-function rsPizzaSVG(pct, corA, corB) {
-  const a = Math.max(0, Math.min(100, Math.round(pct)));
+// Donut de 3 fatias em SVG puro (sem lib de gráfico — projeto é sem
+// framework), pedido do cartório em 21/08/2026 pra substituir o donut de 2
+// fatias anterior: Confirmado / Convocado (designado, mas ainda não
+// confirmado) / Vazio — as 3 somam sempre o Total do grupo (MRV, Coord. de
+// Acessibilidade ou Auxiliar de Eleição). r=15.9155 é o truque clássico:
+// 2*pi*r ≈ 100, então stroke-dasharray pode usar porcentagem direto. Cada
+// fatia é um círculo rotacionado a partir de -90° (12h) pelo tanto que as
+// fatias anteriores já ocuparam, então elas encaixam sem sobrepor.
+function rsPizzaSVG3(valConfirmado, valConvocado, valVazio, corConfirmado, corConvocado, corVazio) {
+  const total = valConfirmado + valConvocado + valVazio;
+  const pctConf = total ? (valConfirmado / total) * 100 : 0;
+  const pctConv = total ? (valConvocado / total) * 100 : 0;
+  const pctVaz = total ? (valVazio / total) * 100 : 0;
   return `
     <svg width="72" height="72" viewBox="0 0 36 36" style="flex-shrink:0">
-      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corB}" stroke-width="4.5"></circle>
-      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corA}" stroke-width="4.5"
-        stroke-dasharray="${a} ${100 - a}" transform="rotate(-90 18 18)"></circle>
-      <text x="18" y="19" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="var(--text)">${a}%</text>
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corVazio}" stroke-width="4.5"
+        stroke-dasharray="${pctVaz} ${100 - pctVaz}" transform="rotate(${-90 + (pctConf + pctConv) * 3.6} 18 18)"></circle>
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corConvocado}" stroke-width="4.5"
+        stroke-dasharray="${pctConv} ${100 - pctConv}" transform="rotate(${-90 + pctConf * 3.6} 18 18)"></circle>
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corConfirmado}" stroke-width="4.5"
+        stroke-dasharray="${pctConf} ${100 - pctConf}" transform="rotate(-90 18 18)"></circle>
+      <text x="18" y="19" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="var(--text)">${Math.round(pctConf)}%</text>
     </svg>`;
 }
 
-function rsPizzaCard(titulo, valA, labelA, valB, labelB) {
-  const corA = 'var(--green)', corB = 'var(--border2)';
-  const total = valA + valB;
-  const pct = total ? (valA / total) * 100 : 0;
+const RS_COR_CONFIRMADO = 'var(--green)', RS_COR_CONVOCADO = 'var(--blue)', RS_COR_VAZIO = 'var(--border2)';
+
+function rsPizzaCard3(titulo, valConfirmado, valConvocado, valVazio) {
+  const total = valConfirmado + valConvocado + valVazio;
   return `
     <div class="import-card" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
-      ${rsPizzaSVG(pct, corA, corB)}
+      ${rsPizzaSVG3(valConfirmado, valConvocado, valVazio, RS_COR_CONFIRMADO, RS_COR_CONVOCADO, RS_COR_VAZIO)}
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:.76rem;margin-bottom:6px">${titulo}</div>
-        <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:3px">
-          <span style="width:9px;height:9px;border-radius:2px;background:${corA};display:inline-block;flex-shrink:0"></span>
-          ${labelA}: <b style="color:var(--text)">${valA}</b>
+        <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_CONFIRMADO};display:inline-block;flex-shrink:0"></span>
+          Confirmado: <b style="color:var(--text)">${valConfirmado}</b>
+        </div>
+        <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_CONVOCADO};display:inline-block;flex-shrink:0"></span>
+          Convocado: <b style="color:var(--text)">${valConvocado}</b>
         </div>
         <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px">
-          <span style="width:9px;height:9px;border-radius:2px;background:${corB};display:inline-block;flex-shrink:0"></span>
-          ${labelB}: <b style="color:var(--text)">${valB}</b>
+          <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_VAZIO};display:inline-block;flex-shrink:0"></span>
+          Vazio: <b style="color:var(--text)">${valVazio}</b>
         </div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:4px">Total: ${total}</div>
+      </div>
+    </div>`;
+}
+
+// Barra horizontal única resumindo a zona inteira (MRV + Coord. de
+// Acessibilidade + Auxiliar de Eleição juntos), pedido do cartório em
+// 21/08/2026 pra sentar em cima das 3 pizzas: 3 estágios sobrepostos na
+// MESMA faixa (não 3 barras separadas) — Total de vagas é a faixa de fundo
+// (cor A), Convocados é uma barra mais curta por cima (cor B), Confirmados
+// é a mais curta de todas por cima dessa (cor C). Cada estágio é subconjunto
+// do anterior (confirmado ⊆ convocado ⊆ total), por isso dá pra sobrepor
+// em vez de empilhar em 3 faixas.
+function rsBarraFunil(total, convocados, confirmados) {
+  const corTotal = 'var(--border2)', corConvocado = RS_COR_CONVOCADO, corConfirmado = RS_COR_CONFIRMADO;
+  const pctConv = total ? Math.min(100, (convocados / total) * 100) : 0;
+  const pctConf = total ? Math.min(100, (confirmados / total) * 100) : 0;
+  return `
+    <div class="import-card" style="padding:14px 16px">
+      <div style="font-weight:800;font-size:.8rem;margin-bottom:10px">📊 Progresso geral da zona — MRV + Coordenadores de Acessibilidade + Auxiliares de Eleição</div>
+      <div style="position:relative;height:22px;border-radius:11px;background:${corTotal};overflow:hidden">
+        <div style="position:absolute;inset:0;height:100%;width:${pctConv}%;background:${corConvocado};border-radius:11px"></div>
+        <div style="position:absolute;inset:0;height:100%;width:${pctConf}%;background:${corConfirmado};border-radius:11px"></div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:.74rem">
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corTotal};display:inline-block;flex-shrink:0"></span>Total de vagas: <b>${total}</b></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConvocado};display:inline-block;flex-shrink:0"></span>Convocados: <b>${convocados}</b></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConfirmado};display:inline-block;flex-shrink:0"></span>Confirmados: <b>${confirmados}</b></div>
       </div>
     </div>`;
 }
@@ -255,19 +331,35 @@ function renderResumoSecoes() {
     return;
   }
 
-  const { linhas, porLocal, mrvTotalCargos, mrvDesignados, locaisComApoio } = rsCalcular();
+  const {
+    linhas, porLocal, mrvTotalCargos, mrvDesignados, mrvConfirmadoCargos,
+    locaisComCoord, locaisComCoordConfirmado, locaisComAuxiliar, locaisComAuxiliarConfirmado,
+  } = rsCalcular();
 
-  // Pedido do cartório (21/08/2026): visão rápida em pizza, além dos
-  // números — "nomeado x vazio" é sobre CARGO pro MRV (4 por seção, tem
-  // gente ali ou não) e sobre LOCAL pro apoio logístico (não tem cargo
-  // fixo, então vira "esse prédio tem algum apoio designado?").
+  // Redesenhado em 21/08/2026 a pedido do cartório: 3 pizzas (MRV / Coord.
+  // de Acessibilidade / Auxiliar de Eleição), cada uma com 3 fatias que
+  // somam o Total daquele grupo — Confirmado / Convocado (designado, ainda
+  // não confirmado) / Vazio — em vez do desenho anterior de 4 pizzas de 2
+  // fatias (nomeado x vazio, separado de confirmado x total). MRV é "vaga"
+  // por CARGO de mesa (4 por seção); Coord. de Acessibilidade e Auxiliar de
+  // Eleição não têm cargo fixo no schema, então a "vaga" vira 1 por LOCAL de
+  // votação (mesma premissa que já existia no desenho anterior, agora
+  // separada por função em vez de combinada num "apoio logístico" só).
+  const locaisTotal = porLocal.length;
   const pizzasHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
-      ${rsPizzaCard('MRV — cargos nomeados x vazios', mrvDesignados, 'Nomeado', mrvTotalCargos - mrvDesignados, 'Vazio')}
-      ${rsPizzaCard('MRV — confirmados x total', rsDados.confirmadosMRV, 'Confirmado', rsDados.totalMesarios - rsDados.confirmadosMRV, 'Ainda não')}
-      ${rsPizzaCard('Apoio logístico — locais com apoio x sem', locaisComApoio, 'Com apoio', porLocal.length - locaisComApoio, 'Sem apoio')}
-      ${rsPizzaCard('Apoio logístico — confirmados x total', rsDados.confirmadosApoio, 'Confirmado', rsDados.totalApoio - rsDados.confirmadosApoio, 'Ainda não')}
+      ${rsPizzaCard3('MRV (Mesários)', mrvConfirmadoCargos, mrvDesignados - mrvConfirmadoCargos, mrvTotalCargos - mrvDesignados)}
+      ${rsPizzaCard3('Coordenadores de Acessibilidade', locaisComCoordConfirmado, locaisComCoord - locaisComCoordConfirmado, locaisTotal - locaisComCoord)}
+      ${rsPizzaCard3('Auxiliares de Eleição (apoio logístico)', locaisComAuxiliarConfirmado, locaisComAuxiliar - locaisComAuxiliarConfirmado, locaisTotal - locaisComAuxiliar)}
     </div>`;
+
+  // Barra-resumo da zona inteira (21/08/2026), acima das 3 pizzas — soma os
+  // 3 grupos num só "funil": Total de vagas (MRV + 1 por local pra cada uma
+  // das outras duas funções) → Convocados → Confirmados.
+  const funilTotal = mrvTotalCargos + locaisTotal * 2;
+  const funilConvocados = mrvDesignados + locaisComCoord + locaisComAuxiliar;
+  const funilConfirmados = mrvConfirmadoCargos + locaisComCoordConfirmado + locaisComAuxiliarConfirmado;
+  const funilHTML = rsBarraFunil(funilTotal, funilConvocados, funilConfirmados);
 
   const statsHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
@@ -318,6 +410,7 @@ function renderResumoSecoes() {
   const completas = linhas.filter(l => l.confirmados === 4).length;
 
   c.innerHTML = `
+    ${funilHTML}
     ${pizzasHTML}
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">

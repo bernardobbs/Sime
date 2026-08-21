@@ -53,6 +53,17 @@ async function cmCopiarLinkWhatsApp(id) {
   if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar a tentativa nova
 }
 
+// Copiar genérico (21/08/2026) — usado pelos telefones alternativos do TRE
+// no modal; não registra tentativa (diferente de cmCopiarLinkWhatsApp) —
+// só copiar um número de referência não é, por si só, uma tentativa de
+// contato.
+function cmCopiarTexto(texto) {
+  navigator.clipboard?.writeText(texto).then(
+    () => showToast('📋 Copiado'),
+    () => showToast('⚠ Não deu pra copiar automaticamente'),
+  );
+}
+
 function cmPersonalizarMensagem(msg, p, sec) {
   return msg
     .replaceAll('{nome}', p.nome_completo || '')
@@ -353,6 +364,39 @@ function cmPessoaModal() {
 // seção, sime_resumo_secoes.js) — que pode acontecer antes da aba "Contatar
 // mesários" ter sido visitada nesta sessão, com cmDados ainda null. Carrega
 // na hora nesse caso, em vez de abrir um modal vazio.
+// Campos de telefone que a planilha do TRE (ELO) traz por pessoa — até 5
+// diferentes (21/08/2026, achado real: um mesário pode ter mais de um
+// telefone de contato no cadastro, mas sime_sync_atores_from_raw só grava
+// UM em sime_atores.telefone_whatsapp — COALESCE(telefone_pessoal_mesario,
+// telefone_1_eleitor, telefone_2_eleitor, telefone_contato_eleitor), nessa
+// ordem — e os outros ficam invisíveis pro cartório, mesmo continuando
+// intactos no staging sime_mesarios_raw). Mostrados aqui só como
+// referência — nenhum vira telefone_whatsapp sozinho, o cartório decide.
+const CM_RAW_TEL_CAMPOS = [
+  ['telefone_pessoal_mesario', 'Telefone pessoal (mesário)'],
+  ['telefone_1_eleitor', 'Telefone 1 (eleitor)'],
+  ['telefone_2_eleitor', 'Telefone 2 (eleitor)'],
+  ['telefone_contato_eleitor', 'Telefone contato (eleitor)'],
+  ['telefone_comercial_mesario', 'Telefone comercial (mesário)'],
+];
+
+// Extrai os telefones do cadastro do TRE que são DIFERENTES do que já está
+// salvo em telefone_whatsapp — dedupe contra o atual e entre si (comparando
+// só dígitos, sem o "55", já que o TRE não segue convenção nenhuma de
+// formato).
+function cmOutrosTelefones(raw, telefoneAtual) {
+  if (!raw) return [];
+  const vistos = new Set([telSemPais(telefoneAtual || '')].filter(Boolean));
+  const outros = [];
+  for (const [campo, label] of CM_RAW_TEL_CAMPOS) {
+    const digitos = telSemPais(raw[campo] || '');
+    if (!digitos || digitos.length < 8 || vistos.has(digitos)) continue;
+    vistos.add(digitos);
+    outros.push({ label, valor: raw[campo] });
+  }
+  return outros;
+}
+
 async function cmAbrirModal(id) {
   cmModalId = id;
   cmModalHist = null;
@@ -361,7 +405,8 @@ async function cmAbrirModal(id) {
   cmRenderModal();
 
   const sb = window.supabaseAtores;
-  const [{ data: campanhas }, { data: logsSime }, { data: logsHermes }] = await Promise.all([
+  const p = cmPessoaModal();
+  const [{ data: campanhas }, { data: logsSime }, { data: logsHermes }, rawResult] = await Promise.all([
     sb.from('sime_campanhas_confirmacao')
       .select('id, mensagem_enviada, status, created_at')
       .eq('ator_id', id).order('created_at', { ascending: false }).limit(10),
@@ -374,6 +419,15 @@ async function cmAbrirModal(id) {
     sb.from('sime_logs')
       .select('ts, acao, payload')
       .contains('payload->afetados', [{ id }]).order('ts', { ascending: false }).limit(10),
+    // Telefones alternativos do TRE — só busca se a pessoa tem título de
+    // eleitor (nem todo ator manual tem); sime_mesarios_raw é lida por
+    // título porque ator_id nunca foi preenchido nela (a sincronização casa
+    // por inscricao_eleitoral, não grava o id de volta no staging).
+    p?.inscricao_eleitoral
+      ? sb.from('sime_mesarios_raw')
+          .select('telefone_pessoal_mesario, telefone_1_eleitor, telefone_2_eleitor, telefone_contato_eleitor, telefone_comercial_mesario')
+          .eq('inscricao', p.inscricao_eleitoral).order('importado_em', { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
   if (cmModalId !== id) return; // trocou de pessoa enquanto carregava
   const logs = [
@@ -394,7 +448,9 @@ async function cmAbrirModal(id) {
     ...tentativasManuais.map(l => ({ tipo: 'manual', ts: l.ts, payload: l.payload || {} })),
   ].sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 15);
 
-  cmModalHist = { tentativas, logs };
+  const outrosTelefones = cmOutrosTelefones(rawResult?.data, p?.telefone_whatsapp);
+
+  cmModalHist = { tentativas, logs, outrosTelefones };
   cmRenderModal();
 }
 
@@ -466,6 +522,11 @@ function cmRenderModal() {
           <label>Telefone (WhatsApp)</label>
           <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
         </div>
+        ${cmModalHist?.outrosTelefones?.length ? `
+        <div class="ic-sub" style="margin-bottom:4px;margin-top:2px">📋 Outros telefones no cadastro do TRE (referência — não muda o telefone salvo sozinho):</div>
+        <div class="m-hist" style="margin-bottom:10px">
+          ${cmModalHist.outrosTelefones.map(t => `<div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span>${cmEsc(t.label)}: <b>${cmEsc(fmtTelefone(t.valor))}</b></span><button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmCopiarTexto('${cmEsc(t.valor).replace(/'/g, "\\'")}')">📋 Copiar</button></div>`).join('')}
+        </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Meio de contato atual
             <select onchange="cmSalvarMeio('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
