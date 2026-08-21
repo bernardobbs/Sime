@@ -99,7 +99,7 @@ function mock() {
       { id:'a2', nome_completo:'BRUNO MESARIO', telefone_whatsapp:'5586999990002', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s1', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null, inscricao_eleitoral:'046919051589' },
       { id:'a3', nome_completo:'CARLA RECUSOU', telefone_whatsapp:'5586999990003', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s2', zona_id:'z7', confirmacao:'recusou', ativo:true, observacao:'Recado via Hermes: não sou essa pessoa, número errado', meio_contato:'whatsapp', status_contato_alternativo:null, data_confirmacao:null },
       { id:'a4', nome_completo:'DIEGO CARTA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', status_contato_alternativo:'enviado', data_confirmacao:null },
-      { id:'a5', nome_completo:'ELIS APOIO', telefone_whatsapp:'5586999990005', funcao:'auxiliar_eleicao', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null },
+      { id:'a5', nome_completo:'ELIS APOIO', telefone_whatsapp:'5586999990005', funcao:'auxiliar_eleicao', secao_id:'s1', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null },
       { id:'a6', nome_completo:'FABIO APOIO', telefone_whatsapp:'5586999990006', funcao:'coord_acessibilidade', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null },
     ],
     sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
@@ -142,6 +142,16 @@ async function login(p) {
   check('stat card: 3 seções', /Seções\s*3/.test(dash.replace(/\s+/g, ' ')), dash.replace(/\s+/g, ' ').slice(0, 300));
   check('stat card MRV: 1 confirmado de 4, 3 faltam', /Mesários \(MRV\)\s*1\/4/.test(dash.replace(/\s+/g, ' ')) && /3 faltam confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
   check('stat card AL: 1 confirmado de 2, 1 falta', /Apoio logístico \(AL\)\s*1\/2/.test(dash.replace(/\s+/g, ' ')) && /1 falta confirmar/.test(dash), dash.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Pizzas: MRV é por CARGO (4 por seção x 3 seções = 12) — Ana+Bruno (s1) e
+  // Carla+Diego (s2) designados = 4, Escola B (s3) vazia = 8 vazios.
+  const dashFlat = dash.replace(/\s+/g, ' ');
+  check('pizza MRV nomeado x vazio: 4 nomeados, 8 vazios (de 12 cargos)', /MRV — cargos nomeados x vazios/.test(dashFlat) && /Nomeado:\s*4/.test(dashFlat) && /Vazio:\s*8/.test(dashFlat), dashFlat.slice(0, 600));
+  check('pizza MRV confirmado x total: 1 confirmado, 3 ainda não', /MRV — confirmados x total/.test(dashFlat) && /Confirmado:\s*1/.test(dashFlat) && /Ainda não:\s*3/.test(dashFlat), dashFlat.slice(0, 600));
+  // ELIS (apoio) tem secao_id da Grupo Escolar A — só esse local "tem apoio"; Escola B fica sem.
+  check('pizza AL nomeado x vazio: 1 local com apoio, 1 sem (de 2 locais)', /Apoio logístico — locais com apoio x sem/.test(dashFlat) && /Com apoio:\s*1/.test(dashFlat) && /Sem apoio:\s*1/.test(dashFlat), dashFlat.slice(0, 600));
+  check('pizza AL confirmado x total: 1 confirmado, 1 ainda não', /Apoio logístico — confirmados x total/.test(dashFlat) && /Ainda não:\s*1/.test(dashFlat), dashFlat.slice(0, 600));
+  check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 4);
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));
 
   const cardGrupoA = await p.locator('.import-card:has-text("Grupo Escolar A")').first().textContent();

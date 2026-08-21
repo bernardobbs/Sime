@@ -310,7 +310,21 @@ cada um com propósito diferente:
 
 `SIME_convocacao.html` tem mais três abas:
 - **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
-  partir de um mockup do cartório) — 4 cards de estatística no topo (locais
+  partir de um mockup do cartório) — logo acima dos stat cards, **4
+  gráficos de pizza** (pedido do cartório em 21/08/2026, SVG puro — sem lib
+  de gráfico, projeto é sem framework): MRV cargos nomeados x vazios, MRV
+  confirmados x total, apoio logístico locais-com-apoio x sem, apoio
+  logístico confirmados x total. "Nomeado x vazio" tem semântica diferente
+  pros dois: MRV é por **cargo de mesa** (4 por seção — tem alguém
+  designado ali ou não, `rsCalcular()` já somava isso como `designados`/
+  `totalCargos` pros cards de local, só nunca tinha virado um total geral);
+  apoio logístico não tem cargo fixo, então virou "esse **local** tem pelo
+  menos um apoio designado?" — usa o mesmo agrupamento por local_nome+
+  município dos cards de baixo, casando `secao_id` de cada apoio
+  (`sime_atores.secao_id`, agora trazido na consulta) contra as seções de
+  cada local. Só aparece na visão geral, não no drilldown por local — série
+  específica pra visão de conjunto, repetir dentro do drilldown seria
+  redundante. Depois dos gráficos, os 4 cards de estatística no topo (locais
   de votação, seções, **mesários MRV confirmados/total + quantos faltam**,
   **apoio logístico AL confirmados/total + quantos faltam** — antes os dois
   últimos cards só mostravam o total, sem quebra por `confirmacao`; o card

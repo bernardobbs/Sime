@@ -31,7 +31,11 @@ async function rsCarregar() {
     // Antes era só `count` (head:true) — trocado por linha completa com
     // confirmacao pra poder quebrar confirmados/faltam também pro apoio
     // logístico nos stat cards, não só o total.
-    sb.from('sime_atores').select('id, confirmacao').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    // secao_id junto (21/08/2026) — só pra saber quantos LOCAIS têm pelo
+    // menos um apoio logístico designado, pro gráfico de pizza "nomeado x
+    // vazio" (apoio não tem cargo fixo tipo mesário, então "vazio" aqui é
+    // por local, não por cargo).
+    sb.from('sime_atores').select('id, confirmacao, secao_id').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
   ]);
   if (e1 || e2 || e3) { rsDados = { erro: (e1 || e2 || e3).message }; render(); return; }
 
@@ -59,6 +63,7 @@ async function rsCarregar() {
     totalMesarios: (atores || []).length, totalApoio: (apoio || []).length,
     confirmadosMRV: (atores || []).filter(a => a.confirmacao === 'confirmado').length,
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
+    secaoIdsComApoio: new Set((apoio || []).map(a => a.secao_id).filter(Boolean)),
   };
   render();
 }
@@ -118,10 +123,54 @@ function rsCalcular() {
     // "Designados" continua calculado e exibido à parte (ver rsCardLocal) —
     // é informação real, só não deve mais controlar a cor/barra de "pronto".
     const pct = totalCargos ? Math.round((confirmados / totalCargos) * 100) : 0;
-    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct };
+    const temApoio = loc.secoes.some(l => rsDados.secaoIdsComApoio.has(l.secao.id));
+    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct, temApoio };
   }).sort((a, b) => (a.local_nome || '').localeCompare(b.local_nome || ''));
 
-  return { linhas, porLocal };
+  // Totais pros gráficos de pizza (nomeado x vazio, confirmado x total) —
+  // MRV é por CARGO de mesa (4 por seção); apoio logístico não tem cargo
+  // fixo, então "nomeado x vazio" vira "por local" (tem alguém designado
+  // naquele prédio ou não), usando o mesmo agrupamento de porLocal.
+  const mrvTotalCargos = linhas.length * RS_CARGOS.length;
+  const mrvDesignados = linhas.reduce((n, l) => n + l.designados, 0);
+  const locaisComApoio = porLocal.filter(l => l.temApoio).length;
+
+  return { linhas, porLocal, mrvTotalCargos, mrvDesignados, locaisComApoio };
+}
+
+// Donut simples em SVG puro (sem lib de gráfico — projeto é sem framework).
+// r=15.9155 é o truque clássico: 2*pi*r ≈ 100, então stroke-dasharray pode
+// usar porcentagem direto, sem calcular circunferência real.
+function rsPizzaSVG(pct, corA, corB) {
+  const a = Math.max(0, Math.min(100, Math.round(pct)));
+  return `
+    <svg width="72" height="72" viewBox="0 0 36 36" style="flex-shrink:0">
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corB}" stroke-width="4.5"></circle>
+      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="${corA}" stroke-width="4.5"
+        stroke-dasharray="${a} ${100 - a}" transform="rotate(-90 18 18)"></circle>
+      <text x="18" y="19" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="var(--text)">${a}%</text>
+    </svg>`;
+}
+
+function rsPizzaCard(titulo, valA, labelA, valB, labelB) {
+  const corA = 'var(--green)', corB = 'var(--border2)';
+  const total = valA + valB;
+  const pct = total ? (valA / total) * 100 : 0;
+  return `
+    <div class="import-card" style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+      ${rsPizzaSVG(pct, corA, corB)}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:.76rem;margin-bottom:6px">${titulo}</div>
+        <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="width:9px;height:9px;border-radius:2px;background:${corA};display:inline-block;flex-shrink:0"></span>
+          ${labelA}: <b style="color:var(--text)">${valA}</b>
+        </div>
+        <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px">
+          <span style="width:9px;height:9px;border-radius:2px;background:${corB};display:inline-block;flex-shrink:0"></span>
+          ${labelB}: <b style="color:var(--text)">${valB}</b>
+        </div>
+      </div>
+    </div>`;
 }
 
 function rsBarraCor(pct) {
@@ -206,7 +255,19 @@ function renderResumoSecoes() {
     return;
   }
 
-  const { linhas, porLocal } = rsCalcular();
+  const { linhas, porLocal, mrvTotalCargos, mrvDesignados, locaisComApoio } = rsCalcular();
+
+  // Pedido do cartório (21/08/2026): visão rápida em pizza, além dos
+  // números — "nomeado x vazio" é sobre CARGO pro MRV (4 por seção, tem
+  // gente ali ou não) e sobre LOCAL pro apoio logístico (não tem cargo
+  // fixo, então vira "esse prédio tem algum apoio designado?").
+  const pizzasHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+      ${rsPizzaCard('MRV — cargos nomeados x vazios', mrvDesignados, 'Nomeado', mrvTotalCargos - mrvDesignados, 'Vazio')}
+      ${rsPizzaCard('MRV — confirmados x total', rsDados.confirmadosMRV, 'Confirmado', rsDados.totalMesarios - rsDados.confirmadosMRV, 'Ainda não')}
+      ${rsPizzaCard('Apoio logístico — locais com apoio x sem', locaisComApoio, 'Com apoio', porLocal.length - locaisComApoio, 'Sem apoio')}
+      ${rsPizzaCard('Apoio logístico — confirmados x total', rsDados.confirmadosApoio, 'Confirmado', rsDados.totalApoio - rsDados.confirmadosApoio, 'Ainda não')}
+    </div>`;
 
   const statsHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
@@ -257,6 +318,7 @@ function renderResumoSecoes() {
   const completas = linhas.filter(l => l.confirmados === 4).length;
 
   c.innerHTML = `
+    ${pizzasHTML}
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
