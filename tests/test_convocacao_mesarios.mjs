@@ -271,12 +271,13 @@ async function login(p) {
   await p.click('#tab-contatar-btn');
   await p.waitForTimeout(300);
 
-  // Filtra por "falta contactar" (pendente) — bate com BRUNO (tem WhatsApp) e
-  // DIEGO (só carta registrada, sem telefone — não pode entrar numa campanha de WhatsApp).
+  // Filtra por "falta contactar" (pendente) — bate com BRUNO e FABIO (apoio
+  // logístico, tem WhatsApp) e DIEGO (só carta registrada, sem telefone —
+  // não pode entrar numa campanha de WhatsApp).
   await p.selectOption('#cm-filtro', 'pendente');
   await p.waitForTimeout(200);
   const btnCampanha = p.locator('button:has-text("Criar campanha com estes")');
-  check('botão mostra só quem tem WhatsApp no filtro (1, não 2)', /\(1\)/.test(await btnCampanha.textContent()), await btnCampanha.textContent());
+  check('botão mostra só quem tem WhatsApp no filtro (2, não 3)', /\(2\)/.test(await btnCampanha.textContent()), await btnCampanha.textContent());
 
   await btnCampanha.click();
   await p.waitForTimeout(500); // navega pra SIME_atores.html
@@ -284,9 +285,9 @@ async function login(p) {
   check('navegou pra Atores com a aba de disparo já selecionada', /SIME_atores\.html\?tab=disparo/.test(p.url()), p.url());
   check('aba "Disparo em massa" fica marcada como ativa', await p.locator('#tab-disparo-btn.active').count() === 1);
   const selecionados = await p.evaluate(() => [...dispSelecionados]);
-  check('só o Bruno (único com WhatsApp no filtro) veio pré-selecionado', selecionados.length === 1 && selecionados[0] === 'a2', JSON.stringify(selecionados));
+  check('Bruno e Fabio (com WhatsApp no filtro) vieram pré-selecionados', selecionados.length === 2 && selecionados.includes('a2') && selecionados.includes('a6'), JSON.stringify(selecionados));
   const toastTxt = await p.locator('.toast').textContent().catch(() => '');
-  check('avisa quantos destinatários vieram de Convocação', /1 destinatário/.test(toastTxt), toastTxt);
+  check('avisa quantos destinatários vieram de Convocação', /2 destinatário/.test(toastTxt), toastTxt);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -317,12 +318,15 @@ async function login(p) {
   check('mostra a atualização anterior (histórico)', /Meio de contato.*Carta Registrada/.test(modalTxt.replace(/\s+/g, ' ')), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
   check('mostra também a confirmação feita pelo próprio mesário via Hermes/WhatsApp (casada por afetados, não por ator_id)', /Confirmou por WhatsApp/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
 
+  // Rastreio só existe no DOM com Carta Registrada (ver 2.95) — muda o meio primeiro.
+  await p.selectOption('#modal-body select >> nth=0', 'carta_registrada');
+  await p.waitForTimeout(150);
   await p.fill('#mm-rastreio', 'aa123456789br');
   await p.fill('#mm-tel', '(86) 98888-7777');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(200);
 
-  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2'));
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && 'telefone_whatsapp' in e.payload));
   check('salvar grava telefone e rastreio juntos, num update só', upd?.payload?.telefone_whatsapp === '86988887777' && upd?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(upd));
   check('salvar fecha o modal', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
 
@@ -502,6 +506,67 @@ async function login(p) {
   const updCarla = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'confirmado'));
   check('confirmar pelo modal também grava confirmacao=confirmado', !!updCarla, JSON.stringify(updCarla));
   check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar convocação")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.9 Apoio logístico entra na mesma fila de contato dos mesários ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const bodyTxt = await p.locator('.content').textContent();
+  check('lista inclui o apoio logístico, não só mesários', /ELIS APOIO/.test(bodyTxt) && /FABIO APOIO/.test(bodyTxt), bodyTxt.replace(/\s+/g, ' ').slice(0, 200));
+  check('subtítulo avisa que cobre mesários e apoio logístico', /Mesários e apoio logístico/.test(bodyTxt));
+
+  const cardElis = await p.locator('.import-card:has-text("ELIS APOIO")').first().textContent();
+  check('apoio logístico (auxiliar_eleicao) mostra rótulo de função, não vazio/undefined', /Auxiliar de Serviços Eleitorais/.test(cardElis), cardElis.replace(/\s+/g, ' '));
+  const cardFabio = await p.locator('.import-card:has-text("FABIO APOIO")').first().textContent();
+  check('apoio logístico (coord_acessibilidade) mostra rótulo de função próprio', /Coordenador\(a\) de Acessibilidade/.test(cardFabio), cardFabio.replace(/\s+/g, ' '));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.95 Código de rastreio só aparece no modal quando o meio é Carta Registrada ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // FABIO (a6) começa sem meio_contato definido (equivale a WhatsApp) — sem rastreio no modal.
+  await p.locator('.import-card:has-text("FABIO APOIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('sem Carta Registrada, modal não mostra código de rastreio', await p.locator('#modal-body input#mm-rastreio').count() === 0);
+
+  // Muda pra Carta Registrada — campo aparece.
+  await p.selectOption('#modal-body select >> nth=0', 'carta_registrada');
+  await p.waitForTimeout(150);
+  check('ao trocar pra Carta Registrada, o campo de rastreio aparece', await p.locator('#modal-body input#mm-rastreio').count() === 1);
+
+  // Salvar com o campo visível funciona normalmente.
+  await p.fill('#modal-body input#mm-rastreio', 'bb987654321br');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a6' && e.payload.codigo_rastreio === 'BB987654321BR'));
+  check('salvar com o campo visível grava o código normalmente', !!upd, JSON.stringify(upd));
+
+  // Reabre e volta pra WhatsApp — campo some, e salvar não apaga o código já salvo.
+  await p.locator('.import-card:has-text("FABIO APOIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.selectOption('#modal-body select >> nth=0', 'whatsapp');
+  await p.waitForTimeout(150);
+  check('voltando pra WhatsApp, o campo de rastreio some de novo', await p.locator('#modal-body input#mm-rastreio').count() === 0);
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+  const escritasDepois = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a6' && 'codigo_rastreio' in e.payload));
+  check('salvar com o campo escondido não mexe em codigo_rastreio (não some o que já tinha)', escritasDepois.length === 1, JSON.stringify(escritasDepois));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

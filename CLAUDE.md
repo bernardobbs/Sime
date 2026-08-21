@@ -423,6 +423,33 @@ cada um com propósito diferente:
   marca confirmado (nada pra enfileirar) — o botão já avisa isso trocando
   o texto ("✅ Confirmar" em vez de "✅ Confirmar e enviar mensagem").
 
+  **Apoio logístico entrou na mesma fila de contato (21/08/2026) — achado
+  real: era contado no card do Dashboard, mas não tinha como contactar/
+  confirmar um por um.** `cmCarregar()` foi de `.eq('funcao','mesario')`
+  pra `.in('funcao', ['mesario','coord_acessibilidade','auxiliar_eleicao'])`
+  — apoio logístico ganha o mesmo modal, os mesmos botões (Confirmar,
+  Marcar para substituir, meio de contato, tentativas), sem código
+  duplicado. A única diferença é o rótulo de função: mesário usa
+  `funcao_mesa` (Presidente/1º Mesário/...), apoio logístico não tem cargo
+  de mesa, então `cmRotuloFuncao()` cai pro nome da própria função
+  ("Coordenador(a) de Acessibilidade" / "Auxiliar de Serviços Eleitorais
+  (apoio logístico)") — mesmo texto que `api/hermes-mesarios.js` já usa,
+  pra não inventar um rótulo novo. O drilldown por seção do Dashboard
+  continua só de mesário — é estruturalmente sobre os 4 cargos de mesa, não
+  faz sentido encaixar apoio logístico ali; ele continua só no stat card
+  agregado do topo.
+
+  **Código de rastreio só aparece no modal quando o meio é Carta Registrada
+  (21/08/2026) — antes aparecia sempre, inclusive pra WhatsApp/Ligação/
+  Ofício, onde rastreio dos Correios não tem sentido nenhum** (achado do
+  cartório: "informação de carta duplicada"). Virou condicional a
+  `meio_contato === 'carta_registrada'`. Como o campo pode não existir no
+  DOM quando o modal renderiza, `cmSalvarModal()` guarda contra
+  `getElementById` retornando `null` — sem o guard, trocar pra WhatsApp e
+  salvar o modal quebraria (e sem o `if (rastreioEl && ...)` no monta-patch,
+  apagaria por engano um código de rastreio já salvo só por ele ter saído
+  de tela).
+
   **Modal como ponto único de operacionalização da comunicação (20/08/2026)
   — pedido explícito do cartório depois de ver a tela de referência.** Três
   adições, todas dentro do modal (não só no card de fora):

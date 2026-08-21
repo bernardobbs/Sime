@@ -26,10 +26,22 @@ Qualquer dúvida, entre em contato com o cartório eleitoral.`;
 function cmPersonalizarMensagem(msg, p, sec) {
   return msg
     .replaceAll('{nome}', p.nome_completo || '')
-    .replaceAll('{funcao}', p.funcao_mesa || 'mesário(a)')
+    .replaceAll('{funcao}', cmRotuloFuncao(p))
     .replaceAll('{secao}', sec ? String(sec.numero) : '')
     .replaceAll('{local}', sec?.local_nome || 'local a confirmar')
     .replaceAll('{municipio}', sec?.municipio || '');
+}
+
+// Mesário tem cargo de mesa (funcao_mesa: Presidente/1º Mesário/...); apoio
+// logístico (coord_acessibilidade/auxiliar_eleicao) não — o "cargo" dele é a
+// própria função. Mesmo rótulo usado por api/hermes-mesarios.js (rotuloFuncao).
+const CM_FUNCAO_LABEL = {
+  coord_acessibilidade: 'Coordenador(a) de Acessibilidade',
+  auxiliar_eleicao: 'Auxiliar de Serviços Eleitorais (apoio logístico)',
+};
+function cmRotuloFuncao(p) {
+  if (p.funcao === 'mesario') return p.funcao_mesa || 'Mesário(a)';
+  return CM_FUNCAO_LABEL[p.funcao] || p.funcao || '—';
 }
 
 const CM_BUCKETS = [
@@ -88,8 +100,12 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
-      .eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true).order('nome_completo'),
+      .select('id, nome_completo, telefone_whatsapp, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir')
+      // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
+      // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
+      // contato própria (21/08/2026, achado real: precisavam contactar apoio
+      // do mesmo jeito e não tinham como, só pelas ferramentas genéricas de Atores).
+      .eq('zona_id', zonaId).in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao']).eq('ativo', true).order('nome_completo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
     // Só pra contar quantas campanhas JÁ SAÍRAM por pessoa — distingue, dentro
     // do bucket "pendente", quem nunca foi contactado de quem foi contactado
@@ -376,7 +392,7 @@ function cmRenderModal() {
     </div>
     <div class="m-body">
       <div class="m-kv">
-        <div class="m-kv-row"><b>Função</b><span>${cmEsc(p.funcao_mesa || '—')}</span></div>
+        <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
         <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}</span></div>
@@ -397,11 +413,6 @@ function cmRenderModal() {
           <label>Telefone (WhatsApp)</label>
           <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
         </div>
-        <div class="form-group">
-          <label>Código de rastreio (Correios)</label>
-          <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
-          ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
-        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Meio de contato atual
             <select onchange="cmSalvarMeio('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
@@ -416,6 +427,12 @@ function cmRenderModal() {
             </select>
           </label>` : ''}
         </div>
+        ${p.meio_contato === 'carta_registrada' ? `
+        <div class="form-group" style="margin-top:10px">
+          <label>Código de rastreio (Correios)</label>
+          <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
+          ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
+        </div>` : ''}
       </div>
 
       <div class="m-section">
@@ -460,10 +477,13 @@ async function cmSalvarModal() {
   if (!p) return;
   const sb = window.supabaseAtores;
   const tel = document.getElementById('mm-tel').value.replace(/\D/g, '');
-  const rastreio = document.getElementById('mm-rastreio').value.trim().toUpperCase();
+  // Campo só existe no DOM quando meio_contato==='carta_registrada' — fora
+  // disso não mexe em codigo_rastreio (preserva o que já tinha).
+  const rastreioEl = document.getElementById('mm-rastreio');
+  const rastreio = rastreioEl ? rastreioEl.value.trim().toUpperCase() : (p.codigo_rastreio || '');
   const patch = {};
   if (tel !== (p.telefone_whatsapp || '')) patch.telefone_whatsapp = tel || null;
-  if (rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
+  if (rastreioEl && rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
   if (!Object.keys(patch).length) { cmFecharModal(); return; }
 
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
@@ -528,8 +548,8 @@ function renderContatarMesarios() {
   c.innerHTML = `
     <div class="import-card">
       <div class="ic-title">📞 Contatar mesários</div>
-      <div class="ic-sub">Quem falta contactar, quem recusou, e quem precisa de outro meio de contato (Carta Registrada/Oficial
-        de Justiça) quando o WhatsApp não funciona.</div>
+      <div class="ic-sub">Mesários e apoio logístico — quem falta contactar, quem recusou, e quem precisa de outro meio de
+        contato (Carta Registrada/Oficial de Justiça) quando o WhatsApp não funciona.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <select id="cm-filtro" onchange="cmFiltroStatus=this.value;render()">
           ${CM_BUCKETS.map(b => `<option value="${b.valor}" ${cmFiltroStatus === b.valor ? 'selected' : ''}>${b.label}${b.valor ? ` (${contagem[b.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
@@ -537,7 +557,7 @@ function renderContatarMesarios() {
         <input type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmBusca=this.value;render()" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${cmDados.pessoas.length} mesário(s)</div>
+        <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${cmDados.pessoas.length} pessoa(s)</div>
         <button class="btn btn-dark" style="font-size:.74rem;padding:6px 12px" onclick="cmCriarCampanha()">📢 Criar campanha com estes (${lista.filter(p => p.telefone_whatsapp).length})</button>
       </div>
     </div>
@@ -551,7 +571,7 @@ function renderContatarMesarios() {
             <div>
               <div style="font-weight:800;cursor:pointer" onclick="cmAbrirModal('${p.id}')" title="Clique para editar e ver histórico">${cmEsc(p.nome_completo)} <span style="font-weight:400;font-size:.78rem;color:var(--text2)">✎</span></div>
               <div class="ic-sub" style="margin-bottom:0">
-                ${cmEsc(p.funcao_mesa || '')}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
+                ${cmEsc(cmRotuloFuncao(p))}${sec ? ` — Seção ${sec.numero} (${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')})` : ''}
               </div>
               ${p.inscricao_eleitoral ? `<div class="ic-sub" style="margin-bottom:0">Título ${cmEsc(p.inscricao_eleitoral)}</div>` : ''}
               ${p.telefone_whatsapp ? `<div class="ic-sub" style="margin-bottom:0">${linkWhatsApp(p.telefone_whatsapp) ? `<a href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">${fmtTelefone(p.telefone_whatsapp)}</a>` : fmtTelefone(p.telefone_whatsapp)}</div>` : '<div class="ic-sub" style="margin-bottom:0">Sem telefone cadastrado</div>'}
