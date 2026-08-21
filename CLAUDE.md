@@ -405,6 +405,24 @@ cada um com propósito diferente:
   aparece na seção própria — o `sime_logs` ainda é gravado, só não é
   renderizado ali.
 
+  **Confirmar manualmente com envio automático (21/08/2026) — o TRE tem
+  campanha própria, mas nem sempre alcança todo mundo; é de lá (ou de
+  ligação/presencial) que o cartório sabe quem já confirmou sem ter passado
+  pelo WhatsApp do SIME.** Botão **"✅ Confirmar"** (card e modal, some
+  depois de confirmado) — pensado pro fluxo "ir de pessoa em pessoa": marca
+  `confirmacao='confirmado'` igual o Hermes marcaria, e se a pessoa tem
+  telefone, enfileira em `sime_campanhas_confirmacao` a mensagem de
+  convocação já personalizada ({nome}/{funcao}/{secao}/{local}/{municipio},
+  mesmo texto-base do modelo "Convocação" de `SIME_atores.html`, duplicado
+  aqui por serem páginas HTML separadas sem bundler) — o Hermes entrega no
+  próximo ciclo. **Sem o vaivém de verificação SIM/NÃO do modelo de campanha
+  em massa** (que existe pra confirmar que o número ainda é da pessoa antes
+  de mandar o conteúdo) — aqui a identidade já foi confirmada por outro
+  canal, então é etapa única: `mensagem_enviada` já sai com o conteúdo
+  final, `mensagem_convocacao` fica `null`. Sem telefone cadastrado, só
+  marca confirmado (nada pra enfileirar) — o botão já avisa isso trocando
+  o texto ("✅ Confirmar" em vez de "✅ Confirmar e enviar mensagem").
+
   **Modal como ponto único de operacionalização da comunicação (20/08/2026)
   — pedido explícito do cartório depois de ver a tela de referência.** Três
   adições, todas dentro do modal (não só no card de fora):

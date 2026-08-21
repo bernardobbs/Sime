@@ -460,6 +460,53 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.85 Confirmar manualmente: marca confirmado e enfileira a mensagem de convocação pro Hermes ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // BRUNO (a2) tem telefone — confirmar deve gravar confirmacao E enfileirar mensagem.
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  check('botão mostra "e enviar mensagem" pra quem tem telefone', /Confirmar e enviar mensagem/.test(await cardBruno.textContent()));
+  await cardBruno.locator('button:has-text("Confirmar e enviar mensagem")').click();
+  await p.waitForTimeout(250);
+
+  const updConf = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.confirmacao === 'confirmado'));
+  check('confirmar grava confirmacao=confirmado', !!updConf, JSON.stringify(updConf));
+  const insMsg = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_campanhas_confirmacao' && e.payload.ator_id === 'a2'));
+  check('enfileira em sime_campanhas_confirmacao com status pendente', insMsg?.payload?.status === 'pendente', JSON.stringify(insMsg));
+  const msgTxt = insMsg?.payload?.mensagem_enviada || '';
+  check('mensagem personalizada traz nome, função e seção da pessoa', /BRUNO MESARIO/.test(msgTxt) && /1º Mesário/.test(msgTxt) && /Seção 30/.test(msgTxt) && /Grupo Escolar A/.test(msgTxt), msgTxt);
+  check('botão "Confirmar" some depois de confirmado', await p.locator('.import-card:has-text("BRUNO MESARIO") button:has-text("Confirmar")').count() === 0);
+
+  // DIEGO (a4) não tem telefone — confirma mas NÃO enfileira mensagem (nada pra mandar).
+  const cardDiego = p.locator('.import-card:has-text("DIEGO CARTA")').first();
+  check('sem telefone, botão não promete enviar mensagem', /^✅ Confirmar$/.test((await cardDiego.locator('button:has-text("Confirmar")').textContent()).trim()));
+  await cardDiego.locator('button:has-text("Confirmar")').click();
+  await p.waitForTimeout(250);
+  const updDiego = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a4' && e.payload.confirmacao === 'confirmado'));
+  check('Diego (sem telefone) também é marcado confirmado', !!updDiego, JSON.stringify(updDiego));
+  const insDiego = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_campanhas_confirmacao' && e.payload.ator_id === 'a4'));
+  check('mas nada é enfileirado pro Diego (sem telefone pra mandar)', !insDiego);
+
+  // O mesmo botão existe dentro do modal, pra quem ainda não confirmou.
+  const cardCarla = p.locator('.import-card:has-text("CARLA RECUSOU")').first();
+  await cardCarla.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('modal mostra o botão de confirmar pra quem ainda não confirmou', await p.locator('#modal-body button:has-text("Confirmar convocação")').count() === 1);
+  await p.click('#modal-body button:has-text("Confirmar convocação")');
+  await p.waitForTimeout(250);
+  const updCarla = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'confirmado'));
+  check('confirmar pelo modal também grava confirmacao=confirmado', !!updCarla, JSON.stringify(updCarla));
+  check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar convocação")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 3. Sincronizar (reaproveitado de SIME_atores.html, agora na página própria) ──
 {
   const ctx = await b.newContext();

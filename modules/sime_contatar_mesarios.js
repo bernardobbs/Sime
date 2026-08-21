@@ -10,6 +10,28 @@
 // confirmacao, sql/SIME_atores_meio_contato.sql). O cartório lê o recado
 // (observação, anexado por api/hermes-mesarios.js ação 'atualizar') e decide.
 
+// Mensagem de convocação — mesmo texto-base do modelo "Convocação com
+// confirmação" de SIME_atores.html (TEMPLATE_CONVOCACAO_TEXTO), adaptado
+// pra envio de etapa única: aqui não existe "próxima mensagem" porque não
+// há verificação SIM/NÃO antes — a confirmação já veio de outra fonte (TRE,
+// ligação, presencial), então o Hermes só entrega o conteúdo, sem esperar
+// resposta. Duplicado em vez de importado porque as duas páginas são HTML
+// estático sem bundler — mesmo padrão do resto do projeto.
+const CM_TEMPLATE_CONVOCACAO = `Olá, {nome}.
+
+A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleições 2026, como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Qualquer dúvida, entre em contato com o cartório eleitoral.`;
+
+function cmPersonalizarMensagem(msg, p, sec) {
+  return msg
+    .replaceAll('{nome}', p.nome_completo || '')
+    .replaceAll('{funcao}', p.funcao_mesa || 'mesário(a)')
+    .replaceAll('{secao}', sec ? String(sec.numero) : '')
+    .replaceAll('{local}', sec?.local_nome || 'local a confirmar')
+    .replaceAll('{municipio}', sec?.municipio || '');
+}
+
 const CM_BUCKETS = [
   { valor: '',                  label: 'Todos' },
   { valor: 'pendente',          label: '❌ Falta contactar / sem resposta' },
@@ -44,6 +66,7 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
+  mesario_confirmado_manual: (p) => p.com_mensagem ? 'Confirmado manualmente pelo cartório — mensagem de convocação enfileirada pro Hermes' : 'Confirmado manualmente pelo cartório (sem telefone — mensagem não enfileirada)',
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -92,6 +115,47 @@ async function cmMarcarContatoIncorreto(id) {
   await log('mesario_contato_incorreto', '', { ator_id: id });
   showToast('🔍 Marcado como contato incorreto — busque um novo contato');
   render();
+}
+
+// Confirmação vinda de FORA do WhatsApp (o cartório viu no sistema do TRE,
+// ligou e a pessoa confirmou, confirmou pessoalmente, etc.) — pensado pro
+// fluxo "ir de pessoa em pessoa" quando a campanha automática do TRE/Hermes
+// não alcançou todo mundo. Marca confirmacao='confirmado' igual o Hermes
+// marcaria, e enfileira a mensagem de convocação em
+// sime_campanhas_confirmacao pro Hermes entregar — sem passar pelo
+// vaivém de verificação SIM/NÃO do modelo de campanha em massa, porque a
+// identidade já foi confirmada por outro canal.
+async function cmConfirmarEEnviar(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const { data: ts } = await sb.rpc('sime_now');
+  const { error: e1 } = await sb.from('sime_atores').update({ confirmacao: 'confirmado', data_confirmacao: ts }).eq('id', id);
+  if (e1) { showToast('⚠ ' + e1.message); return; }
+  p.confirmacao = 'confirmado';
+  p.data_confirmacao = ts;
+
+  if (p.telefone_whatsapp) {
+    const zonaId = await zonaDoUsuario();
+    const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
+    const mensagem = cmPersonalizarMensagem(CM_TEMPLATE_CONVOCACAO, p, sec);
+    const { error: e2 } = await sb.from('sime_campanhas_confirmacao').insert({
+      ator_id: id, telefone_whatsapp: p.telefone_whatsapp, zona_id: zonaId,
+      mensagem_enviada: mensagem, status: 'pendente',
+    });
+    if (e2) {
+      showToast('⚠ Confirmado, mas falhou ao enfileirar a mensagem: ' + e2.message);
+      render(); if (cmModalId === id) cmRenderModal();
+      return;
+    }
+    await log('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: true });
+    showToast('✅ Confirmado — mensagem enfileirada, o Hermes envia');
+  } else {
+    await log('mesario_confirmado_manual', '', { ator_id: id, com_mensagem: false });
+    showToast('✅ Confirmado — sem telefone cadastrado, mensagem não foi enfileirada');
+  }
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 // Flag manual e independente de `confirmacao` — não é o Hermes que decide
@@ -318,6 +382,11 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}</span></div>
       </div>
 
+      ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
+      <button class="btn btn-dark" style="width:100%;padding:10px;font-size:.8rem" onclick="cmConfirmarEEnviar('${p.id}')">✅ Confirmar convocação${p.telefone_whatsapp ? ' — Hermes envia os detalhes' : ' (sem telefone — só marca confirmado)'}</button>
+      <div class="ic-sub" style="margin-bottom:0">Use quando já souber que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — não depende de resposta automática por WhatsApp.</div>
+      ` : ''}
+
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -507,6 +576,7 @@ function renderContatarMesarios() {
                 ${Object.entries(cmStatusLabelSet(p.meio_contato)).map(([v, l]) => `<option value="${v}" ${p.status_contato_alternativo === v ? 'selected' : ''}>${l}</option>`).join('')}
               </select>
             </label>` : ''}
+            ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarEEnviar('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — marca confirmado e o Hermes manda a mensagem de convocação">✅ Confirmar${p.telefone_whatsapp ? ' e enviar mensagem' : ''}</button>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
           </div>
