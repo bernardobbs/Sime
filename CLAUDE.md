@@ -882,6 +882,42 @@ o join nunca casava pra esse município e ~120 mesários de lá entravam sem
 > anterior, continua intacto e segue valendo pro cálculo de quem ficou
 > inativo.
 
+> **Bug real corrigido em 22/08/2026 — Coordenador de Acessibilidade e
+> Auxiliar de Eleição entravam SEMPRE sem `secao_id` (100% dos 99 registros
+> AL da 7ª Zona), mesmo os já confirmados.** Achado investigando por que o
+> Dashboard mostrava "Vazio: 63" e 0% pros dois grupos de apoio logístico —
+> o join original só tenta casar por `secao_local_trabalho` (número de
+> seção), e o arquivo do TRE **nunca** preenche esse campo pra
+> `tipo_registro='AL'`, só pra `'MRV'` (confirmado: 0 de 99 registros AL da
+> 7ª Zona tinham esse campo preenchido). Sem `secao_id`, a pessoa existe e
+> pode até estar confirmada, mas o Dashboard (que agrupa por
+> `local_nome`+`município` via esse campo) não tem como saber onde ela
+> atua — aparecia como se ninguém tivesse sido designado em lugar nenhum.
+>
+> Corrigido com uma ponte que **não adivinha nada**: tanto MRV quanto AL
+> trazem `numero_local_votacao_local_trabalho` (código do LOCAL de
+> votação, diferente do número da seção) já preenchido — quando existe. Um
+> mesário (MRV) do mesmo local+município sempre tem `secao_local_trabalho`
+> preenchido, então a função agora usa o número de seção de **qualquer**
+> mesário do mesmo local como ponte pra resolver o `secao_id` do AL.
+> Verificado antes de aplicar que isso é seguro: todas as seções de um
+> mesmo local compartilham o mesmo `sime_secoes.local_nome` (ex.: local
+> 1325 em Campo Maior → 7 seções diferentes, todas "G.E. Treze de Março"),
+> então não importa qual seção específica a ponte resolve — o
+> `local_nome`/município (que é tudo que AL precisa) sai certo de qualquer
+> uma delas. `sql/SIME_sync_al_secao_bridge.sql`.
+>
+> Resultado depois de rodar de novo o sync na 7ª Zona: **Coordenador de
+> Acessibilidade foi de 0/69 pra 64/69 com `secao_id`** — os 5 que
+> continuam sem é porque nem eles têm o número do local no arquivo de
+> origem (nada pra resolver, sem adivinhar). **Auxiliar de Eleição
+> continua 0/30** — não é bug do SIME: os 30 registros dessa função
+> específica simplesmente não trazem `numero_local_votacao_local_trabalho`
+> nenhum no arquivo do TRE (checado direto na fonte), diferente de
+> Coordenador de Acessibilidade que traz na maioria. Sem esse dado na
+> origem, não há ponte possível — precisaria de uma fonte de dado
+> diferente do TRE pra resolver isso (fora do escopo desta correção).
+
 ```sql
 -- via SQL Editor (service_role), pra dump ELO/CSV colado manualmente:
 delete from sime_mesarios_raw where zona_eleitoral_trabalho='7' and uf_trabalho='PI';
