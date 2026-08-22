@@ -125,6 +125,28 @@ resetDB();
 resetDB();
 check('confirmar sem ids → 400', (await call('POST', Z7, { acao: 'confirmar', ids: [] })).code === 400);
 
+// ── RESUMO: em_andamento (22/08/2026, achado real: mesmo resumo repetindo
+// no Telegram toda hora dias depois da campanha já ter terminado) ──
+resetDB();
+{
+  // zona-7 tem c1/c2/c3 pendente (c3 sem mensagem, mas ainda conta pro
+  // resumo — a exclusão de 'pendentes' é sobre O QUE SAI na fila, não
+  // sobre o status em si) — algo em andamento.
+  const r = await call('POST', Z7, { acao: 'resumo' });
+  check('resumo → 200', r.code === 200, String(r.code));
+  check('em_andamento=true quando há item pendente/aguardando_resposta/confirmado', r.body.em_andamento === true, JSON.stringify(r.body));
+}
+{
+  // Só itens terminais (enviado/erro/etc) — nada rodando, resumo não devia
+  // mais repetir pra sempre (dispatch.js do Hermes usa isso pra não mandar).
+  globalThis.__SUPA.campanhas = globalThis.__SUPA.campanhas
+    .filter(c => c.zona_id === 'zona-7')
+    .map(c => ({ ...c, status: 'enviado' }));
+  const r = await call('POST', Z7, { acao: 'resumo' });
+  check('em_andamento=false quando só sobra item terminal', r.body.em_andamento === false, JSON.stringify(r.body));
+  check('total continua contando (não é 0)', r.body.total > 0, String(r.body.total));
+}
+
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));
 console.log(`\n${results.length - falhou.length} passed, ${falhou.length} failed`);

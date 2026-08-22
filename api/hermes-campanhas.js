@@ -59,6 +59,9 @@
 //   registrar_fora_do_script → resposta que não casou com nenhum ramo da etapa
 //   verificar_pendente → só lê: há campanha (legado OU script) aguardando resposta desse telefone?
 //   resumo            → contagem por status da zona (pro relatório horário no Telegram)
+//                        + em_andamento (22/08/2026: false quando só sobra
+//                        item terminal — evita repetir o mesmo resumo pra
+//                        sempre depois que tudo já foi enviado/encerrado)
 //   relatorio         → mesma contagem, mas detalhada por pessoa (telefone/nome),
 //                       inclui a fila de atenção 'fora_do_script'
 //   listar_fora_do_script_periodo → itens 'fora_do_script' num período
@@ -612,7 +615,24 @@ export default async function handler(req, res) {
 
     const contagem = {};
     for (const row of data || []) contagem[row.status] = (contagem[row.status] || 0) + 1;
-    return res.status(200).json({ ok: true, zona: zona.numeroZona, total: (data || []).length, contagem });
+
+    // em_andamento (22/08/2026, achado real: dono do projeto viu o mesmo
+    // "Resumo da campanha" repetir toda hora no Telegram DIAS depois da
+    // campanha já ter terminado — total/contagem nunca mudam quando não há
+    // nada em andamento, mas o dispatch.js do Hermes mandava mesmo assim).
+    // pendente/aguardando_resposta/confirmado são os únicos status
+    // NÃO-terminais (mesma lista de 'pendentes' acima) — se não sobrar
+    // nenhum, não há nada "rodando" pra fotografar de hora em hora,
+    // campanha formal (sime_campanhas) ou fluxo legado sem campanha_id.
+    const emAndamento = (contagem.pendente || 0) + (contagem.aguardando_resposta || 0) + (contagem.confirmado || 0) > 0;
+
+    return res.status(200).json({
+      ok: true,
+      zona: zona.numeroZona,
+      total: (data || []).length,
+      contagem,
+      em_andamento: emAndamento,
+    });
   }
 
   // ── RELATORIO ── mesma fotografia do resumo, mas detalhada por pessoa —
