@@ -87,6 +87,12 @@ class QB {
     if (this.t === 'sime_notificacoes') return resolve({ data: this._filtra(S.notificacoes), error: null });
     if (this.t === 'sime_secoes')       return resolve({ data: this._filtra(S.secoes), error: null });
     if (this.t === 'sime_campanhas_confirmacao') return resolve({ data: this._filtra(S.campanhas), error: null });
+    // Entidade campanha (nome/status) — não confundir com S.campanhas acima,
+    // que é a FILA sime_campanhas_confirmacao. Usado por
+    // api/hermes-campanhas.js (acao=pendentes) desde 21/08/2026 pra checar
+    // se a campanha do item está 'ativa' antes de entregar (ver "controle
+    // total das campanhas").
+    if (this.t === 'sime_campanhas') return resolve({ data: this._filtra(S.campanhasEntidade || []), error: null });
     if (this.t === 'sime_heartbeat') return resolve({ data: this._filtra(S.heartbeats), error: null });
     if (this.t === 'sime_usuarios') return resolve({ data: this._filtra(S.usuarios), error: null });
     return resolve({ data: null, error: null });

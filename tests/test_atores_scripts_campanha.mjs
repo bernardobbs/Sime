@@ -22,13 +22,18 @@ const SERVER_TS = '2030-01-01T00:00:00.000Z';
 
 const STUB_SUPABASE_JS = `
 class QB {
-  constructor(t){ this.t=t; this.f={}; this._op=null; }
+  constructor(t){ this.t=t; this.f={}; this.fin={}; this._op=null; }
   select(){ return this; }
   eq(c,v){ this.f[c]=v; return this; }
+  in(c,arr){ this.fin[c]=arr; return this; }
   order(){ return this; }
   single(){ return this.maybeSingle(); }
+  _bate(x){
+    return Object.entries(this.f).every(([k,v])=>x[k]===v)
+      && Object.entries(this.fin).every(([k,arr])=>arr.includes(x[k]));
+  }
   maybeSingle(){
-    const r=(window.__mock[this.t]||[]).filter(x=>Object.entries(this.f).every(([k,v])=>x[k]===v));
+    const r=(window.__mock[this.t]||[]).filter(x=>this._bate(x));
     return Promise.resolve({ data:r[0]??null, error:null });
   }
   delete(){ this._op='delete'; return this; }
@@ -43,16 +48,19 @@ class QB {
     if(this._op==='update'){
       window.__mock.escritas.push({ op:'update', tabela:this.t, payload:this._payload, filtro:{...this.f} });
       const rows=(window.__mock[this.t]||[]);
-      const idx=rows.findIndex(x=>Object.entries(this.f).every(([k,v])=>x[k]===v));
+      const idx=rows.findIndex(x=>this._bate(x));
       if(idx>-1) rows[idx]={...rows[idx], ...this._payload};
       return res({ error:null });
     }
     if(this._op==='delete'){
       window.__mock.escritas.push({ op:'delete', tabela:this.t, filtro:{...this.f} });
-      window.__mock[this.t]=(window.__mock[this.t]||[]).filter(x=>!Object.entries(this.f).every(([k,v])=>x[k]===v));
+      const rows=(window.__mock[this.t]||[]);
+      const bloqueada = this.t==='sime_campanhas' && (window.__mock.sime_campanhas_confirmacao||[]).some(x=>this._bate({id:x.campanha_id}) && this.f.id===x.campanha_id);
+      if(bloqueada) return res({ error:{ message:'update or delete on table "sime_campanhas" violates foreign key constraint', code:'23503' } });
+      window.__mock[this.t]=rows.filter(x=>!this._bate(x));
       return res({ error:null });
     }
-    const r=(window.__mock[this.t]||[]).filter(x=>Object.entries(this.f).every(([k,v])=>x[k]===v));
+    const r=(window.__mock[this.t]||[]).filter(x=>this._bate(x));
     return res({ data:r, error:null });
   }
 }
@@ -180,6 +188,97 @@ async function abrir(ctx, m) {
   check('chamou a RPC sime_now', chamouRpc);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 5. Lista mostra a contagem de itens por status e o botão certo por status ──
+{
+  const ctx = await b.newContext();
+  const m = mock({ comCampanhaExistente: true }); // camp-1, status 'rascunho'
+  m.sime_campanhas_confirmacao = [
+    { id:'it-1', campanha_id:'camp-1', status:'pendente' },
+    { id:'it-2', campanha_id:'camp-1', status:'pendente' },
+    { id:'it-3', campanha_id:'camp-1', status:'erro' },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  const texto = await p.textContent('#content');
+  check('mostra a contagem agregada (2 pendente, 1 erro)', /2 pendente/.test(texto) && /1 erro/.test(texto), texto.slice(0, 300));
+  check('rascunho oferece "Iniciar campanha"', await p.locator('button:has-text("Iniciar campanha")').count() === 1);
+  check('rascunho também oferece Excluir (sem item enviado ainda não bloqueia)', await p.locator('button:has-text("✕ Excluir")').count() === 1);
+  check('rascunho NÃO oferece Pausar/Encerrar', await p.locator('button:has-text("Pausar")').count() === 0 && await p.locator('button:has-text("Encerrar")').count() === 0);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 6. Iniciar campanha muda status rascunho → ativa (e é isso que faz o Hermes voltar a enviar) ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock({ comCampanhaExistente: true }));
+  await p.click('button:has-text("Iniciar campanha")');
+  await p.waitForTimeout(200);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_campanhas'));
+  check('grava status=ativa', upd?.payload?.status === 'ativa', JSON.stringify(upd));
+  check('clicar o botão de status NÃO abriu o editor de etapas (stopPropagation funcionou)', await p.locator('button:has-text("💾 Salvar script")').count() === 0);
+  check('lista recarregada já mostra "● ativa" e os botões de pausar/encerrar', (await p.textContent('#content')).includes('● ativa'));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 7. Encerrar pede confirmação (é irreversível) — cancelar não muda nada ──
+{
+  const ctx = await b.newContext();
+  const m = mock({ comCampanhaExistente: true });
+  m.sime_campanhas[0].status = 'ativa';
+  const { p, erros } = await abrir(ctx, m);
+  await p.click('button:has-text("⏹ Encerrar")');
+  await p.waitForTimeout(150);
+  check('abriu modal de confirmação (não muda na hora)', await p.locator('#confirmacao-ok-btn').count() === 1);
+  await p.click('#modal-body .btn-out'); // Cancelar
+  await p.waitForTimeout(200);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_campanhas'));
+  check('cancelar não grava nada', !upd, JSON.stringify(upd));
+
+  await p.click('button:has-text("⏹ Encerrar")');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn');
+  await p.waitForTimeout(200);
+  const upd2 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_campanhas'));
+  check('confirmar grava status=encerrada', upd2?.payload?.status === 'encerrada', JSON.stringify(upd2));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 8. Excluir bloqueado quando já tem item vinculado (proteção do banco) ──
+{
+  const ctx = await b.newContext();
+  const m = mock({ comCampanhaExistente: true });
+  m.sime_campanhas_confirmacao = [{ id:'it-1', campanha_id:'camp-1', status:'enviado' }];
+  const { p, erros } = await abrir(ctx, m);
+  await p.click('button:has-text("✕ Excluir")');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn');
+  await p.waitForTimeout(250);
+  const toast = await p.textContent('#toast');
+  check('avisa que não dá pra excluir (item vinculado) em vez de falhar calado', /não dá pra excluir|Encerre em vez de excluir/i.test(toast||''), toast);
+  const aindaExiste = await p.evaluate(() => window.__mock.sime_campanhas.some(c => c.id === 'camp-1'));
+  check('a campanha continua existindo', aindaExiste);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 9. Excluir sem item vinculado funciona normalmente ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock({ comCampanhaExistente: true })); // sem sime_campanhas_confirmacao nenhum
+  await p.click('button:has-text("✕ Excluir")');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn');
+  await p.waitForTimeout(250);
+  const del = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'delete' && e.tabela === 'sime_campanhas'));
+  check('chamou delete em sime_campanhas', !!del, JSON.stringify(del));
+  const aindaExiste = await p.evaluate(() => window.__mock.sime_campanhas.some(c => c.id === 'camp-1'));
+  check('a campanha some da lista/mock', !aindaExiste);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
 

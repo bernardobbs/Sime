@@ -37,6 +37,10 @@ function resetDB() {
         mensagem_enviada: 'Mensagem avulsa de sempre.', status: 'pendente', tentativas: 0,
         created_at: '2026-10-04T09:05:00.000Z', campanha_id: null, etapa_atual: null },
     ],
+    // Entidade da campanha (nome/status) — 'ativa' pra 'pendentes' entregar o
+    // item de script (21/08/2026: pendentes só entrega item com campanha_id
+    // se a campanha estiver 'ativa', ver "controle total das campanhas").
+    campanhasEntidade: [{ id: 'camp-1', nome: 'Campanha de script (teste)', zona_id: 'zona-7', status: 'ativa' }],
     logs: [], now: AGORA, ops: [],
   };
 }
@@ -102,6 +106,38 @@ resetDB();
   const l1 = globalThis.__SUPA.campanhas.find(c => c.id === 'l1');
   check('lote misto: script vira aguardando_resposta', s1.status === 'aguardando_resposta', s1.status);
   check('lote misto: legado vira enviado', l1.status === 'enviado', l1.status);
+}
+
+// ── "Controle total das campanhas" (21/08/2026): todo disparo agora exige
+// campanha_id, mesmo os modelos simples (golpe/livre/convocação) — não só
+// script. Isso NÃO pode fazer um item simples ser tratado como script (nem
+// no proxima_acao de 'pendentes', nem no default de status de 'confirmar')
+// — só etapa_atual preenchido é sinal de script de verdade. ──
+resetDB();
+globalThis.__SUPA.campanhas.push({
+  id: 'c1', ator_id: 'a3', zona_id: 'zona-7', telefone_whatsapp: '558611110003',
+  mensagem_enviada: 'Alerta anti-golpe de sempre.', status: 'pendente', tentativas: 0,
+  created_at: '2026-10-04T09:10:00.000Z', campanha_id: 'camp-2', etapa_atual: null,
+});
+globalThis.__SUPA.campanhasEntidade.push({ id: 'camp-2', nome: 'Campanha simples (com campanha_id, sem script)', zona_id: 'zona-7', status: 'ativa' });
+{
+  const r1 = await call('POST', Z7, { acao: 'pendentes' });
+  const c1 = r1.body.campanhas.find(c => c.id === 'c1');
+  check('item simples COM campanha_id ainda sai na fila', !!c1, JSON.stringify(r1.body));
+  check('item simples com campanha_id NÃO vira enviar_etapa_script (só etapa_atual decide)', c1?.proxima_acao === 'enviar', c1?.proxima_acao);
+
+  await call('POST', Z7, { acao: 'confirmar', ids: ['c1'] });
+  const depois = globalThis.__SUPA.campanhas.find(c => c.id === 'c1');
+  check('confirmar sem novo_status: item simples com campanha_id ainda vira enviado (não aguardando_resposta)', depois.status === 'enviado', depois.status);
+}
+
+// ── Campanha pausada/rascunho/encerrada: pendentes NÃO entrega os itens dela (script ou não) ──
+resetDB();
+{
+  globalThis.__SUPA.campanhasEntidade.find(c => c.id === 'camp-1').status = 'pausada';
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  check('item de campanha pausada some da fila', !r.body.campanhas.some(c => c.id === 's1'), JSON.stringify(r.body.campanhas.map(c => c.id)));
+  check('item legado (sem campanha_id) continua saindo normalmente', r.body.campanhas.some(c => c.id === 'l1'));
 }
 
 const falhou = results.filter(r => !r.ok);

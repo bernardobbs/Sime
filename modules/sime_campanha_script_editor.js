@@ -1,23 +1,28 @@
 // ══════════════════════════════════════
-// SCRIPTS DE CAMPANHA — editor de etapas (sime_campanhas + sime_campanha_etapas)
+// CAMPANHAS — lista/status geral + editor de script (sime_campanhas + sime_campanha_etapas)
 // ══════════════════════════════════════
 // Nova aba, mesmo padrão de DISPARO EM MASSA (variáveis globais de estado +
 // render() por template string + pedirConfirmacao/showToast/log já
 // existentes no arquivo). Depende de sql/SIME_campanhas_scripts_schema.sql
 // já aplicado.
 //
-// Fluxo: cria/edita uma "campanha" (nome + zona) com N "etapas". Cada etapa
-// tem uma mensagem e uma lista de "ramos" (respostas_esperadas) — cada ramo
-// diz quais palavras-chave levam a qual próxima etapa (ou a um status final,
-// se for terminal). Isso é o que modules/campanhas/script.js do Hermes lê
-// pra casar a resposta de quem recebeu a mensagem.
+// Fluxo do editor: cria/edita uma "campanha" (nome + zona) com N "etapas".
+// Cada etapa tem uma mensagem e uma lista de "ramos" (respostas_esperadas)
+// — cada ramo diz quais palavras-chave levam a qual próxima etapa (ou a um
+// status final, se for terminal). Isso é o que modules/campanhas/script.js
+// do Hermes lê pra casar a resposta de quem recebeu a mensagem. Nem toda
+// campanha tem etapas — modelos "simples" (convocação/golpe/livre/etc, ver
+// SIME_atores.html) só usam a campanha pelo nome+status, sem script.
 //
-// Ligação com o disparo em massa: já feita, não é pendência. O "Modelo"
-// dp-tipo em confirmarDisparo() (SIME_atores.html) oferece "🧩 Usar script
-// salvo" e, ao enfileirar, grava campanha_id + etapa_atual=1 em vez de
-// mensagem_convocacao fixa. api/hermes-campanhas.js segue daí em diante
-// (obter_etapa_pendente/avancar_etapa). Este módulo só cria/edita/salva o
-// script em si.
+// Ligação com o disparo em massa: já feita, não é pendência. Desde
+// 21/08/2026 ("quero controle total das campanhas", pedido direto do dono
+// do projeto) TODO disparo (não só "🧩 Usar script salvo") exige escolher
+// uma campanha, e api/hermes-campanhas.js (acao=pendentes) só entrega itens
+// cuja campanha esteja com status='ativa' — pausar/encerrar aqui PARA o
+// envio de verdade, não é só um rótulo cosmético. Este módulo cobre os dois:
+// a LISTA (com contagem de itens por status + os botões de
+// iniciar/pausar/retomar/encerrar/excluir) e o EDITOR de etapas (só entra
+// quem for usar o modelo "script").
 
 const STATUS_FINAL_OPCOES = [
   { v: 'confirmado', label: 'Confirmado' },
@@ -45,6 +50,15 @@ function scNovoRamoVazio() {
   return { intencao: '', palavras_chave: [], proxima_etapa: null, acao: '', status_final: null };
 }
 
+// Rótulos curtos pra contagem por status na lista — mesmo vocabulário de
+// sime_contatar_mesarios.js (CM_CAMP_STATUS_LABEL), versão compacta porque
+// aqui é por campanha inteira, não por pessoa.
+const SC_STATUS_ITEM_ABREV = {
+  pendente: 'pendente', aguardando_resposta: 'aguardando', confirmado: 'confirmado',
+  enviado: 'enviado', finalizado: 'finalizado', telefone_incorreto: 'tel. incorreto',
+  sem_resposta: 'sem resposta', fora_do_script: 'fora do script', erro: 'erro',
+};
+
 async function scCarregarCampanhas() {
   const sb = window.supabaseAtores;
   if (!sb) return [];
@@ -55,7 +69,85 @@ async function scCarregarCampanhas() {
     .eq('zona_id', zonaId)
     .order('created_at', { ascending: false });
   if (error) { showToast('⚠ ' + error.message); return []; }
-  return data || [];
+  const campanhas = data || [];
+
+  // Contagem de itens por status, por campanha — uma query só (não N),
+  // agregada no cliente (volume por zona é pequeno o bastante). Dá o
+  // "controle total" visibilidade real: quantos itens cada campanha tem e
+  // em que pé estão, sem precisar abrir a aba "Contatar mesários" ou o
+  // Supabase direto.
+  const ids = campanhas.map(c => c.id);
+  if (ids.length) {
+    const { data: itens, error: e2 } = await sb
+      .from('sime_campanhas_confirmacao')
+      .select('campanha_id, status')
+      .in('campanha_id', ids);
+    if (!e2) {
+      const contagemPorCampanha = {};
+      for (const it of itens || []) {
+        (contagemPorCampanha[it.campanha_id] ||= {})[it.status] = (contagemPorCampanha[it.campanha_id]?.[it.status] || 0) + 1;
+      }
+      for (const c of campanhas) c._contagem = contagemPorCampanha[c.id] || {};
+    }
+  }
+  return campanhas;
+}
+
+// Transições de status — só as listadas aqui aparecem como botão na lista
+// (ver scAcoesStatus). 'encerrada' é terminal: sem botão de volta, só excluir.
+const SC_TRANSICOES = {
+  rascunho: [{ v: 'ativa', label: '▶ Iniciar campanha' }],
+  ativa: [{ v: 'pausada', label: '⏸ Pausar' }, { v: 'encerrada', label: '⏹ Encerrar', confirma: true }],
+  pausada: [{ v: 'ativa', label: '▶ Retomar' }, { v: 'encerrada', label: '⏹ Encerrar', confirma: true }],
+  encerrada: [],
+};
+
+async function scMudarStatusCampanha(id, novoStatus, nome) {
+  const sb = window.supabaseAtores;
+  const { data: ts } = await sb.rpc('sime_now');
+  const { error } = await sb.from('sime_campanhas').update({ status: novoStatus, updated_at: ts }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  await log('campanha_status_mudou', id, { nome, status: novoStatus });
+  showToast(`✓ "${nome}" agora está ${novoStatus}`);
+  scListaCampanhas = await scCarregarCampanhas();
+  render();
+}
+
+function scConfirmarMudarStatus(id, novoStatus, nome) {
+  const acao = novoStatus === 'encerrada' ? 'Encerrar' : novoStatus;
+  pedirConfirmacao(
+    `${acao} a campanha "${nome}"?\n\n${novoStatus === 'encerrada' ? 'Itens ainda pendentes dela PARAM de ser enviados pelo Hermes — não é reversível (não dá pra voltar pra ativa/pausada depois).' : ''}`,
+    () => { closeModal(); scMudarStatusCampanha(id, novoStatus, nome); },
+    { titulo: 'Confirmar', labelOk: acao }
+  );
+}
+
+// Excluir só é oferecido pra rascunho/encerrada (nunca ativa/pausada — tem
+// que encerrar primeiro, de propósito, pra não ser possível "sumir" com uma
+// campanha que ainda está mandando mensagem sem passar por esse passo). O
+// banco também protege (FK sime_campanhas_confirmacao.campanha_id sem
+// CASCADE) — se já tiver item vinculado, o delete falha e mostramos o erro
+// em vez de deixar órfão ou perder histórico.
+async function scExcluirCampanha(id, nome) {
+  pedirConfirmacao(
+    `Excluir a campanha "${nome}"? Isso apaga o script (se tiver) junto. Não dá pra desfazer.`,
+    async () => {
+      closeModal();
+      const sb = window.supabaseAtores;
+      const { error } = await sb.from('sime_campanhas').delete().eq('id', id);
+      if (error) {
+        showToast(error.message.includes('foreign key') || error.code === '23503'
+          ? '⚠ Não dá pra excluir — já tem mensagens vinculadas a esta campanha no histórico. Encerre em vez de excluir.'
+          : '⚠ ' + error.message);
+        return;
+      }
+      await log('campanha_excluida', id, { nome });
+      showToast(`✓ "${nome}" excluída`);
+      scListaCampanhas = await scCarregarCampanhas();
+      render();
+    },
+    { titulo: 'Excluir campanha', labelOk: 'Excluir' }
+  );
 }
 
 async function scAbrirNovaCampanha() {
@@ -247,18 +339,49 @@ function scRenderEditor() {
     </div>`;
 }
 
+const SC_STATUS_COR = { rascunho: 'var(--text2)', ativa: 'var(--accent,#2a2)', pausada: 'var(--warn,#c90)', encerrada: 'var(--text2)' };
+
+function scRenderContagem(c) {
+  const contagem = c._contagem || {};
+  const total = Object.values(contagem).reduce((a, b) => a + b, 0);
+  if (!total) return '<span class="ic-sub">Nenhum item enfileirado ainda</span>';
+  const partes = Object.entries(contagem)
+    .sort((a, b) => b[1] - a[1])
+    .map(([s, n]) => `${n} ${SC_STATUS_ITEM_ABREV[s] || s}`);
+  return `<span class="ic-sub">${total} item${total !== 1 ? 's' : ''} — ${partes.join(' · ')}</span>`;
+}
+
+function scRenderAcoesStatus(c) {
+  const transicoes = SC_TRANSICOES[c.status] || [];
+  const botoes = transicoes.map(t => `
+    <button class="btn btn-out" style="font-size:.72rem;padding:3px 8px" onclick="event.stopPropagation();${t.confirma ? `scConfirmarMudarStatus('${c.id}','${t.v}','${(c.nome||'').replace(/'/g, "\\'")}')` : `scMudarStatusCampanha('${c.id}','${t.v}','${(c.nome||'').replace(/'/g, "\\'")}')`}">${t.label}</button>`).join('');
+  const podeExcluir = c.status === 'rascunho' || c.status === 'encerrada';
+  const excluir = podeExcluir
+    ? `<button class="btn btn-out" style="font-size:.72rem;padding:3px 8px" onclick="event.stopPropagation();scExcluirCampanha('${c.id}','${(c.nome||'').replace(/'/g, "\\'")}')">✕ Excluir</button>`
+    : '';
+  return botoes + excluir;
+}
+
 function scRenderLista() {
   return `
     <div class="import-card">
-      <div class="ic-title">🧩 Scripts de campanha</div>
-      <div class="ic-sub">Scripts salvos aqui podem ser usados no Disparo em massa em vez das mensagens fixas de verificação/convocação.</div>
-      <button class="btn btn-dark" onclick="scAbrirNovaCampanha()">+ Nova campanha</button>
+      <div class="ic-title">🧩 Campanhas</div>
+      <div class="ic-sub">Toda mensagem enfileirada no Disparo em massa pertence a uma campanha daqui — pause/retome/encerre o envio dela inteira, ou adicione um script conversacional (etapas com respostas esperadas) pra usar no disparo em vez das mensagens fixas.</div>
+      <button class="btn btn-dark" onclick="scAbrirNovaCampanha()">+ Nova campanha com script</button>
       <div style="margin-top:12px">
         ${scListaCampanhas.length ? scListaCampanhas.map(c => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border2);border-radius:7px;margin-bottom:6px;cursor:pointer" onclick="scAbrirCampanhaExistente('${c.id}')">
-            <div><b>${c.nome}</b> <span class="ic-sub">— ${c.status}</span></div>
-            <span class="ic-sub">${new Date(c.created_at).toLocaleDateString('pt-BR')}</span>
-          </div>`).join('') : '<div class="ic-sub" style="padding:8px">Nenhum script criado ainda nesta zona.</div>'}
+          <div style="padding:10px 12px;border:1px solid var(--border2);border-radius:7px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <div style="cursor:pointer" onclick="scAbrirCampanhaExistente('${c.id}')">
+                <div><b>${c.nome}</b> <span style="font-size:.72rem;font-weight:700;color:${SC_STATUS_COR[c.status] || 'var(--text2)'}">● ${c.status}</span></div>
+                <div style="margin-top:2px">${scRenderContagem(c)}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <span class="ic-sub">${new Date(c.created_at).toLocaleDateString('pt-BR')}</span>
+                ${scRenderAcoesStatus(c)}
+              </div>
+            </div>
+          </div>`).join('') : '<div class="ic-sub" style="padding:8px">Nenhuma campanha criada ainda nesta zona.</div>'}
       </div>
     </div>`;
 }

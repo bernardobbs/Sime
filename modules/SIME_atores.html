@@ -107,7 +107,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="tab"        id="tab-import-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('import',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📥 Importar CSV</div>
   <div class="tab"        id="tab-externos-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('externos',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">☎️ Contatos externos</div>
   <div class="tab"        id="tab-disparo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('disparo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📢 Disparo em massa</div>
-  <div class="tab"        id="tab-scripts-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('scripts',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🧩 Scripts de campanha</div>
+  <div class="tab"        id="tab-scripts-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('scripts',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🧩 Campanhas</div>
 </div>
 <!-- Sincronizar mesários + Resumo por Seção viraram SIME_convocacao.html (página
      própria, 20/08/2026) — não são mais abas daqui. -->
@@ -675,9 +675,18 @@ let dispSelecionados = null; // Set<id> — null até o primeiro filtro rodar
 // mas NÃO deve apagar o que o cartório já escreveu; só trocar de modelo reseta.
 let dispMsg = null;
 let dispMsgConvocacao = null;
-let dispCampanhasScript = [];   // campanhas com script salvo, carregado ao entrar no modelo "script"
+// 21/08/2026, pedido direto do dono do projeto ("quero controle total das
+// campanhas"): toda mensagem enfileirada aqui agora pertence a uma
+// sime_campanhas — não só o modelo "script" como antes. É o que permite
+// pausar/retomar/encerrar um disparo inteiro depois (aba 🧩 Campanhas),
+// com efeito de verdade (api/hermes-campanhas.js só entrega itens de
+// campanha com status='ativa' — ver comentário lá).
+let dispCampanhasScript = [];   // todas as campanhas da zona (qualquer modelo), carregado ao entrar na aba
+let dispCampanhasCarregadas = false;
 let dispCampanhaId = null;      // qual campanha foi escolhida no <select>
-let dispCampanhaEtapa1 = '';    // preview (só leitura) da mensagem da etapa 1 da campanha escolhida
+let dispCampanhaEtapa1 = '';    // preview (só leitura) da mensagem da etapa 1 — só relevante pro modelo "script"
+let dispMostrarNovaCampanha = false; // true quando o select está no modo "+ Nova campanha"
+let dispNovaCampanhaNome = '';  // texto digitado nesse modo
 
 function dispMensagemPadrao(){
   if(dispTipo==='golpe') return TEMPLATE_GOLPE;
@@ -716,6 +725,12 @@ function rotuloFuncaoDisp(a){
 function renderDisparo(atores){
   const c = document.getElementById('content');
   const semSessao = !window.supabaseAtores;
+  // Carrega a lista de campanhas ao entrar na aba, não só ao trocar pro
+  // modelo "script" como antes (21/08/2026) — toda mensagem enfileirada
+  // agora precisa de uma campanha selecionada. Aqui (não em goTab) porque
+  // cobre os dois jeitos de chegar nesta aba: clique na aba E o link direto
+  // ?tab=disparo vindo de "Criar campanha com estes" (que pula goTab).
+  if(!semSessao && !dispCampanhasCarregadas){ carregarCampanhasParaDisparo(); }
   // Preseleção vinda de "Criar campanha com estes" (SIME_convocacao.html,
   // aba Contatar mesários) — sessionStorage porque são páginas separadas,
   // sem estado JS compartilhado. Lido e apagado uma única vez: sem isso, uma
@@ -756,14 +771,23 @@ function renderDisparo(atores){
           <option value="livre" ${dispTipo==='livre'?'selected':''}>✍️ Mensagem livre</option>
         </select>
       </div>
-      ${dispTipo==='script' ? `
-      <div class="form-group"><label>Script da campanha</label>
-        <select onchange="selecionarCampanhaDisparo(this.value)">
-          <option value="">— escolha um script salvo —</option>
-          ${dispCampanhasScript.map(c=>`<option value="${c.id}" ${dispCampanhaId===c.id?'selected':''}>${c.nome} (${c.status})</option>`).join('')}
+      <div class="form-group"><label>Campanha${dispTipo==='script' ? ' (script)' : ''}</label>
+        <select id="dp-campanha" onchange="selecionarCampanhaDisparoSelect(this.value)">
+          <option value="">${dispTipo==='script' ? '— escolha um script salvo —' : '— escolha uma campanha —'}</option>
+          ${dispCampanhasScript.filter(c => c.status!=='encerrada').map(c=>`<option value="${c.id}" ${dispCampanhaId===c.id?'selected':''}>${c.nome} (${c.status})</option>`).join('')}
+          <option value="__nova__">➕ Nova campanha...</option>
         </select>
-        ${!dispCampanhasScript.length ? '<div class="ic-sub" style="margin-top:4px">Nenhum script salvo ainda nesta zona — crie um na aba 🧩 Scripts de campanha primeiro.</div>' : ''}
-        ${dispCampanhaEtapa1 ? `<div class="ic-sub" style="margin-top:8px"><b>Prévia da 1ª mensagem (etapa 1):</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${dispCampanhaEtapa1}</pre></div>` : ''}
+        ${dispMostrarNovaCampanha ? `
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input type="text" value="${dispNovaCampanhaNome}" placeholder="Nome da nova campanha" oninput="dispNovaCampanhaNome=this.value" style="flex:1">
+          <button class="btn btn-dark" style="font-size:.78rem;padding:6px 12px" onclick="criarNovaCampanhaDisparo()">Criar</button>
+        </div>` : ''}
+        <div class="ic-sub" style="margin-top:4px">Toda mensagem enfileirada pertence a uma campanha — dá pra pausar/retomar/encerrar o envio dela inteira depois, na aba 🧩 Campanhas.</div>
+        ${dispTipo==='script' && !dispCampanhasScript.filter(c=>c.status!=='encerrada').length ? '<div class="ic-sub" style="margin-top:4px">Nenhuma campanha com script salvo ainda nesta zona — crie um na aba 🧩 Campanhas primeiro.</div>' : ''}
+      </div>
+      ${dispTipo==='script' ? `
+      <div class="form-group">
+        ${dispCampanhaEtapa1 ? `<div class="ic-sub"><b>Prévia da 1ª mensagem (etapa 1):</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${dispCampanhaEtapa1}</pre></div>` : '<div class="ic-sub">Escolha uma campanha com script salvo acima pra ver a prévia da 1ª mensagem.</div>'}
         <div class="ic-sub" style="margin-top:4px">As etapas seguintes (o que acontece a cada resposta) já estão definidas no script — não são editadas aqui.</div>
       </div>` : `
       <div class="form-group"><label>${dispTipo==='convocacao' ? '1ª mensagem — confirmação de identidade' : 'Mensagem'}</label>
@@ -866,14 +890,18 @@ function marcarExibidosDisparo(marcar){
 // voltar ao template do novo modelo (edição do modelo anterior não se aplica).
 function mudarTipoDisparo(v){
   dispTipo = v; dispMsg = null; dispMsgConvocacao = null;
-  dispCampanhaId = null; dispCampanhaEtapa1 = '';
-  if(v === 'script') carregarCampanhasParaDisparo();
+  dispCampanhaEtapa1 = '';
+  // A campanha escolhida NÃO reseta ao trocar de modelo (21/08/2026) — só a
+  // etapa 1 (preview, específico do modelo "script"). Trocar de "convocação"
+  // pra "mensagem livre" sem querer não deve fazer perder a campanha já
+  // selecionada.
   render();
 }
 
-// Lista campanhas com pelo menos uma etapa cadastrada, da zona do usuário —
-// mesma fonte que scCarregarCampanhas() do editor de scripts, mas sem
-// depender daquele módulo estar carregado na mesma aba.
+// Lista TODA campanha da zona do usuário, qualquer modelo — mesma fonte que
+// scCarregarCampanhas() do editor de scripts, mas sem depender daquele
+// módulo estar carregado na mesma aba. Chamado uma vez ao entrar na aba
+// (goTab) e de novo depois de criar uma campanha nova (criarNovaCampanhaDisparo).
 async function carregarCampanhasParaDisparo(){
   const sb = window.supabaseAtores;
   if(!sb) return;
@@ -882,7 +910,36 @@ async function carregarCampanhasParaDisparo(){
     .select('id, nome, status').eq('zona_id', zonaId).order('created_at', { ascending:false });
   if(error){ showToast('⚠ ' + error.message); return; }
   dispCampanhasScript = data || [];
+  dispCampanhasCarregadas = true;
   render();
+}
+
+// "+ Nova campanha" no select do disparo (21/08/2026) — diferente de
+// scAbrirNovaCampanha() (aba Scripts): aqui a campanha nasce 'ativa' direto,
+// não 'rascunho' — quem está nesta tela já está prestes a selecionar
+// destinatários e mandar AGORA (igual o comportamento de sempre, antes desta
+// mudança), então criar como rascunho pausaria o envio de surpresa. Uma
+// campanha de script (que precisa de etapas configuradas antes de ir ao ar)
+// continua nascendo rascunho pela aba própria.
+async function criarNovaCampanhaDisparo(){
+  const nome = dispNovaCampanhaNome.trim();
+  if(!nome){ showToast('⚠ Dê um nome pra campanha'); return; }
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  const { data, error } = await sb.from('sime_campanhas').insert({ nome, zona_id: zonaId, status: 'ativa' }).select('id').single();
+  if(error){ showToast('⚠ ' + error.message); return; }
+  await log('campanha_criada_disparo', data.id, { nome, modelo: dispTipo });
+  dispNovaCampanhaNome = '';
+  dispMostrarNovaCampanha = false;
+  dispCampanhaId = data.id;
+  await carregarCampanhasParaDisparo();
+  showToast('✓ Campanha "' + nome + '" criada');
+}
+
+function selecionarCampanhaDisparoSelect(v){
+  if(v === '__nova__'){ dispMostrarNovaCampanha = true; render(); return; }
+  dispMostrarNovaCampanha = false;
+  selecionarCampanhaDisparo(v);
 }
 
 // Ao escolher uma campanha no <select>, busca a mensagem da etapa 1 só pra
@@ -920,8 +977,12 @@ function confirmarDisparo(){
   const ehConvocacao = dispTipo==='convocacao';
   const ehScript = dispTipo==='script';
 
-  if(ehScript && !dispCampanhaId){ showToast('⚠ Escolha um script salvo'); return; }
-  if(ehScript && !dispCampanhaEtapa1){ showToast('⚠ Este script não tem etapa 1 — abra-o na aba de Scripts e confira'); return; }
+  // Campanha obrigatória pra QUALQUER modelo agora (21/08/2026) — é o que
+  // permite pausar/retomar/encerrar o envio inteiro depois.
+  if(!dispCampanhaId){ showToast(ehScript ? '⚠ Escolha um script salvo' : '⚠ Escolha (ou crie) uma campanha'); return; }
+  if(ehScript && !dispCampanhaEtapa1){ showToast('⚠ Este script não tem etapa 1 — abra-o na aba 🧩 Campanhas e confira'); return; }
+
+  const campanhaEscolhida = dispCampanhasScript.find(c => c.id === dispCampanhaId);
 
   const msg = ehScript ? dispCampanhaEtapa1 : (document.getElementById('dp-msg')?.value||'').trim();
   if(!ehScript && !msg){ showToast('⚠ Escreva a mensagem'); return; }
@@ -931,11 +992,14 @@ function confirmarDisparo(){
   const destinatarios = atoresParaDisparo(loadAtores()).filter(a=>dispSelecionados.has(a.id));
   if(!destinatarios.length){ showToast('⚠ Nenhum destinatário selecionado'); return; }
 
-  const aviso = ehScript
+  const avisoPausada = campanhaEscolhida && campanhaEscolhida.status !== 'ativa'
+    ? `\n\n⚠ A campanha "${campanhaEscolhida.nome}" está com status "${campanhaEscolhida.status}", não "ativa" — os itens entram na fila mas NÃO saem até a campanha ser iniciada/retomada na aba 🧩 Campanhas.`
+    : '';
+  const aviso = (ehScript
     ? `Enfileirar a etapa 1 do script para ${destinatarios.length} pessoa(s)?\n\nAs próximas etapas seguem automaticamente conforme as respostas, de acordo com o script. O envio de fato depende do Hermes estar com o disparo ligado.`
     : ehConvocacao
     ? `Enfileirar a confirmação de identidade para ${destinatarios.length} pessoa(s)?\n\nA convocação (2ª mensagem + imagem) só sai pra quem responder SIM à primeira. O envio de fato depende do Hermes estar com o disparo ligado.`
-    : `Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`;
+    : `Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`) + avisoPausada;
 
   pedirConfirmacao(aviso, async () => {
     closeModal();
@@ -951,12 +1015,13 @@ function confirmarDisparo(){
       mensagem_convocacao: ehConvocacao ? personalizarMensagem(msgConvocacao, a) : null,
       imagem_url: imagemUrl,
       status: 'pendente',
-      ...(ehScript ? { campanha_id: dispCampanhaId, etapa_atual: 1 } : {}),
+      campanha_id: dispCampanhaId,
+      ...(ehScript ? { etapa_atual: 1 } : {}),
     }));
     const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
     if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
 
-    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao || ehScript, campanha_id: ehScript ? dispCampanhaId : null });
+    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao || ehScript, campanha_id: dispCampanhaId });
     showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
   }, { titulo:'Confirmar disparo', labelOk:'📢 Enfileirar' });
 }

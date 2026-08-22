@@ -155,7 +155,7 @@ export default async function handler(req, res) {
       .gte('tentativas', MAX_TENTATIVAS)
       .lt('ts_enviado', cutoff);
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('sime_campanhas_confirmacao')
       .select('id, ator_id, telefone_whatsapp, mensagem_enviada, mensagem_convocacao, imagem_url, status, tentativas, ts_enviado, created_at, campanha_id, etapa_atual')
       .eq('zona_id', zonaId)
@@ -163,6 +163,23 @@ export default async function handler(req, res) {
       .order('created_at', { ascending: true })
       .limit(LIMITE_POR_CICLO);
     if (error) return res.status(500).json({ error: error.message });
+
+    // Controle total da campanha (21/08/2026, pedido direto do dono do
+    // projeto): pausar/encerrar uma campanha em sime_campanhas.status
+    // precisa realmente PARAR o envio dos itens dela, não só mudar um rótulo
+    // cosmético na tela. Item sem campanha_id (fluxo legado, de antes desta
+    // mudança) passa direto — só item COM campanha_id fica sujeito ao status
+    // da campanha; 'ativa' é a única que deixa passar.
+    const campanhaIdsPresentes = [...new Set((data || []).map((c) => c.campanha_id).filter(Boolean))];
+    if (campanhaIdsPresentes.length) {
+      const { data: statusCampanhas, error: campErr } = await supabase
+        .from('sime_campanhas')
+        .select('id, status')
+        .in('id', campanhaIdsPresentes);
+      if (campErr) return res.status(500).json({ error: campErr.message });
+      const statusPorCampanha = new Map((statusCampanhas || []).map((c) => [c.id, c.status]));
+      data = (data || []).filter((c) => !c.campanha_id || statusPorCampanha.get(c.campanha_id) === 'ativa');
+    }
 
     // Itens de script (campanha_id preenchido) 'aguardando_resposta' e
     // devidos pra reenvio precisam da mensagem da ETAPA ATUAL — não de
@@ -172,7 +189,7 @@ export default async function handler(req, res) {
     // (não uma query por item) pra não fazer N idas ao banco no loop abaixo.
     const cutoffDate = new Date(cutoff);
     const pendentesScriptParaReenviar = (data || []).filter((c) =>
-      c.status === 'aguardando_resposta' && c.campanha_id &&
+      c.status === 'aguardando_resposta' && c.etapa_atual &&
       (!c.ts_enviado || new Date(c.ts_enviado) < cutoffDate)
     );
     const mensagemEtapaPorChave = new Map(); // `${campanha_id}:${etapa_numero}` -> mensagem
@@ -191,19 +208,22 @@ export default async function handler(req, res) {
       let proximaAcao = null, mensagem = null, imagemUrl = null;
 
       if (c.status === 'pendente') {
-        // Tem campanha_id → é a etapa 1 de um script de campanha (mensagem já
-        // vem pronta em mensagem_enviada, ver SIME_atores.html); tem
-        // mensagem_convocacao → é o fluxo legado com confirmação de
+        // etapa_atual preenchido → é a etapa 1 de um script de campanha
+        // (mensagem já vem pronta em mensagem_enviada, ver SIME_atores.html);
+        // tem mensagem_convocacao → é o fluxo legado com confirmação de
         // identidade, a mensagem_enviada aqui é a VERIFICAÇÃO, não a
         // convocação em si. Nenhum dos dois → fluxo simples de sempre, uma
-        // tacada só.
+        // tacada só. NÃO usar campanha_id sozinho aqui (21/08/2026): desde
+        // que toda mensagem passou a exigir uma campanha ("controle total
+        // das campanhas"), campanha_id está preenchido em TODO item, script
+        // ou não — etapa_atual é que só existe pra script de verdade.
         mensagem = c.mensagem_enviada;
-        proximaAcao = c.campanha_id ? 'enviar_etapa_script' : (c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar');
+        proximaAcao = c.etapa_atual ? 'enviar_etapa_script' : (c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar');
         if (proximaAcao === 'enviar') imagemUrl = c.imagem_url || null;
       } else if (c.status === 'aguardando_resposta') {
         const devido = !c.ts_enviado || new Date(c.ts_enviado) < cutoffDate;
         if (!devido) continue; // ainda dentro da janela de espera — não insiste
-        if (c.campanha_id) {
+        if (c.etapa_atual) {
           // Reenvio de uma etapa de script — mensagem da etapa ATUAL, ver
           // busca em lote acima. Etapa órfã (apagada depois de enviada) não
           // trava a fila — só não sai daqui, igual a qualquer item sem
@@ -253,12 +273,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'ids é obrigatório' });
     }
     // Confere que os ids são da zona que está chamando — sem isso, uma zona
-    // poderia marcar como enviado o item de outra. campanha_id vem junto pra
+    // poderia marcar como enviado o item de outra. etapa_atual vem junto pra
     // decidir o default de novo_status abaixo (script sempre espera resposta
-    // depois de mandar).
+    // depois de mandar — campanha_id sozinho NÃO serve mais pra essa decisão
+    // desde 21/08/2026, está preenchido em todo item agora, script ou não).
     const { data: alvo } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('id, tentativas, campanha_id')
+      .select('id, tentativas, campanha_id, etapa_atual')
       .in('id', ids)
       .eq('zona_id', zonaId);
     const validos = alvo || [];
@@ -291,17 +312,20 @@ export default async function handler(req, res) {
     }
 
     // novo_status explícito vale pra todo o lote. Sem ele, o default depende
-    // do item: campanha_id preenchido é etapa de script — mandar a etapa 1
+    // do item: etapa_atual preenchido é etapa de script — mandar a etapa 1
     // sempre espera resposta (o script só progride via avancar_etapa), então
     // o default correto é 'aguardando_resposta', não 'enviado'. Sem isso, um
     // item de script confirmado sem novo_status explícito saía do filtro de
     // pendentes (['pendente','aguardando_resposta','confirmado']) pra sempre
     // e o script nunca avançava — mesmo bug que motivou expor campanha_id em
-    // 'pendentes' acima.
+    // 'pendentes' acima. campanha_id sozinho NÃO serve mais como esse sinal
+    // (21/08/2026): está preenchido em todo item agora, não só script — um
+    // "golpe"/"livre" simples com campanha_id ficaria preso em
+    // 'aguardando_resposta' pra sempre se usasse campanha_id aqui.
     const statusExplicito = ['enviado', 'aguardando_resposta', 'finalizado'].includes(novo_status) ? novo_status : null;
     const porStatus = new Map();
     for (const c of validos) {
-      const status = statusExplicito || (c.campanha_id ? 'aguardando_resposta' : 'enviado');
+      const status = statusExplicito || (c.etapa_atual ? 'aguardando_resposta' : 'enviado');
       if (!porStatus.has(status)) porStatus.set(status, []);
       porStatus.get(status).push(c);
     }
@@ -380,14 +404,18 @@ export default async function handler(req, res) {
   }
 
   // ── OBTER_ETAPA_PENDENTE ── consulta (não escreve nada) se há um item com
-  // campanha_id preenchido, status 'aguardando_resposta', casando pelo
+  // etapa_atual preenchido, status 'aguardando_resposta', casando pelo
   // telefone — e, se sim, devolve a etapa atual do script (mensagem já foi
   // mandada; o que falta são as respostas_esperadas dessa etapa, pro Hermes
   // casar localmente). Espelha VERIFICAR_PENDENTE (mesma regra de telefone),
-  // mas só considera itens QUE TÊM campanha_id — itens do fluxo legado
-  // (campanha_id nulo) nunca aparecem aqui, então o Hermes cai pro
-  // identidade.js de sempre pra eles. Ver sql/SIME_campanhas_scripts_schema.sql
-  // e modules/campanhas/script.js do lado do Hermes.
+  // mas só considera itens QUE TÊM etapa_atual — itens do fluxo legado ou
+  // simples (etapa_atual nulo) nunca aparecem aqui, então o Hermes cai pro
+  // identidade.js de sempre pra eles. Filtro por etapa_atual, não
+  // campanha_id (21/08/2026): desde que toda mensagem passou a exigir uma
+  // campanha, campanha_id está preenchido também em disparo simples/
+  // convocação — só etapa_atual continua exclusivo de script de verdade.
+  // Ver sql/SIME_campanhas_scripts_schema.sql e modules/campanhas/script.js
+  // do lado do Hermes.
   if (acao === 'obter_etapa_pendente') {
     if (!telefone) return res.status(400).json({ error: 'telefone é obrigatório' });
 
@@ -396,7 +424,7 @@ export default async function handler(req, res) {
       .select('id, telefone_whatsapp, campanha_id, etapa_atual, ts_enviado')
       .eq('zona_id', zonaId)
       .eq('status', 'aguardando_resposta')
-      .not('campanha_id', 'is', null);
+      .not('etapa_atual', 'is', null);
     if (error) return res.status(500).json({ error: error.message });
 
     const casados = (candidatos || [])

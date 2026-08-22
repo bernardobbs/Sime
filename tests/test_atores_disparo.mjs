@@ -17,14 +17,30 @@ const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e
 const b = await chromium.launch();
 
 const STUB_SUPABASE_JS = `
+let __idSeq = 0;
 class QB {
-  constructor(t){ this.t=t; this.f={}; }
+  constructor(t){ this.t=t; this.f={}; this._insertPayload=null; }
   select(){ return this; }
   eq(c,v){ this.f[c]=v; return this; }
   order(){ return this; }
-  insert(p){ window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p }); return Promise.resolve({ error:null }); }
+  insert(p){
+    window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p });
+    this._insertPayload = p;
+    return this;
+  }
+  // Encadeado só depois de insert() nesta stub — ex.: sime_campanhas.insert({...}).select('id').single()
+  // (criarNovaCampanhaDisparo). Gera um id novo e devolve como se o banco tivesse gerado.
+  single(){
+    const id = 'novo-' + (++__idSeq);
+    const linha = { id, ...(this._insertPayload||{}) };
+    (window.__mock[this.t] ||= []).push(linha);
+    return Promise.resolve({ data:{ id }, error:null });
+  }
   maybeSingle(){ const r=(window.__mock[this.t]||[]).filter(x=>Object.entries(this.f).every(([k,v])=>x[k]===v)); return Promise.resolve({ data:r[0]??null, error:null }); }
-  then(res){ const r=(window.__mock[this.t]||[]).filter(x=>Object.entries(this.f).every(([k,v])=>x[k]===v)); return res({ data:r, error:null }); }
+  then(res){
+    if(this._insertPayload) return res({ error:null }); // insert simples (sem .select().single() encadeado)
+    const r=(window.__mock[this.t]||[]).filter(x=>Object.entries(this.f).every(([k,v])=>x[k]===v)); return res({ data:r, error:null });
+  }
 }
 export function createClient(){
   return {
@@ -52,6 +68,12 @@ function mock({ semSessao = false } = {}) {
       { id:'a3', nome_completo:'CARLA TÉCNICA', telefone_whatsapp:'5586977776666', funcao:'tecnico', funcao_mesa:null, secao_id:null, confirmacao:'pendente', ativo:true },
       { id:'a4', nome_completo:'DÉBORA INATIVA',telefone_whatsapp:'5586966665555', funcao:'mesario', funcao_mesa:'1º Mesário', secao_id:'s63', confirmacao:'recusou', ativo:false },
       { id:'a5', nome_completo:'SEM TELEFONE',  telefone_whatsapp:'',              funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s63', confirmacao:'pendente', ativo:true },
+    ],
+    // 21/08/2026: campanha agora é obrigatória em qualquer disparo (não só
+    // "script") — uma já 'ativa' pronta pra testes que não são sobre criar
+    // campanha nova.
+    sime_campanhas: [
+      { id:'camp-ativa', nome:'Campanha de teste', status:'ativa', zona_id:'z7', created_at:'2026-08-01T00:00:00Z' },
     ],
   };
 }
@@ -109,10 +131,23 @@ async function abrir(ctx, m) {
   await ctx.close();
 }
 
-// ── 4. Confirmar dispara o insert com zona/mensagem/destinatários corretos ──
+// ── 4. Sem campanha escolhida, "Enfileirar" não abre o modal (validação) ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
+  await p.click('#dp-btn-enviar');
+  await p.waitForTimeout(150);
+  check('modal de confirmação não abriu sem campanha', await p.locator('#confirmacao-ok-btn').count() === 0);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 5. Com campanha escolhida, confirmar dispara o insert com zona/mensagem/destinatários/campanha_id corretos ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await p.selectOption('#dp-campanha', 'camp-ativa');
+  await p.waitForTimeout(150);
   await p.click('#dp-btn-enviar');
   await p.waitForTimeout(150);
   await p.click('#confirmacao-ok-btn'); // modal customizado (não mais confirm() nativo)
@@ -126,14 +161,41 @@ async function abrir(ctx, m) {
   check('todas com a mesma mensagem (o template)', linhas.every(l => l.mensagem_enviada.includes('AVISO IMPORTANTE')));
   check('zona vem do usuário logado (z7), não de campo na tela', linhas.every(l => l.zona_id === 'z7'), JSON.stringify(linhas));
   check('telefone e ator_id batem com o cadastro', linhas.some(l => l.ator_id === 'a1' && l.telefone_whatsapp === '5586999996666'), JSON.stringify(linhas));
+  check('toda linha carrega o campanha_id escolhido', linhas.every(l => l.campanha_id === 'camp-ativa'), JSON.stringify(linhas));
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
 
-// ── 5. Cancelar a confirmação não enfileira nada ──
+// ── 5b. "+ Nova campanha" cria a campanha (status ativa) e já fica selecionada ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
+  await p.selectOption('#dp-campanha', '__nova__');
+  await p.waitForTimeout(150);
+  await p.fill('#dp-campanha + div input[type="text"]', 'Campanha nova de teste');
+  await p.click('#dp-campanha + div >> text=Criar');
+  await p.waitForTimeout(300);
+
+  const escritasCampanha = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_campanhas'));
+  check('criou a campanha com status ativa', escritasCampanha.length === 1 && escritasCampanha[0].payload.status === 'ativa', JSON.stringify(escritasCampanha));
+
+  await p.click('#dp-btn-enviar');
+  await p.waitForTimeout(150);
+  await p.click('#confirmacao-ok-btn');
+  await p.waitForTimeout(300);
+  const escritasFila = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_campanhas_confirmacao'));
+  const novoId = escritasCampanha[0]?.payload ? (await p.evaluate(() => window.__mock.sime_campanhas.find(c => c.nome === 'Campanha nova de teste')?.id)) : null;
+  check('a campanha recém-criada já ficou selecionada pro enfileiramento', escritasFila[0]?.payload.every(l => l.campanha_id === novoId), JSON.stringify({ novoId, payload: escritasFila[0]?.payload }));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 6. Cancelar a confirmação não enfileira nada ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await p.selectOption('#dp-campanha', 'camp-ativa');
+  await p.waitForTimeout(150);
   await p.click('#dp-btn-enviar');
   await p.waitForTimeout(150);
   await p.click('#modal-body .btn-out'); // "Cancelar" no modal customizado
@@ -144,7 +206,7 @@ async function abrir(ctx, m) {
   await ctx.close();
 }
 
-// ── 6. Sem sessão: não oferece o botão de enviar ──
+// ── 7. Sem sessão: não oferece o botão de enviar ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock({ semSessao: true }));
@@ -154,7 +216,7 @@ async function abrir(ctx, m) {
   await ctx.close();
 }
 
-// ── 7. Reforço perto do Dia D: dois modelos novos, disparo manual (sob demanda) ──
+// ── 8. Reforço perto do Dia D: dois modelos novos, disparo manual (sob demanda) ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -169,6 +231,8 @@ async function abrir(ctx, m) {
   const msgDiaD = await p.inputValue('#dp-msg');
   check('confirmação de presença do Dia D pré-preenchida', /confirmado/i.test(msgDiaD) && msgDiaD.includes('{secao}'), msgDiaD.slice(0, 80));
 
+  await p.selectOption('#dp-campanha', 'camp-ativa');
+  await p.waitForTimeout(150);
   await p.click('#dp-btn-enviar');
   await p.waitForTimeout(150);
   await p.click('#confirmacao-ok-btn');
