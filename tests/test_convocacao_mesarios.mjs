@@ -190,10 +190,13 @@ async function login(p) {
   // (Confirmado/Convocado/Vazio), uma por grupo — substitui o desenho
   // anterior de 4 pizzas de 2 fatias.
   const dashFlat = dash.replace(/\s+/g, ' ');
-  // Funil: MRV totalCargos=12 (3 seções×4) + 2 locais×2 funções(coord+aux)=4 → 16 total.
-  // Convocados = mrvDesignados(4) + locaisComCoord(1, Grupo Escolar A via GEORGE) + locaisComAuxiliar(1, via ELIS) = 6.
-  // Confirmados = mrvConfirmadoCargos(1, só ANA) + locaisComCoordConfirmado(0) + locaisComAuxiliarConfirmado(1) = 2.
-  check('barra-funil da zona: Total 16, Convocados 6, Confirmados 2', /Total de vagas:\s*16/.test(dashFlat) && /Convocados:\s*6/.test(dashFlat) && /Confirmados:\s*2/.test(dashFlat), dashFlat.slice(0, 500));
+  // Funil: MRV totalCargos=12 (3 seções×4) + 2 locais (Coord., 1 vaga/local)
+  // + auxiliarTotal=1 (ELIS, headcount — não mais 1 vaga/local, ver
+  // 22/08/2026: TRE nunca traz local pra Auxiliar de Eleição, então essa
+  // função virou contagem direta de pessoa, sem "vazio" calculável) → 15.
+  // Convocados = mrvDesignados(4) + locaisComCoord(1, Grupo Escolar A via GEORGE) + auxiliarTotal(1, ELIS) = 6.
+  // Confirmados = mrvConfirmadoCargos(1, só ANA) + locaisComCoordConfirmado(0) + auxiliarConfirmado(1, ELIS) = 2.
+  check('barra-funil da zona: Total 15, Convocados 6, Confirmados 2', /Total de vagas:\s*15/.test(dashFlat) && /Convocados:\s*6/.test(dashFlat) && /Confirmados:\s*2/.test(dashFlat), dashFlat.slice(0, 500));
 
   const cardPizzaMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().textContent();
   check('pizza MRV (3 fatias): confirmado 1, convocado 3, vazio 8, total 12', /Confirmado:\s*1/.test(cardPizzaMRV) && /Convocado:\s*3/.test(cardPizzaMRV) && /Vazio:\s*8/.test(cardPizzaMRV) && /Total:\s*12/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
@@ -205,8 +208,13 @@ async function login(p) {
   const cardPizzaCoord = await p.locator('.import-card:has-text("Coordenadores de Acessibilidade")').last().textContent();
   check('pizza Coord. de Acessibilidade (3 fatias): confirmado 0, convocado 1 (GEORGE), vazio 1 (Escola B)', /Confirmado:\s*0/.test(cardPizzaCoord) && /Convocado:\s*1/.test(cardPizzaCoord) && /Vazio:\s*1/.test(cardPizzaCoord) && /Total:\s*2/.test(cardPizzaCoord), cardPizzaCoord.replace(/\s+/g, ' '));
 
+  // 22/08/2026: Auxiliar de Eleição virou contagem por PESSOA (não mais por
+  // local) — só existe 1 auxiliar na fixture (ELIS, confirmada), então
+  // Confirmado:1, Convocado:0 (não sobra ninguém "designado mas não
+  // confirmado"), Vazio:0 (não há como calcular vaga vazia sem o dado do
+  // TRE), Total:1.
   const cardPizzaAux = await p.locator('.import-card:has-text("Auxiliares de Eleição")').last().textContent();
-  check('pizza Auxiliar de Eleição (3 fatias): confirmado 1 (ELIS), convocado 0, vazio 1 (Escola B)', /Confirmado:\s*1/.test(cardPizzaAux) && /Convocado:\s*0/.test(cardPizzaAux) && /Vazio:\s*1/.test(cardPizzaAux) && /Total:\s*2/.test(cardPizzaAux), cardPizzaAux.replace(/\s+/g, ' '));
+  check('pizza Auxiliar de Eleição (headcount): confirmado 1 (ELIS), convocado 0, vazio 0, total 1', /Confirmado:\s*1/.test(cardPizzaAux) && /Convocado:\s*0/.test(cardPizzaAux) && /Vazio:\s*0/.test(cardPizzaAux) && /Total:\s*1/.test(cardPizzaAux), cardPizzaAux.replace(/\s+/g, ' '));
 
   check('pizzas usam gráfico SVG (donut), não só texto', await p.locator('.content svg').count() >= 3);
   check('resumo: 1 seção sem nenhum cargo designado (Escola B)', /1 seção\(ões\) sem nenhum cargo designado/.test(dash));

@@ -80,11 +80,25 @@ async function rsCarregar() {
       atualizadoPorSecao[a.secao_id] = a.data_confirmacao;
     }
   }
+  // Contagem simples de Auxiliar de Eleição, por PESSOA — não por local
+  // (22/08/2026, achado real: o TRE nunca traz o código do local pra essa
+  // função específica, então "locaisComAuxiliar" fica sempre 0/vazio, por
+  // mais gente cadastrada e confirmada que exista — ver CLAUDE.md
+  // "Coordenador de Acessibilidade e Auxiliar de Eleição entravam SEMPRE
+  // sem secao_id". Diferente de Coordenador de Acessibilidade, que tem uma
+  // ponte de local funcionando pra maioria dos registros — aqui não há
+  // dado nenhum pra apoiar um agrupamento por local, então a pizza usa
+  // headcount direto: "auxiliar_eleicao é todo AL que não é coordenador"
+  // (regra já aplicada no sync, sql/SIME_schema.sql).
+  const auxiliarTotal = (apoio || []).filter(a => a.funcao === 'auxiliar_eleicao').length;
+  const auxiliarConfirmado = (apoio || []).filter(a => a.funcao === 'auxiliar_eleicao' && a.confirmacao === 'confirmado').length;
+
   rsDados = {
     secoes: secoes || [], porSecao, atualizadoPorSecao,
     totalMesarios: (atores || []).length, totalApoio: (apoio || []).length,
     confirmadosMRV: (atores || []).filter(a => a.confirmacao === 'confirmado').length,
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
+    auxiliarTotal, auxiliarConfirmado,
     secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado,
   };
   render();
@@ -441,7 +455,7 @@ function renderResumoSecoes() {
 
   const {
     linhas, porLocal, mrvTotalCargos, mrvDesignados, mrvConfirmadoCargos,
-    locaisComCoord, locaisComCoordConfirmado, locaisComAuxiliar, locaisComAuxiliarConfirmado,
+    locaisComCoord, locaisComCoordConfirmado,
     porMunicipio,
   } = rsCalcular();
 
@@ -450,24 +464,34 @@ function renderResumoSecoes() {
   // somam o Total daquele grupo — Confirmado / Convocado (designado, ainda
   // não confirmado) / Vazio — em vez do desenho anterior de 4 pizzas de 2
   // fatias (nomeado x vazio, separado de confirmado x total). MRV é "vaga"
-  // por CARGO de mesa (4 por seção); Coord. de Acessibilidade e Auxiliar de
-  // Eleição não têm cargo fixo no schema, então a "vaga" vira 1 por LOCAL de
-  // votação (mesma premissa que já existia no desenho anterior, agora
-  // separada por função em vez de combinada num "apoio logístico" só).
+  // por CARGO de mesa (4 por seção); Coord. de Acessibilidade não tem cargo
+  // fixo no schema, então a "vaga" vira 1 por LOCAL de votação.
+  //
+  // Auxiliar de Eleição É DIFERENTE (corrigido 22/08/2026): a pizza "por
+  // local" sempre dava 0%/100% vazio pra esse grupo, mesmo com gente
+  // confirmada — não é falta de gente, é falta de dado (o TRE não manda o
+  // código do local pra essa função, ver CLAUDE.md). Sem como saber ONDE
+  // cada auxiliar atua, a pizza usa contagem simples por PESSOA (como o
+  // stat card "Apoio logístico (AL)" já fazia por baixo dos panos) — sem
+  // fatia de "vazio", porque não há como calcular uma vaga vazia sem
+  // inventar um total que o TRE não forneceu.
   const locaisTotal = porLocal.length;
   const pizzasHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
       ${rsPizzaCard3('MRV (Mesários)', mrvConfirmadoCargos, mrvDesignados - mrvConfirmadoCargos, mrvTotalCargos - mrvDesignados)}
       ${rsPizzaCard3('Coordenadores de Acessibilidade', locaisComCoordConfirmado, locaisComCoord - locaisComCoordConfirmado, locaisTotal - locaisComCoord)}
-      ${rsPizzaCard3('Auxiliares de Eleição (apoio logístico)', locaisComAuxiliarConfirmado, locaisComAuxiliar - locaisComAuxiliarConfirmado, locaisTotal - locaisComAuxiliar)}
+      ${rsPizzaCard3('Auxiliares de Eleição (apoio logístico)', rsDados.auxiliarConfirmado, rsDados.auxiliarTotal - rsDados.auxiliarConfirmado, 0)}
     </div>`;
 
   // Barra-resumo da zona inteira (21/08/2026), acima das 3 pizzas — soma os
-  // 3 grupos num só "funil": Total de vagas (MRV + 1 por local pra cada uma
-  // das outras duas funções) → Convocados → Confirmados.
-  const funilTotal = mrvTotalCargos + locaisTotal * 2;
-  const funilConvocados = mrvDesignados + locaisComCoord + locaisComAuxiliar;
-  const funilConfirmados = mrvConfirmadoCargos + locaisComCoordConfirmado + locaisComAuxiliarConfirmado;
+  // 3 grupos num só "funil": Total de vagas (MRV + 1 por local pra Coord. +
+  // headcount de Auxiliar, ver pizza acima) → Convocados → Confirmados.
+  // Auxiliar entra por PESSOA, não por local (22/08/2026, mesmo motivo da
+  // pizza) — todo auxiliar carregado já conta como "convocado" (existe,
+  // foi contactado ou está na fila pra ser), não há vaga vazia calculável.
+  const funilTotal = mrvTotalCargos + locaisTotal + rsDados.auxiliarTotal;
+  const funilConvocados = mrvDesignados + locaisComCoord + rsDados.auxiliarTotal;
+  const funilConfirmados = mrvConfirmadoCargos + locaisComCoordConfirmado + rsDados.auxiliarConfirmado;
   const funilHTML = rsBarraFunil(funilTotal, funilConvocados, funilConfirmados);
 
   const statsHTML = `
