@@ -1371,6 +1371,14 @@ o campo aparece automaticamente na lista de telefones do modal de
 "Contatar mesários" (`cmListaTelefones`) — nenhuma UI nova foi necessária
 do lado SIME.
 
+**Bug real corrigido em 22/08/2026, só lado Hermes — aviso do Telegram sem
+contexto.** Um aviso real em produção chegou só como "não achei 'Daluz 🌝'
+no SIME / Origem: DM", sem dizer quem mandou nem qual telefone estava em
+jogo — o cartório não tinha nada pra agir. Toda mensagem do módulo
+(ambíguo, não encontrado, telefone irreconhecível, falha de rede, sucesso,
+e a sugestão de correção) agora sempre mostra o telefone do contato **e**
+o telefone de quem mandou a mensagem no WhatsApp.
+
 **Correção depois de um contato vira SUGESTÃO no Telegram, nunca gravação
 automática (21/08/2026, só lado Hermes — nenhuma mudança no SIME).** Achado
 em campo: depois de compartilhar um contato, é comum vir uma frase solta
