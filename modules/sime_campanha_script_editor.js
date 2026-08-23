@@ -42,6 +42,7 @@ function scNovaEtapaVazia(numero) {
   return {
     etapa_numero: numero,
     mensagem: '',
+    imagem_url: '',
     etapa_inicial: numero === 1,
     respostas_esperadas: [scNovoRamoVazio()],
   };
@@ -221,6 +222,10 @@ function scEditarMensagemEtapa(etapaNumero, v) {
   const etapa = scEditando.etapas.find(e => e.etapa_numero === etapaNumero);
   if (etapa) etapa.mensagem = v;
 }
+function scEditarImagemEtapa(etapaNumero, v) {
+  const etapa = scEditando.etapas.find(e => e.etapa_numero === etapaNumero);
+  if (etapa) etapa.imagem_url = v;
+}
 function scEditarRamoIntencao(etapaNumero, ramoIdx, v) {
   scEditando.etapas.find(e => e.etapa_numero === etapaNumero).respostas_esperadas[ramoIdx].intencao = v;
 }
@@ -283,6 +288,10 @@ function scRenderEtapa(etapa) {
         <textarea rows="4" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"
           oninput="scEditarMensagemEtapa(${etapa.etapa_numero},this.value)">${etapa.mensagem}</textarea>
         <div class="ic-sub" style="margin-top:4px">Placeholders {nome}/{funcao}/{secao}/{local}/{municipio} são trocados por pessoa, igual ao disparo em massa hoje.</div>
+      </div>
+      <div class="form-group"><label>Imagem desta etapa (opcional)</label>
+        <input type="url" value="${etapa.imagem_url || ''}" placeholder="https://... (URL pública de uma imagem)" oninput="scEditarImagemEtapa(${etapa.etapa_numero},this.value)">
+        <div class="ic-sub" style="margin-top:4px">Manda junto com a mensagem desta etapa. Precisa ser um link público (não é upload aqui — hospede em algum lugar e cole a URL).</div>
       </div>
       <div class="form-group"><label>Respostas esperadas nesta etapa</label>
         ${etapa.respostas_esperadas.map((ramo, idx) => `
@@ -417,6 +426,7 @@ async function scSalvarCampanha() {
     campanha_id: campanhaId,
     etapa_numero: e.etapa_numero,
     mensagem: e.mensagem,
+    imagem_url: (e.imagem_url || '').trim() || null,
     etapa_inicial: e.etapa_numero === 1,
     respostas_esperadas: e.respostas_esperadas,
   }));

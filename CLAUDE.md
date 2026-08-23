@@ -1282,6 +1282,39 @@ Ainda não implementado: capturar a resposta de quem recebeu a campanha
 uma resposta cai no fluxo de sempre (`sime_mesarios` confirmar/recusar/
 substituir/atualizar), não fica associada à campanha específica que a gerou.
 
+**Bug real corrigido em 22/08/2026 — imagem do disparo nunca chegava pra
+quem usava "🧩 Usar script salvo".** O campo "Imagem" da tela de Disparo em
+massa aparecia igual pros 3 modelos (golpe/livre/script), mas
+`api/hermes-campanhas.js` só repassava `imagem_url` quando
+`proxima_acao='enviar'` (fluxo simples) — nunca pra
+`enviar_etapa_script`/`reenviar_etapa_script`. O cartório digitava a URL,
+disparava um script, e a imagem simplesmente não saía, sem erro nenhum.
+
+Corrigido construindo suporte de verdade, não só repassando o campo:
+imagem passou a pertencer à **ETAPA** (`sime_campanha_etapas.imagem_url`,
+`sql/SIME_campanha_etapas_imagem.sql`), não à linha de fila — cada etapa do
+script pode ter a sua própria imagem, inclusive etapas seguintes (2, 3...),
+não só a primeira. Consequências:
+- O campo "Imagem" do Disparo em massa (`SIME_atores.html`) deixa de
+  aparecer pro modelo "🧩 Usar script salvo" — a prévia da etapa 1 mostra a
+  imagem dela (só leitura) quando existe. Editar imagem de qualquer etapa é
+  só no editor de script (aba 🧩 Campanhas,
+  `modules/sime_campanha_script_editor.js`), junto da mensagem da etapa.
+- `api/hermes-campanhas.js`: `pendentes` resolve `imagem_url` da etapa
+  certa (busca em lote por `campanha_id:etapa_numero`, tanto pro primeiro
+  envio quanto pro reenvio — reenvio usa a etapa ATUAL, nunca a etapa 1
+  congelada); `avancar_etapa` devolve `proxima_imagem_url` junto de
+  `proxima_mensagem` ao avançar pra próxima etapa.
+- Lado Hermes (`bernardobbs/hermes`, `src/modules/campanhas/dispatch.js` e
+  `script.js`): quando há `imagem_url`/`proxima_imagem_url`, manda
+  `sock.sendMessage` com `image: {url}` + `caption`; sem imagem, continua
+  mandando só texto, igual sempre.
+
+Coberto por `tests/test_hermes_campanhas_script.mjs` (primeiro envio,
+reenvio na mesma etapa, reenvio já avançado pra etapa sem imagem própria —
+pra garantir que não herda a de outra etapa —, e `avancar_etapa` terminal
+vs. não-terminal com/sem imagem no destino).
+
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
 O Hermes roda atrás de NAT (Raspberry Pi em rede doméstica), sem endereço

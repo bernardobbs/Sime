@@ -41,6 +41,22 @@ function resetDB() {
     // item de script (21/08/2026: pendentes só entrega item com campanha_id
     // se a campanha estiver 'ativa', ver "controle total das campanhas").
     campanhasEntidade: [{ id: 'camp-1', nome: 'Campanha de script (teste)', zona_id: 'zona-7', status: 'ativa' }],
+    // Etapas do script (22/08/2026 — imagem por etapa, ver
+    // sql/SIME_campanha_etapas_imagem.sql). Etapa 1 e 3 têm imagem própria;
+    // etapa 2 não tem nenhuma — usada pra confirmar que a ausência de
+    // imagem numa etapa não "herda" a de outra etapa por engano.
+    campanhaEtapas: [
+      { campanha_id: 'camp-1', etapa_numero: 1, mensagem: 'Etapa 1: você confirma presença?',
+        imagem_url: 'https://exemplo.com/etapa1.jpg',
+        respostas_esperadas: [
+          { intencao: 'sim', palavras_chave: ['sim'], proxima_etapa: 2, status_final: null },
+          { intencao: 'nao', palavras_chave: ['nao', 'não'], proxima_etapa: null, status_final: 'telefone_incorreto' },
+        ] },
+      { campanha_id: 'camp-1', etapa_numero: 2, mensagem: 'Etapa 2: qual seção você atua?',
+        imagem_url: null, respostas_esperadas: [] },
+      { campanha_id: 'camp-1', etapa_numero: 3, mensagem: 'Etapa 3: obrigado!',
+        imagem_url: 'https://exemplo.com/etapa3.jpg', respostas_esperadas: [] },
+    ],
     logs: [], now: AGORA, ops: [],
   };
 }
@@ -138,6 +154,72 @@ resetDB();
   const r = await call('POST', Z7, { acao: 'pendentes' });
   check('item de campanha pausada some da fila', !r.body.campanhas.some(c => c.id === 's1'), JSON.stringify(r.body.campanhas.map(c => c.id)));
   check('item legado (sem campanha_id) continua saindo normalmente', r.body.campanhas.some(c => c.id === 'l1'));
+}
+
+// ── Imagem por etapa (22/08/2026, sql/SIME_campanha_etapas_imagem.sql) ──
+// A imagem pertence à ETAPA (sime_campanha_etapas.imagem_url), não à linha
+// de fila — pendentes/avancar_etapa precisam resolver a imagem certa pra
+// cada etapa, sem herdar a de uma etapa vizinha.
+
+// PENDENTES (primeiro envio, etapa 1): imagem_url vem da etapa 1
+resetDB();
+{
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  const s1 = (r.body?.campanhas || []).find(c => c.id === 's1');
+  check('primeiro envio (enviar_etapa_script) traz imagem_url da etapa 1',
+    s1?.imagem_url === 'https://exemplo.com/etapa1.jpg', String(s1?.imagem_url));
+}
+
+// PENDENTES (reenvio, ainda na etapa 1): continua trazendo a imagem da etapa 1
+resetDB();
+{
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  s1.status = 'aguardando_resposta';
+  s1.ts_enviado = '2026-10-02T10:00:00.000Z'; // fora da janela de RETRY_HORAS (24h antes de AGORA)
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  const item = (r.body?.campanhas || []).find(c => c.id === 's1');
+  check('reenvio vira proxima_acao=reenviar_etapa_script', item?.proxima_acao === 'reenviar_etapa_script', item?.proxima_acao);
+  check('reenvio da etapa 1 traz a imagem da etapa 1', item?.imagem_url === 'https://exemplo.com/etapa1.jpg', String(item?.imagem_url));
+}
+
+// PENDENTES (reenvio, já avançado pra etapa 2, sem imagem própria): não pode
+// herdar a imagem da etapa 1 — tem que resolver null pra etapa 2.
+resetDB();
+{
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  s1.status = 'aguardando_resposta';
+  s1.etapa_atual = 2;
+  s1.ts_enviado = '2026-10-02T10:00:00.000Z';
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  const item = (r.body?.campanhas || []).find(c => c.id === 's1');
+  check('reenvio da etapa 2 usa a mensagem da etapa 2 (não a etapa 1 congelada)',
+    item?.mensagem === 'Etapa 2: qual seção você atua?', item?.mensagem);
+  check('reenvio da etapa 2 (sem imagem própria) resolve imagem_url null, não herda a da etapa 1',
+    item?.imagem_url === null, String(item?.imagem_url));
+}
+
+// AVANCAR_ETAPA (não-terminal, destino sem imagem): proxima_imagem_url null
+resetDB();
+{
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 1, intencao: 'sim', proxima_etapa: 2, resposta_texto: 'sim' });
+  check('avancar_etapa devolve a mensagem da etapa de destino', r.body?.proxima_mensagem === 'Etapa 2: qual seção você atua?', r.body?.proxima_mensagem);
+  check('avancar_etapa pra etapa sem imagem devolve proxima_imagem_url null', r.body?.proxima_imagem_url === null, JSON.stringify(r.body));
+}
+
+// AVANCAR_ETAPA (não-terminal, destino COM imagem): proxima_imagem_url correta
+resetDB();
+{
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 2, intencao: 'ok', proxima_etapa: 3, resposta_texto: 'ok' });
+  check('avancar_etapa pra etapa com imagem devolve proxima_imagem_url certa',
+    r.body?.proxima_imagem_url === 'https://exemplo.com/etapa3.jpg', JSON.stringify(r.body));
+}
+
+// AVANCAR_ETAPA (terminal): não deve trazer proxima_imagem_url nenhuma
+resetDB();
+{
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 1, intencao: 'nao', status_final: 'telefone_incorreto', resposta_texto: 'não' });
+  check('avancar_etapa terminal não inclui proxima_imagem_url', r.body?.proxima_imagem_url === undefined, JSON.stringify(r.body));
+  check('avancar_etapa terminal grava o status_final pedido', globalThis.__SUPA.campanhas.find(c => c.id === 's1')?.status === 'telefone_incorreto');
 }
 
 const falhou = results.filter(r => !r.ok);

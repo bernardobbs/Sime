@@ -37,10 +37,14 @@
 // Hermes): generaliza o fluxo de identidade acima pra N etapas
 // configuráveis (sime_campanha_etapas), cada uma com seus próprios ramos
 // de resposta (palavras-chave → próxima etapa ou status final). etapa_atual
-// acompanha em que etapa o item está; reenvio por timeout busca a mensagem
-// da etapa ATUAL (não sempre a etapa 1). Resposta que não casa com nenhum
-// ramo vira status 'fora_do_script' (terminal — fila de atenção, ver ação
-// 'relatorio').
+// acompanha em que etapa o item está; reenvio por timeout busca a
+// mensagem/imagem da etapa ATUAL (não sempre a etapa 1). Cada etapa pode
+// ter sua própria imagem (sime_campanha_etapas.imagem_url, desde
+// 22/08/2026, ver sql/SIME_campanha_etapas_imagem.sql) — a imagem pertence
+// à etapa, nunca à linha de fila (diferente do fluxo simples/legado, onde
+// imagem_url vive em sime_campanhas_confirmacao). Resposta que não casa
+// com nenhum ramo vira status 'fora_do_script' (terminal — fila de
+// atenção, ver ação 'relatorio').
 //
 // Quem classifica a resposta (SIM/NÃO, ou ramo do script) em linguagem
 // natural é o Hermes (keyword matching, mesmo espírito de keywords.js) —
@@ -184,26 +188,32 @@ export default async function handler(req, res) {
       data = (data || []).filter((c) => !c.campanha_id || statusPorCampanha.get(c.campanha_id) === 'ativa');
     }
 
-    // Itens de script (campanha_id preenchido) 'aguardando_resposta' e
-    // devidos pra reenvio precisam da mensagem da ETAPA ATUAL — não de
-    // mensagem_enviada, que é só o texto da etapa 1, congelado na linha
-    // desde o envio inicial. Sem isso, reenviar um item parado na etapa 3,
-    // por exemplo, mandaria de volta o texto da etapa 1. Busca em lote
-    // (não uma query por item) pra não fazer N idas ao banco no loop abaixo.
+    // Itens de script (etapa_atual preenchido) precisam da mensagem/imagem
+    // da ETAPA ATUAL, buscada em sime_campanha_etapas — não de
+    // mensagem_enviada/imagem_url em sime_campanhas_confirmacao, que só
+    // cobrem a etapa 1 congelada no envio inicial (a imagem de script, desde
+    // 22/08/2026, pertence à etapa — ver sql/SIME_campanha_etapas_imagem.sql
+    // — nunca à linha de fila). Sem isso, reenviar um item parado na etapa
+    // 3, por exemplo, mandaria de volta o texto/imagem da etapa 1. Busca em
+    // lote (não uma query por item) pra não fazer N idas ao banco no loop
+    // abaixo — cobre tanto o primeiro envio (etapa_atual=1) quanto reenvios
+    // de qualquer etapa.
     const cutoffDate = new Date(cutoff);
-    const pendentesScriptParaReenviar = (data || []).filter((c) =>
-      c.status === 'aguardando_resposta' && c.etapa_atual &&
-      (!c.ts_enviado || new Date(c.ts_enviado) < cutoffDate)
-    );
+    const itensComEtapa = (data || []).filter((c) => c.etapa_atual);
     const mensagemEtapaPorChave = new Map(); // `${campanha_id}:${etapa_numero}` -> mensagem
-    if (pendentesScriptParaReenviar.length) {
-      const campanhaIds = [...new Set(pendentesScriptParaReenviar.map((c) => c.campanha_id))];
+    const imagemEtapaPorChave = new Map();   // `${campanha_id}:${etapa_numero}` -> imagem_url
+    if (itensComEtapa.length) {
+      const campanhaIds = [...new Set(itensComEtapa.map((c) => c.campanha_id))];
       const { data: etapas, error: etapasErr } = await supabase
         .from('sime_campanha_etapas')
-        .select('campanha_id, etapa_numero, mensagem')
+        .select('campanha_id, etapa_numero, mensagem, imagem_url')
         .in('campanha_id', campanhaIds);
       if (etapasErr) return res.status(500).json({ error: etapasErr.message });
-      for (const e of etapas || []) mensagemEtapaPorChave.set(`${e.campanha_id}:${e.etapa_numero}`, e.mensagem);
+      for (const e of etapas || []) {
+        const chave = `${e.campanha_id}:${e.etapa_numero}`;
+        mensagemEtapaPorChave.set(chave, e.mensagem);
+        imagemEtapaPorChave.set(chave, e.imagem_url || null);
+      }
     }
 
     const campanhas = [];
@@ -223,16 +233,18 @@ export default async function handler(req, res) {
         mensagem = c.mensagem_enviada;
         proximaAcao = c.etapa_atual ? 'enviar_etapa_script' : (c.mensagem_convocacao ? 'enviar_verificacao' : 'enviar');
         if (proximaAcao === 'enviar') imagemUrl = c.imagem_url || null;
+        else if (proximaAcao === 'enviar_etapa_script') imagemUrl = imagemEtapaPorChave.get(`${c.campanha_id}:${c.etapa_atual}`) || null;
       } else if (c.status === 'aguardando_resposta') {
         const devido = !c.ts_enviado || new Date(c.ts_enviado) < cutoffDate;
         if (!devido) continue; // ainda dentro da janela de espera — não insiste
         if (c.etapa_atual) {
-          // Reenvio de uma etapa de script — mensagem da etapa ATUAL, ver
-          // busca em lote acima. Etapa órfã (apagada depois de enviada) não
-          // trava a fila — só não sai daqui, igual a qualquer item sem
-          // mensagem (checado abaixo).
+          // Reenvio de uma etapa de script — mensagem/imagem da etapa
+          // ATUAL, ver busca em lote acima. Etapa órfã (apagada depois de
+          // enviada) não trava a fila — só não sai daqui, igual a qualquer
+          // item sem mensagem (checado abaixo).
           proximaAcao = 'reenviar_etapa_script';
           mensagem = mensagemEtapaPorChave.get(`${c.campanha_id}:${c.etapa_atual}`) || null;
+          imagemUrl = imagemEtapaPorChave.get(`${c.campanha_id}:${c.etapa_atual}`) || null;
         } else {
           proximaAcao = 'reenviar_verificacao';
           mensagem = c.mensagem_enviada;
@@ -505,7 +517,7 @@ export default async function handler(req, res) {
     // resposta).
     const { data: proximaEtapa, error: proxErr } = await supabase
       .from('sime_campanha_etapas')
-      .select('mensagem')
+      .select('mensagem, imagem_url')
       .eq('campanha_id', item.campanha_id)
       .eq('etapa_numero', proximaEtapaNumero)
       .maybeSingle();
@@ -536,7 +548,7 @@ export default async function handler(req, res) {
       acao: 'campanha_script_avancou', modulo: 'hermes_campanhas',
       payload: { id: item.id, zona: zona.numeroZona, intencao, etapa_anterior: item.etapa_atual, etapa_nova: proximaEtapaNumero }, ts,
     });
-    return res.status(200).json({ ok: true, id: item.id, etapa_atual: proximaEtapaNumero, proxima_mensagem: proximaEtapa.mensagem });
+    return res.status(200).json({ ok: true, id: item.id, etapa_atual: proximaEtapaNumero, proxima_mensagem: proximaEtapa.mensagem, proxima_imagem_url: proximaEtapa.imagem_url || null });
   }
 
   // ── REGISTRAR_FORA_DO_SCRIPT ── resposta que não casou com nenhuma

@@ -93,6 +93,9 @@ class QB {
     // se a campanha do item está 'ativa' antes de entregar (ver "controle
     // total das campanhas").
     if (this.t === 'sime_campanhas') return resolve({ data: this._filtra(S.campanhasEntidade || []), error: null });
+    // Etapas do script conversacional (mensagem/imagem_url por etapa) — ver
+    // api/hermes-campanhas.js (pendentes/avancar_etapa/obter_etapa_pendente).
+    if (this.t === 'sime_campanha_etapas') return resolve({ data: this._filtra(S.campanhaEtapas || []), error: null });
     if (this.t === 'sime_heartbeat') return resolve({ data: this._filtra(S.heartbeats), error: null });
     if (this.t === 'sime_usuarios') return resolve({ data: this._filtra(S.usuarios), error: null });
     return resolve({ data: null, error: null });
@@ -111,6 +114,17 @@ class QB {
     }
     if (this.t === 'sime_componentes') {
       const r = (S.componentes || []).find(c => c.zona_id === this.f.zona_id && c.componente === this.f.componente) || null;
+      return { data: r, error: null };
+    }
+    if (this.t === 'sime_campanha_etapas') {
+      const r = this._filtra(S.campanhaEtapas || [])[0] || null;
+      return { data: r, error: null };
+    }
+    // .maybeSingle() em sime_campanhas_confirmacao — usado por
+    // api/hermes-campanhas.js (avancar_etapa/registrar_fora_do_script) pra
+    // buscar o item pelo id, restrito à zona autenticada.
+    if (this.t === 'sime_campanhas_confirmacao') {
+      const r = this._filtra(S.campanhas || [])[0] || null;
       return { data: r, error: null };
     }
     return { data: null, error: null };

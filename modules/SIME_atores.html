@@ -685,6 +685,7 @@ let dispCampanhasScript = [];   // todas as campanhas da zona (qualquer modelo),
 let dispCampanhasCarregadas = false;
 let dispCampanhaId = null;      // qual campanha foi escolhida no <select>
 let dispCampanhaEtapa1 = '';    // preview (só leitura) da mensagem da etapa 1 — só relevante pro modelo "script"
+let dispCampanhaEtapa1Imagem = null; // preview (só leitura) da imagem da etapa 1, se tiver
 let dispMostrarNovaCampanha = false; // true quando o select está no modo "+ Nova campanha"
 let dispNovaCampanhaNome = '';  // texto digitado nesse modo
 
@@ -787,8 +788,8 @@ function renderDisparo(atores){
       </div>
       ${dispTipo==='script' ? `
       <div class="form-group">
-        ${dispCampanhaEtapa1 ? `<div class="ic-sub"><b>Prévia da 1ª mensagem (etapa 1):</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${dispCampanhaEtapa1}</pre></div>` : '<div class="ic-sub">Escolha uma campanha com script salvo acima pra ver a prévia da 1ª mensagem.</div>'}
-        <div class="ic-sub" style="margin-top:4px">As etapas seguintes (o que acontece a cada resposta) já estão definidas no script — não são editadas aqui.</div>
+        ${dispCampanhaEtapa1 ? `<div class="ic-sub"><b>Prévia da 1ª mensagem (etapa 1):</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${dispCampanhaEtapa1}</pre>${dispCampanhaEtapa1Imagem ? `<img src="${dispCampanhaEtapa1Imagem}" alt="Prévia da imagem da etapa 1" style="max-width:200px;max-height:200px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : '<div class="ic-sub">Escolha uma campanha com script salvo acima pra ver a prévia da 1ª mensagem.</div>'}
+        <div class="ic-sub" style="margin-top:4px">As etapas seguintes (mensagem, imagem e o que acontece a cada resposta) já estão definidas no script — não são editadas aqui, só na aba 🧩 Campanhas.</div>
       </div>` : `
       <div class="form-group"><label>${dispTipo==='convocacao' ? '1ª mensagem — confirmação de identidade' : 'Mensagem'}</label>
         <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsg=this.value">${dispMensagemAtual()}</textarea>
@@ -799,10 +800,11 @@ function renderDisparo(atores){
         <textarea id="dp-msg-convocacao" rows="6" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsgConvocacao=this.value">${dispMensagemConvocacaoAtual()}</textarea>
         <div class="ic-sub" style="margin-top:4px">Os textos entre chaves — {nome}, {funcao}, {secao}, {local}, {municipio} — são trocados pelos dados de cada pessoa. A imagem abaixo vai junto desta mensagem, não da primeira.</div>
       </div>` : ''}`}
+      ${dispTipo!=='script' ? `
       <div class="form-group"><label>Imagem${dispTipo==='convocacao' ? ' (vai com a 2ª mensagem)' : ' (opcional)'}</label>
         <input type="url" id="dp-imagem" value="${dispImagemUrl}" placeholder="https://... (URL pública de uma imagem, ex.: passo a passo de confirmação no site do TRE)" oninput="dispImagemUrl=this.value">
         <div class="ic-sub" style="margin-top:4px">O Hermes manda essa imagem junto com a mensagem. Precisa ser um link público (não é upload aqui — hospede em algum lugar e cole a URL).</div>
-      </div>
+      </div>` : ''}
       <div class="form-group"><label>Filtrar por função</label>
         <select id="dp-funcao" onchange="mudarFuncaoDisparo(this.value)">
           <option value="">Todos os ativos com WhatsApp cadastrado</option>
@@ -890,7 +892,7 @@ function marcarExibidosDisparo(marcar){
 // voltar ao template do novo modelo (edição do modelo anterior não se aplica).
 function mudarTipoDisparo(v){
   dispTipo = v; dispMsg = null; dispMsgConvocacao = null;
-  dispCampanhaEtapa1 = '';
+  dispCampanhaEtapa1 = ''; dispCampanhaEtapa1Imagem = null;
   // A campanha escolhida NÃO reseta ao trocar de modelo (21/08/2026) — só a
   // etapa 1 (preview, específico do modelo "script"). Trocar de "convocação"
   // pra "mensagem livre" sem querer não deve fazer perder a campanha já
@@ -948,12 +950,12 @@ function selecionarCampanhaDisparoSelect(v){
 // hoje pros outros modelos).
 async function selecionarCampanhaDisparo(id){
   dispCampanhaId = id || null;
-  dispCampanhaEtapa1 = '';
+  dispCampanhaEtapa1 = ''; dispCampanhaEtapa1Imagem = null;
   if(dispCampanhaId){
     const sb = window.supabaseAtores;
     const { data, error } = await sb.from('sime_campanha_etapas')
-      .select('mensagem').eq('campanha_id', dispCampanhaId).eq('etapa_numero', 1).maybeSingle();
-    if(!error && data) dispCampanhaEtapa1 = data.mensagem;
+      .select('mensagem, imagem_url').eq('campanha_id', dispCampanhaId).eq('etapa_numero', 1).maybeSingle();
+    if(!error && data) { dispCampanhaEtapa1 = data.mensagem; dispCampanhaEtapa1Imagem = data.imagem_url || null; }
   }
   render();
 }
@@ -1006,7 +1008,10 @@ function confirmarDisparo(){
     const zonaId = await zonaDoUsuario();
     if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
 
-    const imagemUrl = (dispImagemUrl||'').trim() || null;
+    // Script não usa mais este campo de imagem — imagem de script pertence à
+    // ETAPA (sime_campanha_etapas.imagem_url, editada na aba 🧩 Campanhas),
+    // não à linha de fila. Ver sql/SIME_campanha_etapas_imagem.sql.
+    const imagemUrl = ehScript ? null : ((dispImagemUrl||'').trim() || null);
     const linhas = destinatarios.map(a => ({
       ator_id: a.id,
       telefone_whatsapp: a.telefone,
@@ -1021,7 +1026,7 @@ function confirmarDisparo(){
     const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
     if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
 
-    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl, com_confirmacao: ehConvocacao || ehScript, campanha_id: dispCampanhaId });
+    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl || !!dispCampanhaEtapa1Imagem, com_confirmacao: ehConvocacao || ehScript, campanha_id: dispCampanhaId });
     showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
   }, { titulo:'Confirmar disparo', labelOk:'📢 Enfileirar' });
 }
