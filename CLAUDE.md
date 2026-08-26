@@ -802,6 +802,23 @@ cada um com propósito diferente:
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
 > qualquer um que loga cai no hub de módulos, não numa página específica.
 > `?tab=<nome>` é genérico (`abrirAbaDaUrl()`), não só pra `modulos`.
+
+> **Aba "Módulos" — "Painéis de TV" era, na prática, um bucket de "sem fase
+> definida" (achado do cartório, corrigido em 26/08/2026).** `MODS.tv`
+> (`SIME_principal.html`) tinha 9 itens sob o título "Painéis de TV", mas só
+> 2 (Gerenciador de Painéis, TV Dia da Eleição) são televisão de verdade — os
+> outros 7 (Administração, Recolhimento de Mídias, Cadastro de Atores,
+> Convocação de Mesários, Tokens & QR Codes, Problemas, Relatórios) foram
+> parar ali só por não terem `fase` fixa (`dx`/`d1`/`d`), não por serem TV. O
+> cartório sinalizou especificamente Problemas, Convocação de Mesários e
+> Cadastro de Atores como fora de lugar ali. Separado em dois grupos de
+> verdade: `MODS.tv` ficou só com os 2 itens de TV; `MODS.adm` (novo, título
+> "Ferramentas do cartório") recebeu os outros 7. `renderModulos()` já
+> itera `Object.entries(MODS)` genericamente — bastou acrescentar o
+> `<div class="sec-title">`/`<div class="mod-grid" id="mods-adm">` no HTML,
+> nenhuma mudança de lógica. Os demais módulos `TV_*` (Preparação, Véspera,
+> Distribuição) já viviam nos grupos de fase (`dx`/`d1`) desde sempre, perto
+> do módulo de campo que alimentam — não fazem parte desta confusão.
 >
 > **Acesso a `SIME_convocacao.html` não tem trava de perfil, decisão
 > deliberada (20/08/2026).** Qualquer login da equipe do cartório — não só

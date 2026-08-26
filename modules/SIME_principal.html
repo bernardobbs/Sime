@@ -346,7 +346,9 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
   <div class="sec-title">Dia D · Eleição</div>
   <div class="mod-grid" style="margin-bottom:20px;" id="mods-d"></div>
   <div class="sec-title">Painéis de TV</div>
-  <div class="mod-grid" id="mods-tv"></div>
+  <div class="mod-grid" style="margin-bottom:20px;" id="mods-tv"></div>
+  <div class="sec-title">Ferramentas do cartório</div>
+  <div class="mod-grid" id="mods-adm"></div>
 </div>
 
 <!-- ABA USUÁRIOS -->
@@ -846,9 +848,17 @@ const MODS = {
     {icon:'🚐',title:'Motorista',sub:'Entrega e recolhimento de urnas',href:'SIME_motorista.html',fase:'d'},
     {icon:'📊',title:'Dashboard Operacional',sub:'Visão consolidada de todas as seções',href:'SIME_admin.html',fase:'d'},
   ],
+  // Só o que é televisão/telão de verdade — os demais TV_* (Preparação,
+  // Véspera, Distribuição) já vivem nos grupos de fase acima (dx/d1), perto
+  // do módulo de campo que alimentam.
   tv:[
     {icon:'📺',title:'Gerenciador de Painéis',sub:'Configure painéis personalizados para TVs',href:'SIME_paineis.html',fase:null},
     {icon:'🌅',title:'TV Dia da Eleição',sub:'Painel de acompanhamento do Dia D',href:'SIME_tv_dia.html',fase:'d'},
+  ],
+  // Achado real (21/08/2026): estes 7 moravam dentro de "Painéis de TV" só
+  // por não terem fase fixa — nenhum deles é televisão. Separados num grupo
+  // próprio de ferramentas do cartório (admin, cadastro, convocação, etc.).
+  adm:[
     {icon:'🔧',title:'Administração',sub:'Gestão de seções, equipe e ocorrências',href:'SIME_admin.html',fase:null},
     {icon:'📦',title:'Recolhimento de Mídias',sub:'Controle do fluxo de mídias eleitorais',href:'SIME_midias.html',fase:'d'},
     {icon:'👥',title:'Cadastro de Atores',sub:'Contatos e Modo Guerra por seção',href:'SIME_atores.html',fase:null},
