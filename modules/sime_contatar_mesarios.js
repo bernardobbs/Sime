@@ -65,9 +65,19 @@ function cmRotuloFuncao(p) {
   return CM_FUNCAO_LABEL[p.funcao] || p.funcao || '—';
 }
 
+// "aguardando_resposta" (27/08/2026, pedido direto: "eu quero uma área
+// dedicada às tentativas de contato que não tiveram respostas ainda") é um
+// SUBCONJUNTO de "pendente" — quem já foi contactado (campanha enviada OU
+// tentativa manual registrada) mas ainda não confirmou/recusou/etc.
+// "pendente" continua existindo do jeito que sempre foi (inclui também quem
+// NUNCA foi contactado); este bucket novo separa quem já teve uma tentativa
+// de verdade, pra não misturar "ninguém tentou ainda" com "tentamos e
+// ninguém voltou" — são ações diferentes (contactar pela primeira vez vs.
+// cobrar resposta). Contagem em cmCarregar()/renderContatarMesarios().
 const CM_BUCKETS = [
   { valor: '',                  label: 'Todos' },
   { valor: 'pendente',          label: '❌ Falta contactar / sem resposta' },
+  { valor: 'aguardando_resposta', label: '🕓 Aguardando resposta (já tentamos)' },
   { valor: 'confirmado',        label: '✅ Confirmados' },
   { valor: 'recusou',           label: '⚠️ Recusou (é a pessoa certa)' },
   { valor: 'contato_incorreto', label: '🔍 Contato incorreto (não é a pessoa)' },
@@ -198,7 +208,7 @@ async function cmCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { cmDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }] = await Promise.all([
+  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }, { data: tentativasManuais }] = await Promise.all([
     sb.from('sime_atores')
       .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
@@ -220,14 +230,28 @@ async function cmCarregar() {
     // abaixo (uma campanha faltando não devia impedir de ver a fila de
     // contato inteira).
     sb.from('sime_campanhas').select('id, nome, status').eq('zona_id', zonaId).order('created_at', { ascending: false }),
+    // Tentativas MANUAIS (➕ Registrar tentativa / 🔗 Copiar link), pra contar
+    // junto com as de campanha em p.tentativas — sem RLS de sime_logs já
+    // escopa pra eleição/zona visível, então basta filtrar pela ação (27/08/2026,
+    // pedido direto: "área dedicada às tentativas de contato que não tiveram
+    // respostas ainda" — sem isso, alguém só contactado manualmente aparecia
+    // como "nunca tentamos", mesmo já tendo várias tentativas registradas).
+    sb.from('sime_logs').select('payload').eq('acao', 'mesario_tentativa_contato'),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
 
   const tentativasPorAtor = {};
   const statusFila = {};
   for (const c of campanhas || []) {
-    if (c.status === 'enviado') tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+    // 'aguardando_resposta' (status do motor de script) conta igual
+    // 'enviado' (fluxo simples) — os dois significam "mensagem já saiu,
+    // ninguém confirmou ainda".
+    if (c.status === 'enviado' || c.status === 'aguardando_resposta') tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
     statusFila[c.status] = (statusFila[c.status] || 0) + 1;
+  }
+  for (const l of tentativasManuais || []) {
+    const atorId = l.payload?.ator_id;
+    if (atorId) tentativasPorAtor[atorId] = (tentativasPorAtor[atorId] || 0) + 1;
   }
   for (const p of pessoas || []) p.tentativas = tentativasPorAtor[p.id] || 0;
 
@@ -454,6 +478,16 @@ async function cmAdicionarObservacao(id) {
 // Núcleo compartilhado com o "Salvar" geral do modal — ver cmSalvarModal.
 async function cmRegistrarTentativaCore(id, meio, nota) {
   await cmLog('mesario_tentativa_contato', '', { ator_id: id, meio, nota });
+  // Bump otimista de p.tentativas + render() da LISTA (27/08/2026, achado
+  // ao construir a área dedicada de "aguardando resposta") — sem isso, o
+  // card/painel/bucket por trás do modal ficavam com a contagem velha até
+  // a aba ser recarregada, já que p.tentativas vem de uma consulta em lote
+  // feita uma vez em cmCarregar(), não de um campo que patch/Object.assign
+  // já resolveria sozinho. Mesmo padrão de "atualiza na hora" já usado por
+  // toda outra ação rápida desta tela (precisa_substituir, contato
+  // incorreto, etc.) — só que aqui é incremento, não substituição de campo.
+  const p = cmDados?.pessoas?.find(x => x.id === id);
+  if (p) { p.tentativas = (p.tentativas || 0) + 1; render(); }
 }
 
 async function cmRegistrarTentativa(id) {
@@ -1054,11 +1088,18 @@ async function cmSalvarModal() {
   render();
 }
 
+// Já contactado (campanha ou tentativa manual) mas ainda pendente — ver
+// comentário em CM_BUCKETS.
+function cmEhAguardandoResposta(p) {
+  return (p.confirmacao || 'pendente') === 'pendente' && p.tentativas > 0;
+}
+
 function cmFiltrar() {
   const q = cmBusca.trim().toLowerCase();
   return cmDados.pessoas.filter(p => {
     if (cmFiltroStatus === 'precisa_substituir') { if (!p.precisa_substituir) return false; }
     else if (cmFiltroStatus === 'relato_terceiro_pendente') { if (!p.tem_relato_terceiro_pendente) return false; }
+    else if (cmFiltroStatus === 'aguardando_resposta') { if (!cmEhAguardandoResposta(p)) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
@@ -1114,6 +1155,8 @@ function renderContatarMesarios() {
   for (const p of cmDados.pessoas) contagem[p.confirmacao || 'pendente'] = (contagem[p.confirmacao || 'pendente'] || 0) + 1;
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
   contagem.relato_terceiro_pendente = cmDados.pessoas.filter(p => p.tem_relato_terceiro_pendente).length;
+  const pessoasAguardando = cmDados.pessoas.filter(cmEhAguardandoResposta);
+  contagem.aguardando_resposta = pessoasAguardando.length;
   const contagemFuncao = {};
   for (const p of cmDados.pessoas) contagemFuncao[p.funcao] = (contagemFuncao[p.funcao] || 0) + 1;
   const lista = cmFiltrar();
@@ -1144,7 +1187,12 @@ function renderContatarMesarios() {
         <button class="btn btn-dark" style="font-size:.74rem;padding:6px 12px" onclick="cmCriarCampanha()">📢 Criar campanha com estes (${lista.filter(p => p.telefone_whatsapp).length})</button>
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
+    ${pessoasAguardando.length ? `
+    <div class="import-result ir-warn" style="cursor:pointer" onclick="cmFiltroStatus='aguardando_resposta';cmFiltroFuncao='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
+      🕓 <b>${pessoasAguardando.length} pessoa(s)</b> aguardando resposta — já tentamos contato, ninguém confirmou ainda.
+      <div style="font-weight:400;margin-top:3px">${pessoasAguardando.slice(0, 6).map(p => cmEsc(p.nome_completo)).join(', ')}${pessoasAguardando.length > 6 ? ` e mais ${pessoasAguardando.length - 6}` : ''}</div>
+    </div>` : ''}
+    <div class="cm-lista-pessoas" style="display:flex;flex-direction:column;gap:8px">
       ${lista.map(p => {
         const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
         const podeMarcarIncorreto = p.confirmacao === 'recusou';

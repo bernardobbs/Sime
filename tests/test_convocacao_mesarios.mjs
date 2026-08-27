@@ -368,7 +368,10 @@ async function login(p) {
   await p.click('#tab-contatar-btn');
   await p.waitForTimeout(300);
 
-  const bodyTxt = await p.locator('.content').textContent();
+  // Escopado à lista de cards (.cm-lista-pessoas), não a .content inteiro —
+  // desde o painel "🕓 Aguardando resposta" (27/08/2026), nomes também podem
+  // aparecer no banner de destaque acima da lista, que não deve contar aqui.
+  const bodyTxt = await p.locator('.cm-lista-pessoas').textContent();
   check('lista os 4 mesários carregados', (bodyTxt.match(/ANA PRESIDENTE|BRUNO MESARIO|CARLA RECUSOU|DIEGO CARTA/g) || []).length === 4);
 
   const cardCarla = await p.locator('.import-card:has-text("CARLA RECUSOU")').first();
@@ -799,7 +802,10 @@ async function login(p) {
   // Filtro dedicado — é uma flag independente de confirmacao, não reaproveita o bucket "substituído".
   await p.selectOption('#cm-filtro', 'precisa_substituir');
   await p.waitForTimeout(150);
-  const filtrado = await p.locator('.content').textContent();
+  // Escopado à lista de cards — o painel "🕓 Aguardando resposta" é GLOBAL
+  // (não muda com o filtro selecionado), então Bruno pode continuar
+  // aparecendo lá mesmo filtrado pra fora da lista de cards abaixo.
+  const filtrado = await p.locator('.cm-lista-pessoas').textContent();
   check('filtro "precisa ser substituído" mostra só quem está marcado', /ANA PRESIDENTE/.test(filtrado) && !/BRUNO MESARIO/.test(filtrado), filtrado.replace(/\s+/g, ' ').slice(0, 200));
   await p.selectOption('#cm-filtro', '');
   await p.waitForTimeout(150);
@@ -964,6 +970,77 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.85 Área dedicada às tentativas sem resposta (27/08/2026, pedido
+// direto: "eu quero uma área dedicada às tentativas de contato que não
+// tiveram respostas ainda") — painel de destaque + filtro próprio ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // BRUNO (a2) já tem campanha status='enviado' e confirmacao='pendente' na
+  // fixture base — é exatamente o caso "já tentamos, ninguém confirmou".
+  const painelTxt = await p.locator('.import-result.ir-warn:has-text("aguardando resposta")').first().textContent();
+  check('painel de destaque aparece com a contagem certa', /1 pessoa\(s\) aguardando resposta/.test(painelTxt), painelTxt);
+  check('painel lista o nome de quem está nessa situação', /BRUNO MESARIO/.test(painelTxt), painelTxt);
+
+  // Bucket próprio no filtro de sempre — contagem bate com o painel.
+  const opcaoAguardando = await p.locator('#cm-filtro option[value="aguardando_resposta"]').textContent();
+  check('opção "Aguardando resposta" no filtro mostra a mesma contagem', /\(1\)/.test(opcaoAguardando), opcaoAguardando);
+
+  // Clicar no painel aplica o filtro — mesmo padrão de "área dedicada" nos
+  // dois formatos pedidos (painel sempre visível + filtro selecionável).
+  await p.click('.import-result.ir-warn:has-text("aguardando resposta")');
+  await p.waitForTimeout(150);
+  check('clicar no painel seleciona o filtro "Aguardando resposta"', await p.locator('#cm-filtro').inputValue() === 'aguardando_resposta');
+  const cardsFiltrados = await p.locator('.import-card:has-text("MESARIO"), .import-card:has-text("PRESIDENTE"), .import-card:has-text("RECUSOU")').allTextContents();
+  check('lista filtrada mostra só quem está aguardando resposta', cardsFiltrados.some(t => /BRUNO/.test(t)) && !cardsFiltrados.some(t => /ANA PRESIDENTE/.test(t)), cardsFiltrados.join(' | '));
+
+  // Quem nunca foi contactado (sem campanha nem tentativa manual) não entra
+  // no bucket "aguardando_resposta" — só em "pendente" (que continua mais
+  // amplo, cobrindo os dois casos).
+  await p.selectOption('#cm-filtro', 'pendente');
+  await p.waitForTimeout(150);
+  const totalPendente = (await p.locator('.import-card').count()) - 1; // -1 do card de cabeçalho
+  check('bucket "pendente" continua mais amplo que "aguardando_resposta" (inclui quem nunca foi contactado)', totalPendente > 1, totalPendente);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.86 Tentativa MANUAL também conta pra "aguardando resposta" (não só
+// campanha) — achado real ao construir 2.85: p.tentativas só contava
+// campanha 'enviado', então alguém contactado só por "Registrar tentativa"/
+// "Copiar link" aparecia como se nunca tivesse sido contactado ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  // Bruno já conta (campanha) — some mais uma tentativa manual e confirma
+  // que o contador de tentativas dele sobe, sem duplicar a pessoa no painel
+  // (ele já estava lá).
+  await p.fill('#mm-tent-nota', 'Liguei de novo, caiu a chamada');
+  await p.click('#modal-body button:has-text("Registrar tentativa")');
+  await p.waitForTimeout(200);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(150);
+
+  const cardBrunoDepois = await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent();
+  check('tentativa manual soma no contador exibido no card (campanha + manual)', /Já contactado \(2x\)/.test(cardBrunoDepois), cardBrunoDepois);
+  const painelDepois = await p.locator('.import-result.ir-warn:has-text("aguardando resposta")').first().textContent();
+  check('painel continua contando 1 pessoa (Bruno não duplica por ter 2 tentativas)', /1 pessoa\(s\) aguardando resposta/.test(painelDepois), painelDepois);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.9 Apoio logístico entra na mesma fila de contato dos mesários ──
 {
   const ctx = await b.newContext();
@@ -985,7 +1062,8 @@ async function login(p) {
   check('filtro de função tem as 4 opções (todas/mesário/coord. acessibilidade/auxiliar)', await p.locator('#cm-filtro-funcao option').count() === 4);
   await p.selectOption('#cm-filtro-funcao', 'auxiliar_eleicao');
   await p.waitForTimeout(150);
-  const soAuxiliar = await p.locator('.content').textContent();
+  // Idem — escopado à lista de cards, não ao painel global do topo.
+  const soAuxiliar = await p.locator('.cm-lista-pessoas').textContent();
   check('filtro "Auxiliar de Eleição" mostra só ELIS, esconde mesários e o outro apoio', /ELIS APOIO/.test(soAuxiliar) && !/FABIO APOIO/.test(soAuxiliar) && !/BRUNO MESARIO/.test(soAuxiliar), soAuxiliar.replace(/\s+/g, ' ').slice(0, 200));
 
   await p.selectOption('#cm-filtro-funcao', 'mesario');

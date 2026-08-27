@@ -930,6 +930,51 @@ cada um com propósito diferente:
   familiar testando o WhatsApp), não um erro. Como a resposta vira log
   no MESMO dia da tentativa, ela já fecha sozinha o aviso "⚠️ sem retorno
   registrado depois" acima — sem precisar de nenhuma lógica nova.
+
+  **Área dedicada às tentativas sem resposta (27/08/2026, pedido direto:
+  "eu quero uma área dedicada às tentativas de contato que não tiveram
+  respostas ainda").** O agrupamento por dia acima é POR PESSOA — só ajuda
+  depois de já ter aberto o modal de alguém. Faltava um jeito de ver, pra
+  ZONA inteira, quem já foi contactado mas ainda não voltou, sem precisar
+  abrir pessoa por pessoa. Dois formatos, os dois pedidos ("poderia ser os
+  dois?"), reaproveitando o mesmo dado:
+  - **Bucket próprio no filtro de sempre** — `🕓 Aguardando resposta (já
+    tentamos)` em `CM_BUCKETS`, computado por `cmEhAguardandoResposta(p)`:
+    `confirmacao` ainda `pendente` **e** `p.tentativas > 0`. Deliberadamente
+    um SUBCONJUNTO de `pendente` (que continua existindo do jeito que
+    sempre foi, cobrindo também quem nunca foi contactado) — são ações
+    diferentes: contactar pela primeira vez vs. cobrar quem já foi
+    contactado e não respondeu.
+  - **Painel de destaque, sempre visível** — bloco amarelo (`.ir-warn`) no
+    topo de "📞 Contatar mesários", acima dos filtros, mostrando a
+    contagem e até 6 nomes (`+N` se passar disso) — aparece só quando há
+    pelo menos 1 pessoa nessa situação, e clicar nele aplica o filtro
+    acima. Não escondido atrás de nenhuma seleção, ao contrário do bucket.
+
+  **`p.tentativas` passou a contar tentativa MANUAL, não só campanha
+  (mesmo dia, achado ao construir isso).** Antes, `cmCarregar()` só contava
+  linhas de `sime_campanhas_confirmacao` com `status='enviado'` — uma
+  pessoa contactada só por "➕ Registrar tentativa"/"🔗 Copiar link"
+  (`sime_logs.acao='mesario_tentativa_contato'`) aparecia como se nunca
+  tivesse sido contactada, tanto no badge "📨 Já contactado" quanto (agora)
+  no bucket/painel novos. `cmCarregar()` ganhou uma consulta a mais
+  (`sime_logs` filtrado por essa `acao` — RLS já escopa pra zona/eleição
+  visível, sem precisar repetir o filtro) e soma as duas fontes num
+  `tentativasPorAtor` só. De caminho, `status='aguardando_resposta'` do
+  motor de script (que antes só contava `'enviado'`) também passou a
+  contar — mesmo significado prático: "mensagem saiu, ninguém confirmou".
+
+  **Bug real corrigido no caminho: registrar tentativa não atualizava a
+  lista por trás do modal.** `p.tentativas` vem de uma consulta em lote
+  feita uma vez em `cmCarregar()`, não de um campo simples que
+  `Object.assign(p, patch)` resolvesse sozinho — "➕ Registrar tentativa"
+  só recarregava a timeline do PRÓPRIO modal (`cmAbrirModal`), nunca
+  chamava `render()` da lista. Card, painel e contagem do bucket ficavam
+  com o número antigo até a aba ser recarregada. `cmRegistrarTentativaCore()`
+  agora incrementa `p.tentativas` localmente (bump otimista, mesmo padrão
+  de toda outra ação rápida desta tela) e chama `render()` — reflete na
+  hora nos três lugares (card, painel, contagem do filtro), sem esperar
+  reabrir a aba.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
