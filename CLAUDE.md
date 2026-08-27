@@ -730,7 +730,19 @@ cada um com propósito diferente:
   (preenche rastreio + telefone principal sem tabular entre os dois, clica
   Salvar direto, confirma que o modal fecha E as duas gravações acontecem).
 
-  **Toda ação desta tela agora grava QUEM fez, não só O QUE foi feito
+  **"⭐ Usar como principal" (27/08/2026, pedido direto: "e se a pessoa tiver
+  4 números? ou eu precisar eleger um para ser o principal").** Antes disso,
+  promover um número do TRE (só leitura) ou o alternativo pra virar o
+  `telefone_whatsapp` (o único que Hermes/campanha em massa de fato usam)
+  exigia copiar o texto e colar manualmente no cartão do principal. Cada
+  cartão que NÃO é o principal e tem valor ganhou um botão de texto "⭐ Usar
+  como principal" (`cmUsarComoPrincipal(id, valor)`) — grava aquele número em
+  `telefone_whatsapp` (com "55", mesma convenção de sempre), loga
+  `mesario_editar_telefone` (mesma ação que já usa a edição manual do
+  principal — não é uma ação nova pro histórico) e recarrega o modal pra
+  refletir o novo valor no cartão do principal. Só copia o número — nunca
+  mexe no `telefone_alternativo` nem em nenhum campo do TRE; se o número já
+  é o principal, só avisa "Já é o telefone principal" sem gravar de novo.
   (21/08/2026) — achado real reportado pelo cartório num caso concreto
   (ADRIANA PAZ OLIVEIRA): "tentou contactar" e "telefone atualizado
   manualmente" apareciam na timeline sem dizer quem do cartório fez.** Só

@@ -588,6 +588,19 @@ async function login(p) {
   check('remover telefone alternativo grava null', !!updRemocao, JSON.stringify(updRemocao));
   check('telefone alternativo removido some da lista', !/Telefone alternativo \(cartório\)/.test(await p.locator('#modal-body').textContent()));
 
+  // "Eleger" o telefone do TRE como principal (27/08/2026, pedido direto:
+  // "se a pessoa tiver 4 números... eu precisar eleger um para ser o
+  // principal") — botão "⭐ Usar como principal" só aparece nos cartões que
+  // NÃO são o principal, e só quando têm valor.
+  check('cartão do principal não tem botão "Usar como principal" (ele já é)', await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button:has-text("Usar como principal")').count() === 0);
+  const cartaoEleitor = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' });
+  check('cartão do TRE tem botão "Usar como principal"', await cartaoEleitor.locator('button:has-text("Usar como principal")').count() === 1);
+  await cartaoEleitor.locator('button:has-text("Usar como principal")').click();
+  await p.waitForTimeout(250);
+  const updPrincipalEleito = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_whatsapp === '5586977778888'));
+  check('eleger o telefone do TRE grava como novo principal (com 55)', !!updPrincipalEleito, JSON.stringify(updPrincipalEleito));
+  check('modal recarrega e o cartão principal já mostra o número eleito', (await p.locator('#mm-tel-principal').inputValue()) === '(86) 97777-8888');
+
   // Ana não tem nenhuma linha em sime_mesarios_raw nem telefone_alternativo —
   // a lista única mostra só o principal dela.
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));

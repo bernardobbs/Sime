@@ -862,6 +862,31 @@ async function cmSalvarTelefoneCard(id, campo, elId) {
   }
 }
 
+// "Eleger" um número não-principal (do TRE, só leitura, ou o alternativo) como
+// o telefone_whatsapp — pedido direto: "se a pessoa tiver 4 números... eu
+// precisar eleger um para ser o principal". Sem isso, promover um número do
+// TRE exigia copiar o texto e colar manualmente no cartão do principal.
+async function cmUsarComoPrincipal(id, valorBruto) {
+  const digitos = telSemPais(valorBruto || '');
+  if (!digitos || digitos.length < 10) { showToast('⚠ Telefone inválido'); return; }
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const novoValor = '55' + digitos;
+  if (novoValor === (p.telefone_whatsapp || '')) { showToast('Já é o telefone principal'); return; }
+  const sb = window.supabaseAtores;
+  try {
+    const { error } = await sb.from('sime_atores').update({ telefone_whatsapp: novoValor }).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    p.telefone_whatsapp = novoValor;
+    await cmLog('mesario_editar_telefone', '', { ator_id: id });
+    showToast('✓ Definido como telefone principal');
+    render();
+    if (cmModalId === id) await cmAbrirModal(id);
+  } catch (e) {
+    showToast('⚠ Falha ao salvar — verifique a conexão e tente de novo');
+  }
+}
+
 function cmFecharModal(e) {
   if (!e || e.target === document.getElementById('overlay')) {
     document.getElementById('overlay')?.classList.remove('open');
@@ -1031,6 +1056,7 @@ function cmRenderModal() {
               ? `<input id="${elId}" type="text" value="${t.valor ? cmEsc(fmtTelefone(t.valor)) : ''}" placeholder="(86) 9xxxx-xxxx" aria-label="Editar ${cmEsc(t.label)}" onblur="cmSalvarTelefoneCard('${p.id}','${t.campo}','${elId}')" style="width:100%;text-align:center;font-size:.74rem;font-weight:700;border:1px solid var(--border2);border-radius:5px;padding:2px 4px;background:var(--bg);color:var(--text)">`
               : `<b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>`}
             <span style="font-size:.6rem;color:var(--text2)">${cmEsc(t.label)}</span>
+            ${!t.principal && t.valor ? `<button onclick="cmUsarComoPrincipal('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Usar este número como telefone principal" aria-label="Usar ${cmEsc(t.label)} como telefone principal" style="background:none;border:none;cursor:pointer;font-size:.62rem;color:var(--text2);padding:1px 0;text-decoration:underline">⭐ Usar como principal</button>` : ''}
           </div>`;
           }).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
         </div>
