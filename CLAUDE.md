@@ -424,7 +424,20 @@ cada um com propósito diferente:
   do card ("🔁 Precisa substituto: Fulano"). Desmarcar `precisa_substituir`
   limpa o nome junto — o log de quando foi marcado/desmarcado/o nome que
   passou por ali continua em `sime_logs`, só a tela some.
-- **📞 Contatar mesários** (`sime_contatar_mesarios.js`) — fila de contato
+
+  **Telefone do substituto (27/08/2026, `sql/SIME_atores_substituto_telefone.sql`,
+  pedido direto: "deve vir para acrescentar todos os dados do
+  substituto").** Nome sozinho não bastava pra dar pra contactar quem vai
+  substituir — `sime_atores.substituto_telefone`, exatamente o mesmo padrão
+  do nome (texto opcional, só existe enquanto `precisa_substituir=true`,
+  `onblur` salva sozinho via `cmSalvarSubstitutoTelefone`, "💾 Salvar" geral
+  também recolhe). Guardado no formato "55"+DDD+número, mesma convenção do
+  resto do sistema. Quando preenchido, ganha um link **"💬 Abrir WhatsApp do
+  substituto"** logo abaixo do campo (`linkWhatsApp`, sem mensagem
+  pré-pronta — ainda não dá pra saber o que perguntar pra alguém que nem
+  confirmou nada ainda). "Situação" do modal e badge do card (`cmSubstitutoLabel`)
+  agora mostram nome — telefone juntos quando os dois existem. Desmarcar
+  `precisa_substituir` limpa os dois campos junto, mesma regra de sempre.
   por status (falta contactar, confirmado, recusou, contato incorreto,
   **precisa ser substituído** — filtro próprio, independente do bucket
   "já substituído" — e substituído), mostra o recado (`observacao`) de quem
@@ -869,6 +882,54 @@ cada um com propósito diferente:
   Fechada por padrão (`cmScriptAberto`, mesmo padrão de disclosure ▸/▾ já
   usado em `sime_resumo_secoes.js`); o corpo (select de script, campo de
   número extra, botão, prévia) só entra no HTML quando expandida.
+
+  **"📞 Tentativas de contato" agrupada por dia (27/08/2026, pedido direto:
+  "relacionado em um único ponto as tentativas do dia, para verificar se
+  ficou alguma resposta para trás").** Antes era uma lista corrida (mais
+  recente primeiro, sem quebra nenhuma); `cmAgruparTentativasPorDia()`
+  agora quebra a mesma lista em blocos por dia-calendário (fuso do
+  navegador, `cmDiaChave()`), cada um com cabeçalho "📅 dd/mm/aaaa (N)".
+  Cada grupo, exceto o mais recente, ganha um aviso **"⚠️ sem retorno
+  registrado depois"** quando NENHUM log de "📜 Atualizações" nem
+  observação (`sime_atores.observacao`, timestamp extraído do carimbo
+  `[AAAA-MM-DD HH:MM]` por `cmDataDaObs()`) aconteceu depois da última
+  tentativa daquele dia — é o "verificar se ficou resposta pra trás" da
+  pedido: um dia em que o cartório tentou contato e nunca mais voltou nem
+  anotou nada fica visualmente destacado, em vez de se perder rolando uma
+  lista item a item. O dia mais recente nunca é marcado (pode só estar em
+  andamento ainda hoje). Puramente de leitura/agrupamento — não muda o que
+  já é gravado nem os últimos 15 itens que `cmAbrirModal()` já buscava.
+
+  **Hermes agora captura o CONTEÚDO de uma resposta a esse contato manual —
+  quando sai pelo número do Hermes (27/08/2026, pedido direto: "quero que o
+  hermes agent fique monitorando o contato copiado para saber o conteudo da
+  conversa e se houve resolução do caso").** Limitação de arquitetura
+  confirmada com o dono do projeto antes de construir: o link copiado por
+  "🔗 Copiar" pode ser colado em QUALQUER WhatsApp — às vezes o número
+  oficial do Hermes, às vezes o celular pessoal de quem está no cartório
+  ("depende — às vezes um, às vezes outro"). O Baileys só enxerga mensagens
+  do número em que está logado — uma conversa pelo celular pessoal está,
+  por definição, fora do alcance do Hermes, sem solução possível sem mudar
+  esse fluxo pra sempre passar pelo número oficial (não decidido agora).
+  Quando o número usado É o do Hermes, `modules/whatsapp/recadoDireto.js`
+  (repositório `bernardobbs/hermes`) captura a resposta: roda em toda DM
+  que não bateu com script conversacional/identidade de campanha/
+  autoidentificação (roteamento em `router.js`, mesma ordem de sempre —
+  esses três continuam tendo prioridade, senão duplicaria a mensagem em
+  dois lugares), ignora número admin (conversa admin↔bot não é resposta de
+  mesário) e chama `acao='atualizar'` em `api/hermes-mesarios.js` — ação
+  que **já existia** desde a criação de `consultar` ("se algum dado
+  estiver errado... me manda a informação que eu repasso pro cartório"),
+  documentada, mas nunca chamada por nada no Hermes até agora. Não tenta
+  classificar "confirmado"/"recusado"/"resolvido" sozinho a partir do texto
+  — mesma cautela de sempre (`relatoTerceiro.js`, `buscar_nome`): o texto
+  cru vai pra `sime_atores.observacao` (grava `hermes_atualizou_info`,
+  mesmo log que já aparecia em "📜 Atualizações" desde 20/08/2026) e o
+  cartório lê e decide. Telefone que não bate com ninguém cadastrado (404)
+  fica em silêncio — é o caso mais comum de DM desconhecida (número errado,
+  familiar testando o WhatsApp), não um erro. Como a resposta vira log
+  no MESMO dia da tentativa, ela já fecha sozinha o aviso "⚠️ sem retorno
+  registrado depois" acima — sem precisar de nenhuma lógica nova.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

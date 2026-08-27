@@ -476,6 +476,9 @@ async function login(p) {
   await p.waitForTimeout(200);
   const modalTxt = await p.locator('#modal-body').textContent();
   check('mostra a campanha já enviada pro Bruno (tentativa de contato)', /Enviado/.test(modalTxt) && /confirme sua presença/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
+  // Agrupamento por dia (27/08/2026, "relacionado em um único ponto as
+  // tentativas do dia, para verificar se ficou alguma resposta para trás").
+  check('tentativas de contato aparecem agrupadas com cabeçalho de dia (📅)', /📅/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
   check('mostra a atualização anterior (histórico)', /Meio de contato.*Carta Registrada/.test(modalTxt.replace(/\s+/g, ' ')), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
   check('mostra também a confirmação feita pelo próprio mesário via Hermes/WhatsApp (casada por afetados, não por ator_id)', /Confirmou por WhatsApp/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
 
@@ -846,12 +849,26 @@ async function login(p) {
   check('Situação no modal mostra o nome do substituto', (await p.locator('#modal-body').textContent()).includes('Fulano de Tal'));
   check('card na lista também mostra o nome do substituto', (await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent()).includes('Fulano de Tal'));
 
-  // Desmarcar substituição limpa o nome junto — não faz sentido sem a flag.
+  // Telefone do substituto (27/08/2026, pedido direto: "deve vir para
+  // acrescentar todos os dados do substituto") — mesmo padrão do nome.
+  check('modal mostra campo de telefone do substituto quando a flag está marcada', await p.locator('#modal-body input#mm-substituto-telefone').count() === 1);
+  await p.fill('#modal-body input#mm-substituto-telefone', '(86) 98765-4321');
+  await p.locator('#modal-body input#mm-substituto-telefone').press('Tab');
+  await p.waitForTimeout(150);
+  const updTel = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.substituto_telefone === '5586987654321'));
+  check('salva o telefone do substituto ao sair do campo (onblur), com 55', !!updTel, JSON.stringify(updTel));
+  const modalComTel = await p.locator('#modal-body').textContent();
+  check('Situação no modal mostra o telefone do substituto formatado', modalComTel.includes('(86) 98765-4321'));
+  check('link "Abrir WhatsApp do substituto" aparece', await p.locator('#modal-body a:has-text("Abrir WhatsApp do substituto")').count() === 1);
+
+  // Desmarcar substituição limpa nome E telefone junto — não fazem sentido sem a flag.
   await p.click('#modal-body button:has-text("Desmarcar substituição")');
   await p.waitForTimeout(150);
   const updLimpo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.precisa_substituir === false));
   check('desmarcar grava substituto_nome=null junto', updLimpo?.payload?.substituto_nome === null, JSON.stringify(updLimpo));
+  check('desmarcar grava substituto_telefone=null junto', updLimpo?.payload?.substituto_telefone === null, JSON.stringify(updLimpo));
   check('campo de nome do substituto some do modal ao desmarcar', await p.locator('#modal-body input#mm-substituto-nome').count() === 0);
+  check('campo de telefone do substituto some do modal ao desmarcar', await p.locator('#modal-body input#mm-substituto-telefone').count() === 0);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

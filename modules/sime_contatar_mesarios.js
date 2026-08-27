@@ -152,6 +152,7 @@ const CM_LOG_LABEL = {
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
   mesario_substituto_nome: (p) => p.substituto_nome ? `Nome do substituto: ${p.substituto_nome}` : 'Nome do substituto removido',
+  mesario_substituto_telefone: (p) => p.substituto_telefone ? `Telefone do substituto: ${fmtTelefone(p.substituto_telefone)}` : 'Telefone do substituto removido',
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
@@ -199,7 +200,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, tem_relato_terceiro_pendente')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -286,12 +287,13 @@ async function cmTogglePrecisaSubstituir(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const novo = !p.precisa_substituir;
-  // Desmarcar (a troca foi resolvida) limpa o nome do substituto junto — ele
-  // só faz sentido enquanto a troca ainda está em aberto (ver
-  // sql/SIME_atores_substituto_nome.sql); o log de quando foi marcado/
+  // Desmarcar (a troca foi resolvida) limpa nome E telefone do substituto
+  // junto — os dois só fazem sentido enquanto a troca ainda está em aberto
+  // (ver sql/SIME_atores_substituto_nome.sql e
+  // sql/SIME_atores_substituto_telefone.sql); o log de quando foi marcado/
   // desmarcado continua em sime_logs pra quem quiser o histórico.
   const patch = { precisa_substituir: novo };
-  if (!novo) patch.substituto_nome = null;
+  if (!novo) { patch.substituto_nome = null; patch.substituto_telefone = null; }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
   Object.assign(p, patch);
@@ -319,6 +321,30 @@ async function cmSalvarSubstitutoNome(id) {
   p.substituto_nome = nome || null;
   await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: nome || null });
   showToast('✓ Nome do substituto salvo');
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
+// Telefone do substituto (27/08/2026, pedido direto: "deve vir para
+// acrescentar todos os dados do substituto" — só o nome não bastava pra dar
+// pra contactar quem vai substituir). Mesmo padrão do nome: opcional, onblur
+// salva sozinho, "💾 Salvar" geral do modal também recolhe (cmSalvarModal).
+// Guarda no mesmo formato "55"+DDD+número dos demais telefones do sistema.
+async function cmSalvarSubstitutoTelefone(id) {
+  const campo = document.getElementById('mm-substituto-telefone');
+  if (!campo) return;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const digitado = telSemPais(campo.value);
+  if (digitado && digitado.length < 10) { showToast('⚠ Telefone inválido'); return; }
+  const valor = digitado ? '55' + digitado : null;
+  if (valor === (p.substituto_telefone || null)) return; // nada mudou
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ substituto_telefone: valor }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.substituto_telefone = valor;
+  await cmLog('mesario_substituto_telefone', '', { ator_id: id, substituto_telefone: valor });
+  showToast('✓ Telefone do substituto salvo');
   render();
   if (cmModalId === id) cmRenderModal();
 }
@@ -707,6 +733,50 @@ function cmListaHist(itens, vazio, linha) {
   return `<div class="m-hist">${itens.map(linha).join('')}</div>`;
 }
 
+// Dia (calendário local) de um timestamp — usado só pra AGRUPAR a timeline
+// de tentativas, não pra exibir hora (cmFmtDataHist continua fazendo isso
+// item a item).
+function cmDiaChave(ts) {
+  const d = new Date(ts);
+  return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR');
+}
+
+// Timestamp (ms) do carimbo "[AAAA-MM-DD HH:MM]" no início de uma observação
+// — mesmo formato que cmAppendObservacao grava (ts de sime_now(), UTC,
+// fatiado pros primeiros 16 caracteres). Usado só pra comparar "isso
+// aconteceu depois daquela tentativa", não pra exibir.
+function cmDataDaObs(texto) {
+  const m = /^\[(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})\]/.exec(texto || '');
+  if (!m) return 0;
+  const t = new Date(`${m[1]}T${m[2]}:00Z`).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+// Agrupa as tentativas (já ordenadas da mais recente pra mais antiga) por
+// dia — pedido direto (27/08/2026): "relacionado em um único ponto as
+// tentativas do dia, para verificar se ficou alguma resposta para trás".
+// Cada grupo marca `semRetorno` quando NENHUM log/observação (`posterioresMs`,
+// timestamps em ms de "📜 Atualizações" + "📝 Observações") aconteceu depois
+// da tentativa mais recente daquele dia — um jeito de flagrar um dia em que
+// o cartório tentou contato e nunca mais voltou nem registrou nada, fácil de
+// perder rolando uma lista corrida item a item. O dia mais recente do grupo
+// (o primeiro, já que a lista vem em ordem decrescente) nunca é marcado —
+// pode só estar em andamento ainda hoje, não necessariamente esquecido.
+function cmAgruparTentativasPorDia(tentativas, posterioresMs) {
+  const grupos = [];
+  for (const t of tentativas) {
+    const dia = cmDiaChave(t.ts);
+    let g = grupos[grupos.length - 1];
+    if (!g || g.dia !== dia) { g = { dia, itens: [] }; grupos.push(g); }
+    g.itens.push(t);
+  }
+  return grupos.map((g, i) => {
+    const marco = new Date(g.itens[0].ts).getTime();
+    const houveDepois = posterioresMs.some(ms => ms > marco);
+    return { ...g, semRetorno: i > 0 && !houveDepois };
+  });
+}
+
 function cmRenderModal() {
   const modal = document.getElementById('modal-body');
   if (!modal) return;
@@ -714,17 +784,15 @@ function cmRenderModal() {
   if (!p) { modal.innerHTML = ''; return; }
   const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
 
-  const blocoTentativas = cmModalHist === null
-    ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
-    : cmListaHist(cmModalHist.tentativas, 'Nenhuma tentativa de contato registrada ainda.', t => {
-        if (t.tipo === 'campanha') {
-          const c = t.campanha;
-          const erroTxt = c.status === 'erro' && c.erro_msg ? ` <span style="color:var(--red,#c00)">(motivo: ${cmEsc(c.erro_msg)})</span>` : '';
-          return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${erroTxt}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
-        }
-        const meioLbl = CM_MEIO_LABEL[t.payload.meio] || t.payload.meio || 'Contato';
-        return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}${cmPorAutor(t.payload)}</div>`;
-      });
+  const cmItemTentativa = t => {
+    if (t.tipo === 'campanha') {
+      const c = t.campanha;
+      const erroTxt = c.status === 'erro' && c.erro_msg ? ` <span style="color:var(--red,#c00)">(motivo: ${cmEsc(c.erro_msg)})</span>` : '';
+      return `<div class="m-hist-item"><b>${cmFmtDataHist(c.created_at)}</b> — 📢 ${cmEsc(CM_CAMP_STATUS_LABEL[c.status] || c.status || '—')}${erroTxt}${c.mensagem_enviada ? ` — "${cmEsc(c.mensagem_enviada.slice(0, 60))}${c.mensagem_enviada.length > 60 ? '…' : ''}"` : ''}</div>`;
+    }
+    const meioLbl = CM_MEIO_LABEL[t.payload.meio] || t.payload.meio || 'Contato';
+    return `<div class="m-hist-item"><b>${cmFmtDataHist(t.ts)}</b> — ${cmEsc(meioLbl)}${t.payload.nota ? ` — ${cmEsc(t.payload.nota)}` : ''}${cmPorAutor(t.payload)}</div>`;
+  };
 
   const blocoLogs = cmModalHist === null
     ? '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>'
@@ -734,6 +802,31 @@ function cmRenderModal() {
   const observacoes = cmParseObservacoes(p.observacao);
   const blocoObservacoes = cmListaHist([...observacoes].reverse(), 'Nenhuma observação registrada ainda.',
     txt => `<div class="m-hist-item">${cmEsc(txt)}</div>`);
+
+  // Agrupada por dia (27/08/2026, pedido direto: "relacionado em um único
+  // ponto as tentativas do dia, para verificar se ficou alguma resposta para
+  // trás") — em vez de uma lista corrida, cada dia vira um bloco só, com um
+  // aviso quando aquele dia não teve NENHUMA atualização/observação
+  // registrada depois (ver cmAgruparTentativasPorDia).
+  let blocoTentativas;
+  if (cmModalHist === null) {
+    blocoTentativas = '<div class="ic-sub" style="margin-bottom:0">Carregando…</div>';
+  } else if (!cmModalHist.tentativas.length) {
+    blocoTentativas = '<div class="ic-sub" style="margin-bottom:0">Nenhuma tentativa de contato registrada ainda.</div>';
+  } else {
+    const posterioresMs = [
+      ...cmModalHist.logs.map(l => new Date(l.ts).getTime()).filter(ms => !isNaN(ms)),
+      ...observacoes.map(cmDataDaObs).filter(ms => ms > 0),
+    ];
+    const grupos = cmAgruparTentativasPorDia(cmModalHist.tentativas, posterioresMs);
+    blocoTentativas = `<div class="m-hist">${grupos.map(g => `
+      <div style="font-weight:700;font-size:.72rem;color:var(--text2);margin:10px 0 3px;display:flex;align-items:center;gap:6px">
+        <span>📅 ${cmEsc(g.dia)} (${g.itens.length})</span>
+        ${g.semRetorno ? '<span style="color:var(--red,#c00)">⚠️ sem retorno registrado depois</span>' : ''}
+      </div>
+      ${g.itens.map(cmItemTentativa).join('')}
+    `).join('')}</div>`;
+  }
 
   modal.innerHTML = `
     <div class="m-hdr">
@@ -745,7 +838,7 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ` · 🔁 Precisa substituto${p.substituto_nome ? `: ${cmEsc(p.substituto_nome)}` : ''}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
       ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
@@ -760,6 +853,10 @@ function cmRenderModal() {
           ${p.precisa_substituir ? `
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nome do substituto (opcional)
             <input id="mm-substituto-nome" type="text" value="${cmEsc(p.substituto_nome || '')}" placeholder="ainda não sei quem vai substituir" onblur="cmSalvarSubstitutoNome('${p.id}')" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Telefone do substituto (opcional)
+            <input id="mm-substituto-telefone" type="text" value="${cmEsc(fmtTelefone(p.substituto_telefone || ''))}" placeholder="(86) 9xxxx-xxxx" onblur="cmSalvarSubstitutoTelefone('${p.id}')" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+            ${p.substituto_telefone && linkWhatsApp(p.substituto_telefone) ? `<a href="${linkWhatsApp(p.substituto_telefone)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px">💬 Abrir WhatsApp do substituto</a>` : ''}
           </label>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
@@ -910,6 +1007,10 @@ async function cmSalvarModal() {
   const substitutoEl = document.getElementById('mm-substituto-nome');
   const substitutoNome = substitutoEl ? substitutoEl.value.trim() : '';
   if (substitutoEl && substitutoNome !== (p.substituto_nome || '')) patch.substituto_nome = substitutoNome || null;
+  const substitutoTelEl = document.getElementById('mm-substituto-telefone');
+  const substitutoTelDigitado = substitutoTelEl ? telSemPais(substitutoTelEl.value) : '';
+  const substitutoTelValor = substitutoTelDigitado ? '55' + substitutoTelDigitado : null;
+  if (substitutoTelEl && substitutoTelValor !== (p.substituto_telefone || null)) patch.substituto_telefone = substitutoTelValor;
 
   if (!Object.keys(patch).length && !notaTentativa && !obsNova) {
     showToast('Nada para salvar');
@@ -935,6 +1036,7 @@ async function cmSalvarModal() {
       if ('codigo_rastreio' in patch) await cmLog('mesario_editar_rastreio', '', { ator_id: id });
       if ('telefone_alternativo' in patch) await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
       if ('substituto_nome' in patch) await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: patch.substituto_nome });
+      if ('substituto_telefone' in patch) await cmLog('mesario_substituto_telefone', '', { ator_id: id, substituto_telefone: patch.substituto_telefone });
     }
     if (notaTentativa) {
       const meioEl = document.getElementById('mm-tent-meio');
@@ -980,6 +1082,16 @@ function cmCriarCampanha() {
 function cmBadge(confirmacao) {
   const b = CM_BUCKETS.find(x => x.valor === (confirmacao || 'pendente'));
   return b ? b.label : confirmacao;
+}
+
+// Nome + telefone do substituto num único rótulo curto — usado no badge do
+// card e na linha "Situação" do modal, pra não duplicar o "nome — telefone"
+// nos dois lugares (27/08/2026, "todos os dados do substituto").
+function cmSubstitutoLabel(p) {
+  const partes = [];
+  if (p.substituto_nome) partes.push(cmEsc(p.substituto_nome));
+  if (p.substituto_telefone) partes.push(cmEsc(fmtTelefone(p.substituto_telefone)));
+  return partes.length ? `: ${partes.join(' — ')}` : '';
 }
 
 function renderContatarMesarios() {
@@ -1050,7 +1162,7 @@ function renderContatarMesarios() {
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
-              ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${p.substituto_nome ? `: ${cmEsc(p.substituto_nome)}` : ''}</span>` : ''}
+              ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${cmSubstitutoLabel(p)}</span>` : ''}
               ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
             </div>
           </div>
