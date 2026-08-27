@@ -601,7 +601,8 @@ cada um com propósito diferente:
   ajustado no mesmo dia)** — pedido do cartório: indo de nome em nome
   confirmar se o telefone cadastrado ainda é da pessoa certa, digitar a
   mesma pergunta toda vez que abre uma conversa nova era repetitivo.
-  `cmMsgConfirmarContato(p)` monta "Bom dia, esse contato é de {NOME} ?" e
+  `cmMsgConfirmarContato(p)` monta "{saudação}, esse contato é de {NOME} ?"
+  (saudação por horário desde 27/08/2026, ver bloco abaixo) e
   `linkWhatsApp()` (já aceitava um 2º argumento de mensagem, só não era
   usado aqui) preenche via `?text=` do link `wa.me`. Primeira versão abria o
   link direto (`<a target="_blank">`); o cartório pediu pra trocar por
@@ -622,6 +623,28 @@ cada um com propósito diferente:
   'Copiou o link do WhatsApp pra confirmar contato')` na sequência e
   recarrega a timeline do modal — clicar em copiar já é, por si só, uma
   tentativa de contato registrada, sem passo extra.
+
+  **Saudação por horário (27/08/2026, pedido direto: "quero que o link
+  faça diferenciação de bom dia, boa tarde ou boa noite a depender da hora
+  copiada")** — antes `cmMsgConfirmarContato()` sempre começava com "Bom
+  dia", mesmo copiado à tarde ou de noite. `cmSaudacaoPorHora()` (nova)
+  decide pelo horário do NAVEGADOR de quem copia (não do servidor — é essa
+  pessoa que vai mandar a mensagem): 05h–11h59 "Bom dia", 12h–17h59 "Boa
+  tarde", resto "Boa noite" (madrugada conta como noite, de propósito — não
+  existe uma 4ª faixa própria pra madrugada, ninguém manda "bom dia" às 3h).
+
+  **Cada telefone virou um cartão com o ícone 💬 acima do número, em vez do
+  botão de texto "🔗 Copiar" ao lado (27/08/2026, pedido direto com print
+  anexado do formato desejado do modal).** Lista de telefones (`cmListaTelefones`)
+  continua a mesma — principal + do TRE + cadastrado à mão — só o jeito de
+  apresentar mudou: cada um vira um cartãozinho (`.cm-tel-card`) com o ícone
+  💬 (parecido com o do WhatsApp, sem usar o logo oficial deles) clicável no
+  topo, o número formatado embaixo, e a origem (label) por último; o ✕ de
+  remover (só no telefone cadastrado à mão) fica num círculo vermelho no
+  canto superior direito do cartão. O clique no ícone é exatamente o mesmo
+  `cmCopiarLinkWhatsAppNumero()` de sempre — só mudou a apresentação visual,
+  não o comportamento (ainda copia o link, ainda registra a tentativa
+  sozinho).
 
   **Lista única de telefones — principal + alternativos do TRE + cadastrado
   à mão (21/08/2026)** — achado real: um mesário pode ter mais de um

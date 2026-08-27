@@ -544,8 +544,8 @@ async function login(p) {
     window.__clipboardText = null;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
   });
-  const linhaAlternativo = p.locator('#modal-body .m-hist-item', { hasText: 'Telefone 1 (eleitor)' });
-  await linhaAlternativo.locator('button:has-text("Copiar")').click();
+  const linhaAlternativo = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' });
+  await linhaAlternativo.locator('button[aria-label*="Copiar link do WhatsApp"]').click();
   await p.waitForTimeout(150);
   const copiado = await p.evaluate(() => window.__clipboardText);
   check('copiar o telefone alternativo monta o link do wa.me PRA ESSE número (não o principal)', (copiado || '').includes('5586977778888') && !(copiado || '').includes('5586999990002'), copiado);
@@ -564,7 +564,7 @@ async function login(p) {
   check('telefone alternativo cadastrado à mão aparece na lista única', /Telefone alternativo \(cartório\)/.test(modalComAlt) && /\(86\) 90000-1234/.test(modalComAlt), modalComAlt.replace(/\s+/g, ' ').slice(0, 500));
 
   // Remover o que foi cadastrado à mão.
-  const linhaManual = p.locator('#modal-body .m-hist-item', { hasText: 'Telefone alternativo (cartório)' });
+  const linhaManual = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone alternativo (cartório)' });
   check('só o cadastrado à mão tem botão de remover (não o do TRE nem o principal)', await linhaManual.locator('button[title="Remover telefone alternativo"]').count() === 1);
   await linhaManual.locator('button[title="Remover telefone alternativo"]').click();
   await p.waitForTimeout(200);
@@ -608,17 +608,27 @@ async function login(p) {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__clipboardText = t; return Promise.resolve(); } } });
   });
   // Botão de copiar do telefone principal — agora faz parte da lista única
-  // de telefones (21/08/2026), não é mais uma ação separada no topo.
-  const btnCopiarWa = p.locator('#modal-body .m-hist-item', { hasText: 'WhatsApp (principal)' }).locator('button:has-text("Copiar")');
-  check('modal tem botão de copiar link do wa.me de quem tem telefone', await btnCopiarWa.count() === 1);
+  // de telefones (21/08/2026), não é mais uma ação separada no topo. Layout
+  // reconstruído em 27/08/2026 (pedido direto, print anexado do modal
+  // desejado): cada telefone virou um cartão com o ícone 💬 acima do número
+  // (em vez do botão de texto "🔗 Copiar" ao lado) — o ícone é o alvo do
+  // clique, identificado por aria-label (sem mais texto "Copiar" visível).
+  const cardTelPrincipal = p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' });
+  const btnCopiarWa = cardTelPrincipal.locator('button[aria-label*="Copiar link do WhatsApp"]');
+  check('modal tem o ícone 💬 de copiar link do wa.me de quem tem telefone', await btnCopiarWa.count() === 1);
+  check('o ícone é o 💬 (parecido com WhatsApp), não um botão de texto', (await btnCopiarWa.textContent()).trim() === '💬');
   await btnCopiarWa.click();
   await p.waitForTimeout(100);
   const linkCopiado = await p.evaluate(() => window.__clipboardText);
   check('link copiado aponta pro número da pessoa', /5586999990002|86999990002|999990002/.test(linkCopiado || ''), linkCopiado);
   // Pedido de 21/08/2026: mensagem pré-preenchida (?text=) perguntando se o
   // contato é da pessoa certa — evita digitar a mesma pergunta a cada
-  // conversa nova aberta indo de nome em nome.
-  check('link copiado já vem com a mensagem de confirmação pré-preenchida', (linkCopiado || '').includes('?text=' + encodeURIComponent('Bom dia, esse contato é de BRUNO MESARIO ?')), linkCopiado);
+  // conversa nova aberta indo de nome em nome. 27/08/2026: a saudação
+  // ("Bom dia"/"Boa tarde"/"Boa noite") agora depende da hora em que o link
+  // é copiado — o teste roda a qualquer hora do dia, então calcula a
+  // saudação esperada com a mesma regra em vez de fixar "Bom dia".
+  const saudacaoEsperada = (() => { const h = new Date().getHours(); return h >= 5 && h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; })();
+  check('link copiado já vem com a mensagem de confirmação pré-preenchida, saudação certa pra hora atual', (linkCopiado || '').includes('?text=' + encodeURIComponent(`${saudacaoEsperada}, esse contato é de BRUNO MESARIO ?`)), linkCopiado);
   // Pedido de 21/08/2026: copiar o link do WhatsApp já deve contar como
   // tentativa de contato, sem precisar preencher a Nota separada.
   const tentativaAutoWa = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_tentativa_contato' && e.payload.payload?.meio === 'whatsapp'));

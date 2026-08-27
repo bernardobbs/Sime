@@ -10,14 +10,28 @@
 // confirmacao, sql/SIME_atores_meio_contato.sql). O cartório lê o recado
 // (observação, anexado por api/hermes-mesarios.js ação 'atualizar') e decide.
 
-// Mensagem pronta pro botão "🔗 Copiar link do WhatsApp" do modal
+// Saudação por horário (27/08/2026, pedido direto: "quero que o link faça
+// diferenciação de bom dia, boa tarde ou boa noite a depender da hora
+// copiada") — antes a mensagem sempre começava com "Bom dia", mesmo copiada
+// à tarde ou de noite. Horário do NAVEGADOR de quem copia (não do servidor)
+// — é essa pessoa que vai mandar a mensagem, então é o horário dela que
+// importa. Faixas comuns em pt-BR: madrugada conta como noite (ninguém
+// manda "bom dia" às 3h), não existe uma 4ª faixa própria pra madrugada.
+function cmSaudacaoPorHora(d = new Date()) {
+  const h = d.getHours();
+  if (h >= 5 && h < 12) return 'Bom dia';
+  if (h >= 12 && h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+// Mensagem pronta pro ícone "💬 Copiar link do WhatsApp" do modal
 // (21/08/2026) — o cartório vai de nome em nome confirmando se o telefone
 // cadastrado ainda é da pessoa certa, e digitar essa mesma pergunta toda vez
 // que abre uma conversa nova era repetitivo. Pré-preenchida via ?text= do
 // wa.me (linkWhatsApp já aceita 2º argumento) — a pessoa ainda precisa colar
 // e enviar no WhatsApp, isso não manda nada sozinho.
 function cmMsgConfirmarContato(p) {
-  return `Bom dia, esse contato é de ${p.nome_completo} ?`;
+  return `${cmSaudacaoPorHora()}, esse contato é de ${p.nome_completo} ?`;
 }
 
 // Copia o link (em vez de abrir), pedido do cartório em 21/08/2026: indo de
@@ -947,13 +961,14 @@ function cmRenderModal() {
           </label>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
-        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — cada um pode ser tentado direto (copia o link do WhatsApp já com a mensagem de confirmação e registra a tentativa sozinho):</div>
-        <div class="m-hist" style="margin-bottom:10px">
+        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
           ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => `
-          <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')">🔗 Copiar</button>
-            <span style="flex:1">${cmEsc(t.label)}: <b>${cmEsc(fmtTelefone(t.valor))}</b></span>
-            ${t.removivel ? `<button class="btn btn-out" style="font-size:.66rem;padding:3px 8px;flex-shrink:0" onclick="cmRemoverTelefoneAlt('${p.id}')" title="Remover telefone alternativo">✕</button>` : ''}
+          <div class="cm-tel-card" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);min-width:92px">
+            ${t.removivel ? `<button onclick="cmRemoverTelefoneAlt('${p.id}')" title="Remover telefone alternativo" aria-label="Remover telefone alternativo" style="position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--red-bg,#fae8e6);color:var(--red,#c0392b);border:1px solid var(--red-bd,#e0a09a);font-size:.62rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>` : ''}
+            <button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>
+            <b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>
+            <span style="font-size:.6rem;color:var(--text2)">${cmEsc(t.label)}</span>
           </div>`).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
         </div>
         <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
