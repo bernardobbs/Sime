@@ -1050,6 +1050,71 @@ cada um com propósito diferente:
   pelo botão "✅ Confirmar" de sempre, um de cada vez, onde o cartório vê o
   resultado na hora antes de continuar).
 
+- **📬 Correspondência** (`sime_correspondencia.js`, 27/08/2026, pedido
+  direto: "marcou para receber por carta, imprime uma etiqueta com os dados
+  do destinatario e do remetente e imprime o ar") — pra quem está marcado
+  com `meio_contato='carta_registrada'` (aba 📞 Contatar mesários). A carta
+  de convocação em si continua sendo impressa pelo ELO — esta aba só cobre
+  etiqueta de envio e um modelo de AR pra assinatura na entrega, os dois
+  passos manuais que sobravam pro cartório (referência citada:
+  enderecador dos Correios, mas sem integração — ver limitação abaixo).
+
+  **Endereço do destinatário vem do ELO, não é digitado.**
+  `sime_atores` nunca guardou endereço (decisão antiga, já documentada:
+  "Carta/Oficial de Justiça usam o endereço já no processo do TRE"), então
+  `coCarregar()` casa por **título de eleitor** com `sime_mesarios_raw`
+  (mesma junção de `sime_relatorio_elo.js`, incluindo a mesma busca pelas
+  duas formas do título — com e sem zero à esquerda). A planilha do TRE traz
+  até TRÊS blocos de endereço por pessoa (`*_dados_mesario`, `*_eleitor`,
+  `*_comercial_mesario`) — checado direto na produção da 7ª Zona antes de
+  decidir a prioridade: `endereco_dados_mesario` só vem preenchido em 25 de
+  735 registros (3%), comercial em 1; `endereco_eleitor` vem preenchido em
+  TODOS os 735 (100%). `coEnderecoDestinatario()` faz um COALESCE nessa
+  ordem — dados do mesário primeiro (mais provável de estar atualizado,
+  quando existe), cadastro de eleitor como fallback confiável (quase sempre
+  o que realmente popula a etiqueta), comercial por último. Nunca inventa
+  endereço: quem não tem nenhum dos três blocos preenchido fica de fora da
+  lista principal, numa seção "⚠️ Sem endereço no ELO" à parte — mesmo
+  critério "não adivinha" de todo o resto do sistema.
+
+  **Remetente é editável, não hardcoded.** Cogitado sime_usuarios (por
+  pessoa) e sime_eleicoes (por turno), descartados os dois — endereço do
+  cartório não muda por pessoa nem por turno, é propriedade da ZONA.
+  `sime_zonas` ganhou 6 colunas (`remetente_nome/endereco/bairro/cep/
+  municipio/uf`, `sql/SIME_zonas_remetente.sql`, todas opcionais) editáveis
+  direto nesta aba (mesma política "sem trava de perfil" do resto de
+  `SIME_convocacao.html` — RLS de `sime_zonas` já é `sime_zona_visivel`,
+  sem exigir `config_equipe`). Enquanto o remetente não estiver completo
+  (nome+endereço+CEP+município+UF), um aviso amarelo aparece no topo e os
+  botões de imprimir ficam desabilitados — não dá pra montar etiqueta sem
+  remetente, e adivinhar/deixar em branco seria pior que travar.
+
+  **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
+  de construir isto — nenhuma das duas é bug, as duas já eram decisões
+  antigas documentadas alhures:**
+  - Sem integração com a API paga dos Correios (SIGEP) — incompatível com o
+    custo R$ 0,00/mês do projeto (mesma razão já documentada pro código de
+    rastreio manual). O "AR" gerado aqui é um **modelo avulso pra
+    preencher/assinar na entrega**, não um AR oficial rastreado.
+  - Etiqueta é uma caixa demarcada de texto (remetente pequeno, destinatário
+    grande), não alinhada a nenhuma folha de adesivo específica (Pimaco ou
+    similar) — o cartório não usa um modelo de etiqueta físico conhecido, e
+    inventar coordenadas de impressão pra um formato não confirmado seria
+    pior que uma caixa simples que imprime certo em qualquer papel.
+
+  **Impressão sem popup.** `#print-area` (elemento fixo em
+  `SIME_convocacao.html`, fora do fluxo normal de `#content`) fica
+  `display:none` na tela e só aparece via `@media print` — `coImprimir()`
+  escreve o HTML nele e chama `window.print()` direto, sem depender de
+  `window.open()` (bloqueado por popup blocker em muitos navegadores).
+  Etiqueta e AR aceitam impressão de 1 pessoa (botão no card) ou em lote
+  (checkbox + "Imprimir etiquetas selecionadas") — AR só existe por pessoa
+  (assinatura é individual, não faz sentido em lote). Cada impressão grava
+  log de auditoria (`correspondencia_etiqueta_impressa`/
+  `correspondencia_ar_impresso`, com autor e lista de atores) — não é
+  confirmação de que o Correio recebeu, só de que o cartório gerou o
+  documento.
+
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
 > qualquer um que loga cai no hub de módulos, não numa página específica.

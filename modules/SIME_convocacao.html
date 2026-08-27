@@ -71,6 +71,24 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-kv-row span{color:var(--text);text-align:right;}
 .m-section{border-top:1px solid var(--border);padding-top:12px;}
 .m-section-hdr{font-size:.7rem;font-weight:800;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
+
+/* CORRESPONDÊNCIA — impressão de etiqueta/AR (sime_correspondencia.js).
+   #print-area fica invisível na tela e só aparece no papel — evita depender
+   de popup (bloqueado por padrão em muitos navegadores). */
+#print-area{display:none;}
+@media print{
+  body > *:not(#print-area){display:none!important;}
+  #print-area{display:block!important;}
+  .co-pagina-etiqueta,.co-pagina-ar{page-break-after:always;padding:14mm;}
+  .co-etiqueta{border:1px solid #000;border-radius:4px;width:100mm;padding:10mm;font-size:11pt;line-height:1.5;}
+  .co-remetente{font-size:8pt;margin-bottom:14mm;padding-bottom:4mm;border-bottom:1px dashed #000;}
+  .co-destinatario{font-size:11pt;}
+  .co-dest-nome{font-weight:700;font-size:12pt;margin-bottom:2mm;}
+  .co-ar-titulo{font-weight:800;font-size:13pt;text-align:center;margin-bottom:2mm;}
+  .co-ar-sub{font-size:8pt;text-align:center;color:#444;margin-bottom:8mm;}
+  .co-ar-box{border:1px solid #000;border-radius:3px;padding:5mm;margin-bottom:5mm;font-size:10pt;line-height:1.6;}
+  .co-ar-linha{margin-top:4mm;}
+}
 </style>
 </head>
 <body>
@@ -103,6 +121,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
     <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
     <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
+    <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
   </div>
 
   <div class="content" id="content"></div>
@@ -113,6 +132,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="print-area"></div>
 
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_mesarios_sync.js"></script>
@@ -120,6 +140,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_contatar_mesarios.js"></script>
 <script src="./sime_historico_sync.js"></script>
 <script src="./sime_relatorio_elo.js"></script>
+<script src="./sime_correspondencia.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -223,6 +244,7 @@ function goTab(tab, btn) {
   if (tab === 'contatar' && typeof cmDados !== 'undefined') cmDados = null;
   if (tab === 'historico' && typeof hsDados !== 'undefined') hsDados = null;
   if (tab === 'relatorio-elo' && typeof reDados !== 'undefined') reDados = null;
+  if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
   render();
 }
 function render() {
@@ -231,6 +253,7 @@ function render() {
   if (curTab === 'sync') { renderSyncMesarios(); return; }
   if (curTab === 'historico') { renderHistoricoSync(); return; }
   if (curTab === 'relatorio-elo') { renderRelatorioElo(); return; }
+  if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
 }
 window.render = render;
 </script>

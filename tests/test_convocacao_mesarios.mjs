@@ -161,6 +161,11 @@ async function abrir(ctx, m, path = 'SIME_convocacao.html') {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.addInitScript((x) => { window.__mock = x; }, m);
+  // window.print() abriria um diálogo real do navegador (trava o teste
+  // headless) — stub que só conta chamadas, pra testar que
+  // coImprimir()/coImprimirEtiqueta() de fato dispara a impressão sem
+  // precisar de um diálogo de verdade.
+  await p.addInitScript(() => { window.__printCalls = 0; window.print = () => { window.__printCalls++; }; });
   await p.route('**/vendor/supabase-js.esm.js**', (r) =>
     r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS }));
   await p.goto('http://localhost:8917/modules/' + path);
@@ -1505,6 +1510,88 @@ async function login(p) {
   check('BRUNO/CARLA/DIEGO (não confirmados) não aparecem no relatório', !/BRUNO MESARIO/.test(flat) && !/CARLA RECUSOU/.test(flat) && !/DIEGO CARTA/.test(flat));
   // ANA é confirmado mas não tem inscricao_eleitoral na fixture — sem título, não dá pra cruzar com o ELO.
   check('ANA (confirmado, mas sem título de eleitor) não aparece — não dá pra cruzar sem título', !/ANA PRESIDENTE/.test(flat));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 3.7 Correspondência — etiqueta + AR pra convocação por carta ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Fixture local (não mexe no mock() compartilhado com os demais testes).
+  // DIEGO (a4) já é 'carta_registrada' na fixture padrão — só falta título
+  // de eleitor + uma linha no ELO com endereço, pra testar o caminho normal
+  // (fallback pro cadastro de eleitor, já que ele não tem "dados do mesário").
+  m.sime_atores.find(a => a.id === 'a4').inscricao_eleitoral = '098765432100';
+  m.sime_atores.push(
+    // MARIA: carta_registrada mas SEM nenhuma linha no ELO — "sem endereço".
+    { id:'a20', nome_completo:'MARIA SEM ENDERECO', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'2º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', inscricao_eleitoral:'077777777777' },
+    // NUNO: carta_registrada com os DOIS blocos preenchidos no ELO — testa
+    // que "dados do mesário" ganha do "cadastro de eleitor" (prioridade).
+    { id:'a21', nome_completo:'NUNO DADOS MESARIO', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:null, zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'carta_registrada', inscricao_eleitoral:'088888888888' },
+    // OTAVIO: WhatsApp, não carta — não deve aparecer na lista de destinatários.
+    { id:'a22', nome_completo:'OTAVIO WHATSAPP', telefone_whatsapp:'5586999990022', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', inscricao_eleitoral:'099999999999' },
+  );
+  m.sime_mesarios_raw.push(
+    { id:'raw10', inscricao:'098765432100', endereco_eleitor:'Rua das Flores, 100', bairro_eleitor:'Centro', cep_eleitor:'64280000', nome_municipio_endereco_eleitor:'Campo Maior', uf_endereco_eleitor:'PI' },
+    { id:'raw11', inscricao:'088888888888', endereco_dados_mesario:'Av. Nova, 50', bairro_dados_mesario:'Bairro Novo', cep_dados_mesario:'64280100', nome_municipio_dados_mesario:'Campo Maior', uf_dados_mesario:'PI', endereco_eleitor:'Endereço antigo que não deve aparecer', bairro_eleitor:'Bairro antigo', cep_eleitor:'64280999', nome_municipio_endereco_eleitor:'Campo Maior', uf_endereco_eleitor:'PI' },
+  );
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-correspondencia-btn');
+  await p.waitForTimeout(300);
+
+  let txt = await p.locator('.content').textContent();
+  check('aviso: remetente incompleto antes de preencher', /Preencha o remetente/.test(txt));
+  check('lista os 2 destinatários com endereço (DIEGO, NUNO)', /DIEGO CARTA/.test(txt) && /NUNO DADOS MESARIO/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 500));
+  check('não lista OTAVIO (meio de contato é WhatsApp, não carta)', !/OTAVIO WHATSAPP/.test(txt));
+  check('MARIA (sem linha no ELO) cai na lista "sem endereço", à parte', /Sem endereço no ELO/.test(txt) && /MARIA SEM ENDERECO/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 800));
+  check('endereço de DIEGO usa o do cadastro de eleitor (só bloco disponível)', /Rua das Flores, 100/.test(txt) && /Cadastro de eleitor \(TRE\)/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 800));
+  check('endereço de NUNO usa "dados do mesário" (prioridade sobre o de eleitor)', /Av\. Nova, 50/.test(txt) && !/Endereço antigo que não deve aparecer/.test(txt) && /Dados do mesário \(TRE\)/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 800));
+
+  check('botões de etiqueta/AR desabilitados sem remetente completo', await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').isDisabled());
+
+  // Preenche e salva o remetente (cartório da zona).
+  await p.fill('#co-rem-nome', 'Cartório da 7ª Zona Eleitoral');
+  await p.fill('#co-rem-endereco', 'Praça da Matriz, 10');
+  await p.fill('#co-rem-bairro', 'Centro');
+  await p.fill('#co-rem-cep', '64280000');
+  await p.fill('#co-rem-municipio', 'Campo Maior');
+  await p.fill('#co-rem-uf', 'PI');
+  await p.click('button:has-text("💾 Salvar remetente")');
+  await p.waitForTimeout(300);
+
+  txt = await p.locator('.content').textContent();
+  check('aviso de remetente incompleto some depois de salvar', !/Preencha o remetente/.test(txt));
+  const updZona = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_zonas'));
+  check('remetente gravado em sime_zonas (update, não insert novo)', !!updZona && updZona.payload.remetente_nome === 'Cartório da 7ª Zona Eleitoral', JSON.stringify(updZona));
+  check('grava log de auditoria do remetente salvo', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_remetente_salvo')));
+
+  check('botão de etiqueta habilita depois do remetente completo', !(await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').isDisabled()));
+
+  // Imprime a etiqueta de DIEGO (botão individual).
+  await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').click();
+  await p.waitForTimeout(200);
+  check('imprimir etiqueta chama window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtmlEtiqueta = await p.locator('#print-area').innerHTML();
+  check('etiqueta impressa mostra remetente e destinatário', /Cartório da 7ª Zona Eleitoral/.test(printHtmlEtiqueta) && /DIEGO CARTA/.test(printHtmlEtiqueta) && /Rua das Flores, 100/.test(printHtmlEtiqueta), printHtmlEtiqueta.slice(0, 600));
+  check('grava log de etiqueta impressa', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_etiqueta_impressa')));
+
+  // Gera o AR de NUNO (botão individual).
+  await p.locator('[data-ator-id="a21"] button:has-text("📄 AR")').click();
+  await p.waitForTimeout(200);
+  check('gerar AR chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 2);
+  const printHtmlAr = await p.locator('#print-area').innerHTML();
+  check('AR impresso tem o modelo de confirmação de recebimento, não uma etiqueta', /AVISO DE RECEBIMENTO/.test(printHtmlAr) && /Nome do recebedor/.test(printHtmlAr) && /NUNO DADOS MESARIO/.test(printHtmlAr) && /Av\. Nova, 50/.test(printHtmlAr), printHtmlAr.slice(0, 600));
+  check('grava log de AR impresso', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso')));
+
+  // Seleção em massa: marca DIEGO, imprime etiquetas selecionadas.
+  await p.locator('[data-ator-id="a4"] input[type=checkbox]').check();
+  await p.click('button:has-text("Imprimir etiquetas selecionadas (1)")');
+  await p.waitForTimeout(200);
+  check('imprimir em massa chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 3);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
