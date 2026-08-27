@@ -409,6 +409,21 @@ cada um com propósito diferente:
   confirmada" nas estatísticas) — confirmado não é blindado contra precisar
   de troca depois. Setada/desfeita em "Contatar mesários" (botão no card e
   dentro do modal) ou no modal do mesário; nunca pelo Hermes.
+
+  **Nome do substituto (27/08/2026, `sql/SIME_atores_substituto_nome.sql`,
+  pedido direto: "ao marcar para substituir, deve ter uma forma de
+  informar o nome do substituto").** `sime_atores.substituto_nome` — texto
+  livre, sempre opcional (marcar a flag nunca exige preencher; pode ser que
+  ainda não exista substituto na hora de marcar). Não referencia outro
+  `sime_atores` por id de propósito — o substituto quase sempre é alguém
+  novo, ainda sem cadastro processado no TRE. Só editável **dentro do
+  modal** (não tem espaço no card da lista) — campo aparece condicionado a
+  `precisa_substituir=true`, `onblur` salva sozinho (`cmSalvarSubstitutoNome`),
+  e o "💾 Salvar" geral do modal também recolhe (mesma rede de segurança das
+  outras caixas de ação rápida). Aparece na "Situação" do modal e no badge
+  do card ("🔁 Precisa substituto: Fulano"). Desmarcar `precisa_substituir`
+  limpa o nome junto — o log de quando foi marcado/desmarcado/o nome que
+  passou por ali continua em `sime_logs`, só a tela some.
 - **📞 Contatar mesários** (`sime_contatar_mesarios.js`) — fila de contato
   por status (falta contactar, confirmado, recusou, contato incorreto,
   **precisa ser substituído** — filtro próprio, independente do bucket
@@ -801,11 +816,59 @@ cada um com propósito diferente:
   `SIME_atores.html` porque esta página não carrega aquele arquivo). Lista
   de scripts (`cmScriptCampanhas`) carrega junto com o resto de
   `cmCarregar()`; campanha `encerrada` fica de fora do `<select>` (mesmo
-  filtro do Disparo), e mandar pra uma campanha `pausada`/`rascunho` avisa
-  no toast que o item entra na fila mas só sai quando ela for ativada — não
-  bloqueia o envio, só avisa. Grava `mesario_script_enviado` em `sime_logs`
-  (com autor, `campanha_id` e o telefone usado) pra aparecer também em "📜
+  filtro do Disparo). Grava `mesario_script_enviado` em `sime_logs` (com
+  autor, `campanha_id` e o telefone usado) pra aparecer também em "📜
   Atualizações".
+
+  **`avulso` fura o status da campanha pra rascunho/pausada (27/08/2026,
+  `sql/SIME_campanhas_confirmacao_avulso.sql`)** — pedido direto: "ao clicar
+  ele deve colocar o número na fila imediatamente", testado contra um
+  script recém-criado que nascia `rascunho` de propósito (esperando revisão
+  do cartório antes de ir pro ar). Diferente do Disparo em massa (onde
+  "controle total das campanhas" precisa conseguir PARAR de verdade uma
+  fila inteira pausando a campanha), "Rodar script" é uma ação humana
+  pontual — um número só, um clique — então não devia ficar preso esperando
+  alguém lembrar de ativar a campanha inteira. `cmEnviarScript()` grava
+  `avulso: true` no insert; `api/hermes-campanhas.js` (`pendentes`) deixa
+  passar item `avulso=true` mesmo com campanha `rascunho`/`pausada` — só
+  `encerrada` continua bloqueando (status terminal, não reversível, nenhum
+  envio deveria sair sob uma campanha formalmente fechada, nem avulso). O
+  Disparo em massa nunca marca `avulso`, então o comportamento de pausar
+  uma campanha em massa continua parando 100% dela, sem regressão.
+
+  **Cascata por todos os números conhecidos (27/08/2026, pedido direto:
+  "ele seguiria tentando contato com todos os numeros do mesário caso um
+  não confirme vai para o proximo").** Antes, "Rodar script" mandava pra UM
+  número só (o "Número indicado", pré-preenchido com o principal). Agora o
+  campo virou **"Número extra (opcional)"** (vazio por padrão) e o clique
+  em "▶ Enviar" monta uma fila com esse número extra (se preenchido)
+  primeiro, seguida de TODOS os telefones já conhecidos da pessoa
+  (`cmModalHist.telefones` — principal, TRE, cadastrado à mão), dedupinados
+  por dígito. Só o primeiro da fila vai na linha (`telefone_whatsapp`); o
+  resto fica em `numeros_restantes` (`sql/
+  SIME_campanhas_confirmacao_numeros_restantes.sql`, array JSON).
+  `api/hermes-campanhas.js` cascateia sozinho pro próximo número em dois
+  pontos, os dois só quando `etapa_atual=1` (ainda tentando estabelecer
+  contato — depois de confirmado numa etapa por aquele número não faz
+  sentido cascatear mais):
+  - **`avancar_etapa`**, quando o ramo casado é `telefone_incorreto` ("não é
+    essa pessoa") — não fecha o item, passa pro próximo número, zera
+    tentativas e volta a `etapa_atual=1`/`status='pendente'`.
+  - **`pendentes`**, no auto-expira de quem esgotou `MAX_TENTATIVAS` sem
+    resposta nenhuma — mesma lógica, em vez de virar `sem_resposta`.
+  Os dois gravam `campanha_script_proximo_numero` em `sime_logs` (motivo +
+  novo telefone). Sem `numeros_restantes` (ou fora da etapa 1), o
+  comportamento é exatamente o de antes — sem regressão pro fluxo normal
+  (Disparo em massa nunca popula esse campo).
+
+  **Seção colapsável, movida pro fim do modal (27/08/2026, pedido direto:
+  "caso não seja usado fica recolhido... pode reposicionar mais em
+  baixo").** "🧩 Rodar script conversacional" saiu de logo após "📇
+  Contato" e virou a ÚLTIMA seção do modal, depois de "📝 Observações" —
+  é uma ferramenta avulsa, não algo que se olha toda vez que o modal abre.
+  Fechada por padrão (`cmScriptAberto`, mesmo padrão de disclosure ▸/▾ já
+  usado em `sime_resumo_secoes.js`); o corpo (select de script, campo de
+  número extra, botão, prévia) só entra no HTML quando expandida.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

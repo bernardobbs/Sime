@@ -822,6 +822,41 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.81 Nome do substituto (27/08/2026, pedido direto: "ao marcar para
+// substituir, deve ter uma forma de informar o nome do substituto") ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('button:has-text("Marcar para substituir")').click();
+  await p.waitForTimeout(150);
+
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('modal mostra campo de nome do substituto quando a flag está marcada', await p.locator('#modal-body input#mm-substituto-nome').count() === 1);
+
+  await p.fill('#modal-body input#mm-substituto-nome', 'Fulano de Tal');
+  await p.locator('#modal-body input#mm-substituto-nome').press('Tab'); // dispara blur → salva
+  await p.waitForTimeout(150);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.substituto_nome === 'Fulano de Tal'));
+  check('salva o nome do substituto ao sair do campo (onblur)', !!upd, JSON.stringify(upd));
+  check('Situação no modal mostra o nome do substituto', (await p.locator('#modal-body').textContent()).includes('Fulano de Tal'));
+  check('card na lista também mostra o nome do substituto', (await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent()).includes('Fulano de Tal'));
+
+  // Desmarcar substituição limpa o nome junto — não faz sentido sem a flag.
+  await p.click('#modal-body button:has-text("Desmarcar substituição")');
+  await p.waitForTimeout(150);
+  const updLimpo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.precisa_substituir === false));
+  check('desmarcar grava substituto_nome=null junto', updLimpo?.payload?.substituto_nome === null, JSON.stringify(updLimpo));
+  check('campo de nome do substituto some do modal ao desmarcar', await p.locator('#modal-body input#mm-substituto-nome').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.85 Confirmar participação: só marca confirmado, NÃO enfileira mensagem
 // nenhuma pro Hermes — bug real corrigido em 21/08/2026 (o cartório reportou
 // que o botão estava criando fila automática de mensagem sem ter pedido). ──
@@ -990,11 +1025,14 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 2.96 Rodar script conversacional pra um número indicado (modal, 28/08/2026) ──
-// Pedido direto: mandar a etapa 1 de um script salvo pra QUALQUER telefone a
-// partir do modal desta pessoa, não só o telefone cadastrado dela — mesmo
-// mecanismo do Disparo em massa (enfileira em sime_campanhas_confirmacao com
-// campanha_id + etapa_atual:1), só que um item por vez.
+// ── 2.96 Rodar script conversacional: colapsado por padrão, cascata por
+// todos os números conhecidos (modal, 27-28/08/2026) ──
+// Pedido direto (27/08): "caso não seja usado fica recolhido" (colapsável),
+// e "ele seguiria tentando contato com todos os numeros do mesário caso um
+// não confirme vai para o proximo" (cascata) — mesmo mecanismo do Disparo em
+// massa (enfileira em sime_campanhas_confirmacao com campanha_id +
+// etapa_atual:1), só que um item por vez, com os demais números guardados
+// em numeros_restantes pra api/hermes-campanhas.js cascatear sozinho.
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -1005,27 +1043,64 @@ async function login(p) {
   await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(200);
 
+  check('seção "Rodar script" começa recolhida (colapsável por padrão)', await p.locator('#mm-script-campanha').count() === 0);
+  await p.locator('.m-section-hdr:has-text("Rodar script conversacional")').click();
+  await p.waitForTimeout(150);
+  check('clicar no cabeçalho expande a seção', await p.locator('#mm-script-campanha').count() === 1);
+  check('campo agora é "Número extra (opcional)", sem pré-preencher', (await p.inputValue('#mm-script-tel')) === '');
+
   check('modal lista o script salvo da zona', await p.locator('#mm-script-campanha option', { hasText: 'Convocação de mesários (script)' }).count() === 1);
-  check('campo "Número indicado" pré-preenche com o telefone cadastrado da pessoa', (await p.inputValue('#mm-script-tel')).includes('99999-0002'));
 
   await p.selectOption('#mm-script-campanha', 'camp-script-1');
   await p.waitForTimeout(200);
   check('escolher o script mostra a prévia (crua, sem personalizar) da etapa 1', (await p.locator('#modal-body').textContent()).includes('Confirma presença na Seção'));
+  // BRUNO (a2) tem 2 telefones conhecidos na fixture: o principal e o
+  // telefone_1_eleitor do ELO (raw1) — a ordem de tentativa deve listar os dois.
+  check('mostra a ordem de tentativa com os telefones já conhecidos', (await p.locator('#modal-body').textContent()).includes('Ordem de tentativa'));
 
-  // O "número indicado" do pedido: um número DIFERENTE do cadastrado.
+  // Número extra do pedido: um DIFERENTE de tudo que já é conhecido — entra
+  // primeiro na fila, os conhecidos vão pra numeros_restantes.
   await p.fill('#mm-script-tel', '(86) 98888-7777');
   await p.click('#modal-body button:has-text("▶ Enviar")');
   await p.waitForTimeout(200);
 
   const inserido = await p.evaluate(() => (window.__mock.sime_campanhas_confirmacao || []).find(c => c.telefone_whatsapp === '5586988887777'));
-  check('enfileira em sime_campanhas_confirmacao pro número indicado (não o cadastrado)', !!inserido, JSON.stringify(inserido));
+  check('enfileira em sime_campanhas_confirmacao pro número extra (1º da fila)', !!inserido, JSON.stringify(inserido));
   check('item continua vinculado ao ator_id certo mesmo indo pra outro número', inserido?.ator_id === 'a2', String(inserido?.ator_id));
   check('item já entra na etapa 1 do script escolhido', inserido?.campanha_id === 'camp-script-1' && inserido?.etapa_atual === 1, JSON.stringify(inserido));
   check('mensagem enfileirada é a etapa 1 já personalizada (nome + seção)', /BRUNO MESARIO/.test(inserido?.mensagem_enviada || '') && /Seção 30/.test(inserido?.mensagem_enviada || ''), inserido?.mensagem_enviada);
   check('item começa pendente, igual ao disparo em massa', inserido?.status === 'pendente', inserido?.status);
+  check('item marcado avulso:true — fura status rascunho/pausada da campanha em hermes-campanhas.js', inserido?.avulso === true, String(inserido?.avulso));
+  check('numeros_restantes guarda os telefones conhecidos (principal + ELO), pro cascateamento', Array.isArray(inserido?.numeros_restantes) && inserido.numeros_restantes.includes('5586999990002') && inserido.numeros_restantes.includes('5586977778888'), JSON.stringify(inserido?.numeros_restantes));
 
   const logGravado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_script_enviado'));
   check('grava log de auditoria com autor, campanha e telefone usado', !!logGravado?.payload?.payload?.autor && logGravado.payload.payload.telefone === '5586988887777' && logGravado.payload.payload.campanha_id === 'camp-script-1', JSON.stringify(logGravado));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.965 Rodar script: sem número extra, cascata usa só os conhecidos ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  await p.locator('.m-section-hdr:has-text("Rodar script conversacional")').click();
+  await p.waitForTimeout(150);
+  await p.selectOption('#mm-script-campanha', 'camp-script-1');
+  await p.waitForTimeout(200);
+  // Sem digitar nada no "Número extra" — só os conhecidos.
+  await p.click('#modal-body button:has-text("▶ Enviar")');
+  await p.waitForTimeout(200);
+
+  const inserido = await p.evaluate(() => (window.__mock.sime_campanhas_confirmacao || []).find(c => c.telefone_whatsapp === '5586999990002'));
+  check('sem número extra, usa o principal como 1º da fila', !!inserido, JSON.stringify(inserido));
+  check('o telefone do ELO entra em numeros_restantes', Array.isArray(inserido?.numeros_restantes) && inserido.numeros_restantes.includes('5586977778888'), JSON.stringify(inserido?.numeros_restantes));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -1041,6 +1116,8 @@ async function login(p) {
 
   await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(200);
+  await p.locator('.m-section-hdr:has-text("Rodar script conversacional")').click();
+  await p.waitForTimeout(150);
   await p.click('#modal-body button:has-text("▶ Enviar")'); // nenhum script escolhido ainda
   await p.waitForTimeout(150);
 

@@ -153,18 +153,46 @@ export default async function handler(req, res) {
     const cutoff = new Date(new Date(ts).getTime() - RETRY_HORAS * 3600 * 1000).toISOString();
 
     // Auto-expira quem estourou o número máximo de tentativas e já passou da
-    // janela de retry — vira estado terminal, não fica reaparecendo pra
-    // sempre nem no resumo como "aguardando".
-    await supabase.from('sime_campanhas_confirmacao')
-      .update({ status: 'sem_resposta', updated_at: ts })
+    // janela de retry. Por padrão vira estado terminal ('sem_resposta'), não
+    // fica reaparecendo pra sempre nem no resumo como "aguardando" — MAS
+    // (27/08/2026, "cascata de números") um item avulso ainda na etapa 1
+    // (tentando confirmar identidade) com numeros_restantes não desiste: em
+    // vez de sem_resposta, passa pro PRÓXIMO número da lista, zera
+    // tentativas e volta a 'pendente' — o ciclo normal de baixo já entrega
+    // esse item de novo, agora com o telefone novo, como se fosse a
+    // primeira tentativa. Precisa ler linha a linha (não dá pra fazer isso
+    // num UPDATE só, cada linha decide um telefone diferente).
+    const { data: expirando, error: expErr } = await supabase
+      .from('sime_campanhas_confirmacao')
+      .select('id, etapa_atual, numeros_restantes')
       .eq('zona_id', zonaId)
       .eq('status', 'aguardando_resposta')
       .gte('tentativas', MAX_TENTATIVAS)
       .lt('ts_enviado', cutoff);
+    if (expErr) return res.status(500).json({ error: expErr.message });
+    for (const item of expirando || []) {
+      const restantes = Array.isArray(item.numeros_restantes) ? item.numeros_restantes : [];
+      if (item.etapa_atual === 1 && restantes.length) {
+        const [proximoNumero, ...resto] = restantes;
+        const { error: upErr } = await supabase.from('sime_campanhas_confirmacao').update({
+          telefone_whatsapp: proximoNumero, numeros_restantes: resto,
+          status: 'pendente', tentativas: 0, ts_enviado: null, updated_at: ts,
+        }).eq('id', item.id);
+        if (upErr) return res.status(500).json({ error: upErr.message });
+        await supabase.from('sime_logs').insert({
+          acao: 'campanha_script_proximo_numero', modulo: 'hermes_campanhas',
+          payload: { id: item.id, zona: zona.numeroZona, motivo: 'sem_resposta', novo_telefone: proximoNumero }, ts,
+        });
+      } else {
+        const { error: upErr } = await supabase.from('sime_campanhas_confirmacao')
+          .update({ status: 'sem_resposta', updated_at: ts }).eq('id', item.id);
+        if (upErr) return res.status(500).json({ error: upErr.message });
+      }
+    }
 
     let { data, error } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('id, ator_id, telefone_whatsapp, mensagem_enviada, mensagem_convocacao, imagem_url, status, tentativas, ts_enviado, created_at, campanha_id, etapa_atual')
+      .select('id, ator_id, telefone_whatsapp, mensagem_enviada, mensagem_convocacao, imagem_url, status, tentativas, ts_enviado, created_at, campanha_id, etapa_atual, avulso')
       .eq('zona_id', zonaId)
       .in('status', ['pendente', 'aguardando_resposta', 'confirmado'])
       .order('created_at', { ascending: true })
@@ -176,7 +204,18 @@ export default async function handler(req, res) {
     // precisa realmente PARAR o envio dos itens dela, não só mudar um rótulo
     // cosmético na tela. Item sem campanha_id (fluxo legado, de antes desta
     // mudança) passa direto — só item COM campanha_id fica sujeito ao status
-    // da campanha; 'ativa' é a única que deixa passar.
+    // da campanha; 'ativa' é a única que deixa passar por padrão.
+    //
+    // `avulso` (27/08/2026, sql/SIME_campanhas_confirmacao_avulso.sql) fura
+    // esse filtro pra rascunho/pausada — só pro botão "🧩 Rodar script
+    // conversacional" do modal de mesário (sime_contatar_mesarios.js), nunca
+    // pro Disparo em massa. Pedido direto: clicar ali é uma ação humana
+    // pontual (um número só), diferente da fila de disparo que "controle
+    // total das campanhas" precisa conseguir pausar por completo — então não
+    // faz sentido essa ação avulsa ficar presa esperando alguém ativar a
+    // campanha inteira. 'encerrada' continua bloqueando mesmo avulso: é
+    // status terminal e não reversível, nenhum envio deveria sair sob uma
+    // campanha formalmente encerrada.
     const campanhaIdsPresentes = [...new Set((data || []).map((c) => c.campanha_id).filter(Boolean))];
     if (campanhaIdsPresentes.length) {
       const { data: statusCampanhas, error: campErr } = await supabase
@@ -185,7 +224,13 @@ export default async function handler(req, res) {
         .in('id', campanhaIdsPresentes);
       if (campErr) return res.status(500).json({ error: campErr.message });
       const statusPorCampanha = new Map((statusCampanhas || []).map((c) => [c.id, c.status]));
-      data = (data || []).filter((c) => !c.campanha_id || statusPorCampanha.get(c.campanha_id) === 'ativa');
+      data = (data || []).filter((c) => {
+        if (!c.campanha_id) return true;
+        const status = statusPorCampanha.get(c.campanha_id);
+        if (status === 'ativa') return true;
+        if (c.avulso && status !== 'encerrada') return true;
+        return false;
+      });
     }
 
     // Itens de script (etapa_atual preenchido) precisam da mensagem/imagem
@@ -479,7 +524,7 @@ export default async function handler(req, res) {
 
     const { data: item, error: itemErr } = await supabase
       .from('sime_campanhas_confirmacao')
-      .select('id, campanha_id, etapa_atual')
+      .select('id, campanha_id, etapa_atual, numeros_restantes')
       .eq('id', item_id)
       .eq('zona_id', zonaId)
       .maybeSingle();
@@ -493,6 +538,30 @@ export default async function handler(req, res) {
     if (!proximaEtapaNumero) {
       const statusFinal = ['confirmado', 'telefone_incorreto', 'finalizado', 'sem_resposta', 'erro']
         .includes(status_final) ? status_final : 'finalizado';
+
+      // Cascata de números (27/08/2026) — "não é essa pessoa" na etapa 1
+      // não é motivo pra desistir da pessoa real, é motivo pra tentar OUTRO
+      // número dela. Só entra aqui quando ainda sobra número na fila E
+      // ainda está na etapa 1 (a etapa que confirma identidade) — depois de
+      // confirmado noutra etapa não faz sentido cascatear mais. Espelha o
+      // mesmo tratamento do auto-expira sem_resposta acima em 'pendentes'.
+      const restantes = Array.isArray(item.numeros_restantes) ? item.numeros_restantes : [];
+      if (statusFinal === 'telefone_incorreto' && item.etapa_atual === 1 && restantes.length) {
+        const [proximoNumero, ...resto] = restantes;
+        const { error: cascErr } = await supabase.from('sime_campanhas_confirmacao').update({
+          telefone_whatsapp: proximoNumero, numeros_restantes: resto,
+          status: 'pendente', tentativas: 0, ts_enviado: null,
+          resposta_recebida: resposta_texto ? String(resposta_texto).slice(0, 500) : null,
+          decisao_detectada: intencao || null, ts_respondido: ts, updated_at: ts,
+        }).eq('id', item.id);
+        if (cascErr) return res.status(500).json({ error: cascErr.message });
+        await supabase.from('sime_logs').insert({
+          acao: 'campanha_script_proximo_numero', modulo: 'hermes_campanhas',
+          payload: { id: item.id, zona: zona.numeroZona, motivo: 'telefone_incorreto', novo_telefone: proximoNumero }, ts,
+        });
+        return res.status(200).json({ ok: true, id: item.id, status: 'pendente', proxima_mensagem: null });
+      }
+
       const { error } = await supabase
         .from('sime_campanhas_confirmacao')
         .update({

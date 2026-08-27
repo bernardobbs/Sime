@@ -120,6 +120,12 @@ let cmScriptCampanhas = [];
 let cmScriptCampanhaId = null;
 let cmScriptEtapa1 = '';
 let cmScriptEtapa1Imagem = null;
+// Colapsado por padrão (27/08/2026, pedido direto: "caso não seja usado
+// fica recolhido") — é uma ferramenta avulsa, não algo que se olha toda
+// vez que o modal abre; reaproveita o mesmo padrão de disclosure (▸/▾) já
+// usado em sime_resumo_secoes.js pra tabela por município.
+let cmScriptAberto = false;
+function cmToggleScript() { cmScriptAberto = !cmScriptAberto; cmRenderModal(); }
 
 const CM_CAMP_STATUS_LABEL = {
   pendente: 'Na fila do Hermes',
@@ -145,6 +151,7 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
+  mesario_substituto_nome: (p) => p.substituto_nome ? `Nome do substituto: ${p.substituto_nome}` : 'Nome do substituto removido',
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
@@ -192,7 +199,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, tem_relato_terceiro_pendente')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, tem_relato_terceiro_pendente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -279,13 +286,41 @@ async function cmTogglePrecisaSubstituir(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const novo = !p.precisa_substituir;
-  const { error } = await sb.from('sime_atores').update({ precisa_substituir: novo }).eq('id', id);
+  // Desmarcar (a troca foi resolvida) limpa o nome do substituto junto — ele
+  // só faz sentido enquanto a troca ainda está em aberto (ver
+  // sql/SIME_atores_substituto_nome.sql); o log de quando foi marcado/
+  // desmarcado continua em sime_logs pra quem quiser o histórico.
+  const patch = { precisa_substituir: novo };
+  if (!novo) patch.substituto_nome = null;
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  p.precisa_substituir = novo;
+  Object.assign(p, patch);
   await cmLog('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
   render();
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
+}
+
+// Nome de quem vai substituir (27/08/2026, pedido direto: "ao marcar para
+// substituir, deve ter uma forma de informar o nome do substituto") — texto
+// livre, opcional (nunca bloqueia marcar a flag sem preencher), só editável
+// dentro do modal (não tem espaço pra isso no card da lista). Não referencia
+// outro sime_atores por id de propósito — o substituto quase sempre é
+// alguém novo, ainda sem cadastro processado.
+async function cmSalvarSubstitutoNome(id) {
+  const campo = document.getElementById('mm-substituto-nome');
+  if (!campo) return;
+  const nome = campo.value.trim();
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p || nome === (p.substituto_nome || '')) return; // nada mudou
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ substituto_nome: nome || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.substituto_nome = nome || null;
+  await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: nome || null });
+  showToast('✓ Nome do substituto salvo');
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 // Só desmarca a flag (ver tem_relato_terceiro_pendente, gravada por
@@ -504,11 +539,27 @@ async function cmEnviarScript(id) {
   if (!cmScriptCampanhaId) { showToast('⚠ Escolha um script salvo'); return; }
   if (!cmScriptEtapa1) { showToast('⚠ Este script não tem etapa 1 — abra-o na aba 🧩 Campanhas e confira'); return; }
 
-  const campoTel = document.getElementById('mm-script-tel');
-  const normalizado = normalizarTelefoneWhatsapp(campoTel ? campoTel.value : '');
-  const digitos = telSemPais(normalizado);
-  if (!digitos || digitos.length < 10) { showToast('⚠ Telefone indicado inválido'); return; }
-  const telefone = '55' + digitos;
+  // Fila de números a tentar (27/08/2026, pedido direto: "ele seguiria
+  // tentando contato com todos os numeros do mesário caso um não confirme
+  // vai para o proximo") — o número extra digitado (se houver) entra
+  // primeiro, seguido de TODOS os telefones já conhecidos da pessoa
+  // (principal, TRE, cadastrado à mão), deduplicados por dígito. Só o
+  // primeiro vai nesta linha; o resto fica em numeros_restantes, e
+  // api/hermes-campanhas.js cascateia sozinho quando um número não
+  // confirma (recusa ou fica sem resposta) — ver
+  // sql/SIME_campanhas_confirmacao_numeros_restantes.sql.
+  const campoExtra = document.getElementById('mm-script-tel');
+  const vistos = new Set();
+  const fila = [];
+  const addNumero = (raw) => {
+    const digitos = telSemPais(normalizarTelefoneWhatsapp(raw || ''));
+    if (!digitos || digitos.length < 10 || vistos.has(digitos)) return;
+    vistos.add(digitos);
+    fila.push('55' + digitos);
+  };
+  if (campoExtra && campoExtra.value.trim()) addNumero(campoExtra.value);
+  for (const t of (cmModalHist?.telefones || [])) addNumero(t.valor);
+  if (!fila.length) { showToast('⚠ Nenhum telefone conhecido pra esta pessoa — preencha o número extra'); return; }
 
   const sb = window.supabaseAtores;
   const zonaId = await zonaDoUsuario();
@@ -517,21 +568,30 @@ async function cmEnviarScript(id) {
   const mensagem = cmPersonalizarScript(cmScriptEtapa1, p, sec);
   const campanhaEscolhida = cmScriptCampanhas.find(c => c.id === cmScriptCampanhaId);
 
+  // avulso:true (27/08/2026, sql/SIME_campanhas_confirmacao_avulso.sql) —
+  // pedido direto: clicar aqui é uma ação humana pontual, não deve ficar
+  // preso esperando alguém ativar a campanha inteira na aba 🧩 Campanhas.
+  // Fura o filtro de status em api/hermes-campanhas.js pra rascunho/
+  // pausada — só campanha 'encerrada' (terminal) continua bloqueando.
   const { error } = await sb.from('sime_campanhas_confirmacao').insert({
     ator_id: p.id,
-    telefone_whatsapp: telefone,
+    telefone_whatsapp: fila[0],
     zona_id: zonaId,
     mensagem_enviada: mensagem,
     status: 'pendente',
     campanha_id: cmScriptCampanhaId,
     etapa_atual: 1,
+    avulso: true,
+    numeros_restantes: fila.slice(1),
   });
   if (error) { showToast('⚠ ' + error.message); return; }
 
-  await cmLog('mesario_script_enviado', '', { ator_id: p.id, campanha_id: cmScriptCampanhaId, campanha_nome: campanhaEscolhida?.nome, telefone });
-  showToast(campanhaEscolhida && campanhaEscolhida.status !== 'ativa'
-    ? `✓ Enfileirado — mas a campanha está "${campanhaEscolhida.status}", só sai quando ela for ativada`
-    : '✓ Etapa 1 enfileirada — sai pelo Hermes');
+  await cmLog('mesario_script_enviado', '', { ator_id: p.id, campanha_id: cmScriptCampanhaId, campanha_nome: campanhaEscolhida?.nome, telefone: fila[0], total_numeros: fila.length });
+  showToast(campanhaEscolhida && campanhaEscolhida.status === 'encerrada'
+    ? `⚠ Enfileirado, mas a campanha "${campanhaEscolhida.nome}" está encerrada — não vai sair`
+    : fila.length > 1
+      ? `✓ Etapa 1 enfileirada pro 1º de ${fila.length} números conhecidos — se não confirmar, tenta os próximos sozinho`
+      : '✓ Etapa 1 enfileirada — sai pelo Hermes já no próximo ciclo, mesmo se a campanha ainda não estiver ativa');
   if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar o item novo
 }
 
@@ -685,7 +745,7 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ' · 🔁 Precisa substituto' : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ` · 🔁 Precisa substituto${p.substituto_nome ? `: ${cmEsc(p.substituto_nome)}` : ''}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
       ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
@@ -695,8 +755,12 @@ function cmRenderModal() {
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
           <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+          ${p.precisa_substituir ? `
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nome do substituto (opcional)
+            <input id="mm-substituto-nome" type="text" value="${cmEsc(p.substituto_nome || '')}" placeholder="ainda não sei quem vai substituir" onblur="cmSalvarSubstitutoNome('${p.id}')" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
         <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — cada um pode ser tentado direto (copia o link do WhatsApp já com a mensagem de confirmação e registra a tentativa sozinho):</div>
@@ -741,25 +805,6 @@ function cmRenderModal() {
       </div>
 
       <div class="m-section">
-        <div class="m-section-hdr">🧩 Rodar script conversacional</div>
-        <div class="ic-sub">Manda a etapa 1 de um script salvo (aba 🧩 Campanhas, em Cadastro de Atores) pra qualquer número — não precisa ser o telefone cadastrado desta pessoa. As etapas seguintes seguem sozinhas, de acordo com a resposta; o envio de fato depende do Hermes estar com o disparo ligado.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:180px">Script
-            <select id="mm-script-campanha" onchange="cmScriptSelecionarCampanha(this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-              <option value="">— escolha um script salvo —</option>
-              ${cmScriptCampanhas.filter(c => c.status !== 'encerrada').map(c => `<option value="${c.id}" ${cmScriptCampanhaId === c.id ? 'selected' : ''}>${cmEsc(c.nome)} (${c.status})</option>`).join('')}
-            </select>
-          </label>
-          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:150px">Número indicado
-            <input id="mm-script-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-          </label>
-          <button class="btn btn-dark" style="font-size:.72rem;padding:6px 12px" onclick="cmEnviarScript('${p.id}')">▶ Enviar</button>
-        </div>
-        ${!cmScriptCampanhas.filter(c => c.status !== 'encerrada').length ? '<div class="ic-sub" style="margin-top:4px;margin-bottom:0">Nenhum script salvo nesta zona ainda — crie um na aba 🧩 Campanhas de Cadastro de Atores.</div>' : ''}
-        ${cmScriptEtapa1 ? `<div class="ic-sub" style="margin-top:8px;margin-bottom:0"><b>Prévia da etapa 1:</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${cmEsc(cmScriptEtapa1)}</pre>${cmScriptEtapa1Imagem ? `<img src="${cmEsc(cmScriptEtapa1Imagem)}" alt="Prévia da imagem da etapa 1" style="max-width:160px;max-height:160px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : ''}
-      </div>
-
-      <div class="m-section">
         <div class="m-section-hdr">📞 Tentativas de contato</div>
         ${blocoTentativas}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
@@ -787,6 +832,31 @@ function cmRenderModal() {
           <textarea id="mm-obs-nova" rows="2" placeholder="Adicionar observação…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
         </div>
         <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmAdicionarObservacao('${p.id}')">➕ Adicionar observação</button>
+      </div>
+
+      <div class="m-section">
+        <div class="m-section-hdr" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="cmToggleScript()">
+          <span>🧩 Rodar script conversacional</span>
+          <span>${cmScriptAberto ? '▾' : '▸'}</span>
+        </div>
+        ${cmScriptAberto ? `
+        <div class="ic-sub">Manda a etapa 1 de um script salvo (aba 🧩 Campanhas, em Cadastro de Atores) tentando, em sequência, TODOS os telefones conhecidos desta pessoa — se um não confirmar (recusar ou ficar sem resposta), tenta o próximo sozinho. As etapas seguintes seguem de acordo com a resposta; o envio de fato depende do Hermes estar com o disparo ligado.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:180px">Script
+            <select id="mm-script-campanha" onchange="cmScriptSelecionarCampanha(this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+              <option value="">— escolha um script salvo —</option>
+              ${cmScriptCampanhas.filter(c => c.status !== 'encerrada').map(c => `<option value="${c.id}" ${cmScriptCampanhaId === c.id ? 'selected' : ''}>${cmEsc(c.nome)} (${c.status})</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:150px">Número extra (opcional)
+            <input id="mm-script-tel" type="text" placeholder="(86) 9xxxx-xxxx — além dos já conhecidos" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <button class="btn btn-dark" style="font-size:.72rem;padding:6px 12px" onclick="cmEnviarScript('${p.id}')">▶ Enviar</button>
+        </div>
+        <div class="ic-sub" style="margin-top:6px;margin-bottom:0">${cmModalHist?.telefones?.length ? `Ordem de tentativa (número extra acima, se houver, entra primeiro): ${cmModalHist.telefones.map(t => fmtTelefone(t.valor)).join(' → ')}` : 'Nenhum telefone conhecido ainda — preencha o número extra acima pra ter pelo menos um.'}</div>
+        ${!cmScriptCampanhas.filter(c => c.status !== 'encerrada').length ? '<div class="ic-sub" style="margin-top:4px;margin-bottom:0">Nenhum script salvo nesta zona ainda — crie um na aba 🧩 Campanhas de Cadastro de Atores.</div>' : ''}
+        ${cmScriptEtapa1 ? `<div class="ic-sub" style="margin-top:8px;margin-bottom:0"><b>Prévia da etapa 1:</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${cmEsc(cmScriptEtapa1)}</pre>${cmScriptEtapa1Imagem ? `<img src="${cmEsc(cmScriptEtapa1Imagem)}" alt="Prévia da imagem da etapa 1" style="max-width:160px;max-height:160px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : ''}
+        ` : ''}
       </div>
     </div>
     <div class="m-foot">
@@ -834,6 +904,12 @@ async function cmSalvarModal() {
   const notaTentativa = notaTentativaEl ? notaTentativaEl.value.trim() : '';
   const obsNovaEl = document.getElementById('mm-obs-nova');
   const obsNova = obsNovaEl ? obsNovaEl.value.trim() : '';
+  // Campo só existe no DOM quando precisa_substituir=true (mesmo guard de
+  // rastreioEl acima) — mesma rede de segurança do "Salvar" geral pras
+  // outras caixas de ação rápida.
+  const substitutoEl = document.getElementById('mm-substituto-nome');
+  const substitutoNome = substitutoEl ? substitutoEl.value.trim() : '';
+  if (substitutoEl && substitutoNome !== (p.substituto_nome || '')) patch.substituto_nome = substitutoNome || null;
 
   if (!Object.keys(patch).length && !notaTentativa && !obsNova) {
     showToast('Nada para salvar');
@@ -858,6 +934,7 @@ async function cmSalvarModal() {
       if ('telefone_whatsapp' in patch) await cmLog('mesario_editar_telefone', '', { ator_id: id });
       if ('codigo_rastreio' in patch) await cmLog('mesario_editar_rastreio', '', { ator_id: id });
       if ('telefone_alternativo' in patch) await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
+      if ('substituto_nome' in patch) await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: patch.substituto_nome });
     }
     if (notaTentativa) {
       const meioEl = document.getElementById('mm-tent-meio');
@@ -973,7 +1050,7 @@ function renderContatarMesarios() {
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
-              ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto</span>` : ''}
+              ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${p.substituto_nome ? `: ${cmEsc(p.substituto_nome)}` : ''}</span>` : ''}
               ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
             </div>
           </div>

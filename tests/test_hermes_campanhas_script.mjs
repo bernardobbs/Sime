@@ -156,6 +156,34 @@ resetDB();
   check('item legado (sem campanha_id) continua saindo normalmente', r.body.campanhas.some(c => c.id === 'l1'));
 }
 
+// ── avulso:true (27/08/2026, sql/SIME_campanhas_confirmacao_avulso.sql) —
+// "Rodar script conversacional" fura o filtro de status pra rascunho/
+// pausada (ação humana pontual, não deve esperar a campanha ser ativada),
+// mas 'encerrada' continua bloqueando mesmo avulso, e um item SEM avulso
+// continua bloqueado normalmente (bulk não pode regredir). ──
+resetDB();
+{
+  globalThis.__SUPA.campanhasEntidade.find(c => c.id === 'camp-1').status = 'rascunho';
+  globalThis.__SUPA.campanhas.find(c => c.id === 's1').avulso = true;
+  const rRascunho = await call('POST', Z7, { acao: 'pendentes' });
+  check('avulso fura rascunho — item continua saindo', rRascunho.body.campanhas.some(c => c.id === 's1'), JSON.stringify(rRascunho.body.campanhas.map(c => c.id)));
+
+  globalThis.__SUPA.campanhasEntidade.find(c => c.id === 'camp-1').status = 'pausada';
+  const rPausada = await call('POST', Z7, { acao: 'pendentes' });
+  check('avulso fura pausada — item continua saindo', rPausada.body.campanhas.some(c => c.id === 's1'), JSON.stringify(rPausada.body.campanhas.map(c => c.id)));
+
+  globalThis.__SUPA.campanhasEntidade.find(c => c.id === 'camp-1').status = 'encerrada';
+  const rEncerrada = await call('POST', Z7, { acao: 'pendentes' });
+  check('avulso NÃO fura encerrada — item some da fila mesmo assim', !rEncerrada.body.campanhas.some(c => c.id === 's1'), JSON.stringify(rEncerrada.body.campanhas.map(c => c.id)));
+}
+resetDB();
+{
+  globalThis.__SUPA.campanhasEntidade.find(c => c.id === 'camp-1').status = 'rascunho';
+  // s1 sem avulso (bulk normal) — continua bloqueado por rascunho, sem regressão.
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  check('item sem avulso continua bloqueado por campanha rascunho (bulk não regride)', !r.body.campanhas.some(c => c.id === 's1'), JSON.stringify(r.body.campanhas.map(c => c.id)));
+}
+
 // ── Imagem por etapa (22/08/2026, sql/SIME_campanha_etapas_imagem.sql) ──
 // A imagem pertence à ETAPA (sime_campanha_etapas.imagem_url), não à linha
 // de fila — pendentes/avancar_etapa precisam resolver a imagem certa pra
@@ -220,6 +248,99 @@ resetDB();
   const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 1, intencao: 'nao', status_final: 'telefone_incorreto', resposta_texto: 'não' });
   check('avancar_etapa terminal não inclui proxima_imagem_url', r.body?.proxima_imagem_url === undefined, JSON.stringify(r.body));
   check('avancar_etapa terminal grava o status_final pedido', globalThis.__SUPA.campanhas.find(c => c.id === 's1')?.status === 'telefone_incorreto');
+}
+
+// ── Cascata de números (27/08/2026, sql/SIME_campanhas_confirmacao_numeros_restantes.sql) —
+// "ele seguiria tentando contato com todos os numeros do mesário caso um não
+// confirme vai para o proximo". Dois gatilhos: telefone_incorreto explícito
+// (avancar_etapa) e sem resposta até esgotar tentativas (pendentes, auto-expira). ──
+
+// telefone_incorreto NA ETAPA 1 com numeros_restantes: cascateia pro próximo
+// número em vez de fechar como telefone_incorreto.
+resetDB();
+{
+  globalThis.__SUPA.campanhas.find(c => c.id === 's1').numeros_restantes = ['558622220001', '558622220002'];
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 1, intencao: 'nao', status_final: 'telefone_incorreto', resposta_texto: 'não' });
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  check('telefone_incorreto com numeros_restantes NÃO fecha — vira pendente pro próximo número', s1.status === 'pendente', s1.status);
+  check('telefone_whatsapp vira o próximo número da fila', s1.telefone_whatsapp === '558622220001', s1.telefone_whatsapp);
+  check('numeros_restantes encolhe (tira o que acabou de ser usado)', JSON.stringify(s1.numeros_restantes) === JSON.stringify(['558622220002']), JSON.stringify(s1.numeros_restantes));
+  check('tentativas zera pro número novo', s1.tentativas === 0, String(s1.tentativas));
+  check('resposta ainda grava resposta_recebida/decisao_detectada', s1.resposta_recebida === 'não' && s1.decisao_detectada === 'nao', JSON.stringify(s1));
+  check('avancar_etapa devolve status pendente e sem mensagem (o ciclo normal de pendentes manda a etapa 1 pro número novo)', r.body?.status === 'pendente' && r.body?.proxima_mensagem === null, JSON.stringify(r.body));
+  const logCascata = globalThis.__SUPA.logs.find(l => l.acao === 'campanha_script_proximo_numero');
+  check('grava log campanha_script_proximo_numero com motivo telefone_incorreto', logCascata?.payload?.motivo === 'telefone_incorreto' && logCascata?.payload?.novo_telefone === '558622220001', JSON.stringify(logCascata));
+}
+
+// telefone_incorreto na etapa 1 SEM numeros_restantes: comportamento de
+// sempre, fecha como telefone_incorreto (sem regressão — já coberto acima
+// mas repetido aqui de propósito, lado a lado com a cascata).
+resetDB();
+{
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 1, intencao: 'nao', status_final: 'telefone_incorreto', resposta_texto: 'não' });
+  check('sem numeros_restantes, telefone_incorreto fecha normalmente (sem cascata)', r.body?.status === 'telefone_incorreto', JSON.stringify(r.body));
+}
+
+// telefone_incorreto FORA da etapa 1 (já confirmado, avançando) não cascateia
+// mesmo tendo numeros_restantes — cascata é só pra confirmar identidade.
+resetDB();
+{
+  globalThis.__SUPA.campanhas.find(c => c.id === 's1').etapa_atual = 2;
+  globalThis.__SUPA.campanhas.find(c => c.id === 's1').numeros_restantes = ['558622220001'];
+  const r = await call('POST', Z7, { acao: 'avancar_etapa', item_id: 's1', etapa_atual: 2, intencao: 'nao', status_final: 'telefone_incorreto', resposta_texto: 'não' });
+  check('telefone_incorreto fora da etapa 1 fecha normalmente, mesmo com numeros_restantes', r.body?.status === 'telefone_incorreto', JSON.stringify(r.body));
+}
+
+// PENDENTES auto-expira sem_resposta: item na etapa 1, esgotou tentativas e
+// passou da janela de retry, COM numeros_restantes — cascateia em vez de
+// fechar sem_resposta.
+resetDB();
+{
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  s1.status = 'aguardando_resposta';
+  s1.tentativas = 3; // MAX_TENTATIVAS
+  s1.ts_enviado = '2026-10-01T10:00:00.000Z'; // bem fora da janela de RETRY_HORAS
+  s1.numeros_restantes = ['558633330001'];
+  const r = await call('POST', Z7, { acao: 'pendentes' });
+  const depois = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  check('esgotou tentativas + numeros_restantes: cascateia (vira pendente), não sem_resposta', depois.status === 'pendente' || r.body.campanhas.some(c => c.id === 's1'), JSON.stringify(depois));
+  check('telefone vira o próximo da fila', depois.telefone_whatsapp === '558633330001', depois.telefone_whatsapp);
+  check('numeros_restantes esvazia', Array.isArray(depois.numeros_restantes) && depois.numeros_restantes.length === 0, JSON.stringify(depois.numeros_restantes));
+  check('tentativas zera', depois.tentativas === 0, String(depois.tentativas));
+  // Como já virou 'pendente' dentro do mesmo ciclo, a MESMA chamada de
+  // pendentes já devolve a etapa 1 pro número novo — sem esperar o próximo minuto.
+  const itemNaLista = r.body.campanhas.find(c => c.id === 's1');
+  check('a mesma chamada de pendentes já entrega a etapa 1 pro número novo', itemNaLista?.proxima_acao === 'enviar_etapa_script' && itemNaLista?.telefone === '558633330001', JSON.stringify(itemNaLista));
+  const logCascata = globalThis.__SUPA.logs.find(l => l.acao === 'campanha_script_proximo_numero');
+  check('grava log campanha_script_proximo_numero com motivo sem_resposta', logCascata?.payload?.motivo === 'sem_resposta', JSON.stringify(logCascata));
+}
+
+// PENDENTES auto-expira sem_resposta: SEM numeros_restantes continua indo
+// pra sem_resposta normalmente — sem regressão do comportamento de sempre.
+resetDB();
+{
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  s1.status = 'aguardando_resposta';
+  s1.tentativas = 3;
+  s1.ts_enviado = '2026-10-01T10:00:00.000Z';
+  await call('POST', Z7, { acao: 'pendentes' });
+  const depois = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  check('sem numeros_restantes, esgotar tentativas ainda vira sem_resposta (sem regressão)', depois.status === 'sem_resposta', depois.status);
+}
+
+// PENDENTES auto-expira: etapa_atual != 1 (já confirmado, avançando) não
+// cascateia mesmo com numeros_restantes — vira sem_resposta normalmente.
+resetDB();
+{
+  const s1 = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  s1.status = 'aguardando_resposta';
+  s1.tentativas = 3;
+  s1.ts_enviado = '2026-10-01T10:00:00.000Z';
+  s1.etapa_atual = 2;
+  s1.numeros_restantes = ['558633330001'];
+  await call('POST', Z7, { acao: 'pendentes' });
+  const depois = globalThis.__SUPA.campanhas.find(c => c.id === 's1');
+  check('fora da etapa 1, esgotar tentativas vira sem_resposta mesmo com numeros_restantes', depois.status === 'sem_resposta', depois.status);
 }
 
 const falhou = results.filter(r => !r.ok);
