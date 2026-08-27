@@ -1333,13 +1333,28 @@ async function login(p) {
   check('placeholder "000000000000" nunca vira número inventado', normCasos.placeholder === '000000000000', JSON.stringify(normCasos.placeholder));
   check('vazio continua vazio', normCasos.vazio === '', JSON.stringify(normCasos.vazio));
 
+  // ── normalizarTituloEleitor() (27/08/2026, achado real: HEMANUELA e 708
+  // outros casos duplicados porque Excel come o zero à esquerda do título) ──
+  const tituloCasos = await p.evaluate(() => ({
+    ja12: normalizarTituloEleitor('046919051589'),
+    sem11: normalizarTituloEleitor('46919051589'),
+    comEspacos: normalizarTituloEleitor('0469 1905 1589'),
+    vazio: normalizarTituloEleitor(''),
+  }));
+  check('já com 12 dígitos: mantém como está', tituloCasos.ja12 === '046919051589', JSON.stringify(tituloCasos.ja12));
+  check('11 dígitos (zero comido pelo Excel): completa com zero à esquerda', tituloCasos.sem11 === '046919051589', JSON.stringify(tituloCasos.sem11));
+  check('tolera espaço entre blocos', tituloCasos.comEspacos === '046919051589', JSON.stringify(tituloCasos.comEspacos));
+  check('vazio continua vazio', tituloCasos.vazio === '', JSON.stringify(tituloCasos.vazio));
+
   // ── Atualizar contatos (formato de 16 colunas, com Ciente) ──
   const mcHeaders = ['Zona','Seção','Nome','Inscrição','Situação','Localidade','Nº Local','Nome Local','Cód. Objeto Local','Nº Função Eleitoral','Função Eleitoral','Data Atualização','Ciente','whatsapp','celular','telefone2'];
   const mcRow = (over) => mcHeaders.map(h => over[h] ?? '').join(',');
   const mcCsv = [
     mcHeaders.join(','),
-    // casa com BRUNO (inscricao_eleitoral='046919051589') — Ciente=1, telefone novo
-    mcRow({ 'Inscrição':'046919051589', 'Ciente':'1', 'whatsapp':'86988887777' }),
+    // casa com BRUNO (inscricao_eleitoral='046919051589') — Ciente=1, telefone novo.
+    // Título SEM o zero à esquerda de propósito (27/08/2026, achado real:
+    // Excel/planilha come esse zero) — precisa casar mesmo assim.
+    mcRow({ 'Inscrição':'46919051589', 'Ciente':'1', 'whatsapp':'86988887777' }),
     // não casa com ninguém do mock
     mcRow({ 'Inscrição':'999999999999', 'Ciente':'2', 'whatsapp':'86977776666' }),
   ].join('\n');
@@ -1458,12 +1473,20 @@ async function login(p) {
     { id:'a9', nome_completo:'IVO CONFLITO', telefone_whatsapp:'5586999990009', funcao:'mesario', funcao_mesa:'Presidente', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'222222222222' },
     { id:'a10', nome_completo:'JULIA SEM REGISTRO NO ELO', telefone_whatsapp:'5586999990010', funcao:'auxiliar_eleicao', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'333333333333' },
     { id:'a11', nome_completo:'KAIO JA SINCRONIZADO', telefone_whatsapp:'5586999990011', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'444444444444' },
+    // LEO: título salvo no SIME já normalizado (12 dígitos), mas a linha do
+    // ELO (sime_mesarios_raw) ainda tem o formato cru do arquivo, sem o zero
+    // à esquerda (27/08/2026, mesmo achado real da duplicata da HEMANUELA) —
+    // tem que casar mesmo assim, senão o relatório mentiria "sem registro".
+    { id:'a12', nome_completo:'LEO TITULO SEM ZERO NO ELO', telefone_whatsapp:'5586999990012', funcao:'mesario', funcao_mesa:'2º Secretário', secao_id:null, zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, inscricao_eleitoral:'055555555555' },
   );
   m.sime_mesarios_raw = [
     { id:'raw2', inscricao:'111111111111', confirmou_convocacao: null, origem_resposta: null, data_resposta: null },
     { id:'raw3', inscricao:'222222222222', confirmou_convocacao: 'Não', origem_resposta: 'Não', data_resposta: '17/08/2026' },
     // KAIO: já "Sim" no ELO — não deve aparecer no relatório.
     { id:'raw4', inscricao:'444444444444', confirmou_convocacao: 'Sim', origem_resposta: 'WhatsApp', data_resposta: '10/08/2026' },
+    // LEO: mesmo título de a12 (055555555555), mas SEM o zero à esquerda —
+    // já "Sim" no ELO, então também não deve aparecer no relatório.
+    { id:'raw5', inscricao:'55555555555', confirmou_convocacao: 'Sim', origem_resposta: 'WhatsApp', data_resposta: '11/08/2026' },
     // JULIA não tem NENHUMA linha em sime_mesarios_raw — "sem registro no ELO".
   ];
   const { p, erros } = await abrir(ctx, m);
@@ -1477,6 +1500,7 @@ async function login(p) {
   check('relatório ELO mostra IVO com alerta (ELO diz "Não")', /IVO CONFLITO/.test(flat) && /ELO diz "Não"/.test(flat), flat.slice(0, 900));
   check('relatório ELO mostra JULIA (sem registro nenhum no ELO)', /JULIA SEM REGISTRO NO ELO/.test(flat) && /Sem registro no ELO/.test(flat), flat.slice(0, 900));
   check('relatório ELO NÃO mostra KAIO (ELO já diz "Sim")', !/KAIO JA SINCRONIZADO/.test(flat), flat.slice(0, 900));
+  check('relatório ELO casa título mesmo com zero à esquerda divergente entre SIME e ELO — NÃO mostra LEO', !/LEO TITULO SEM ZERO NO ELO/.test(flat), flat.slice(0, 900));
   check('relatório ELO avisa quantos casos têm conflito (1)', /1 caso\(s\) com resposta "Não"/.test(flat), flat.slice(0, 300));
   check('BRUNO/CARLA/DIEGO (não confirmados) não aparecem no relatório', !/BRUNO MESARIO/.test(flat) && !/CARLA RECUSOU/.test(flat) && !/DIEGO CARTA/.test(flat));
   // ANA é confirmado mas não tem inscricao_eleitoral na fixture — sem título, não dá pra cruzar com o ELO.

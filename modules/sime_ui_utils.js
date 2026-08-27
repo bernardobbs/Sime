@@ -124,3 +124,22 @@ function normalizarTelefoneWhatsapp(raw) {
   }
   return d;
 }
+
+// Normaliza título de eleitor pra 12 dígitos com zero à esquerda — mesma
+// convenção agora usada em sime_atores.inscricao_eleitoral por TODO caminho
+// que grava ou casa por esse campo (27/08/2026, achado real em produção:
+// HEMANUELA e outros 708 casos duplicados porque Excel/planilha come o zero
+// à esquerda quando trata a coluna do título como número, e diferentes
+// exportações do TRE vinham ora com ele, ora sem — sime_atores.inscricao_eleitoral
+// gravava a string crua, então "080172290760" e "80172290760" viravam duas
+// pessoas diferentes pro UPSERT. sime_sync_atores_from_raw() (a função no
+// banco) já normaliza sozinha desde este fix; esta é a versão JS gêmea, pros
+// caminhos que casam PELO CLIENTE (mcAtualizar/cpAtualizar em
+// sime_mesarios_sync.js) — sem ela, um arquivo com formato diferente do que
+// já está salvo simplesmente não encontraria ninguém (RLS não erra, só
+// devolve zero linhas). Ver sql/SIME_atores_titulo_duplicados_merge.sql pro
+// reparo do que já tinha duplicado antes deste fix.
+function normalizarTituloEleitor(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  return d ? d.padStart(12, '0') : '';
+}

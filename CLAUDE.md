@@ -1118,6 +1118,63 @@ não bate com `sime_secoes.municipio='Jatobá do Piauí'` gravado em minúsculo;
 o join nunca casava pra esse município e ~120 mesários de lá entravam sem
 `secao_id`).
 
+> **Bug real grave, corrigido em 27/08/2026 — título de eleitor com zero à
+> esquerda inconsistente duplicava o cadastro da pessoa, escondendo
+> confirmação/observação/flag numa cópia inativa.** Achado investigando o
+> pedido "HEMANUELA já está dispensada no ELO mas ainda consta no SIME".
+> `sime_sync_atores_from_raw()` casa "é a mesma pessoa?" comparando
+> `inscricao_eleitoral` como STRING EXATA — mas diferentes exportações do
+> TRE/planilha trazem o mesmo título ora com zero à esquerda
+> ("080172290760"), ora sem ("80172290760"), porque Excel come o zero
+> quando trata a coluna como número. Toda vez que o formato mudava entre
+> uma sincronização e outra, o UPSERT não reconhecia a pessoa (string
+> diferente) e **criava uma linha nova**, e o passo de inativação marcava
+> `ativo=false` na linha do formato antigo — sem apagar nada, mas escondendo
+> o que só existia nela.
+>
+> Auditoria em produção antes de corrigir (7ª Zona): **709 pares duplicados
+> (1.418 linhas)** — quase metade do cadastro. Composição: 351 pares eram só
+> duplicata de formato (sem informação divergente); 329 já tinham o status
+> certo na linha ativa; **16 tinham confirmação/observação real presa na
+> linha INATIVA** (escondida); **13 apareciam duas vezes na tela** (as duas
+> linhas ativas ao mesmo tempo); 96 `sime_logs` e 1 `sime_campanhas_confirmacao`
+> ficavam presos no id da linha que ia virar órfã. Nunca houve conflito real
+> (duas confirmações diferentes competindo) — sempre foi "uma tem dado, a
+> outra não".
+>
+> Corrigido em duas frentes:
+> - **Dado já duplicado**: `sql/SIME_atores_titulo_duplicados_merge.sql`
+>   (rodado uma vez via SQL Editor, não é uma migração que reaplica sozinha
+>   — mesmo padrão de `SIME_telefones_normalizacao.sql`) migra pra linha
+>   vencedora (a que tem status além de `pendente`; empate decide por
+>   `ativo=true`) qualquer observação/flag/telefone que só existia na
+>   perdedora, reatribui histórico de `sime_campanhas_confirmacao`/
+>   `sime_logs`, normaliza o título pra 12 dígitos, e aposenta a perdedora
+>   (**nunca apaga** — `ativo=false`, `inscricao_eleitoral=NULL` pra liberar
+>   o índice único, nota de auditoria em `observacao`). Ordem importa: a
+>   perdedora precisa ser liberada ANTES da vencedora tentar gravar o título
+>   normalizado, senão colide com a própria perdedora quando por acaso ela
+>   já estava no formato de 12 dígitos e a vencedora não.
+> - **Causa raiz**: `sime_sync_atores_from_raw()` (a função no banco) e os
+>   dois caminhos de casamento por título no cliente (`mcAtualizar`/
+>   `cpAtualizar` em `sime_mesarios_sync.js`, `sime_relatorio_elo.js`) agora
+>   sempre normalizam pra 12 dígitos antes de gravar ou comparar —
+>   `normalizarTituloEleitor()` em `sime_ui_utils.js` (gêmea JS do `lpad(...,
+>   12, '0')` usado na função SQL). `sime_relatorio_elo.js` precisou buscar
+>   as DUAS formas do título em `sime_mesarios_raw` (com e sem zero), já que
+>   o staging da planilha do TRE continua guardando o dígito cru do arquivo
+>   — só `sime_atores.inscricao_eleitoral` passou a ser sempre normalizado.
+>
+> **HEMANUELA especificamente**: depois de consolidada numa linha só, ela
+> continuava `ativo=true` — não é a duplicata, é outra coisa: a linha dela
+> **ainda aparecia no último CSV importado** (24/08). O arquivo de 81
+> colunas que o SIME lê não tem NENHUMA coluna de "situação/dispensada" do
+> ELO — o SIME só percebe que alguém saiu quando a pessoa **some inteira**
+> do arquivo, nunca por uma marcação interna do ELO. Como o cartório já
+> tinha confirmado a dispensa direto no ELO, foi marcada `ativo=false`
+> manualmente, com nota explicando o motivo (pra não parecer que sumiu
+> sozinha da próxima vez que alguém olhar).
+
 > **Bug real corrigido em 21/08/2026 — `telefone_whatsapp` era sobrescrito a
 > cada resync, desfazendo correção/normalização manual.** O comentário do
 > código já prometia "preserva sempre... whatsapp\_\*", mas o `DO UPDATE SET`

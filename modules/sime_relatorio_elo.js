@@ -30,23 +30,33 @@ async function reCarregar() {
   // Sem título de eleitor não dá pra cruzar com o ELO — fica de fora.
   const atores = (atoresBrutos || []).filter(a => a.inscricao_eleitoral);
 
+  // sime_atores.inscricao_eleitoral agora vem sempre normalizado (12 dígitos,
+  // zero à esquerda — ver normalizarTituloEleitor em sime_ui_utils.js), mas
+  // sime_mesarios_raw.inscricao ainda é o dígito cru do arquivo do TRE, que
+  // pode ou não ter o zero (27/08/2026, mesmo achado da duplicata da
+  // HEMANUELA). Busca pelas DUAS formas de cada título — com e sem o zero —
+  // pra não perder o casamento com uma linha do ELO só por formatação.
   const inscricoes = [...new Set((atores || []).map(a => a.inscricao_eleitoral).filter(Boolean))];
+  const inscricoesBusca = [...new Set(inscricoes.flatMap(t => [t, t.replace(/^0+/, '') || t]))];
   // sime_mesarios_raw não tem zona_id (só zona_eleitoral_trabalho em texto) —
   // filtra pela lista de títulos já restrita à zona do usuário, não precisa
   // repetir o filtro de zona aqui.
-  const { data: raw, error: e3 } = inscricoes.length
-    ? await sb.from('sime_mesarios_raw').select('inscricao, confirmou_convocacao, origem_resposta, data_resposta').in('inscricao', inscricoes)
+  const { data: raw, error: e3 } = inscricoesBusca.length
+    ? await sb.from('sime_mesarios_raw').select('inscricao, confirmou_convocacao, origem_resposta, data_resposta').in('inscricao', inscricoesBusca)
     : { data: [], error: null };
   if (e3) { reDados = { erro: e3.message }; render(); return; }
 
   const rawPorInscricao = {};
   for (const r of raw || []) {
+    // Chave sempre normalizada (12 dígitos) — o mesmo título pode ter vindo
+    // com ou sem zero à esquerda dependendo da exportação do TRE.
+    const chave = normalizarTituloEleitor(r.inscricao);
     // Pode haver mais de uma linha por título (ex.: MRV e AL na mesma
     // exportação) — fica com a que já diz "Sim" se existir alguma, senão a
     // primeira (não faz diferença pro relatório: o que importa é se ALGUMA
     // resposta do ELO pra essa pessoa já é "Sim").
-    const atual = rawPorInscricao[r.inscricao];
-    if (!atual || r.confirmou_convocacao === 'Sim') rawPorInscricao[r.inscricao] = r;
+    const atual = rawPorInscricao[chave];
+    if (!atual || r.confirmou_convocacao === 'Sim') rawPorInscricao[chave] = r;
   }
 
   const secoesPorId = Object.fromEntries((secoes || []).map(s => [s.id, s]));

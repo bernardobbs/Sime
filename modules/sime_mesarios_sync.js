@@ -342,7 +342,7 @@ async function mcAtualizar() {
     if (!Object.keys(patch).length) continue;
 
     const { data, error } = await sb.from('sime_atores').update(patch)
-      .eq('zona_id', zonaId).eq('inscricao_eleitoral', l.inscricao).select('id');
+      .eq('zona_id', zonaId).eq('inscricao_eleitoral', normalizarTituloEleitor(l.inscricao)).select('id');
     if (error) { showToast('⚠ ' + error.message); return; }
     if (data && data.length) atualizados += data.length; else semMatch++;
   }
@@ -438,7 +438,7 @@ async function cpAtualizar() {
   let atualizados = 0, semMatch = 0;
   for (const l of validas) {
     const { data, error } = await sb.from('sime_atores').update({ telefone_whatsapp: l.telefone })
-      .eq('zona_id', zonaId).eq('inscricao_eleitoral', l.titulo).select('id');
+      .eq('zona_id', zonaId).eq('inscricao_eleitoral', normalizarTituloEleitor(l.titulo)).select('id');
     if (error) { showToast('⚠ ' + error.message); return; }
     if (data && data.length) atualizados++; else semMatch++;
   }
