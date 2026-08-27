@@ -153,6 +153,17 @@ function coBlocoDestinatario(p) {
 }
 
 async function coImprimir(ids, tipo) {
+  // 27/08/2026: botão ficava com `disabled` quando faltava campo do
+  // remetente — clique num botão disabled não faz NADA, sem toast nem
+  // aviso, e é fácil achar que preencheu tudo (o placeholder do nome do
+  // cartório e da UF mostra um valor plausível igual ao real, dá pra
+  // confundir com valor já salvo). Motivo real reportado: "clicar em
+  // etiqueta ou ar não fez nada". Agora o botão nunca fica disabled — ele
+  // sempre roda esta função, que avisa explicitamente o que falta.
+  if (!coRemetenteCompleto(coDados.zona)) {
+    showToast('⚠ Preencha nome do cartório, endereço, CEP, município e UF do remetente antes de imprimir');
+    return;
+  }
   const pessoas = coDados.pessoas.filter(p => ids.includes(p.id));
   const zona = coDados.zona;
   const area = document.getElementById('print-area');
@@ -242,7 +253,7 @@ function renderCorrespondencia() {
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <button class="btn btn-out" onclick="coSelecionados=new Set(coDados.pessoas.filter(p=>p.endereco).map(p=>p.id));render()">Selecionar todos</button>
         <button class="btn btn-out" onclick="coSelecionados=new Set();render()">Limpar seleção</button>
-        <button class="btn btn-dark" ${(!selecionaveis.length || !remCompleto) ? 'disabled' : ''} onclick="coImprimir([...coSelecionados],'etiqueta')">🏷️ Imprimir etiquetas selecionadas (${selecionaveis.length})</button>
+        <button class="btn btn-dark" ${!selecionaveis.length ? 'disabled' : ''} onclick="coImprimir([...coSelecionados],'etiqueta')">🏷️ Imprimir etiquetas selecionadas (${selecionaveis.length})</button>
       </div>
       <div class="cm-lista-pessoas" style="display:flex;flex-direction:column;gap:8px">
         ${comEndereco.map(p => `
@@ -254,8 +265,8 @@ function renderCorrespondencia() {
               <div style="font-size:.72rem;color:var(--text2);margin-top:2px">📍 ${coEsc(p.endereco.endereco)}${p.endereco.bairro ? ', ' + coEsc(p.endereco.bairro) : ''} — ${coFmtCep(p.endereco.cep)} <span style="opacity:.7">(${coEsc(p.endereco.fonte)})</span></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px">
-              <button class="btn btn-out btn-xs" ${!remCompleto ? 'disabled' : ''} onclick="coImprimir(['${p.id}'],'etiqueta')">🏷️ Etiqueta</button>
-              <button class="btn btn-out btn-xs" ${!remCompleto ? 'disabled' : ''} onclick="coImprimir(['${p.id}'],'ar')">📄 AR</button>
+              <button class="btn btn-out btn-xs" onclick="coImprimir(['${p.id}'],'etiqueta')">🏷️ Etiqueta</button>
+              <button class="btn btn-out btn-xs" onclick="coImprimir(['${p.id}'],'ar')">📄 AR</button>
             </div>
           </div>`).join('')}
       </div>` : '<div class="ic-sub" style="margin-bottom:0">Ninguém marcado com "Carta Registrada" e com endereço disponível.</div>'}
