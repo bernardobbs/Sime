@@ -720,6 +720,24 @@ cada um com propósito diferente:
   artefato de cópia/planilha já documentado alhures; corrigir exigiria
   adivinhar QUAL dígito é o duplicado).
 
+  **Placeholder da MARIA DE FATIMA GOMES EDUVIRGES resolvido em 27/08/2026**
+  — o cartório trouxe uma lista de 24 contatos atualizados (nome + WhatsApp,
+  sem título de eleitor, casada por nome contra `sime_atores` da 7ª Zona via
+  `similarity()` do `pg_trgm`, já instalado no projeto). Ela tinha um número
+  real desta vez; `telefone_whatsapp` saiu do placeholder `"000000000000"`
+  pro número informado. Dos outros 23 nomes da lista: 20 já existiam e
+  tiveram o telefone atualizado de verdade (número diferente do cadastrado);
+  3 já estavam com o número certo (sem mudança); **1 não foi encontrada**
+  (Ana Karoline dos Santos Sousa, "indicada como voluntária" com CPF, não
+  título — não existe registro com esse nome completo na zona, então não é
+  atualização, é cadastro novo, fora do escopo de um casamento por nome).
+  Casamento por nome só prosseguiu quando havia exatamente 1 candidato óbvio
+  (nome idêntico ou claramente o mesmo, ignorando acento) — nomes com
+  match ambíguo ou de baixa confiança (variações de "Karoline" com
+  sobrenomes diferentes, por exemplo) ficaram de fora, mesmo critério de
+  nunca adivinhar já usado nas demais rotinas de import. Registrado em
+  `sime_logs` (`mesarios_atualizar_telefone_por_nome`) pra auditoria.
+
   **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
   além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status
   diferente — "Enviado/Entregue" não faz sentido pra uma ligação.
