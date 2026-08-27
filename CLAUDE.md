@@ -1179,17 +1179,40 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
   `ADMIN_NUMBERS` conforme `idade_s` — ver `SIME_hermes_skill_escalonamento.md`
   no repositório `bernardobbs/hermes`.
   94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
-- **Autoatendimento por telefone ("oi" → função + seção) não está ligado no
-  Hermes** — o endpoint (`/api/hermes-mesarios acao=consultar`) existe e
-  funciona, mas nada no `index.js` o chama ainda. Busca por **nome**
-  (`acao=buscar_nome`) também existe no endpoint, mas o gatilho automático
-  no WhatsApp (qualquer DM não reconhecida como comando, com 2+ palavras,
-  era tratada como nome de convocação) foi **suprimido em 06/08/2026** —
-  disparava em cima de conversa comum ("Bom dia", "É Bernardo do cartório")
-  e respondia "não encontrei ninguém chamado <frase>" pra qualquer coisa que
-  não fosse um comando, confundindo quem mandava mensagem normal pro número
-  (flagrado em campo). `buscarConvocacaoPorNome` continua disponível em
-  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente.
+- ~~Autoatendimento por telefone ("oi" → função + seção) não está ligado no
+  Hermes~~ — **ligado em 27/08/2026**, pedido direto ("tem um script para
+  quando uma pessoa manda mensagem?"). `modules/campanhas/autoidentificacao.js`
+  (repositório `bernardobbs/hermes`) já cobria uma autoidentificação
+  espontânea por frase longa ("sou mesário"); ganhou um segundo gatilho,
+  `ehSaudacao()`, pra saudação simples ("oi"/"bom dia"/"boa tarde"/"boa
+  noite"/etc.) — mesma ação (chama `acao=consultar`, manda `mensagem_wa` +
+  imagem se tiver). Deliberadamente **não** reaproveita o casamento por
+  substring das frases longas: "oi" como substring bateria em qualquer
+  mensagem com a palavra "coisa", por exemplo — `ehSaudacao()` exige
+  IGUALDADE com a mensagem inteira normalizada, não substring, então "Boa
+  noite, aqui é a Ana do local 12" continua caindo no fluxo normal, não
+  nesta saudação.
+  **Achado ao ligar isso, antes de subir**: `acao=consultar` devolve
+  `mensagem_wa` ("Não encontrei seu telefone...") mesmo quando NINGUÉM bate
+  com o telefone — resposta correta pra quem afirma "sou mesário" (merece um
+  "não encontrei, fale com o cartório" como resposta direta ao que disse),
+  mas teria reproduzido o mesmo incidente do `buscar_nome` se aplicada à
+  saudação: qualquer estranho que mandasse "oi" pro número (número errado,
+  familiar testando o WhatsApp) receberia esse mesmo texto sem sentido pra
+  ele. Corrigido antes de ir ao ar: saudação só responde quando
+  `resposta.body.encontrado > 0` de verdade; sem match, fica em silêncio —
+  "sou mesário" continua respondendo os dois casos, porque ali a afirmação
+  é explícita.
+  Busca por **nome** (`acao=buscar_nome`) continua existindo no endpoint,
+  mas o gatilho automático no WhatsApp (qualquer DM não reconhecida como
+  comando, com 2+ palavras, era tratada como nome de convocação) segue
+  **suprimido desde 06/08/2026** — disparava em cima de conversa comum
+  ("Bom dia", "É Bernardo do cartório") e respondia "não encontrei ninguém
+  chamado <frase>" pra qualquer coisa que não fosse um comando, confundindo
+  quem mandava mensagem normal pro número (flagrado em campo).
+  `buscarConvocacaoPorNome` continua disponível em
+  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente
+  — isso continua pendente, não foi religado agora.
 - **Canal de DM (individual) restrito a `ADMIN_NUMBERS`, desde 06/08/2026**
   — mesmo incidente do item acima. Antes, `status` e `fila` respondiam a
   qualquer remetente; agora todo o `modules/whatsapp/comandos.js` retorna
@@ -1299,7 +1322,7 @@ inteiro ainda.
 >
 > | Skill | Estado real no Pi |
 > |---|---|
-> | `sime_mesarios` | confirmação/recusa em PRIMEIRA pessoa grava via `/api/hermes-mesarios`, em grupo monitorado (`modules/whatsapp/confirmacao.js`) e por autoidentificação espontânea em DM (`modules/campanhas/autoidentificacao.js`, frases fixas tipo "sou mesário" → `consultar`); gatilho automático de busca por nome livre (`buscar_nome`) continua suprimido desde 06/08/2026 (disparava em cima de conversa comum). **Relato de TERCEIRO (21/08/2026, `modules/whatsapp/relatoTerceiro.js`)** — novo: monitora grupo E DM por alguém reportando a situação de um COLEGA nomeado (não de si mesmo); nunca confirma sozinho, só marca "precisa confirmar" via `relatar_terceiro` (ver acima). Esta linha documentava o estado de 03/08/2026 e ficou desatualizada em relação ao runtime real — corrigida em 21/08/2026 ao investigar este pedido. |
+> | `sime_mesarios` | confirmação/recusa em PRIMEIRA pessoa grava via `/api/hermes-mesarios`, em grupo monitorado (`modules/whatsapp/confirmacao.js`) e por autoidentificação espontânea em DM (`modules/campanhas/autoidentificacao.js`, frases fixas tipo "sou mesário" → `consultar`, **+ saudação simples "oi"/"bom dia" desde 27/08/2026**, só quando encontra a pessoa — ver "Autoatendimento por telefone" nas Pendências); gatilho automático de busca por nome livre (`buscar_nome`) continua suprimido desde 06/08/2026 (disparava em cima de conversa comum). **Relato de TERCEIRO (21/08/2026, `modules/whatsapp/relatoTerceiro.js`)** — novo: monitora grupo E DM por alguém reportando a situação de um COLEGA nomeado (não de si mesmo); nunca confirma sozinho, só marca "precisa confirmar" via `relatar_terceiro` (ver acima). Esta linha documentava o estado de 03/08/2026 e ficou desatualizada em relação ao runtime real — corrigida em 21/08/2026 ao investigar este pedido. |
 > | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
 > | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
 > | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
