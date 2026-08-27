@@ -100,6 +100,27 @@ let cmBusca = '';
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
 
+// Rodar script conversacional pra um número indicado (28/08/2026) — pedido
+// direto do cartório: mandar a etapa 1 de um script salvo (aba 🧩 Campanhas
+// de SIME_atores.html) pra QUALQUER telefone a partir do modal desta
+// pessoa, não só pelo Disparo em massa (que dispara em lote pro grupo
+// filtrado, sem jeito de mirar um número avulso que não é o cadastrado —
+// ex.: a pessoa acabou de informar outro contato por telefone). Reaproveita
+// exatamente o mesmo mecanismo do disparo (insere em
+// sime_campanhas_confirmacao com campanha_id + etapa_atual:1 — o Hermes lê
+// e conduz o script como qualquer outro item da fila), só que um item de
+// cada vez. cmScriptCampanhas carrega junto com o resto de cmCarregar()
+// (mesma zona pra todo mundo, não muda por pessoa); cmScriptCampanhaId/
+// Etapa1 são o estado do script escolhido no <select> do modal — não
+// resetam ao trocar de pessoa de propósito (mesmo padrão de dispCampanhaId
+// em SIME_atores.html: reusar o mesmo script escolhido pra várias pessoas
+// em sequência é o caso comum, ex.: mandando o mesmo script de convocação
+// pra cada mesário que ainda falta).
+let cmScriptCampanhas = [];
+let cmScriptCampanhaId = null;
+let cmScriptEtapa1 = '';
+let cmScriptEtapa1Imagem = null;
+
 const CM_CAMP_STATUS_LABEL = {
   pendente: 'Na fila do Hermes',
   aguardando_resposta: 'Aguardando resposta',
@@ -128,6 +149,7 @@ const CM_LOG_LABEL = {
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
+  mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -168,7 +190,7 @@ async function cmCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { cmDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }] = await Promise.all([
+  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }] = await Promise.all([
     sb.from('sime_atores')
       .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, tem_relato_terceiro_pendente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
@@ -182,6 +204,14 @@ async function cmCarregar() {
     // fazia) e (b) montar a barra de status agregada da fila inteira (ver
     // CM_CAMP_STATUS_ORDEM acima), sem precisar de uma segunda consulta.
     sb.from('sime_campanhas_confirmacao').select('ator_id, status').eq('zona_id', zonaId),
+    // Campanhas da zona (qualquer status) — pro botão "🧩 Rodar script
+    // conversacional" do modal (28/08/2026). Mesma fonte que
+    // carregarCampanhasParaDisparo() em SIME_atores.html; o filtro de
+    // "encerrada" é feito no render, não aqui (mesmo padrão de lá) — sem
+    // erro aqui não bloqueia o resto da tela, por isso não entra no `if`
+    // abaixo (uma campanha faltando não devia impedir de ver a fila de
+    // contato inteira).
+    sb.from('sime_campanhas').select('id, nome, status').eq('zona_id', zonaId).order('created_at', { ascending: false }),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
 
@@ -193,6 +223,7 @@ async function cmCarregar() {
   }
   for (const p of pessoas || []) p.tentativas = tentativasPorAtor[p.id] || 0;
 
+  cmScriptCampanhas = campanhasScript || [];
   cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])), statusFila };
   render();
 }
@@ -432,6 +463,78 @@ function cmListaTelefones(p, raw) {
   return lista;
 }
 
+// Ao trocar o script escolhido no <select> do modal, busca a mensagem/
+// imagem da etapa 1 só pra mostrar em preview — o texto de verdade,
+// personalizado por pessoa, é resolvido de novo em cmEnviarScript() (mesmo
+// padrão de selecionarCampanhaDisparo()/confirmarDisparo() em
+// SIME_atores.html).
+async function cmScriptSelecionarCampanha(id) {
+  cmScriptCampanhaId = id || null;
+  cmScriptEtapa1 = ''; cmScriptEtapa1Imagem = null;
+  if (cmScriptCampanhaId) {
+    const sb = window.supabaseAtores;
+    const { data, error } = await sb.from('sime_campanha_etapas')
+      .select('mensagem, imagem_url').eq('campanha_id', cmScriptCampanhaId).eq('etapa_numero', 1).maybeSingle();
+    if (!error && data) { cmScriptEtapa1 = data.mensagem; cmScriptEtapa1Imagem = data.imagem_url || null; }
+  }
+  cmRenderModal();
+}
+
+// Mesmos placeholders que o Disparo em massa (personalizarMensagem() em
+// SIME_atores.html) — duplicado aqui porque SIME_convocacao.html não carrega
+// aquele arquivo. {nome}/{funcao}/{secao}/{local}/{municipio}.
+function cmPersonalizarScript(msg, p, sec) {
+  return (msg || '')
+    .replaceAll('{nome}', p.nome_completo || '')
+    .replaceAll('{funcao}', cmRotuloFuncao(p))
+    .replaceAll('{secao}', sec ? String(sec.numero) : '')
+    .replaceAll('{local}', sec?.local_nome || 'local a confirmar')
+    .replaceAll('{municipio}', sec?.municipio || '');
+}
+
+// Manda a etapa 1 do script escolhido pro telefone digitado no campo "Número
+// indicado" — igual ao que o Disparo em massa faz em lote, só que um item
+// por vez e pra QUALQUER número (não precisa ser o telefone_whatsapp
+// cadastrado da pessoa). ator_id continua sendo o da pessoa mesmo quando o
+// número é outro — é o que faz o item aparecer na timeline "Tentativas de
+// contato" dela (essa consulta já filtra por ator_id, não por telefone).
+async function cmEnviarScript(id) {
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  if (!cmScriptCampanhaId) { showToast('⚠ Escolha um script salvo'); return; }
+  if (!cmScriptEtapa1) { showToast('⚠ Este script não tem etapa 1 — abra-o na aba 🧩 Campanhas e confira'); return; }
+
+  const campoTel = document.getElementById('mm-script-tel');
+  const normalizado = normalizarTelefoneWhatsapp(campoTel ? campoTel.value : '');
+  const digitos = telSemPais(normalizado);
+  if (!digitos || digitos.length < 10) { showToast('⚠ Telefone indicado inválido'); return; }
+  const telefone = '55' + digitos;
+
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) { showToast('⚠ Não foi possível resolver sua zona'); return; }
+  const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
+  const mensagem = cmPersonalizarScript(cmScriptEtapa1, p, sec);
+  const campanhaEscolhida = cmScriptCampanhas.find(c => c.id === cmScriptCampanhaId);
+
+  const { error } = await sb.from('sime_campanhas_confirmacao').insert({
+    ator_id: p.id,
+    telefone_whatsapp: telefone,
+    zona_id: zonaId,
+    mensagem_enviada: mensagem,
+    status: 'pendente',
+    campanha_id: cmScriptCampanhaId,
+    etapa_atual: 1,
+  });
+  if (error) { showToast('⚠ ' + error.message); return; }
+
+  await cmLog('mesario_script_enviado', '', { ator_id: p.id, campanha_id: cmScriptCampanhaId, campanha_nome: campanhaEscolhida?.nome, telefone });
+  showToast(campanhaEscolhida && campanhaEscolhida.status !== 'ativa'
+    ? `✓ Enfileirado — mas a campanha está "${campanhaEscolhida.status}", só sai quando ela for ativada`
+    : '✓ Etapa 1 enfileirada — sai pelo Hermes');
+  if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar o item novo
+}
+
 async function cmAbrirModal(id) {
   cmModalId = id;
   cmModalHist = null;
@@ -635,6 +738,25 @@ function cmRenderModal() {
           <input id="mm-rastreio" type="text" value="${cmEsc(p.codigo_rastreio || '')}" placeholder="AA123456789BR" style="text-transform:uppercase">
           ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
         </div>` : ''}
+      </div>
+
+      <div class="m-section">
+        <div class="m-section-hdr">🧩 Rodar script conversacional</div>
+        <div class="ic-sub">Manda a etapa 1 de um script salvo (aba 🧩 Campanhas, em Cadastro de Atores) pra qualquer número — não precisa ser o telefone cadastrado desta pessoa. As etapas seguintes seguem sozinhas, de acordo com a resposta; o envio de fato depende do Hermes estar com o disparo ligado.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:180px">Script
+            <select id="mm-script-campanha" onchange="cmScriptSelecionarCampanha(this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+              <option value="">— escolha um script salvo —</option>
+              ${cmScriptCampanhas.filter(c => c.status !== 'encerrada').map(c => `<option value="${c.id}" ${cmScriptCampanhaId === c.id ? 'selected' : ''}>${cmEsc(c.nome)} (${c.status})</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:150px">Número indicado
+            <input id="mm-script-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <button class="btn btn-dark" style="font-size:.72rem;padding:6px 12px" onclick="cmEnviarScript('${p.id}')">▶ Enviar</button>
+        </div>
+        ${!cmScriptCampanhas.filter(c => c.status !== 'encerrada').length ? '<div class="ic-sub" style="margin-top:4px;margin-bottom:0">Nenhum script salvo nesta zona ainda — crie um na aba 🧩 Campanhas de Cadastro de Atores.</div>' : ''}
+        ${cmScriptEtapa1 ? `<div class="ic-sub" style="margin-top:8px;margin-bottom:0"><b>Prévia da etapa 1:</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${cmEsc(cmScriptEtapa1)}</pre>${cmScriptEtapa1Imagem ? `<img src="${cmEsc(cmScriptEtapa1Imagem)}" alt="Prévia da imagem da etapa 1" style="max-width:160px;max-height:160px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : ''}
       </div>
 
       <div class="m-section">

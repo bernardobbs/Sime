@@ -760,6 +760,34 @@ cada um com propósito diferente:
   não precisam dessa nota). Não virou bucket de filtro novo — é anotação
   visual dentro do "falta contactar / sem resposta" de sempre, não uma
   reclassificação.
+
+  **"🧩 Rodar script conversacional" no modal (28/08/2026)** — pedido
+  direto: rodar um script salvo (aba 🧩 Campanhas, em Cadastro de Atores)
+  pra um número avulso, sem precisar montar um filtro no Disparo em massa só
+  pra uma pessoa. Diferente de tudo que já existia nesta tela (que sempre
+  usa `telefone_whatsapp` cadastrado), o campo "Número indicado" aceita
+  **qualquer** telefone — pré-preenchido com o principal da pessoa, mas
+  editável na hora (ex.: ela acabou de informar outro contato por telefone).
+  `cmEnviarScript()` normaliza o número digitado com
+  `normalizarTelefoneWhatsapp()` (mesma heurística de todo import — ver
+  "Todo import normaliza telefone..." acima) e faz exatamente o mesmo
+  INSERT que o Disparo em massa faz em lote pro modelo "script"
+  (`sime_campanhas_confirmacao` com `campanha_id` + `etapa_atual: 1`,
+  `status: 'pendente'`) — só que um item de cada vez, com o `ator_id` da
+  pessoa sempre preservado mesmo quando o número indicado é outro (é o que
+  faz o envio aparecer na timeline "📞 Tentativas de contato" dela, que já
+  filtra por `ator_id`, não por telefone). A mensagem da etapa 1 é
+  personalizada com os mesmos placeholders do Disparo
+  (`{nome}`/`{funcao}`/`{secao}`/`{local}`/`{municipio}`,
+  `cmPersonalizarScript()` — duplicado de `personalizarMensagem()` de
+  `SIME_atores.html` porque esta página não carrega aquele arquivo). Lista
+  de scripts (`cmScriptCampanhas`) carrega junto com o resto de
+  `cmCarregar()`; campanha `encerrada` fica de fora do `<select>` (mesmo
+  filtro do Disparo), e mandar pra uma campanha `pausada`/`rascunho` avisa
+  no toast que o item entra na fila mas só sai quando ela for ativada — não
+  bloqueia o envio, só avisa. Grava `mesario_script_enviado` em `sime_logs`
+  (com autor, `campanha_id` e o telefone usado) pra aparecer também em "📜
+  Atualizações".
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

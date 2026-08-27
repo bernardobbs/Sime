@@ -131,7 +131,16 @@ function mock() {
       // BRUNO+FABIO como "pendente com WhatsApp".
       { id:'a7', nome_completo:'GEORGE COORD', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'s2', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null },
     ],
-    sime_contatos_externos: [], sime_campanhas: [], sime_campanha_etapas: [],
+    sime_contatos_externos: [],
+    // Campanha com script salvo — pro botão "🧩 Rodar script conversacional"
+    // do modal (28/08/2026). Etapa 1 com placeholders, pra testar que a
+    // mensagem enfileirada sai personalizada por pessoa/seção.
+    sime_campanhas: [
+      { id:'camp-script-1', nome:'Convocação de mesários (script)', zona_id:'z7', status:'ativa', created_at:'2026-08-15T10:00:00.000Z' },
+    ],
+    sime_campanha_etapas: [
+      { id:'et-1', campanha_id:'camp-script-1', etapa_numero:1, mensagem:'Olá {nome}! Confirma presença na Seção {secao}?', imagem_url:null, respostas_esperadas:[] },
+    ],
     sime_campanhas_confirmacao: [
       { id:'camp1', ator_id:'a2', zona_id:'z7', mensagem_enviada:'Olá Bruno, confirme sua presença como mesário na Seção 30, Grupo Escolar A, no dia 04/10.', status:'enviado', created_at:'2026-08-18T14:00:00.000Z' },
     ],
@@ -976,6 +985,67 @@ async function login(p) {
   await p.waitForTimeout(200);
   const escritasDepois = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a6' && 'codigo_rastreio' in e.payload));
   check('salvar com o campo escondido não mexe em codigo_rastreio (não some o que já tinha)', escritasDepois.length === 1, JSON.stringify(escritasDepois));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.96 Rodar script conversacional pra um número indicado (modal, 28/08/2026) ──
+// Pedido direto: mandar a etapa 1 de um script salvo pra QUALQUER telefone a
+// partir do modal desta pessoa, não só o telefone cadastrado dela — mesmo
+// mecanismo do Disparo em massa (enfileira em sime_campanhas_confirmacao com
+// campanha_id + etapa_atual:1), só que um item por vez.
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+
+  check('modal lista o script salvo da zona', await p.locator('#mm-script-campanha option', { hasText: 'Convocação de mesários (script)' }).count() === 1);
+  check('campo "Número indicado" pré-preenche com o telefone cadastrado da pessoa', (await p.inputValue('#mm-script-tel')).includes('99999-0002'));
+
+  await p.selectOption('#mm-script-campanha', 'camp-script-1');
+  await p.waitForTimeout(200);
+  check('escolher o script mostra a prévia (crua, sem personalizar) da etapa 1', (await p.locator('#modal-body').textContent()).includes('Confirma presença na Seção'));
+
+  // O "número indicado" do pedido: um número DIFERENTE do cadastrado.
+  await p.fill('#mm-script-tel', '(86) 98888-7777');
+  await p.click('#modal-body button:has-text("▶ Enviar")');
+  await p.waitForTimeout(200);
+
+  const inserido = await p.evaluate(() => (window.__mock.sime_campanhas_confirmacao || []).find(c => c.telefone_whatsapp === '5586988887777'));
+  check('enfileira em sime_campanhas_confirmacao pro número indicado (não o cadastrado)', !!inserido, JSON.stringify(inserido));
+  check('item continua vinculado ao ator_id certo mesmo indo pra outro número', inserido?.ator_id === 'a2', String(inserido?.ator_id));
+  check('item já entra na etapa 1 do script escolhido', inserido?.campanha_id === 'camp-script-1' && inserido?.etapa_atual === 1, JSON.stringify(inserido));
+  check('mensagem enfileirada é a etapa 1 já personalizada (nome + seção)', /BRUNO MESARIO/.test(inserido?.mensagem_enviada || '') && /Seção 30/.test(inserido?.mensagem_enviada || ''), inserido?.mensagem_enviada);
+  check('item começa pendente, igual ao disparo em massa', inserido?.status === 'pendente', inserido?.status);
+
+  const logGravado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_script_enviado'));
+  check('grava log de auditoria com autor, campanha e telefone usado', !!logGravado?.payload?.payload?.autor && logGravado.payload.payload.telefone === '5586988887777' && logGravado.payload.payload.campanha_id === 'camp-script-1', JSON.stringify(logGravado));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.97 Rodar script: sem escolher script, avisa em vez de enfileirar vazio ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  await p.click('#modal-body button:has-text("▶ Enviar")'); // nenhum script escolhido ainda
+  await p.waitForTimeout(150);
+
+  const antes = await p.evaluate(() => (window.__mock.sime_campanhas_confirmacao || []).length);
+  check('sem script escolhido, não enfileira nada', antes === 1); // só o camp1 original da fixture
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
