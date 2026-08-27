@@ -1085,22 +1085,69 @@ cada um com propósito diferente:
   direto nesta aba (mesma política "sem trava de perfil" do resto de
   `SIME_convocacao.html` — RLS de `sime_zonas` já é `sime_zona_visivel`,
   sem exigir `config_equipe`). Enquanto o remetente não estiver completo
-  (nome+endereço+CEP+município+UF), um aviso amarelo aparece no topo e os
-  botões de imprimir ficam desabilitados — não dá pra montar etiqueta sem
-  remetente, e adivinhar/deixar em branco seria pior que travar.
+  (nome+endereço+CEP+município+UF), um aviso amarelo aparece no topo — não
+  dá pra montar etiqueta sem remetente, e adivinhar/deixar em branco seria
+  pior que travar.
+
+  **Bug real corrigido em 27/08/2026 (mesmo dia, achado logo após o
+  lançamento) — os botões de etiqueta/AR ficavam com `disabled` quando
+  faltava campo do remetente.** Reportado como "clicar em etiqueta ou ar não
+  fez nada": um botão `disabled` não dispara `onclick` nenhum, então sem
+  remetente completo o clique simplesmente não fazia nada, sem toast nem
+  aviso — e o placeholder do formulário ("Cartório da 7ª Zona Eleitoral",
+  "PI") mostra um valor plausível igual ao real, fácil de confundir com
+  campo já preenchido. Os botões nunca ficam mais `disabled` — sempre
+  chamam `coImprimir()`, que agora é quem avisa explicitamente o que falta
+  antes de desistir, mesmo padrão de erro amigável usado no resto do
+  sistema.
+
+  **Layout reconstruído em 27/08/2026 pra seguir de perto o modelo público
+  do Enderecador de Encomendas dos Correios** (`www2.correios.com.br/
+  enderecador/encomendas` — ferramenta gratuita, sem contrato SIGEP,
+  diferente da API paga de rastreamento) — a partir de dois PDFs reais que
+  o dono do projeto gerou lá (com um destinatário real da 7ª Zona) e
+  encaminhou como referência. Reproduz a **estrutura e os campos** desses
+  modelos — sem a marca/logo dos Correios, só texto — pra ser reconhecido
+  na hora por qualquer agência ou carteiro, em vez do modelo simplificado
+  do primeiro dia (só remetente pequeno + destinatário grande).
+  - **Etiqueta**: área "USO EXCLUSIVO DOS CORREIOS" no topo, recebedor/
+    assinatura/documento já embutidos na própria etiqueta (backup pra
+    quando não se imprime um AR à parte), "ENTREGA NO VIZINHO AUTORIZADA?"
+    (sempre "não autorizada" — o SIME não oferece opção de autorizar,
+    convocação é documento pra a própria pessoa), barra DESTINATÁRIO,
+    espaço reservado pra colar a etiqueta de rastreio que a agência gera na
+    postagem (nunca um código inventado — mesmo critério do rastreio
+    manual), observação fixa "Carta de convocação", remetente por fora do
+    quadro.
+  - **AR**: virou uma tabela de verdade (é literalmente um formulário de
+    grade) — data de postagem, unidade de postagem, espaço reservado do
+    código do objeto + carimbo da unidade de entrega, "ENDEREÇO PARA
+    DEVOLUÇÃO DO AR" (o remetente), três tentativas de entrega (data+hora),
+    os 9 motivos de devolução oficiais com código (mudou-se/recusado/
+    endereço insuficiente/não procurado/não existe o número/ausente/
+    desconhecido/falecido/outros), rubrica e matrícula do carteiro,
+    assinatura + nome legível + documento de quem recebeu.
+  - **Endereço real da 7ª Zona descoberto e salvo** a partir dos PDFs de
+    referência: Rua Benjamin Constant, 948, Centro, 64280-000, Campo
+    Maior-PI — preenchido direto em `sime_zonas` (antes vazio).
 
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**
-  - Sem integração com a API paga dos Correios (SIGEP) — incompatível com o
-    custo R$ 0,00/mês do projeto (mesma razão já documentada pro código de
-    rastreio manual). O "AR" gerado aqui é um **modelo avulso pra
-    preencher/assinar na entrega**, não um AR oficial rastreado.
-  - Etiqueta é uma caixa demarcada de texto (remetente pequeno, destinatário
-    grande), não alinhada a nenhuma folha de adesivo específica (Pimaco ou
+  - Sem integração com a API paga dos Correios (SIGEP, rastreamento
+    automático) — incompatível com o custo R$ 0,00/mês do projeto (mesma
+    razão já documentada pro código de rastreio manual). Isso é diferente
+    do Enderecador (gratuito, só gera o formulário) — o espaço do código de
+    barras/nº de registro do objeto fica **sempre em branco**, tanto na
+    etiqueta quanto no AR, pra colar a etiqueta física que a agência gera
+    na hora da postagem (decisão deliberada de 27/08/2026, confirmada com o
+    dono do projeto: nunca mostrar `codigo_rastreio` ali, mesmo quando já
+    preenchido — evita confundir um número anotado depois com um código
+    válido pra colar por cima).
+  - Etiqueta não é alinhada a nenhuma folha de adesivo específica (Pimaco ou
     similar) — o cartório não usa um modelo de etiqueta físico conhecido, e
     inventar coordenadas de impressão pra um formato não confirmado seria
-    pior que uma caixa simples que imprime certo em qualquer papel.
+    pior que uma folha simples que imprime certo em qualquer impressora.
 
   **Impressão sem popup.** `#print-area` (elemento fixo em
   `SIME_convocacao.html`, fora do fluxo normal de `#content`) fica

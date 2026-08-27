@@ -1581,8 +1581,15 @@ async function login(p) {
   await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').click();
   await p.waitForTimeout(200);
   check('imprimir etiqueta chama window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  // 27/08/2026: layout reconstruído pra seguir o modelo público do
+  // Enderecador de Encomendas dos Correios (dois PDFs reais enviados pelo
+  // dono do projeto) — etiqueta ganhou recebedor/assinatura embutidos,
+  // "entrega no vizinho", barra DESTINATÁRIO e espaço reservado (nunca um
+  // código inventado) pra colar a etiqueta de rastreio da agência.
   const printHtmlEtiqueta = await p.locator('#print-area').innerHTML();
   check('etiqueta impressa mostra remetente e destinatário', /Cartório da 7ª Zona Eleitoral/.test(printHtmlEtiqueta) && /DIEGO CARTA/.test(printHtmlEtiqueta) && /Rua das Flores, 100/.test(printHtmlEtiqueta), printHtmlEtiqueta.slice(0, 600));
+  check('etiqueta segue o modelo oficial: recebedor, entrega no vizinho, DESTINATÁRIO', /Recebedor:/.test(printHtmlEtiqueta) && /ENTREGA NO VIZINHO AUTORIZADA/.test(printHtmlEtiqueta) && /Entrega no vizinho não autorizada/.test(printHtmlEtiqueta) && /DESTINATÁRIO/.test(printHtmlEtiqueta), printHtmlEtiqueta.slice(0, 800));
+  check('etiqueta nunca inventa código de rastreio — só reserva o espaço pra colar', /Cole aqui a etiqueta de rastreio/.test(printHtmlEtiqueta));
   check('grava log de etiqueta impressa', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_etiqueta_impressa')));
 
   // Gera o AR de NUNO (botão individual).
@@ -1590,7 +1597,9 @@ async function login(p) {
   await p.waitForTimeout(200);
   check('gerar AR chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 2);
   const printHtmlAr = await p.locator('#print-area').innerHTML();
-  check('AR impresso tem o modelo de confirmação de recebimento, não uma etiqueta', /AVISO DE RECEBIMENTO/.test(printHtmlAr) && /Nome do recebedor/.test(printHtmlAr) && /NUNO DADOS MESARIO/.test(printHtmlAr) && /Av\. Nova, 50/.test(printHtmlAr), printHtmlAr.slice(0, 600));
+  check('AR impresso tem o modelo de confirmação de recebimento, não uma etiqueta', /AVISO DE RECEBIMENTO/.test(printHtmlAr) && /NOME LEGÍVEL DO RECEBEDOR/.test(printHtmlAr) && /NUNO DADOS MESARIO/.test(printHtmlAr) && /Av\. Nova, 50/.test(printHtmlAr), printHtmlAr.slice(0, 600));
+  check('AR segue o modelo oficial: tentativas de entrega, motivo de devolução, endereço de devolução', /TENTATIVAS DE ENTREGA/.test(printHtmlAr) && /MOTIVO DE DEVOLUÇÃO/.test(printHtmlAr) && /Não procurado/.test(printHtmlAr) && /ENDEREÇO PARA DEVOLUÇÃO DO AR/.test(printHtmlAr), printHtmlAr.slice(0, 800));
+  check('AR nunca inventa código de rastreio — só reserva o espaço pra colar', /cole aqui a etiqueta de rastreio/.test(printHtmlAr));
   check('grava log de AR impresso', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso')));
 
   // Seleção em massa: marca DIEGO, imprime etiquetas selecionadas.

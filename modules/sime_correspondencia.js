@@ -4,13 +4,24 @@
 // direto (27/08/2026): "marcou para receber por carta, imprime uma etiqueta
 // com os dados do destinatario e do remetente e imprime o ar".
 //
+// Layout alinhado ao "Enderecador de Encomendas" público dos Correios
+// (www2.correios.com.br/enderecador/encomendas — ferramenta gratuita, sem
+// contrato SIGEP), a partir de dois modelos reais que o dono do projeto
+// enviou (27/08/2026) gerados por lá com um destinatário real da 7ª Zona.
+// Reproduz a ESTRUTURA e os campos desses modelos (texto puro, sem a marca/
+// logo dos Correios) — não é uma integração com a ferramenta deles, é um
+// layout compatível gerado pelo próprio SIME, pra ser reconhecido por
+// qualquer agência/carteiro.
+//
 // Duas limitações de arquitetura, já documentadas alhures e confirmadas com
 // o dono do projeto antes de construir isto:
-// - Não existe integração com a API paga dos Correios (SIGEP) — incompatível
-//   com o custo R$ 0,00/mês do projeto. O "AR" gerado aqui é um MODELO
-//   avulso pra preencher/assinar na entrega, não um AR oficial rastreado —
-//   o código de objeto (se houver) é só o que o cartório anotou manualmente
-//   depois de postar (sime_atores.codigo_rastreio), sem consulta automática.
+// - Não existe integração com a API paga dos Correios (SIGEP, rastreamento
+//   automático) — incompatível com o custo R$ 0,00/mês do projeto. Isso é
+//   diferente do Enderecador (gratuito, só gera o formulário) — o campo do
+//   código de barras/nº de registro do objeto fica sempre em branco pra
+//   colar a etiqueta física que a AGÊNCIA gera na hora da postagem, tanto na
+//   etiqueta quanto no AR (decisão deliberada, 27/08/2026 — nunca inventar
+//   um código que o SIME não tem como saber).
 // - sime_atores não guarda endereço (decisão antiga, documentada no
 //   CLAUDE.md: "Carta/Oficial de Justiça usam o endereço já no processo do
 //   TRE"). O endereço do destinatário vem de sime_mesarios_raw (staging da
@@ -135,21 +146,128 @@ function coRemetenteCompleto(zona) {
 // normal da SPA, ver SIME_convocacao.html) e só ficam visíveis via CSS de
 // @media print — assim não depende de popup (bloqueado por padrão em muitos
 // navegadores) nem de gerar um arquivo à parte.
-function coBlocoRemetente(zona) {
-  return `<div class="co-remetente"><b>Remetente:</b> ${coEsc(zona.remetente_nome || '—')}<br>
-    ${coEsc(zona.remetente_endereco || '—')}${zona.remetente_bairro ? ', ' + coEsc(zona.remetente_bairro) : ''}<br>
-    ${coFmtCep(zona.remetente_cep)} — ${coEsc(zona.remetente_municipio || '—')}/${coEsc(zona.remetente_uf || '—')}</div>`;
+//
+// co-linha-remetente/co-linha-destinatario: mesmo formato de 3 linhas nos
+// dois modelos oficiais (nome/endereço — bairro — CEP+município/UF), então
+// as duas peças (etiqueta e AR) reaproveitam o mesmo par de funções.
+function coLinhasRemetente(zona) {
+  return `${coEsc(zona.remetente_nome || '—')}<br>
+    ${coEsc(zona.remetente_endereco || '—')}<br>
+    ${zona.remetente_bairro ? coEsc(zona.remetente_bairro) + '<br>' : ''}
+    ${coFmtCep(zona.remetente_cep)} - ${coEsc((zona.remetente_municipio || '—').toUpperCase())} - ${coEsc(zona.remetente_uf || '—')}`;
 }
 
-function coBlocoDestinatario(p) {
+function coLinhasDestinatario(p) {
   const e = p.endereco;
-  if (!e) return `<div class="co-destinatario"><div class="co-dest-nome">${coEsc(p.nome_completo)}</div><div>⚠ Sem endereço disponível no ELO</div></div>`;
-  return `<div class="co-destinatario">
-    <div class="co-dest-nome">${coEsc(p.nome_completo)}</div>
-    <div>${coEsc(e.endereco)}</div>
-    ${e.bairro ? `<div>${coEsc(e.bairro)}</div>` : ''}
-    <div>${coFmtCep(e.cep)} — ${coEsc(e.municipio || '—')}/${coEsc(e.uf || '—')}</div>
-  </div>`;
+  if (!e) return `${coEsc(p.nome_completo)}<br>⚠ Sem endereço disponível no ELO`;
+  return `${coEsc(p.nome_completo)}<br>
+    ${coEsc(e.endereco)}<br>
+    ${e.bairro ? coEsc(e.bairro) + '<br>' : ''}
+    ${coFmtCep(e.cep)} - ${coEsc((e.municipio || '—').toUpperCase())} - ${coEsc(e.uf || '—')}`;
+}
+
+// Etiqueta — mesma estrutura do modelo público dos Correios (Enderecador de
+// Encomendas): área reservada da agência no topo, recebedor/assinatura
+// embutidos na própria etiqueta (backup pra quando não se gera um AR à
+// parte), toggle de entrega no vizinho (sempre "não autorizada" — o SIME não
+// oferece opção de autorizar, convocação é documento pra a própria pessoa),
+// bloco DESTINATÁRIO com espaço reservado pra colar a etiqueta de rastreio
+// da agência (nunca um código inventado) e observação fixa "Carta de
+// convocação", remetente por fora do quadro, igual ao modelo.
+function coHtmlEtiqueta(p, zona) {
+  return `
+    <div class="co-pagina-etiqueta">
+      <div class="co-et-topo">
+        <div class="co-et-topo-tit">USO EXCLUSIVO DOS CORREIOS</div>
+        <div>Cole aqui a etiqueta com o código identificador da encomenda</div>
+      </div>
+      <div class="co-etiqueta">
+        <div class="co-et-recebedor">
+          Recebedor: <span class="co-linha co-linha-lg"></span><br>
+          Assinatura: <span class="co-linha"></span> Documento: <span class="co-linha"></span>
+        </div>
+        <div class="co-et-barra">ENTREGA NO VIZINHO AUTORIZADA?</div>
+        <div class="co-et-vizinho">Entrega no vizinho não autorizada</div>
+        <div class="co-et-barra">DESTINATÁRIO</div>
+        <div class="co-et-corpo">
+          <div class="co-et-dest">${coLinhasDestinatario(p)}</div>
+          <div class="co-et-lateral">
+            <div class="co-et-codigo">Cole aqui a etiqueta de rastreio gerada pela agência no ato da postagem</div>
+            <div class="co-et-obs"><b>Observação:</b><br>Carta de convocação</div>
+          </div>
+        </div>
+      </div>
+      <div class="co-et-remetente"><b>Remetente:</b> ${coLinhasRemetente(zona)}</div>
+    </div>`;
+}
+
+// AR — mesma estrutura do modelo público (Aviso de Recebimento), como
+// tabela porque é literalmente um formulário de grade: cabeçalho com "AR" +
+// data de postagem, destinatário + unidade de postagem, espaço reservado do
+// código do objeto (mesmo critério "nunca inventa" da etiqueta) + carimbo da
+// unidade de entrega, endereço de devolução (o remetente), tentativas de
+// entrega + observação + motivo de devolução (9 códigos oficiais) + rubrica
+// do carteiro, e por fim assinatura/nome/documento de quem recebeu. Sem a
+// marca dos Correios (só a estrutura de campos é reproduzida, não o logo) —
+// ver nota de rodapé.
+function coHtmlAr(p, zona) {
+  const funcaoSecao = coEsc(coRotuloFuncao(p)) + (p.sec ? ` — Seção ${coEsc(p.sec.numero)}, ${coEsc(p.sec.local_nome || '')}` : '');
+  return `
+    <div class="co-pagina-ar">
+      <table class="co-ar-tabela">
+        <tr>
+          <td class="co-ar-titulo">AVISO DE RECEBIMENTO <span class="co-ar-sigla">AR</span></td>
+          <td class="co-ar-campo">DATA DE POSTAGEM</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="co-ar-rotulo">DESTINATÁRIO</div>
+            ${coLinhasDestinatario(p)}
+            <div class="co-ar-nota">${funcaoSecao}</div>
+          </td>
+          <td class="co-ar-campo">UNIDADE DE POSTAGEM</td>
+        </tr>
+        <tr>
+          <td class="co-ar-codigo">(cole aqui a etiqueta de rastreio ou anote o nº de registro do objeto)</td>
+          <td class="co-ar-campo">CARIMBO<br>UNIDADE DE ENTREGA</td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <div class="co-ar-rotulo">ENDEREÇO PARA DEVOLUÇÃO DO AR</div>
+            ${coLinhasRemetente(zona)}
+          </td>
+        </tr>
+        <tr>
+          <td class="co-ar-tentativas">
+            <b>TENTATIVAS DE ENTREGA</b><br><br>
+            1ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
+            2ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
+            3ª ___ / ___ / ______&nbsp;&nbsp;___:___h
+          </td>
+          <td>
+            <b>OBSERVAÇÃO</b><br>Carta de convocação<br><br>
+            <b>MOTIVO DE DEVOLUÇÃO</b>
+            <div class="co-ar-motivos">
+              <div>1&nbsp;Mudou-se</div><div>5&nbsp;Recusado</div>
+              <div>2&nbsp;Endereço insuficiente</div><div>6&nbsp;Não procurado</div>
+              <div>3&nbsp;Não existe o número</div><div>7&nbsp;Ausente</div>
+              <div>4&nbsp;Desconhecido</div><div>8&nbsp;Falecido</div>
+              <div>9&nbsp;Outros</div><div></div>
+            </div>
+            <div class="co-ar-nota">RUBRICA E MATRÍCULA DO CARTEIRO: ___________________________</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="co-ar-campo">ASSINATURA DO RECEBEDOR</td>
+          <td class="co-ar-campo">DATA DE ENTREGA</td>
+        </tr>
+        <tr>
+          <td class="co-ar-campo">NOME LEGÍVEL DO RECEBEDOR</td>
+          <td class="co-ar-campo">Nº DOC. DE IDENTIDADE</td>
+        </tr>
+      </table>
+      <div class="co-ar-rodape">Modelo gerado pelo SIME, sem integração com rastreamento dos Correios (sem contrato SIGEP) — o código do objeto é o que a agência emite na postagem.</div>
+    </div>`;
 }
 
 async function coImprimir(ids, tipo) {
@@ -167,35 +285,7 @@ async function coImprimir(ids, tipo) {
   const pessoas = coDados.pessoas.filter(p => ids.includes(p.id));
   const zona = coDados.zona;
   const area = document.getElementById('print-area');
-  if (tipo === 'etiqueta') {
-    area.innerHTML = pessoas.map(p => `
-      <div class="co-pagina-etiqueta">
-        <div class="co-etiqueta">
-          ${coBlocoRemetente(zona)}
-          ${coBlocoDestinatario(p)}
-        </div>
-      </div>`).join('');
-  } else {
-    area.innerHTML = pessoas.map(p => `
-      <div class="co-pagina-ar">
-        <div class="co-ar-titulo">AVISO DE RECEBIMENTO — AR</div>
-        <div class="co-ar-sub">Modelo avulso pra confirmação de entrega — não substitui o AR oficial dos Correios (sem contrato SIGEP).</div>
-        <div class="co-ar-box">${coBlocoRemetente(zona)}</div>
-        <div class="co-ar-box">${coBlocoDestinatario(p)}</div>
-        <div class="co-ar-box">
-          <b>Identificação do objeto</b><br>
-          Nº de registro/objeto: ${coEsc(p.codigo_rastreio || '_______________________________')}<br>
-          Função: ${coEsc(coRotuloFuncao(p))}${p.sec ? ` — Seção ${coEsc(p.sec.numero)}, ${coEsc(p.sec.local_nome || '')}` : ''}
-        </div>
-        <div class="co-ar-box co-ar-confirmacao">
-          <b>Confirmação de recebimento</b>
-          <div class="co-ar-linha">Nome do recebedor: ______________________________________________</div>
-          <div class="co-ar-linha">Documento (RG/CPF): ____________________________________________</div>
-          <div class="co-ar-linha">Assinatura: ____________________________________________________</div>
-          <div class="co-ar-linha">Data do recebimento: ____ / ____ / ________</div>
-        </div>
-      </div>`).join('');
-  }
+  area.innerHTML = pessoas.map(p => tipo === 'etiqueta' ? coHtmlEtiqueta(p, zona) : coHtmlAr(p, zona)).join('');
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log(tipo === 'etiqueta' ? 'correspondencia_etiqueta_impressa' : 'correspondencia_ar_impresso', '', { autor, quantidade: pessoas.length, atores: pessoas.map(p => p.id) });
   window.print();

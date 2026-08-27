@@ -74,20 +74,45 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 /* CORRESPONDÊNCIA — impressão de etiqueta/AR (sime_correspondencia.js).
    #print-area fica invisível na tela e só aparece no papel — evita depender
-   de popup (bloqueado por padrão em muitos navegadores). */
+   de popup (bloqueado por padrão em muitos navegadores). Layout alinhado ao
+   modelo público do Enderecador de Encomendas dos Correios (27/08/2026, ver
+   comentário no topo de sime_correspondencia.js) — texto/estrutura, sem a
+   marca deles. */
 #print-area{display:none;}
 @media print{
   body > *:not(#print-area){display:none!important;}
-  #print-area{display:block!important;}
-  .co-pagina-etiqueta,.co-pagina-ar{page-break-after:always;padding:14mm;}
-  .co-etiqueta{border:1px solid #000;border-radius:4px;width:100mm;padding:10mm;font-size:11pt;line-height:1.5;}
-  .co-remetente{font-size:8pt;margin-bottom:14mm;padding-bottom:4mm;border-bottom:1px dashed #000;}
-  .co-destinatario{font-size:11pt;}
-  .co-dest-nome{font-weight:700;font-size:12pt;margin-bottom:2mm;}
-  .co-ar-titulo{font-weight:800;font-size:13pt;text-align:center;margin-bottom:2mm;}
-  .co-ar-sub{font-size:8pt;text-align:center;color:#444;margin-bottom:8mm;}
-  .co-ar-box{border:1px solid #000;border-radius:3px;padding:5mm;margin-bottom:5mm;font-size:10pt;line-height:1.6;}
-  .co-ar-linha{margin-top:4mm;}
+  #print-area{display:block!important;color:#000;}
+
+  /* ── Etiqueta ── */
+  .co-pagina-etiqueta{page-break-after:always;padding:14mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-et-topo{border:1px solid #000;padding:4mm;margin-bottom:10mm;text-align:center;font-size:8pt;}
+  .co-et-topo-tit{font-weight:700;margin-bottom:1mm;}
+  .co-etiqueta{border:1px solid #000;width:120mm;font-size:9pt;line-height:1.5;}
+  .co-et-recebedor{padding:3mm 4mm;border-bottom:1px solid #000;}
+  .co-linha{display:inline-block;border-bottom:1px solid #000;min-width:28mm;height:3.5mm;}
+  .co-linha-lg{min-width:55mm;}
+  .co-et-barra{background:#000;color:#fff;font-weight:700;padding:1.5mm 4mm;font-size:8.5pt;}
+  .co-et-vizinho{padding:2mm 4mm;border-bottom:1px solid #000;}
+  .co-et-corpo{display:flex;gap:4mm;padding:3mm 4mm;font-size:10pt;line-height:1.6;}
+  .co-et-dest{flex:1;}
+  .co-et-lateral{width:45mm;flex:none;font-size:7pt;}
+  .co-et-codigo{border:1px dashed #666;color:#555;padding:2.5mm;text-align:center;margin-bottom:3mm;}
+  .co-et-obs{font-size:8pt;}
+  .co-et-remetente{font-size:8pt;margin-top:6mm;padding-left:1mm;line-height:1.5;}
+
+  /* ── AR ── */
+  .co-pagina-ar{page-break-after:always;padding:12mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-ar-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
+  .co-ar-tabela td{border:1px solid #000;padding:2.5mm 3mm;vertical-align:top;}
+  .co-ar-tabela td:first-child{width:68%;}
+  .co-ar-titulo{font-weight:800;font-size:12pt;}
+  .co-ar-sigla{font-size:15pt;margin-left:2mm;}
+  .co-ar-campo{font-size:7pt;font-weight:700;color:#333;}
+  .co-ar-rotulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
+  .co-ar-nota{font-size:7.5pt;color:#333;margin-top:2mm;}
+  .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;padding:6mm 3mm;}
+  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:0 3mm;font-size:7.5pt;margin:1.5mm 0;}
+  .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
 }
 </style>
 </head>
