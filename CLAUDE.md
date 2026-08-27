@@ -1358,7 +1358,52 @@ não só a primeira. Consequências:
 Coberto por `tests/test_hermes_campanhas_script.mjs` (primeiro envio,
 reenvio na mesma etapa, reenvio já avançado pra etapa sem imagem própria —
 pra garantir que não herda a de outra etapa —, e `avancar_etapa` terminal
-vs. não-terminal com/sem imagem no destino).
+vs. não-terminal com/sem imagem no destino). Migração aplicada em produção
+em 27/08/2026 (ficou pendente entre 22-27/08 por indisponibilidade
+temporária do acesso ao Supabase nesta sessão) — `sime_campanha_etapas.imagem_url`
+já existe na 7ª e 94ª Zona (coluna é da tabela, não por zona).
+
+> **Primeiro script conversacional real criado em produção (27/08/2026,
+> pedido direto: "quero que você crie os scripts").** `sime_campanhas`
+> id `7e0d92ba-360c-4293-9443-26a7c6b50d45`, 7ª Zona, nome "Convocação com
+> confirmação de identidade — 7ª Zona", status **`rascunho`** de propósito
+> (nasce parado — só vira `ativa` quando o cartório revisar na aba 🧩
+> Campanhas e clicar "▶ Iniciar campanha", mesmo padrão de toda campanha
+> nova criada pelo editor). Recria o fluxo legado de "Convocação com
+> confirmação de identidade" (que já existia como modelo fixo em
+> `SIME_atores.html` — `TEMPLATE_VERIFICACAO`/`TEMPLATE_CONVOCACAO_TEXTO`)
+> como script de verdade, pra ganhar os controles de
+> pausar/retomar/encerrar/relatório que só campanha de script tem — **sem
+> inventar texto novo**: as duas mensagens são cópia literal desses dois
+> templates, e as palavras-chave de SIM/NÃO da etapa 1 são as mesmas já
+> em produção há semanas em `identidade.js` (repositório `bernardobbs/hermes`,
+> `RESPOSTAS_SIM`/`RESPOSTAS_NAO`), não uma lista inventada agora.
+>
+> **Etapa 2 (convocação) sai sem nenhuma palavra-chave própria
+> (`respostas_esperadas: []`) — decisão deliberada, não pendência.** O fluxo
+> legado nunca esperava resposta depois de mandar a 2ª mensagem (marcava
+> `finalizado` na hora); o motor de script, por natureza, sempre espera
+> alguma palavra-chave pra fechar uma etapa, e inventar um vocabulário de
+> "ok/confirmado/entendi" agora seria decidir um comportamento novo sem
+> pedido explícito. Efeito prático enquanto ninguém mexe nisso: quem
+> responder qualquer coisa à etapa 2 cai em `fora_do_script` (fila de
+> atenção, nunca perdido) em vez de fechar sozinho; quem não responder tem
+> a própria mensagem reenviada até `MAX_TENTATIVAS` (3, ~72h) e então some
+> como `sem_resposta`. Se o cartório quiser um fechamento automático depois
+> de mandar a convocação, é só abrir esta campanha na aba 🧩 Campanhas e
+> adicionar um ramo na etapa 2 (ex.: palavras-chave "ok/certo/entendi" →
+> status final "finalizado") — a tela já suporta isso, só não foi decidido
+> agora.
+>
+> **Texto da etapa 2 menciona "na próxima mensagem" a imagem** — frase
+> herdada do fluxo legado (onde texto e imagem saem em duas mensagens
+> separadas da mesma linha de fila). No motor de script, se uma
+> `imagem_url` for adicionada a esta etapa depois (editor, aba 🧩
+> Campanhas), ela sai **junto** da mensagem, como legenda de uma única
+> mensagem — não numa mensagem seguinte. Ficou documentado aqui em vez de
+> reescrever a frase por conta própria: mudar o texto de uma mensagem real
+> de convocação eleitoral não é uma decisão de redação que deva ser tomada
+> sem o cartório revisar primeiro.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
