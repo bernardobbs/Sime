@@ -975,6 +975,43 @@ cada um com propósito diferente:
   de toda outra ação rápida desta tela) e chama `render()` — reflete na
   hora nos três lugares (card, painel, contagem do filtro), sem esperar
   reabrir a aba.
+
+  **Indicador de bolinha 🔴🟡🟢 + sugestão de escalonamento (27/08/2026,
+  pedido direto: "verde amarela e vermelha ... se nunca foi contactado
+  bolinha vermelha, se foi contactado hoje bolinha verde, se já foi
+  contactado e nunca respondeu bolinha amarela ... uma indicação para
+  passar o contato para o próximo nível, no caso carta ou oficial de
+  justiça").** `cmDotStatus(p)` resume visualmente o mesmo dado que já
+  virava texto ("📨 Já contactado (Nx)") — só faz sentido pra quem ainda
+  está `pendente` (quem já tem desfecho não ganha bolinha):
+  - 🔴 `p.tentativas === 0` — nunca tentado, nenhuma fonte (campanha nem
+    manual).
+  - 🟢 já tentado, e a tentativa mais recente (`p.ultimaTentativaTs`) é de
+    HOJE (`cmDiaChave()`, fuso do navegador — mesma função do agrupamento
+    por dia).
+  - 🟡 já tentado, mas a mais recente não é de hoje — "aguardando resposta"
+    de verdade, não só "mandei e ainda nem deu tempo de responder".
+  `p.ultimaTentativaTs` é novo em `cmCarregar()` — mesma varredura que já
+  computava `p.tentativas`, agora também guardando o `created_at`/`ts` mais
+  recente por pessoa (campanha ou `sime_logs.mesario_tentativa_contato`).
+  `cmRegistrarTentativaCore()` atualiza esse campo otimisticamente com a
+  hora local no clique (não espera `sime_now()` nem recarregar a aba) — é
+  o que faz uma tentativa registrada agora virar 🟢 na hora.
+
+  **Sugestão de escalonamento** — `cmPrecisaEscalonamento(p)`: `pendente`,
+  `p.tentativas >= 3` (mesmo número já usado como `MAX_TENTATIVAS` no motor
+  de script conversacional pra desistir de um número, `api/hermes-
+  campanhas.js` — mesma noção de "já tentamos o suficiente por este
+  canal") e `meio_contato` ainda não é Carta Registrada nem Oficial de
+  Justiça (escalar quem já foi escalado não faz sentido). Card ganha uma
+  nota amarela ("⬆️ Nx sem resposta pelo WhatsApp — considere Carta
+  Registrada ou Oficial de Justiça") e dois botões de atalho — "📮 Passar
+  pra Carta Registrada" / "⚖️ Passar pra Oficial de Justiça" —
+  reaproveitando `cmSalvarMeio()` que já existe (mesma função do `<select>`
+  de Meio de contato); a sugestão não é uma ação automática, só facilita o
+  clique que o cartório já faria manualmente pelo seletor. Trocar de meio
+  já limpa a sugestão sozinho (mesmo `render()` que `cmSalvarMeio()` sempre
+  chamou).
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

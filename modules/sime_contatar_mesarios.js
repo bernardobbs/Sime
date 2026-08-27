@@ -221,7 +221,7 @@ async function cmCarregar() {
     // dá pra (a) contar quantas campanhas JÁ SAÍRAM por pessoa (como já
     // fazia) e (b) montar a barra de status agregada da fila inteira (ver
     // CM_CAMP_STATUS_ORDEM acima), sem precisar de uma segunda consulta.
-    sb.from('sime_campanhas_confirmacao').select('ator_id, status').eq('zona_id', zonaId),
+    sb.from('sime_campanhas_confirmacao').select('ator_id, status, created_at').eq('zona_id', zonaId),
     // Campanhas da zona (qualquer status) — pro botão "🧩 Rodar script
     // conversacional" do modal (28/08/2026). Mesma fonte que
     // carregarCampanhasParaDisparo() em SIME_atores.html; o filtro de
@@ -236,24 +236,37 @@ async function cmCarregar() {
     // pedido direto: "área dedicada às tentativas de contato que não tiveram
     // respostas ainda" — sem isso, alguém só contactado manualmente aparecia
     // como "nunca tentamos", mesmo já tendo várias tentativas registradas).
-    sb.from('sime_logs').select('payload').eq('acao', 'mesario_tentativa_contato'),
+    sb.from('sime_logs').select('payload, ts').eq('acao', 'mesario_tentativa_contato'),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
 
   const tentativasPorAtor = {};
+  const ultimaTentativaPorAtor = {};
   const statusFila = {};
+  // Guarda o timestamp mais recente de tentativa por pessoa — usado pra
+  // indicador de bolinha (27/08/2026, ver cmDotStatus).
+  const marcaUltima = (atorId, ts) => {
+    if (!atorId || !ts) return;
+    if (!ultimaTentativaPorAtor[atorId] || ts > ultimaTentativaPorAtor[atorId]) ultimaTentativaPorAtor[atorId] = ts;
+  };
   for (const c of campanhas || []) {
     // 'aguardando_resposta' (status do motor de script) conta igual
     // 'enviado' (fluxo simples) — os dois significam "mensagem já saiu,
     // ninguém confirmou ainda".
-    if (c.status === 'enviado' || c.status === 'aguardando_resposta') tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+    if (c.status === 'enviado' || c.status === 'aguardando_resposta') {
+      tentativasPorAtor[c.ator_id] = (tentativasPorAtor[c.ator_id] || 0) + 1;
+      marcaUltima(c.ator_id, c.created_at);
+    }
     statusFila[c.status] = (statusFila[c.status] || 0) + 1;
   }
   for (const l of tentativasManuais || []) {
     const atorId = l.payload?.ator_id;
-    if (atorId) tentativasPorAtor[atorId] = (tentativasPorAtor[atorId] || 0) + 1;
+    if (atorId) { tentativasPorAtor[atorId] = (tentativasPorAtor[atorId] || 0) + 1; marcaUltima(atorId, l.ts); }
   }
-  for (const p of pessoas || []) p.tentativas = tentativasPorAtor[p.id] || 0;
+  for (const p of pessoas || []) {
+    p.tentativas = tentativasPorAtor[p.id] || 0;
+    p.ultimaTentativaTs = ultimaTentativaPorAtor[p.id] || null;
+  }
 
   cmScriptCampanhas = campanhasScript || [];
   cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])), statusFila };
@@ -487,7 +500,13 @@ async function cmRegistrarTentativaCore(id, meio, nota) {
   // toda outra ação rápida desta tela (precisa_substituir, contato
   // incorreto, etc.) — só que aqui é incremento, não substituição de campo.
   const p = cmDados?.pessoas?.find(x => x.id === id);
-  if (p) { p.tentativas = (p.tentativas || 0) + 1; render(); }
+  if (p) {
+    p.tentativas = (p.tentativas || 0) + 1;
+    // Aproximado (hora local, não sime_now()) só pra decidir a bolinha 🟢
+    // na hora — cmCarregar() traz o ts real do servidor na próxima releitura.
+    p.ultimaTentativaTs = new Date().toISOString();
+    render();
+  }
 }
 
 async function cmRegistrarTentativa(id) {
@@ -872,7 +891,7 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
       ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
@@ -1094,6 +1113,38 @@ function cmEhAguardandoResposta(p) {
   return (p.confirmacao || 'pendente') === 'pendente' && p.tentativas > 0;
 }
 
+// Indicador de bolinha (27/08/2026, pedido direto: "verde amarela e
+// vermelha ... se nunca foi contactado bolinha vermelha, se foi contactado
+// hoje bolinha verde, se já foi contactado e nunca respondeu bolinha
+// amarela") — resumo visual de 1 caractere do mesmo dado que já aparecia só
+// em texto ("📨 Já contactado (Nx)"). Só faz sentido pra quem ainda está
+// pendente; quem já confirmou/recusou/etc. já tem desfecho, não precisa de
+// bolinha. cmDiaChave() é a mesma função do agrupamento por dia das
+// tentativas — "hoje" é sempre local (fuso do navegador).
+function cmDotStatus(p) {
+  if ((p.confirmacao || 'pendente') !== 'pendente') return null;
+  if (!p.tentativas) return { emoji: '🔴', texto: 'Nunca contactado' };
+  if (p.ultimaTentativaTs && cmDiaChave(p.ultimaTentativaTs) === cmDiaChave(new Date())) {
+    return { emoji: '🟢', texto: `Já contactado (${p.tentativas}x) — contactado hoje` };
+  }
+  return { emoji: '🟡', texto: `Já contactado (${p.tentativas}x) — aguardando resposta` };
+}
+
+// Sugestão de escalonamento (mesmo pedido: "uma indicação para passar o
+// contato para o próximo nível, no caso carta ou oficial de justiça") —
+// depois de várias tentativas sem resposta ainda pelo WhatsApp/ligação,
+// sugere trocar de meio. MAX_TENTATIVAS aqui é o mesmo número (3) já usado
+// como limite do motor de script conversacional (api/hermes-campanhas.js)
+// antes de desistir de um número — mesma noção de "já tentamos o
+// suficiente por este canal". Nunca sugere de novo quem JÁ está em Carta/
+// Ofício — trocar de novo não seria "escalar", seria redundante.
+const CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO = 3;
+function cmPrecisaEscalonamento(p) {
+  return (p.confirmacao || 'pendente') === 'pendente'
+    && p.tentativas >= CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO
+    && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica';
+}
+
 function cmFiltrar() {
   const q = cmBusca.trim().toLowerCase();
   return cmDados.pessoas.filter(p => {
@@ -1196,6 +1247,8 @@ function renderContatarMesarios() {
       ${lista.map(p => {
         const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
         const podeMarcarIncorreto = p.confirmacao === 'recusou';
+        const dot = cmDotStatus(p);
+        const escalar = cmPrecisaEscalonamento(p);
         return `
         <div class="import-card" style="padding:12px 14px">
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:flex-start">
@@ -1206,7 +1259,8 @@ function renderContatarMesarios() {
               </div>
               ${p.inscricao_eleitoral ? `<div class="ic-sub" style="margin-bottom:0">Título ${cmEsc(p.inscricao_eleitoral)}</div>` : ''}
               ${p.telefone_whatsapp ? `<div class="ic-sub" style="margin-bottom:0">${linkWhatsApp(p.telefone_whatsapp) ? `<a href="${linkWhatsApp(p.telefone_whatsapp)}" target="_blank" rel="noopener">${fmtTelefone(p.telefone_whatsapp)}</a>` : fmtTelefone(p.telefone_whatsapp)}</div>` : '<div class="ic-sub" style="margin-bottom:0">Sem telefone cadastrado</div>'}
-              ${(p.confirmacao || 'pendente') === 'pendente' && p.tentativas > 0 ? `<div class="ic-sub" style="margin-bottom:0">📨 Já contactado (${p.tentativas}x) — aguardando resposta</div>` : ''}
+              ${dot ? `<div class="ic-sub" style="margin-bottom:0">${dot.emoji} ${cmEsc(dot.texto)}</div>` : ''}
+              ${escalar ? `<div class="ic-sub" style="margin-bottom:0;color:var(--yellow,#a66c00)">⬆️ ${p.tentativas}x sem resposta pelo WhatsApp — considere Carta Registrada ou Oficial de Justiça</div>` : ''}
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
@@ -1232,6 +1286,9 @@ function renderContatarMesarios() {
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
             ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
+            ${escalar ? `
+            <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmSalvarMeio('${p.id}','carta_registrada')">📮 Passar pra Carta Registrada</button>
+            <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmSalvarMeio('${p.id}','oficial_justica')">⚖️ Passar pra Oficial de Justiça</button>` : ''}
           </div>
         </div>`;
       }).join('') || '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Ninguém encontrado com esse filtro.</div></div>'}

@@ -1041,6 +1041,80 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.87 Indicador de bolinha (🔴🟡🟢) + sugestão de escalonamento
+// (27/08/2026, pedido direto: "verde amarela e vermelha ... se nunca foi
+// contactado bolinha vermelha, se foi contactado hoje bolinha verde, se já
+// foi contactado e nunca respondeu bolinha amarela ... uma indicação para
+// passar o contato para o próximo nível, no caso carta ou oficial de
+// justiça") ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // FABIO APOIO (a6) é pendente e nunca teve nenhuma tentativa (nem
+  // campanha, nem manual) na fixture — bolinha vermelha.
+  const cardFabio0 = await p.locator('.import-card:has-text("FABIO APOIO")').first().textContent();
+  check('nunca contactado mostra bolinha vermelha', /🔴 Nunca contactado/.test(cardFabio0), cardFabio0.replace(/\s+/g, ' '));
+
+  // BRUNO (a2) já tem 1 tentativa de campanha, mas de um dia no passado —
+  // bolinha amarela (mesmo texto de sempre, "Já contactado (1x) — aguardando
+  // resposta", só que agora prefixado pela bolinha em vez do 📨).
+  const cardBruno0 = await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent();
+  check('contactado antes (não hoje) mostra bolinha amarela', /🟡 Já contactado \(1x\) — aguardando resposta/.test(cardBruno0), cardBruno0.replace(/\s+/g, ' '));
+  check('ainda sem 3 tentativas, não sugere escalonamento', !/considere Carta Registrada/.test(cardBruno0));
+
+  // Registrar uma tentativa AGORA (bump otimista usa a hora local real do
+  // teste) vira bolinha verde na hora, sem precisar recarregar a aba.
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.fill('#mm-tent-nota', 'Liguei agora, não atendeu');
+  await p.click('#modal-body button:has-text("Registrar tentativa")');
+  await p.waitForTimeout(200);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(150);
+  const cardBrunoHoje = await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent();
+  check('tentativa registrada agora vira bolinha verde na hora', /🟢 Já contactado \(2x\) — contactado hoje/.test(cardBrunoHoje), cardBrunoHoje.replace(/\s+/g, ' '));
+
+  // Mais uma tentativa (total 3) — bate o limite de sugerir escalonamento,
+  // já que o meio ainda é WhatsApp (não Carta/Ofício).
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.fill('#mm-tent-nota', 'Terceira tentativa, ainda nada');
+  await p.click('#modal-body button:has-text("Registrar tentativa")');
+  await p.waitForTimeout(200);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(150);
+  const cardBruno3x = await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent();
+  check('com 3 tentativas sem resposta, sugere escalonamento pra Carta/Ofício', /3x sem resposta pelo WhatsApp — considere Carta Registrada ou Oficial de Justiça/.test(cardBruno3x), cardBruno3x.replace(/\s+/g, ' '));
+  check('botões de escalonamento aparecem no card', await p.locator('.import-card:has-text("BRUNO MESARIO") button:has-text("Passar pra Carta Registrada")').count() === 1
+    && await p.locator('.import-card:has-text("BRUNO MESARIO") button:has-text("Passar pra Oficial de Justiça")').count() === 1);
+
+  // Clicar "Passar pra Carta Registrada" muda o meio — sugestão some (não
+  // faz sentido sugerir escalonar quem já foi escalado).
+  await p.click('.import-card:has-text("BRUNO MESARIO") button:has-text("Passar pra Carta Registrada")');
+  await p.waitForTimeout(200);
+  const cardBrunoEscalado = await p.locator('.import-card:has-text("BRUNO MESARIO")').first().textContent();
+  check('depois de trocar pra Carta Registrada, a sugestão de escalonamento some', !/considere Carta Registrada/.test(cardBrunoEscalado), cardBrunoEscalado.replace(/\s+/g, ' '));
+  const updMeio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.meio_contato === 'carta_registrada'));
+  check('grava meio_contato=carta_registrada de verdade', !!updMeio, JSON.stringify(updMeio));
+
+  // Quem já confirmou (ANA) não tem bolinha nenhuma — já tem desfecho.
+  const cardAna0 = await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent();
+  check('quem já confirmou não mostra bolinha', !/🔴|🟡|🟢/.test(cardAna0), cardAna0.replace(/\s+/g, ' '));
+
+  // Modal também mostra a bolinha na linha "Situação".
+  await p.locator('.import-card:has-text("FABIO APOIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  const situacaoFabio = await p.locator('#modal-body .m-kv-row:has-text("Situação")').textContent();
+  check('modal mostra a bolinha na linha Situação também', /🔴 Nunca contactado/.test(situacaoFabio), situacaoFabio);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.9 Apoio logístico entra na mesma fila de contato dos mesários ──
 {
   const ctx = await b.newContext();
