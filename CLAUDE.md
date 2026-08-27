@@ -509,6 +509,42 @@ cada um com propósito diferente:
   `SIME_atores.html` (disparo com verificação SIM/NÃO) — este botão nunca
   foi pensado pra substituir aquele fluxo.
 
+  **No CARD isso continua igual (some depois de confirmado)** — o que mudou
+  em 27/08/2026 foi só dentro do MODAL, ver bloco abaixo.
+
+  **Modal: linha de 3 botões de status, sempre visível (27/08/2026, pedido
+  direto do cartório ao ver o modal — print anexado do formato desejado).**
+  O único botão "✅ Confirmar participação" (que sumia depois de confirmado)
+  virou uma linha fixa de três — **Confirmado** / **Convocado** / **Substituir**
+  — logo abaixo da linha "Situação", sempre visível (não só enquanto ainda
+  não confirmou). O botão do estado atual fica destacado (`btn-dark`), os
+  outros ficam `btn-out` — dá pra ver e trocar o status sem precisar rolar
+  nem fechar/reabrir o modal.
+  - **Confirmado** — mesmo `cmConfirmarParticipacao()` de sempre (marca
+    `confirmacao='confirmado'`, não enfileira mensagem nenhuma).
+  - **Convocado** (nova, `cmMarcarConvocado()`) — explicado pelo cartório:
+    "convocado significa que ele recebeu a carta, mas pode ser substituído",
+    diferente de confirmado, que já disse que vai participar. Não é um
+    status novo no banco — grava `confirmacao='pendente'` (o mesmo valor-
+    padrão de quem nunca respondeu), só que agora como ação explícita, e
+    limpa `data_confirmacao` junto (senão a data ficaria mentindo que a
+    pessoa confirmou numa data em que só foi convocada). Serve tanto pra
+    registrar "sabemos que foi notificado, só não confirmou" quanto pra
+    desfazer um confirmado/recusado marcado por engano.
+  - **Substituir** — mesmo `cmTogglePrecisaSubstituir()` de sempre, só
+    subiu de lugar: antes vivia sozinho dentro da seção "📇 Contato" mais
+    abaixo (com texto que trocava entre "🔁 Marcar para substituir" e "✓
+    Desmarcar substituição"); agora é um botão de texto fixo ("🔁
+    Substituir") na linha do topo, e o estado (marcado ou não) aparece pelo
+    preenchido do botão, não mais pelo texto. Os campos de nome/telefone do
+    substituto (só aparecem quando a flag está marcada) continuam na seção
+    "📇 Contato", só o botão que ativa/desativa a flag que mudou de lugar —
+    não há mais duplicata do botão em dois lugares do modal.
+  Escopado só ao modal — o card na lista (`renderContatarMesarios`) e os
+  botões de ação rápida ali continuam exatamente como eram (Confirmar
+  participação some depois de confirmado, Marcar para substituir com texto
+  que troca), porque o pedido foi especificamente sobre o formato do modal.
+
   **Apoio logístico entrou na mesma fila de contato (21/08/2026) — achado
   real: era contado no card do Dashboard, mas não tinha como contactar/
   confirmar um por um.** `cmCarregar()` foi de `.eq('funcao','mesario')`

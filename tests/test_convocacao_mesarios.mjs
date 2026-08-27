@@ -823,14 +823,20 @@ async function login(p) {
   const cardSecao30 = await p.locator('.import-card:has-text("30")').first().textContent();
   check('Dashboard: seção 30 mostra 🔁 pro Presidente marcado, não mais ✅', cardSecao30.includes('🔁') && !cardSecao30.includes('✅'), cardSecao30.replace(/\s+/g, ' '));
 
-  // Desmarcar pelo modal (mesmo botão existe lá dentro).
+  // Desmarcar pelo modal (mesmo botão existe lá dentro — 27/08/2026: subiu
+  // pra linha de 3 botões de status no topo do modal, texto fixo "🔁
+  // Substituir", o estado atual passa a aparecer pelo preenchido (btn-dark)
+  // em vez de mudar de texto).
   await p.click('#tab-contatar-btn');
   await p.waitForTimeout(300);
   await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(150);
-  await p.click('#modal-body button:has-text("Desmarcar substituição")');
+  const btnSubstituirModal = p.locator('#modal-body button:has-text("🔁 Substituir")');
+  check('botão de substituir aparece destacado (btn-dark) enquanto a flag está marcada', (await btnSubstituirModal.getAttribute('class') || '').includes('btn-dark'));
+  await btnSubstituirModal.click();
   await p.waitForTimeout(150);
-  check('desmarcar pelo modal atualiza o modal na hora (sem precisar fechar/reabrir)', /Marcar para substituir/.test(await p.locator('#modal-body').textContent()));
+  check('desmarcar pelo modal atualiza o modal na hora (sem precisar fechar/reabrir)', !/Precisa substituto/.test(await p.locator('#modal-body').textContent()));
+  check('botão de substituir perde o destaque depois de desmarcar', !(await p.locator('#modal-body button:has-text("🔁 Substituir")').getAttribute('class') || '').includes('btn-dark'));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -873,7 +879,7 @@ async function login(p) {
   check('link "Abrir WhatsApp do substituto" aparece', await p.locator('#modal-body a:has-text("Abrir WhatsApp do substituto")').count() === 1);
 
   // Desmarcar substituição limpa nome E telefone junto — não fazem sentido sem a flag.
-  await p.click('#modal-body button:has-text("Desmarcar substituição")');
+  await p.click('#modal-body button:has-text("🔁 Substituir")');
   await p.waitForTimeout(150);
   const updLimpo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.precisa_substituir === false));
   check('desmarcar grava substituto_nome=null junto', updLimpo?.payload?.substituto_nome === null, JSON.stringify(updLimpo));
@@ -916,16 +922,34 @@ async function login(p) {
   const insDiego = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_campanhas_confirmacao' && e.payload.ator_id === 'a4'));
   check('e também não enfileira nada pro Diego', !insDiego);
 
-  // O mesmo botão existe dentro do modal, pra quem ainda não confirmou.
+  // O mesmo status existe dentro do modal — 27/08/2026, pedido direto do
+  // cartório ao ver o modal: virou uma linha fixa de 3 botões (Confirmado/
+  // Convocado/Substituir) sempre visível, em vez de um botão único que some
+  // depois de confirmado. O botão ativo fica com btn-dark, os outros btn-out.
   const cardCarla = p.locator('.import-card:has-text("CARLA RECUSOU")').first();
   await cardCarla.locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(150);
-  check('modal mostra o botão de confirmar pra quem ainda não confirmou', await p.locator('#modal-body button:has-text("Confirmar participação")').count() === 1);
-  await p.click('#modal-body button:has-text("Confirmar participação")');
+  const btnConfirmadoModal = p.locator('#modal-body button:has-text("✅ Confirmado")');
+  const btnConvocadoModal = p.locator('#modal-body button:has-text("📋 Convocado")');
+  check('modal mostra os 3 botões de status (Confirmado/Convocado/Substituir)', await btnConfirmadoModal.count() === 1 && await btnConvocadoModal.count() === 1 && await p.locator('#modal-body button:has-text("🔁 Substituir")').count() === 1);
+  check('CARLA (recusou) não está com "Confirmado" nem "Convocado" destacado', !(await btnConfirmadoModal.getAttribute('class') || '').includes('btn-dark') && !(await btnConvocadoModal.getAttribute('class') || '').includes('btn-dark'));
+  await btnConfirmadoModal.click();
   await p.waitForTimeout(250);
   const updCarla = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'confirmado'));
   check('confirmar pelo modal também grava confirmacao=confirmado', !!updCarla, JSON.stringify(updCarla));
-  check('modal esconde o botão de confirmar depois de confirmado (sem precisar fechar/reabrir)', await p.locator('#modal-body button:has-text("Confirmar participação")').count() === 0);
+  check('botão "Confirmado" fica destacado (sem precisar fechar/reabrir)', (await p.locator('#modal-body button:has-text("✅ Confirmado")').getAttribute('class') || '').includes('btn-dark'));
+
+  // "Convocado" (27/08/2026, pedido direto: "convocado significa que ele
+  // recebeu a carta, mas pode ser substituído" — diferente de confirmado)
+  // volta confirmacao pra 'pendente' e limpa data_confirmacao, pra desfazer
+  // uma confirmação marcada por engano ou registrar "sabemos que foi
+  // notificado, só não confirmou ainda".
+  await btnConvocadoModal.click();
+  await p.waitForTimeout(250);
+  const updConvocado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'pendente'));
+  check('"Convocado" grava confirmacao=pendente e limpa data_confirmacao', !!updConvocado && updConvocado.payload.data_confirmacao === null, JSON.stringify(updConvocado));
+  check('botão "Convocado" fica destacado depois de clicar, "Confirmado" perde o destaque', (await btnConvocadoModal.getAttribute('class') || '').includes('btn-dark') && !(await btnConfirmadoModal.getAttribute('class') || '').includes('btn-dark'));
+  check('grava log de auditoria "mesario_marcado_convocado"', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_marcado_convocado' && e.payload.payload.ator_id === 'a3')));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

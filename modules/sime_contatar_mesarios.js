@@ -165,6 +165,7 @@ const CM_LOG_LABEL = {
   mesario_substituto_telefone: (p) => p.substituto_telefone ? `Telefone do substituto: ${fmtTelefone(p.substituto_telefone)}` : 'Telefone do substituto removido',
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
+  mesario_marcado_convocado: () => 'Marcado como convocado (aguardando confirmação)',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
   mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
@@ -308,6 +309,30 @@ async function cmConfirmarParticipacao(id) {
   p.data_confirmacao = ts;
   await cmLog('mesario_confirmado_manual', '', { ator_id: id });
   showToast('✅ Participação confirmada');
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
+// "Convocado" (27/08/2026, pedido direto do cartório ao ver o modal:
+// "convocado significa que ele recebeu a carta, mas pode ser substituído" —
+// diferente de "confirmado", que já disse que vai participar). Não é um
+// status novo — é o mesmo `pendente` de sempre, só que setado
+// explicitamente pelo botão em vez de só ser o valor-padrão de quem nunca
+// respondeu. Serve tanto pra registrar "sabemos que foi notificado, só
+// ainda não confirmou" quanto pra desfazer um confirmado/recusado marcado
+// por engano — por isso limpa `data_confirmacao` junto, senão a data ficaria
+// mentindo que a pessoa confirmou numa data em que na verdade só foi
+// convocada.
+async function cmMarcarConvocado(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const { error } = await sb.from('sime_atores').update({ confirmacao: 'pendente', data_confirmacao: null }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.confirmacao = 'pendente';
+  p.data_confirmacao = null;
+  await cmLog('mesario_marcado_convocado', '', { ator_id: id });
+  showToast('📋 Marcado como convocado — aguardando confirmação');
   render();
   if (cmModalId === id) cmRenderModal();
 }
@@ -881,6 +906,14 @@ function cmRenderModal() {
     `).join('')}</div>`;
   }
 
+  // 27/08/2026, pedido direto do cartório ao ver o modal: 3 ações de status
+  // lado a lado em vez de um botão só + o toggle de substituir escondido lá
+  // embaixo — "Confirmado" (vai participar), "Convocado" (recebeu o
+  // contato, ainda não confirmou, mas pode ser substituído — mesmo status
+  // "pendente" de sempre, só explícito) e "Substituir" (mesmo
+  // cmTogglePrecisaSubstituir de sempre, só subido pra cá). Sempre visíveis
+  // os três (não só quando ainda não confirmou) — dá pra alternar entre os
+  // estados direto daqui, sem precisar rolar.
   modal.innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${cmEsc(p.nome_completo)}</div>
@@ -894,15 +927,16 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
-      ${(p.confirmacao || 'pendente') !== 'confirmado' ? `
-      <button class="btn btn-dark" style="width:100%;padding:10px;font-size:.8rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmar participação</button>
-      <div class="ic-sub" style="margin-bottom:0">Use quando já souber que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — não depende de resposta automática por WhatsApp.</div>
-      ` : ''}
+      <div style="display:flex;gap:6px;margin-bottom:4px">
+        <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
+        <button class="btn ${(p.confirmacao || 'pendente') === 'pendente' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
+        <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
+      </div>
+      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = recebeu o contato, ainda não confirmou (mas pode ser substituído). Nenhum dos três manda mensagem — é status manual, não depende de resposta automática por WhatsApp.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
-          <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
           ${p.precisa_substituir ? `
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nome do substituto (opcional)
             <input id="mm-substituto-nome" type="text" value="${cmEsc(p.substituto_nome || '')}" placeholder="ainda não sei quem vai substituir" onblur="cmSalvarSubstitutoNome('${p.id}')" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
