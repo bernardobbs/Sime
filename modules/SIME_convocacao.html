@@ -81,6 +81,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 #print-area{display:none;}
 @media print{
   body > *:not(#print-area){display:none!important;}
+  /* Bug real corrigido em 27/08/2026, achado no primeiro teste em produção:
+     ".co-et-barra" (DESTINATÁRIO / ENTREGA NO VIZINHO) saía cinza claro sem
+     fundo preto no PDF gerado pelo navegador — Chrome e a maioria dos
+     navegadores removem cor de fundo na impressão por padrão, mesmo com
+     `background:#000` explícito no CSS, a menos que a página force isso.
+     `print-color-adjust:exact` (+ prefixo `-webkit-`) é o jeito padrão de
+     dizer "imprima a cor de fundo mesmo assim" — sem isso a etiqueta perdia
+     as duas barras pretas que servem de âncora visual no modelo oficial. */
+  #print-area, #print-area *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   #print-area{display:block!important;color:#000;}
 
   /* ── Etiqueta ── */
