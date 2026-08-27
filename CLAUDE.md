@@ -681,9 +681,54 @@ cada um com propósito diferente:
   mexer no `telefone_whatsapp` principal (que continua sendo o que
   Hermes/campanha em massa usam por padrão) — só esse item da lista tem
   botão de remover (✕), já que é o único que o cartório "possui" de fato (os
-  do TRE são só leitura do staging, o principal se edita pelo campo de
-  sempre). "Atualizar no ELO" continua manual — o SIME não escreve na
-  planilha do TRE, isso é fora do sistema.
+  do TRE são só leitura do staging). "Atualizar no ELO" continua manual — o
+  SIME não escreve na planilha do TRE, isso é fora do sistema.
+
+  **Edição direta no cartãozinho, campo solto removido (27/08/2026, pedido
+  direto com print anexado: "no cartão zinco quero poder editar e quero
+  poder adicionar outros telefones, nao necessariamente o que vem do elo").**
+  Antes disso, o principal se editava por um campo de formulário solto
+  ("Telefone (WhatsApp) — principal"), FORA da lista de telefones, duplicando
+  a mesma informação em dois lugares da tela — removido. Os dois telefones
+  que o SIME de fato possui numa coluna própria (`telefone_whatsapp` e
+  `telefone_alternativo`) agora são editáveis **direto no cartão da lista**
+  (`t.editavel`/`t.campo` em `cmListaTelefones()`, `onblur` chama
+  `cmSalvarTelefoneCard(id, campo, elId)` — mesmo padrão de sempre); os
+  telefones vindos de `sime_mesarios_raw` (staging do TRE) continuam só
+  leitura, são referência de outro sistema. O cartão principal **sempre**
+  aparece na lista, mesmo vazio — sem isso não haveria onde cadastrar o
+  primeiro número de quem ainda não tem nenhum (`cmListaTelefones` empurra
+  esse item incondicionalmente, ao contrário dos demais, que só entram
+  quando têm valor). "+ Adicionar telefone" continua existindo, mas só
+  aparece enquanto `telefone_alternativo` ainda está vazio — depois de
+  cadastrado um, a edição passa a ser pelo próprio cartão dele, sem duplicar
+  input.
+
+  **Bug real corrigido no caminho: `fmtTelefone('')` devolve `'—'`** (o
+  fallback visual pensado pro `<b>` de exibição, de quando não havia campo
+  editável nenhum) — usado sem checar isso no `value=` do `<input>` novo,
+  fazia o cartão vazio do DIEGO (sem telefone nenhum) aparecer com o texto
+  literal "—" dentro do campo, em vez de vazio com o placeholder
+  "(86) 9xxxx-xxxx" à mostra. Corrigido só chamando `fmtTelefone` quando
+  `t.valor` existe; vazio vira `''` puro no `value=`.
+
+  **Bug real, mais sério, achado testando o clique em "💾 Salvar" logo
+  depois de editar o telefone (sem tabular pra outro campo antes).** A
+  primeira versão de `cmSalvarTelefoneCard()` chamava `cmRenderModal()`
+  incondicionalmente ao salvar com sucesso — isso reconstrói `#modal-body`
+  inteiro. Editar o telefone principal e clicar direto em "Salvar" (mouseup/
+  click do próprio clique) dispara o `onblur` no MEIO do gesto do clique; se
+  `cmRenderModal()` roda nesse intervalo, o botão "Salvar" vira outro
+  elemento e o clique se perde — nenhum toast de "Dados atualizados", rastreio
+  e as outras caixas do modal (nota, observação) somem em silêncio, só o
+  telefone em si é salvo (pelo próprio onblur). Corrigido restringindo o
+  `cmRenderModal()` de dentro de `cmSalvarTelefoneCard()` a só quando a
+  ESTRUTURA da lista de fato muda — o alternativo sendo esvaziado (o card
+  "+ Adicionar telefone" precisa reaparecer) — nunca pro principal (sempre o
+  mesmo `<input>`, nada precisa mudar de estrutura na tela). Coberto por
+  teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`
+  (preenche rastreio + telefone principal sem tabular entre os dois, clica
+  Salvar direto, confirma que o modal fecha E as duas gravações acontecem).
 
   **Toda ação desta tela agora grava QUEM fez, não só O QUE foi feito
   (21/08/2026) — achado real reportado pelo cartório num caso concreto

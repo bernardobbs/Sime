@@ -610,9 +610,22 @@ function cmListaTelefones(p, raw) {
     vistos.add(digitos);
     lista.push({ label, valor, ...extra });
   };
-  add('WhatsApp (principal)', p.telefone_whatsapp, { principal: true });
+  // editavel+campo (27/08/2026, pedido direto: "no cartãozinho quero poder
+  // editar") — só os dois telefones que o SIME de fato possui numa coluna
+  // própria são editáveis direto no cartão; os que vêm de sime_mesarios_raw
+  // (staging da planilha do TRE) continuam só leitura, são referência de
+  // outro sistema, não um campo nosso pra editar.
+  //
+  // O principal SEMPRE entra na lista, mesmo vazio — ao contrário dos
+  // demais (que só aparecem quando têm valor), ele precisa existir como
+  // cartão pra dar pra cadastrar o primeiro número de quem ainda não tem
+  // nenhum. Substituiu o campo solto "Telefone (WhatsApp) — principal" que
+  // cobria esse caso separadamente, fora da lista de telefones.
+  const digitosPrincipal = telSemPais(p.telefone_whatsapp || '');
+  if (digitosPrincipal) vistos.add(digitosPrincipal);
+  lista.push({ label: 'WhatsApp (principal)', valor: p.telefone_whatsapp || '', principal: true, editavel: true, campo: 'telefone_whatsapp' });
   if (raw) for (const [campo, label] of CM_RAW_TEL_CAMPOS) add(label, raw[campo]);
-  add('Telefone alternativo (cartório)', p.telefone_alternativo, { removivel: true });
+  add('Telefone alternativo (cartório)', p.telefone_alternativo, { removivel: true, editavel: true, campo: 'telefone_alternativo' });
   return lista;
 }
 
@@ -804,6 +817,51 @@ async function cmRemoverTelefoneAlt(id) {
   render();
 }
 
+// Editar telefone direto no cartãozinho (27/08/2026, pedido direto: "no
+// cartãozinho quero poder editar e quero poder adicionar outros telefones,
+// não necessariamente o que vem do elo") — substitui o campo solto
+// "Telefone (WhatsApp) — principal" que ficava fora da lista de telefones,
+// duplicando a mesma informação em dois lugares (e cujo salvamento só
+// acontecia ao clicar "💾 Salvar" no rodapé do modal, não ali mesmo). Mesmo
+// padrão onblur-salva-sozinho já usado em nome/telefone do substituto —
+// `campo` é sempre 'telefone_whatsapp' ou 'telefone_alternativo' (os dois
+// únicos telefones que o SIME possui numa coluna própria; os do TRE
+// continuam só leitura, ver cmListaTelefones).
+async function cmSalvarTelefoneCard(id, campo, elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const digitado = telSemPais(el.value);
+  const atual = telSemPais(p[campo] || '');
+  if (digitado === atual) return; // nada mudou
+  if (digitado && digitado.length < 10) { showToast('⚠ Telefone inválido'); return; }
+  const novoValor = digitado ? '55' + digitado : null;
+  // Achado real testando isto: quem edita o número e clica em "💾 Salvar"
+  // (rodapé do modal) LOGO em seguida, sem trocar de campo antes, dispara
+  // este onblur no meio do próprio clique — mouseup/click ainda miram o
+  // botão antigo. Se cmRenderModal() reconstruir o modal nesse intervalo,
+  // o botão "Salvar" vira outro elemento e o clique se perde: rastreio,
+  // nota, observação etc. digitados nas outras caixas somem em silêncio
+  // (só o telefone em si é salvo, por este onblur). Por isso só reconstrói
+  // o modal quando a estrutura da lista de telefones realmente muda — o
+  // alternativo aparecendo/sumindo (fica vazio) — nunca pro principal
+  // (sempre o mesmo <input>, nada na tela precisa mudar de estrutura).
+  const ficouVazio = campo === 'telefone_alternativo' && !digitado;
+  const sb = window.supabaseAtores;
+  try {
+    const { error } = await sb.from('sime_atores').update({ [campo]: novoValor }).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    p[campo] = novoValor;
+    await cmLog(campo === 'telefone_whatsapp' ? 'mesario_editar_telefone' : 'mesario_telefone_alt_adicionado', '', { ator_id: id });
+    showToast('✓ Telefone atualizado');
+    render();
+    if (cmModalId === id && ficouVazio) cmRenderModal();
+  } catch (e) {
+    showToast('⚠ Falha ao salvar — verifique a conexão e tente de novo');
+  }
+}
+
 function cmFecharModal(e) {
   if (!e || e.target === document.getElementById('overlay')) {
     document.getElementById('overlay')?.classList.remove('open');
@@ -961,26 +1019,28 @@ function cmRenderModal() {
           </label>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
-        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho:</div>
+        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no número pra editar (salva sozinho ao sair do campo) e no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho:</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-          ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => `
-          <div class="cm-tel-card" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);min-width:92px">
+          ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => {
+            const elId = t.campo === 'telefone_whatsapp' ? 'mm-tel-principal' : t.campo === 'telefone_alternativo' ? 'mm-tel-alternativo' : null;
+            return `
+          <div class="cm-tel-card" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);min-width:96px">
             ${t.removivel ? `<button onclick="cmRemoverTelefoneAlt('${p.id}')" title="Remover telefone alternativo" aria-label="Remover telefone alternativo" style="position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--red-bg,#fae8e6);color:var(--red,#c0392b);border:1px solid var(--red-bd,#e0a09a);font-size:.62rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>` : ''}
-            <button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>
-            <b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>
+            ${t.valor ? `<button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>` : `<span aria-hidden="true" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.3">💬</span>`}
+            ${t.editavel
+              ? `<input id="${elId}" type="text" value="${t.valor ? cmEsc(fmtTelefone(t.valor)) : ''}" placeholder="(86) 9xxxx-xxxx" aria-label="Editar ${cmEsc(t.label)}" onblur="cmSalvarTelefoneCard('${p.id}','${t.campo}','${elId}')" style="width:100%;text-align:center;font-size:.74rem;font-weight:700;border:1px solid var(--border2);border-radius:5px;padding:2px 4px;background:var(--bg);color:var(--text)">`
+              : `<b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>`}
             <span style="font-size:.6rem;color:var(--text2)">${cmEsc(t.label)}</span>
-          </div>`).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
+          </div>`;
+          }).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
         </div>
+        ${!p.telefone_alternativo ? `
         <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px">
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">+ Adicionar outro telefone (fora do cadastro do TRE)
             <input id="mm-tel-alt-novo" type="text" placeholder="(86) 9xxxx-xxxx" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
           </label>
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmAdicionarTelefoneAlt('${p.id}')">➕ Adicionar telefone</button>
-        </div>
-        <div class="form-group">
-          <label>Telefone (WhatsApp) — principal</label>
-          <input id="mm-tel" type="text" value="${cmEsc(fmtTelefone(p.telefone_whatsapp || ''))}" placeholder="(86) 9xxxx-xxxx">
-        </div>
+        </div>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:140px">Meio de contato atual
             <select onchange="cmSalvarMeio('${p.id}',this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
@@ -1076,7 +1136,12 @@ async function cmSalvarModal() {
   // "Salvar". Normaliza os dois lados do mesmo jeito antes de comparar, e
   // grava de volta no formato com 55 (mesma convenção do resto do sistema —
   // Ciente/colar-lista já gravam assim).
-  const telDigitado = telSemPais(document.getElementById('mm-tel').value);
+  // 27/08/2026: o campo solto "Telefone (WhatsApp) — principal" virou o
+  // próprio cartão editável na lista de telefones (id mudou de "mm-tel" pra
+  // "mm-tel-principal") — continua sempre presente no DOM (cmListaTelefones
+  // sempre inclui o principal, mesmo vazio), o guard `telEl ?` é só defesa.
+  const telEl = document.getElementById('mm-tel-principal');
+  const telDigitado = telEl ? telSemPais(telEl.value) : telSemPais(p.telefone_whatsapp || '');
   const telAtual = telSemPais(p.telefone_whatsapp || '');
   const telMudou = telDigitado !== telAtual;
   // Campo só existe no DOM quando meio_contato==='carta_registrada' — fora
@@ -1086,8 +1151,19 @@ async function cmSalvarModal() {
   const patch = {};
   if (telMudou) patch.telefone_whatsapp = telDigitado ? '55' + telDigitado : null;
   if (rastreioEl && rastreio !== (p.codigo_rastreio || '')) patch.codigo_rastreio = rastreio || null;
+  // O cartão do telefone alternativo já existente também é editável direto
+  // (onblur salva sozinho, ver cmSalvarTelefoneCard) — "Salvar" cobre de
+  // novo aqui só como rede de segurança, mesmo padrão do principal acima.
+  const telAlternativoEl = document.getElementById('mm-tel-alternativo');
+  if (telAlternativoEl) {
+    const altDigitado = telSemPais(telAlternativoEl.value);
+    const altAtual = telSemPais(p.telefone_alternativo || '');
+    if (altDigitado !== altAtual) patch.telefone_alternativo = altDigitado ? '55' + altDigitado : null;
+  }
   // Mesma lógica do telefone principal: só grava se realmente digitou algo
-  // novo (não sobrescreve com vazio o que já tinha por engano).
+  // novo (não sobrescreve com vazio o que já tinha por engano). Este campo
+  // (mm-tel-alt-novo) só existe no DOM quando ainda não há alternativo
+  // cadastrado — depois disso a edição é pelo cartão acima.
   const telAltEl = document.getElementById('mm-tel-alt-novo');
   const telAltDigitado = telAltEl ? telSemPais(telAltEl.value) : '';
   if (telAltDigitado && telAltDigitado.length >= 10) patch.telefone_alternativo = '55' + telAltDigitado;

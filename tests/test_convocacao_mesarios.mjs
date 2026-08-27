@@ -494,7 +494,7 @@ async function login(p) {
   await p.selectOption('#modal-body select >> nth=0', 'carta_registrada');
   await p.waitForTimeout(150);
   await p.fill('#mm-rastreio', 'aa123456789br');
-  await p.fill('#mm-tel', '(86) 98888-7777');
+  await p.fill('#mm-tel-principal', '(86) 98888-7777');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(200);
 
@@ -503,7 +503,16 @@ async function login(p) {
   // sistema (Ciente/colar-lista); antes desse fix, comparar o campo (exibido
   // sem 55) com o valor guardado (com 55) sempre achava "mudou" e regravava
   // sem o 55 a cada Salvar, mesmo sem editar nada.
-  check('salvar grava telefone (com 55, convenção do banco) e rastreio juntos, num update só', upd?.payload?.telefone_whatsapp === '5586988887777' && upd?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(upd));
+  check('salvar grava telefone (com 55, convenção do banco)', upd?.payload?.telefone_whatsapp === '5586988887777', JSON.stringify(upd));
+  // 27/08/2026: o telefone principal virou editável direto no cartão
+  // (onblur salva sozinho, ver cmSalvarTelefoneCard) — clicar em "Salvar"
+  // logo em seguida sem trocar de campo antes dispara esse onblur no meio
+  // do próprio clique, então o telefone acaba indo num update PRÓPRIO
+  // (disparado pelo onblur) separado do update do rastreio (disparado pelo
+  // cmSalvarModal do rodapé) — os dois continuam gravando certo, só não é
+  // mais um único update combinando os dois campos.
+  const updRastreio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && 'codigo_rastreio' in e.payload));
+  check('e o rastreio grava certo também (update próprio do "Salvar" do rodapé)', updRastreio?.payload?.codigo_rastreio === 'AA123456789BR', JSON.stringify(updRastreio));
   check('salvar fecha o modal', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
 
   // Reabre: reflete o telefone/rastreio novos e agora mostra o link de rastrear.
@@ -533,7 +542,11 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const modalTxt = await p.locator('#modal-body').textContent();
-  check('lista única mostra o telefone principal', /WhatsApp \(principal\)/.test(modalTxt) && /\(86\) 99999-0002/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
+  // 27/08/2026: o número do principal virou um <input> editável dentro do
+  // cartão (não mais texto simples) — .textContent() não pega valor de
+  // input, então o número em si tem que ser checado via inputValue(), só o
+  // rótulo "WhatsApp (principal)" continua aparecendo como texto normal.
+  check('lista única mostra o telefone principal', /WhatsApp \(principal\)/.test(modalTxt) && (await p.locator('#mm-tel-principal').inputValue()) === '(86) 99999-0002', modalTxt.replace(/\s+/g, ' ').slice(0, 500));
   check('lista única também mostra o telefone alternativo do TRE (telefone_1_eleitor, diferente do salvo)', /Telefone 1 \(eleitor\)/.test(modalTxt) && /\(86\) 97777-8888/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 500));
 
   // Pedido direto (21/08/2026): "o botão de copiar vir antes de cada número"
@@ -561,7 +574,10 @@ async function login(p) {
   const updAlt = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_alternativo));
   check('adicionar telefone alternativo grava com 55 (convenção do banco)', updAlt?.payload?.telefone_alternativo === '5586900001234', JSON.stringify(updAlt));
   const modalComAlt = await p.locator('#modal-body').textContent();
-  check('telefone alternativo cadastrado à mão aparece na lista única', /Telefone alternativo \(cartório\)/.test(modalComAlt) && /\(86\) 90000-1234/.test(modalComAlt), modalComAlt.replace(/\s+/g, ' ').slice(0, 500));
+  // Mesmo motivo do principal acima: o número do alternativo já cadastrado
+  // também virou um <input> editável — checa o rótulo por texto e o número
+  // por inputValue().
+  check('telefone alternativo cadastrado à mão aparece na lista única', /Telefone alternativo \(cartório\)/.test(modalComAlt) && (await p.locator('#mm-tel-alternativo').inputValue()) === '(86) 90000-1234', modalComAlt.replace(/\s+/g, ' ').slice(0, 500));
 
   // Remover o que foi cadastrado à mão.
   const linhaManual = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone alternativo (cartório)' });
@@ -580,6 +596,115 @@ async function login(p) {
   await p.waitForTimeout(300);
   const modalAna = await p.locator('#modal-body').textContent();
   check('Ana (sem registro no TRE, sem alternativo) só mostra o telefone principal na lista', /WhatsApp \(principal\)/.test(modalAna) && !/Telefone 1 \(eleitor\)/.test(modalAna) && !/Telefone alternativo \(cartório\)/.test(modalAna), modalAna.replace(/\s+/g, ' ').slice(0, 400));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.63 Editar telefone direto no cartãozinho (27/08/2026, pedido direto
+// com print anexado: "no cartão zinco quero poder editar e quero poder
+// adicionar outros telefones, nao necessariamente o que vem do elo") —
+// substitui o campo solto "Telefone (WhatsApp) — principal" que ficava fora
+// da lista, duplicando a mesma informação em dois lugares. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // DIEGO (a4) não tem telefone_whatsapp nenhum — o cartão principal
+  // precisa aparecer mesmo assim (vazio), senão não haveria como cadastrar
+  // o primeiro número dele.
+  await p.locator('.import-card:has-text("DIEGO CARTA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+  check('campo solto "Telefone (WhatsApp) — principal" não existe mais no modal', !/Telefone \(WhatsApp\) — principal/.test(await p.locator('#modal-body').textContent()));
+  check('DIEGO (sem telefone ainda) mostra o cartão principal vazio, pronto pra cadastrar', await p.locator('#mm-tel-principal').count() === 1 && (await p.locator('#mm-tel-principal').inputValue()) === '');
+  await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
+  await p.waitForTimeout(80);
+
+  // BRUNO (a2) já tem telefone — editar o número no cartão (onblur, sem
+  // clicar em "Salvar") grava sozinho, mesmo padrão de nome/telefone do
+  // substituto.
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+  await p.fill('#mm-tel-principal', '(86) 91111-2222');
+  await p.locator('#mm-tel-principal').press('Tab');
+  await p.waitForTimeout(200);
+  const updPrincipal = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_whatsapp === '5586911112222'));
+  check('editar o principal no cartão salva sozinho ao sair do campo (onblur)', !!updPrincipal, JSON.stringify(updPrincipal));
+  check('toast confirma a atualização', /Telefone atualizado/.test(await p.locator('.toast').textContent()));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.64 "+ Adicionar telefone" só aparece enquanto não há alternativo —
+// depois disso a edição é pelo próprio cartão (27/08/2026). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+  check('sem alternativo ainda, mostra "+ Adicionar outro telefone"', await p.locator('#mm-tel-alt-novo').count() === 1);
+  check('sem alternativo ainda, não existe cartão pra editar (só depois de existir um)', await p.locator('#mm-tel-alternativo').count() === 0);
+
+  await p.fill('#mm-tel-alt-novo', '(86) 93333-4444');
+  await p.click('#modal-body button:has-text("Adicionar telefone")');
+  await p.waitForTimeout(200);
+  check('depois de adicionar, "+ Adicionar outro telefone" some (edição vira só pelo cartão)', await p.locator('#mm-tel-alt-novo').count() === 0);
+  check('e o cartão editável do alternativo aparece com o valor certo', (await p.locator('#mm-tel-alternativo').inputValue()) === '(86) 93333-4444');
+
+  // Editar o alternativo já existente pelo próprio cartão (onblur salva sozinho).
+  await p.fill('#mm-tel-alternativo', '(86) 95555-6666');
+  await p.locator('#mm-tel-alternativo').press('Tab');
+  await p.waitForTimeout(250);
+  const updAltEditado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_alternativo === '5586955556666'));
+  check('editar o alternativo já existente no cartão salva sozinho (onblur)', !!updAltEditado, JSON.stringify(updAltEditado));
+  // Limpar o campo (deixar vazio) equivale a remover — a estrutura muda
+  // (o cartão precisa sumir e "+ Adicionar" reaparecer), então esse caso
+  // específico reconstrói o modal ao salvar.
+  check('"+ Adicionar outro telefone" continua fora enquanto o alternativo existir', await p.locator('#mm-tel-alt-novo').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.635 Bug real corrigido em 27/08/2026 — editar o telefone principal e
+// clicar em "Salvar" LOGO em seguida (sem trocar de campo antes) perdia o
+// resto do que tinha sido digitado (rastreio, nota, observação): o onblur
+// do cartão disparava cmRenderModal() no meio do próprio clique, trocando o
+// botão "Salvar" por um elemento novo — o clique original mirava o botão
+// antigo (já removido do DOM) e se perdia, sem toast nem erro nenhum.
+// Corrigido fazendo o onblur do telefone principal nunca reconstruir o
+// modal (o cartão já é sempre o mesmo <input>, nada muda de estrutura). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+  await p.selectOption('#modal-body select >> nth=0', 'carta_registrada');
+  await p.waitForTimeout(150);
+  await p.fill('#mm-rastreio', 'zz987654321br');
+  // Sem Tab/blur explícito aqui — clica direto em "Salvar", exatamente o
+  // cenário que expunha a corrida.
+  await p.fill('#mm-tel-principal', '(86) 97777-1111');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(300);
+
+  check('modal fecha normalmente (não trava com o clique perdido)', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+  const updTelRace = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_whatsapp === '5586977771111'));
+  check('o telefone editado no cartão foi salvo', !!updTelRace, JSON.stringify(updTelRace));
+  const updRastreioRace = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.codigo_rastreio === 'ZZ987654321BR'));
+  check('E o rastreio digitado no rodapé TAMBÉM foi salvo (não se perdeu no clique)', !!updRastreioRace, JSON.stringify(updRastreioRace));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -744,7 +869,7 @@ async function login(p) {
   // era alcançado e não aparecia toast nenhum — parecia que o clique não fez
   // nada. window.__mock.forcarErroRedeTabela (ver STUB) simula essa falha.
   await p.evaluate(() => { window.__mock.forcarErroRedeTabela = 'sime_atores'; });
-  await p.fill('#mm-tel', '(86) 90000-1111');
+  await p.fill('#mm-tel-principal', '(86) 90000-1111');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(200);
 
