@@ -1551,7 +1551,15 @@ async function login(p) {
   check('endereço de DIEGO usa o do cadastro de eleitor (só bloco disponível)', /Rua das Flores, 100/.test(txt) && /Cadastro de eleitor \(TRE\)/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 800));
   check('endereço de NUNO usa "dados do mesário" (prioridade sobre o de eleitor)', /Av\. Nova, 50/.test(txt) && !/Endereço antigo que não deve aparecer/.test(txt) && /Dados do mesário \(TRE\)/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 800));
 
-  check('botões de etiqueta/AR desabilitados sem remetente completo', await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').isDisabled());
+  // 27/08/2026, fix cbd05e1: botão NUNCA fica disabled (um botão disabled
+  // não dispara clique nenhum, sem toast, sem aviso — "clicar não fez
+  // nada" reportado em produção) — clicar sem remetente completo mostra
+  // toast explicando o que falta, e não deve chamar window.print().
+  check('botão de etiqueta não fica disabled (nunca — evita clique morto)', !(await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').isDisabled()));
+  await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').click();
+  await p.waitForTimeout(200);
+  check('clicar sem remetente completo avisa por toast, não falha em silêncio', (await p.textContent('#toast')).includes('Preencha nome do cartório'));
+  check('clicar sem remetente completo NÃO chama window.print()', await p.evaluate(() => window.__printCalls) === 0);
 
   // Preenche e salva o remetente (cartório da zona).
   await p.fill('#co-rem-nome', 'Cartório da 7ª Zona Eleitoral');
@@ -1568,8 +1576,6 @@ async function login(p) {
   const updZona = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_zonas'));
   check('remetente gravado em sime_zonas (update, não insert novo)', !!updZona && updZona.payload.remetente_nome === 'Cartório da 7ª Zona Eleitoral', JSON.stringify(updZona));
   check('grava log de auditoria do remetente salvo', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_remetente_salvo')));
-
-  check('botão de etiqueta habilita depois do remetente completo', !(await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').isDisabled()));
 
   // Imprime a etiqueta de DIEGO (botão individual).
   await p.locator('[data-ator-id="a4"] button:has-text("🏷️ Etiqueta")').click();
