@@ -208,6 +208,7 @@ sime_ocorrencias    -- problemas como registro (dono, relógio, escalonamento)
 sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
 sime_contatos_externos  -- Equatorial e afins, por zona/município
 sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
+sime_voluntarios    -- cadastro paralelo de mesários voluntários (não é sime_atores/roster do TRE)
 ```
 
 ### Painel de Problemas (`SIME_problemas.html`)
@@ -1353,6 +1354,62 @@ cada um com propósito diferente:
   `correspondencia_ar_impresso`, com autor e lista de atores) — não é
   confirmação de que o Correio recebeu, só de que o cartório gerou o
   documento.
+
+- **🙋 Voluntários** (`sime_voluntarios.js`, 28/08/2026, pedido direto: "quero
+  uma pagina para cadastrar os mesários voluntários. no cadastro deve ter cpf
+  nome telefone e selecionar a função que quer trabalhar (mesário, apoio
+  logistico, coordenador de acessibilidade, todas) e o local que quer
+  trabalhar (cidade, e local de votação ou todos). para quando tiver que
+  preencher alguma vaga ir selecionando os voluntários a medida que foram
+  sendo cadastrados.") — cadastro **paralelo** ao roster oficial do TRE
+  (`sime_atores`), tabela própria `sime_voluntarios`
+  (`sql/SIME_voluntarios.sql`), RLS por zona (`sime_zona_visivel`), unique
+  `(zona_id, cpf)` — mesma pessoa não se cadastra duas vezes na mesma zona.
+
+  **Acesso: só a equipe do cartório, decisão explícita (pergunta feita ao
+  dono do projeto: formulário público de auto-cadastro vs. só a equipe
+  digitar — respondeu "Só a equipe do cartório (recomendado pra começar)").**
+  Mesmo padrão de acesso do resto de `SIME_convocacao.html` — sem trava de
+  perfil, qualquer login da equipe cadastra/edita — não é formulário público
+  de voluntariado. Um formulário público fica de fora desta v1, não
+  descartado, só não construído agora.
+
+  **Escopo v1, deliberado: é um REGISTRO com status, não um automatismo.**
+  `funcoes` (array, vazio = "qualquer função") usa o MESMO vocabulário de
+  `sime_atores.funcao` (`mesario`/`auxiliar_eleicao`/`coord_acessibilidade`)
+  de propósito — não pra converter sozinho, mas pra não exigir tradução se
+  um dia isso acontecer manualmente. `status` é só
+  `disponivel`/`convocado`/`indisponivel` — 3 valores simples, botões de
+  troca rápida no card (mesmo padrão de toda ação rápida do projeto). Não
+  cria/edita `sime_atores` em nenhum fluxo — quando o cartório escolhe um
+  voluntário pra preencher uma vaga de verdade, isso continua sendo feito
+  manualmente pelas telas de sempre (`SIME_atores.html`/
+  `SIME_convocacao.html`); `sime_voluntarios.ator_id` existe na tabela só
+  como campo pronto pro futuro (nunca preenchido por código nenhum ainda).
+
+  **Formulário**: nome, CPF (só 11 dígitos — validação leve, sem dígito
+  verificador de propósito, mesmo espírito de "não travar por validação
+  excessiva" do resto do projeto), WhatsApp opcional (mesma convenção
+  `"55"+DDD+8/9`), função (checkbox "Qualquer função" que desmarca/desabilita
+  as específicas quando marcada — nasce marcada por padrão num cadastro
+  novo), município→local em cascata (`<select>` de município populado a
+  partir de `sime_secoes` da zona — mesma fonte que o resto do sistema usa
+  pra essa dimensão, sem tabela própria; o `<select>` de local só aparece e
+  só lista os locais daquele município depois de escolhido), observação
+  livre. CPF duplicado na mesma zona mostra erro amigável ("⚠ Já existe um
+  voluntário com esse CPF cadastrado nesta zona"), não a mensagem crua do
+  Postgres — mesmo padrão de erro amigável já usado no resto do projeto.
+  Remover é soft-delete (`ativo=false`) — nunca apaga de verdade, mesmo
+  padrão de auditoria do resto do SIME.
+
+  **Bug real corrigido antes de subir (achado por autorrevisão, não por
+  teste): a busca por nome/CPF anulava o filtro por nome quando a query não
+  tinha nenhum dígito.** `vlSoDigitos(v.cpf).includes(q.replace(/\D/g,''))`
+  — com uma busca tipo "ana" (sem dígito), `q.replace(/\D/g,'')` vira string
+  vazia, e `''.includes('')` é sempre `true` (string vazia é substring de
+  qualquer coisa) — o item nunca era excluído pelo `&&` do filtro, então
+  buscar por nome mostrava todo mundo, sem filtrar nada. Corrigido: só
+  compara CPF quando a busca de fato tem algum dígito extraído.
 
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —

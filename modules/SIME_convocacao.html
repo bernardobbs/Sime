@@ -156,12 +156,13 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
     <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
+    <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
   </div>
 
   <div class="content" id="content"></div>
 </div>
 
-<div class="overlay" id="overlay" onclick="cmFecharModal(event)">
+<div class="overlay" id="overlay" onclick="cmFecharModal(event);vlFecharModal(event)">
   <div class="modal" id="modal-body"></div>
 </div>
 
@@ -175,6 +176,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_historico_sync.js"></script>
 <script src="./sime_relatorio_elo.js"></script>
 <script src="./sime_correspondencia.js"></script>
+<script src="./sime_voluntarios.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -279,6 +281,7 @@ function goTab(tab, btn) {
   if (tab === 'historico' && typeof hsDados !== 'undefined') hsDados = null;
   if (tab === 'relatorio-elo' && typeof reDados !== 'undefined') reDados = null;
   if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
+  if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
   render();
 }
 function render() {
@@ -288,6 +291,7 @@ function render() {
   if (curTab === 'historico') { renderHistoricoSync(); return; }
   if (curTab === 'relatorio-elo') { renderRelatorioElo(); return; }
   if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
+  if (curTab === 'voluntarios') { renderVoluntarios(); return; }
 }
 window.render = render;
 </script>
