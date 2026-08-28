@@ -1667,6 +1667,26 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 > a 7ª, e não deve ditar prazo nem prioridade de trabalho enquanto a 7ª não
 > estiver pronta. Retomar a 94ª como tarefa própria, não como item que puxa
 > os demais.
+
+> **Como adicionar o primeiro usuário de uma zona vazia (27/08/2026, pedido
+> direto: "como adicionamos usuários a zona 94?").** A Edge Function
+> `sime-admin-user` (aba Equipe → "+ Novo membro") já aceitava `zona_id` no
+> corpo pra `super_admin` escolher outra zona (`supabase/functions/
+> sime-admin-user/index.ts:138-141` — qualquer outro perfil sempre cria na
+> própria zona, ignorando o campo) — mas a tela nunca mandava esse campo, só
+> `{nome, email, perfil}`. Sem isso era ovo-e-galinha: pra criar o primeiro
+> usuário da 94ª seria preciso logar como alguém DA 94ª, que não existia.
+> Corrigido com um seletor "Zona eleitoral" no formulário de novo membro
+> (`showMemberModal()`), visível só quando `window.SIME_IDENTIDADE.perfil===
+> 'super_admin'` e só ao criar (não edita a zona de quem já existe) —
+> reaproveita `window.ZONAS_REAIS` (já carregado pra aba Zonas) e pré-marca a
+> própria zona do super_admin. `saveMember()` só inclui `zona_id` no corpo se
+> o campo existir no DOM — pra qualquer outro perfil, o comportamento
+> continua idêntico a antes (sempre a própria zona, decidido pela Edge
+> Function). Na prática: um `super_admin` logado (mesmo da 7ª) escolhe "94ª
+> Zona" no formulário e cria o primeiro `coordenador` de lá; dali em diante,
+> esse coordenador já consegue logar e cadastrar o resto da própria equipe
+> normalmente (sem precisar mais do seletor).
 - **Data de carga e lacre da 7ª Zona** (`data_dx_ini`) nula — não há padrão
   legal, é decisão do cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.

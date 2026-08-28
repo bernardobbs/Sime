@@ -1463,6 +1463,20 @@ function showMemberModal(m){
         </select>
       </div>
 
+      <!-- Zona (só super_admin, só ao criar login novo) — sem isto, todo login
+           novo caía sempre na zona de quem está logado (a Edge Function
+           sime-admin-user aceita zona_id no corpo, mas nada na tela mandava).
+           Sem essa escolha não havia como um super_admin da 7ª criar o
+           primeiro usuário da 94ª — ninguém de lá existia ainda pra logar e
+           criar os próprios colegas. -->
+      ${(isNew && window.SIME_IDENTIDADE?.perfil==='super_admin' && window.ZONAS_REAIS?.length) ? `
+      <div class="form-group"><label for="m-zona">Zona eleitoral</label>
+        <select id="m-zona">
+          ${window.ZONAS_REAIS.map(z=>`<option value="${z.id}" ${z.id===window.MINHA_ZONA_ID?'selected':''}>${z.numero}ª Zona — ${z.municipio||''}</option>`).join('')}
+        </select>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Só super_admin escolhe a zona — os demais perfis sempre criam na própria.</div>
+      </div>` : ''}
+
       <!-- Escalonamento: WhatsApp (Gestor de Problemas / Chefe de Cartório) —
            é pra onde o Hermes manda aviso quando um problema não é resolvido
            a tempo (10 min sem dono, 30 min sem solução — ver CLAUDE.md). -->
@@ -1602,11 +1616,15 @@ async function saveMember(id){
       showToast('⚠ Faça login como admin para criar acessos');
       return;
     }
+    // zona_id só é enviado quando o campo existe na tela (super_admin, ver
+    // showMemberModal) — a Edge Function ignora o campo pra qualquer outro
+    // perfil e usa sempre a zona de quem está logado.
+    const zonaEl = document.getElementById('m-zona');
     try{
       const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
-        body:JSON.stringify({ nome, email, perfil }),
+        body:JSON.stringify(zonaEl ? { nome, email, perfil, zona_id: zonaEl.value } : { nome, email, perfil }),
       });
       const out=await resp.json().catch(()=>({}));
       if(!resp.ok){ trackSync(false); showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
