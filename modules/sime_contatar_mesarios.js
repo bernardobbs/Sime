@@ -335,53 +335,38 @@ async function cmConfirmarParticipacao(id) {
   if (cmModalId === id) cmRenderModal();
 }
 
-// Fato manual e independente de `confirmacao` (28/08/2026, pedido direto:
-// "o botão de convocado deve ser habilitado somente quando informamos que o
-// eleitor recebeu a convocação") — o cartório marca isto quando SABE, por
-// qualquer via (ligou e confirmou, viu o AR chegar, WhatsApp respondeu),
-// que o eleitor recebeu a convocação. É o pré-requisito pro botão
-// "Convocado" ficar disponível (ver cmMarcarConvocado) — deliberadamente
-// nunca escrito pelo Hermes, só pelo cartório.
-async function cmToggleConvocacaoRecebida(id) {
-  const sb = window.supabaseAtores;
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (!p) return;
-  const novo = !p.convocacao_recebida;
-  const { data: ts } = await sb.rpc('sime_now');
-  const patch = { convocacao_recebida: novo, convocacao_recebida_ts: novo ? ts : null };
-  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  Object.assign(p, patch);
-  await cmLog('mesario_convocacao_recebida', '', { ator_id: id, recebida: novo });
-  showToast(novo ? '📬 Marcado: eleitor recebeu a convocação' : '↩ Desmarcado');
-  render();
-  if (cmModalId === id) cmRenderModal();
-}
-
 // "Convocado" (27/08/2026, pedido direto do cartório ao ver o modal:
 // "convocado significa que ele recebeu a carta, mas pode ser substituído" —
 // diferente de "confirmado", que já disse que vai participar). Virou um
 // valor de confirmacao de verdade em 28/08/2026 (antes era só o mesmo
-// `pendente` de sempre, setado explicitamente pelo botão) — e ganhou um
-// pré-requisito: só pode ser marcado depois que convocacao_recebida=true
-// (ver cmToggleConvocacaoRecebida), pra não virar "convocado" clicado sem
-// ninguém ter de fato confirmado que a carta/mensagem chegou. Serve tanto
-// pra registrar "sabemos que foi notificado, só ainda não confirmou" quanto
-// pra desfazer um confirmado/recusado marcado por engano — por isso limpa
-// `data_confirmacao` junto, senão a data ficaria mentindo que a pessoa
-// confirmou numa data em que na verdade só foi convocada.
+// `pendente` de sempre, setado explicitamente pelo botão).
+//
+// Até 28/08/2026 este botão só funcionava depois de marcar uma caixinha
+// separada ("Eleitor recebeu a convocação"), pra garantir que ninguém virasse
+// "convocado" sem o cartório ter de fato confirmado o recebimento. Reportado
+// no mesmo dia como duplicação confusa (caixinha + botão fazendo a "mesma
+// coisa" visualmente) — corrigido fundindo os dois num clique só, mesmo
+// padrão que `cmConfirmarParticipacao` já usava: clicar em "Convocado" JÁ É,
+// por si só, a confirmação manual do cartório de que a carta/mensagem
+// chegou, então grava `convocacao_recebida=true` junto, sem precisar de um
+// passo separado antes. `cmToggleConvocacaoRecebida` (a caixinha) foi
+// removida — nada mais escreve nesse campo fora dos três pontos que já
+// confirmam recebimento por definição (Confirmado, Convocado, e o
+// `Ciente='1'` de "Atualizar contatos").
+//
+// Serve tanto pra registrar "sabemos que foi notificado, só ainda não
+// confirmou" quanto pra desfazer um confirmado/recusado marcado por engano —
+// por isso limpa `data_confirmacao` junto, senão a data ficaria mentindo que
+// a pessoa confirmou numa data em que na verdade só foi convocada.
 async function cmMarcarConvocado(id) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
-  // Botão nunca fica `disabled` (mesmo critério já usado no resto do
-  // sistema — um disabled sem feedback nenhum já causou confusão real numa
-  // tela de correspondência) — sempre clicável, mas explica o que falta.
-  if (!p.convocacao_recebida) { showToast('⚠ Confirme antes que o eleitor recebeu a convocação (caixa acima dos botões)'); return; }
-  const { error } = await sb.from('sime_atores').update({ confirmacao: 'convocado', data_confirmacao: null }).eq('id', id);
+  const { data: ts } = await sb.rpc('sime_now');
+  const patch = { confirmacao: 'convocado', data_confirmacao: null, convocacao_recebida: true, convocacao_recebida_ts: ts };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  p.confirmacao = 'convocado';
-  p.data_confirmacao = null;
+  Object.assign(p, patch);
   await cmLog('mesario_marcado_convocado', '', { ator_id: id });
   showToast('📋 Marcado como convocado — aguardando confirmação');
   render();
@@ -1058,19 +1043,15 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.convocacao_recebida && (p.confirmacao || 'pendente') === 'pendente' ? ' · 📬 Recebeu a convocação (falta marcar Convocado)' : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
-      <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--text2);margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" ${p.convocacao_recebida ? 'checked' : ''} onchange="cmToggleConvocacaoRecebida('${p.id}')">
-        📬 Eleitor recebeu a convocação (por qualquer meio — confirmação manual do cartório)
-      </label>
       <div style="display:flex;gap:6px;margin-bottom:4px">
         <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
         <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
       </div>
-      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar (marca sozinho que recebeu a convocação também). Convocado = confirmamos que recebeu, ainda não disse se vai participar — só fica disponível depois de marcar a caixa acima. Nenhum dos três manda mensagem — é status manual, não depende de resposta automática por WhatsApp.</div>
+      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>

@@ -1092,10 +1092,7 @@ async function login(p) {
   // Virou um valor de confirmacao de verdade em 28/08/2026 (antes era o
   // mesmo 'pendente' de sempre) — grava confirmacao='convocado' e limpa
   // data_confirmacao, pra desfazer uma confirmação marcada por engano ou
-  // registrar "sabemos que foi notificado, só não confirmou ainda". CARLA já
-  // tem convocacao_recebida=true (o clique em "Confirmado" logo acima já
-  // marca isso sozinho), então o gate do botão nem entra em jogo aqui — ver
-  // bloco 2.86 abaixo pra testar o gate em si.
+  // registrar "sabemos que foi notificado, só não confirmou ainda".
   await btnConvocadoModal.click();
   await p.waitForTimeout(250);
   const updConvocado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'convocado'));
@@ -1107,10 +1104,13 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 2.855 Botão "Convocado" só destrava depois de marcar "recebeu a
-// convocação" (28/08/2026, pedido direto: "o botão de convocado deve ser
-// habilitado somente quando informamos que o eleitor recebeu a
-// convocação") ──
+// ── 2.855 Botão "Convocado" é um clique só, sem caixinha separada
+// (28/08/2026 originalmente, revisado no mesmo dia — o gate por checkbox
+// separada foi reportado como duplicação confusa: "a função de confirmar a
+// convocação ficou duplicado, uma seleção e um botão". Corrigido fundindo os
+// dois — clicar em "Convocado" já é, por si só, a confirmação manual do
+// cartório de que a carta/mensagem chegou, mesmo padrão que "Confirmado" já
+// usava desde antes) ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -1121,30 +1121,16 @@ async function login(p) {
   await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(150);
 
-  const checkbox = p.locator('#modal-body input[type="checkbox"]');
-  check('caixa "recebeu a convocação" começa desmarcada (fixture padrão)', !(await checkbox.isChecked()));
+  check('não existe mais caixinha separada "recebeu a convocação" no modal', await p.locator('#modal-body input[type="checkbox"]').count() === 0);
 
-  // Clicar "Convocado" sem marcar a caixa primeiro: nunca fica `disabled`
-  // (mesmo critério já usado no resto do sistema — um botão disabled sem
-  // feedback nenhum já causou confusão real numa tela de correspondência),
-  // mas avisa por toast e NÃO grava nada.
+  // ANA começa sem convocacao_recebida (fixture padrão) — um único clique em
+  // "Convocado" já grava os dois fatos juntos, sem passo intermediário.
   await p.locator('#modal-body button:has-text("📋 Convocado")').click();
   await p.waitForTimeout(200);
-  const semGate = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'convocado'));
-  check('sem marcar a caixa, "Convocado" não grava nada', !semGate, JSON.stringify(semGate));
-
-  // Marca a caixa — vira um update em convocacao_recebida.
-  await checkbox.click();
-  await p.waitForTimeout(200);
-  const updRecebida = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.convocacao_recebida === true));
-  check('marcar a caixa grava convocacao_recebida=true (+ ts)', !!updRecebida && !!updRecebida.payload.convocacao_recebida_ts, JSON.stringify(updRecebida));
-  check('grava log de auditoria "mesario_convocacao_recebida"', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_convocacao_recebida' && e.payload.payload.ator_id === 'a1' && e.payload.payload.recebida === true)));
-
-  // Agora sim "Convocado" funciona.
-  await p.locator('#modal-body button:has-text("📋 Convocado")').click();
-  await p.waitForTimeout(200);
-  const comGate = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'convocado'));
-  check('depois de marcar a caixa, "Convocado" grava confirmacao=convocado', !!comGate, JSON.stringify(comGate));
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'convocado'));
+  check('um clique só grava confirmacao=convocado', !!upd, JSON.stringify(upd));
+  check('e já grava convocacao_recebida=true (+ ts) junto, no mesmo update', !!upd && upd.payload.convocacao_recebida === true && !!upd.payload.convocacao_recebida_ts, JSON.stringify(upd));
+  check('nenhum update separado só de convocacao_recebida (não existe mais 2 passos)', (await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1').length)) === 1);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

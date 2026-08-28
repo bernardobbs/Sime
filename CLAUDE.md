@@ -255,6 +255,36 @@ nunca é adivinhado por regra própria — vem direto da coluna "Tipo função
 eleitoral"/"Nº Função Eleitoral" do próprio arquivo (que já traz 'MRV'/'AL'),
 ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
 
+### Extrair seções/locais de votação da própria planilha de mesários
+
+`scripts/extrair_secoes_locais.py` (28/08/2026, pedido direto: "da planilha
+de mesários do modulo de convocação você consegue extrair as seções e
+locais de votação?") — útil principalmente pra configurar uma zona **nova**
+(ex.: 94ª), cujo `sime_secoes` ainda não existe e cujo seed original da 7ª
+foi feito à mão, fora do repositório ("Inserção das seções e rotas via
+script de seed separado", ver `sql/SIME_schema.sql`).
+
+```
+python3 scripts/extrair_secoes_locais.py saida.sql arquivo.csv <zona> <uf>
+```
+
+Aceita os dois formatos CSV já usados pelo resto do projeto (81 colunas ou
+"MRV simples" de 16, auto-detectados pelo cabeçalho — os mesmos dois que
+"🔄 Sincronizar" aceita no navegador); não aceita o dump ELO `.md` nesta v1
+(exportar como CSV primeiro, ou pedir pra estender — a leitura de largura
+fixa já existe em `parse_mesarios.py`). Gera um `INSERT ... ON CONFLICT
+(zona_id, numero) DO UPDATE` idempotente pra `sime_secoes`.
+
+**Só a aba MRV serve com confiança** — mesmo motivo já documentado no
+Dashboard (apoio logístico quase nunca traz "Seção local de trabalho"
+preenchido no arquivo do TRE): linhas de AL são filtradas antes de extrair.
+**Não traz número de eleitores** — a planilha de mesários não tem essa
+coluna; quem precisar desse campo completa depois com a lista oficial de
+seções do TRE, fora do escopo deste script. Seção duplicada com
+local/município **diferente** entre linhas nunca é resolvida por
+adivinhação — mantém o primeiro valor encontrado e lista o conflito no
+final, pro cartório decidir manualmente.
+
 **Direto pelo navegador, sem gerar SQL**: `SIME_convocacao.html` (módulo
 próprio, separado de `SIME_atores.html` desde 20/08/2026 — antes eram duas
 abas lá dentro) → aba **🔄 Sincronizar** tem TRÊS caminhos separados
@@ -569,17 +599,34 @@ cada um com propósito diferente:
     chegar, etc.) — nunca escrito pelo Hermes, nunca detectado
     automaticamente por meio (a resposta escolhida quando perguntado "o que
     especificamente libera o botão" foi "confirmação manual", não
-    "automático pelo meio de contato"). Novo checkbox no modal ("📬 Eleitor
-    recebeu a convocação"), acima da linha de 3 botões,
-    `cmToggleConvocacaoRecebida()`.
+    "automático pelo meio de contato").
   - `sime_atores_confirmacao_chk` ganha `'convocado'`. `cmMarcarConvocado()`
     agora grava `confirmacao='convocado'` de verdade (antes era `'pendente'`
-    — ver bullet acima) — **e só executa se `p.convocacao_recebida` for
-    true**; sem isso, mostra toast explicando o que falta e não grava nada.
-    Botão nunca fica `disabled` de propósito — mesmo critério já usado no
-    resto do sistema (um `disabled` sem feedback nenhum já causou confusão
-    real numa tela de correspondência, ver bloco de Correspondência) — é
-    sempre clicável, só que a função em si recusa agir sem o pré-requisito.
+    — ver bullet acima).
+
+  **Checkbox + gate removidos no mesmo dia, revisado depois — virou 1 clique
+  só (pedido direto: "a função de confirmar a convocação ficou duplicado,
+  uma seleção e um botão").** A primeira versão pedia um passo extra: um
+  checkbox próprio no modal ("📬 Eleitor recebeu a convocação",
+  `cmToggleConvocacaoRecebida()`) que precisava ser marcado ANTES do botão
+  "Convocado" aceitar o clique (sem isso, toast explicando o que falta e
+  nada era gravado — nunca `disabled`, mesmo critério de sempre). Visualmente
+  isso lia como duas UIs fazendo a mesma coisa (uma caixinha "recebeu a
+  convocação" bem em cima de um botão "Convocado"), mesmo os dois campos
+  sendo tecnicamente distintos por baixo (`convocacao_recebida` = fato;
+  `confirmacao='convocado'` = status). Corrigido fundindo os dois: clicar em
+  "Convocado" agora grava `confirmacao='convocado'` **e**
+  `convocacao_recebida=true`/`convocacao_recebida_ts` no mesmo update, sem
+  pré-requisito nenhum — mesmo padrão que "Confirmado"
+  (`cmConfirmarParticipacao()`) já usava desde o início (ver bullet abaixo).
+  `cmToggleConvocacaoRecebida()` e o checkbox foram removidos do modal — o
+  campo `convocacao_recebida` continua existindo na tabela (só três pontos
+  ainda escrevem nele: Confirmado, Convocado, e o `Ciente='1'` de "Atualizar
+  contatos" — ver bullet abaixo), só não tem mais controle manual próprio na
+  UI. O rótulo `mesario_convocacao_recebida` em `CM_LOG_LABEL` foi mantido
+  (não removido) — só pra continuar renderizando corretamente o histórico de
+  quem usou o checkbox antes desta correção; nada novo grava esse `acao` daqui
+  em diante.
   - **"Confirmado" (`cmConfirmarParticipacao()`) agora também marca
     `convocacao_recebida=true` sozinho** — confirmar participação já
     implica ter recebido a convocação, então este botão cobre os dois fatos
