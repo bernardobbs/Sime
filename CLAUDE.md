@@ -1387,29 +1387,86 @@ cada um com propósito diferente:
   `SIME_convocacao.html`); `sime_voluntarios.ator_id` existe na tabela só
   como campo pronto pro futuro (nunca preenchido por código nenhum ainda).
 
-  **Formulário**: nome, CPF (só 11 dígitos — validação leve, sem dígito
-  verificador de propósito, mesmo espírito de "não travar por validação
-  excessiva" do resto do projeto), WhatsApp opcional (mesma convenção
-  `"55"+DDD+8/9`), função (checkbox "Qualquer função" que desmarca/desabilita
-  as específicas quando marcada — nasce marcada por padrão num cadastro
-  novo), município→local em cascata (`<select>` de município populado a
-  partir de `sime_secoes` da zona — mesma fonte que o resto do sistema usa
-  pra essa dimensão, sem tabela própria; o `<select>` de local só aparece e
-  só lista os locais daquele município depois de escolhido), observação
-  livre. CPF duplicado na mesma zona mostra erro amigável ("⚠ Já existe um
-  voluntário com esse CPF cadastrado nesta zona"), não a mensagem crua do
+  **Formulário**: nome, documento — CPF OU título de eleitor, WhatsApp
+  opcional (mesma convenção `"55"+DDD+8/9`), função (checkbox "Qualquer
+  função" que desmarca/desabilita as específicas quando marcada — nasce
+  marcada por padrão num cadastro novo), município→local em cascata
+  (`<select>` de município populado a partir de `sime_secoes` da zona —
+  mesma fonte que o resto do sistema usa pra essa dimensão, sem tabela
+  própria; o `<select>` de local só aparece e só lista os locais daquele
+  município depois de escolhido), observação livre. Documento duplicado na
+  mesma zona mostra erro amigável ("⚠ Já existe um voluntário com esse
+  CPF/título de eleitor cadastrado nesta zona"), não a mensagem crua do
   Postgres — mesmo padrão de erro amigável já usado no resto do projeto.
   Remover é soft-delete (`ativo=false`) — nunca apaga de verdade, mesmo
   padrão de auditoria do resto do SIME.
 
   **Bug real corrigido antes de subir (achado por autorrevisão, não por
-  teste): a busca por nome/CPF anulava o filtro por nome quando a query não
-  tinha nenhum dígito.** `vlSoDigitos(v.cpf).includes(q.replace(/\D/g,''))`
+  teste): a busca por nome/documento anulava o filtro por nome quando a
+  query não tinha nenhum dígito.** `vlSoDigitos(v.documento).includes(q.replace(/\D/g,''))`
   — com uma busca tipo "ana" (sem dígito), `q.replace(/\D/g,'')` vira string
   vazia, e `''.includes('')` é sempre `true` (string vazia é substring de
   qualquer coisa) — o item nunca era excluído pelo `&&` do filtro, então
   buscar por nome mostrava todo mundo, sem filtrar nada. Corrigido: só
-  compara CPF quando a busca de fato tem algum dígito extraído.
+  compara documento quando a busca de fato tem algum dígito extraído.
+
+  **CPF OU título de eleitor, detectado sozinho pelo tamanho (28/08/2026,
+  `sql/SIME_voluntarios_documento.sql`, pedido direto: "no mesário
+  voluntário podemos cadastrar cpf ou titulo, e digitando o numero ele
+  escolhe se cpf ou titulo de eleitor").** A coluna `cpf` (só CPF, criada
+  horas antes) virou `documento` (genérico) + `tipo_documento`
+  (`'cpf'`/`'titulo'`, `not null`, sem default — o cliente sempre calcula e
+  manda os dois juntos; um default mascararia em silêncio um insert que
+  esqueceu de calcular o tipo). Renomear em vez de manter duas colunas foi
+  seguro porque a tabela tinha **zero registros** nas duas zonas até esta
+  migração (criada no mesmo dia). `vlDetectarTipoDocumento()`
+  (`sime_voluntarios.js`) decide só pelo TAMANHO do que sobra depois de
+  tirar tudo que não é dígito: **11 dígitos → CPF, 12 → título de
+  eleitor** — mesma convenção de 12 dígitos já usada em
+  `normalizarTituloEleitor()` (`sime_ui_utils.js`) pro título de eleitor de
+  `sime_atores`. Nunca pergunta o tipo à parte (um único campo "CPF ou
+  título de eleitor" no formulário) nem tenta adivinhar além do tamanho:
+  um título sem o zero à esquerda (ficando com 11 dígitos) é indistinguível
+  de um CPF de verdade e cai como CPF — mesma armadilha já documentada pra
+  `inscricao_eleitoral` em outro lugar deste arquivo, aqui resolvida do
+  mesmo jeito (exigir o zero, nunca adivinhar). Exibição: CPF continua
+  formatado `000.000.000-00`; título fica cru, sem máscara — mesmo padrão
+  que `inscricao_eleitoral` já usa em todo o resto do sistema. Índice único
+  virou `idx_voluntarios_zona_documento` (zona_id, documento) — o mesmo
+  número não pode ser cadastrado duas vezes na zona, seja CPF ou título
+  (nunca colidem entre si: tamanhos diferentes, 11 vs. 12, nunca a mesma
+  string).
+
+  **Dashboard sugere quem deve ocupar a vaga (28/08/2026, `sime_resumo_secoes.js`,
+  pedido direto: "se aparecer seção incompleta e/ou marcado para
+  substituição indicar quem deve ocupar a vaga, deve vir por ordem de
+  cadastro").** No drilldown por seção (📊 Dashboard → clicar num local),
+  cada cargo de mesa **sem ninguém designado (❌)** ou **marcado
+  `precisa_substituir` (🔁)** ganha uma segunda linha ("🙋 Fulano") com o
+  próximo voluntário disponível da fila — só informativo, sem ação de
+  clique nesta v1. `rsCarregar()` carrega `sime_voluntarios` filtrado por
+  `status='disponivel'` e `ativo=true`, já ordenado por `created_at`
+  ascendente; `rsProximoVoluntario(municipio, localNome)` percorre essa
+  lista já ordenada e devolve o PRIMEIRO que casa por função (`mesario` ou
+  "qualquer função") + local (`municipio`/`local_votacao` vazios no
+  cadastro = "topa qualquer lugar", mesma regra de "qualquer" do resto do
+  cadastro de voluntários). **A ordem é estritamente por data de cadastro,
+  nunca por "quão bem" o voluntário casa com a vaga** — um voluntário que
+  topa qualquer local mas se cadastrou primeiro passa na frente de um
+  registrado especificamente pro local exato, se este se cadastrou depois;
+  é fila, não melhor-encaixe. Confirmado/convocado/aguardando resposta não
+  ganham sugestão — só cargos genuinamente em aberto. Escopo desta v1,
+  deliberado: só cobre o drilldown MRV por seção (que já é
+  estruturalmente só de mesário, ver nota mais acima — "estruturalmente
+  sobre os 4 cargos de mesa, não faz sentido encaixar apoio logístico
+  ali"); Coordenador de Acessibilidade/Auxiliar de Eleição não têm essa
+  sugestão ainda, porque o Dashboard não tem um drilldown equivalente por
+  cargo pra eles (só agregado por local/pizza). O mesmo voluntário pode
+  aparecer como sugestão em MAIS de uma vaga simultaneamente (a fila não
+  reserva ninguém) — deliberado: o cartório só usa uma sugestão de fato
+  quando contacta a pessoa e marca "📋 Convocado" em Voluntários, o que já
+  tira ela de `status='disponivel'` e, portanto, das próximas sugestões
+  (sem precisar de nenhuma lógica de reserva/exclusão adicional).
 
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —

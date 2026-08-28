@@ -27,14 +27,15 @@ class QB {
     // explicitamente, então sem o default aqui o mock guardaria a linha sem
     // o campo ativo, e o filtro ativo=true do reload a excluiria por engano.
     const linhas=(Array.isArray(p)?p:[p]).map(row=>({ id:'ins_'+Math.random().toString(36).slice(2), ativo:true, ...row }));
-    // CPF duplicado na mesma zona — simula a violação da unique index
-    // (zona_id,cpf) igual o Postgres faria, pra testar o erro amigável.
+    // CPF/título duplicado na mesma zona — simula a violação da unique
+    // index (zona_id,documento) igual o Postgres faria, pra testar o erro
+    // amigável.
     if(this.t==='sime_voluntarios'){
       for(const row of linhas){
-        const bate=(window.__mock.sime_voluntarios||[]).some(x=>x.zona_id===row.zona_id && x.cpf===row.cpf);
+        const bate=(window.__mock.sime_voluntarios||[]).some(x=>x.zona_id===row.zona_id && x.documento===row.documento);
         if(bate){
           window.__mock.escritas.push({ op:'insert', tabela:this.t, payload:p, erro:true });
-          return Promise.resolve({ error:{ message:'duplicate key value violates unique constraint "idx_voluntarios_zona_cpf"' }, data:null });
+          return Promise.resolve({ error:{ message:'duplicate key value violates unique constraint "idx_voluntarios_zona_documento"' }, data:null });
         }
       }
     }
@@ -57,9 +58,6 @@ class QB {
   }
   then(res, rej){
     if(this._op==='update'){
-      if(this.t==='sime_voluntarios' && 'cpf' in this._payload){
-        const bate=(window.__mock.sime_voluntarios||[]).some(x=>this._casa(x)===false && x.zona_id===this._payload.zona_id && x.cpf===this._payload.cpf);
-      }
       window.__mock.escritas.push({ op:'update', tabela:this.t, payload:this._payload, filtro:{...this.f} });
       const rows=(window.__mock[this.t]||[]);
       const atingidas=[];
@@ -108,8 +106,8 @@ function mock() {
     ],
     sime_atores: [],
     sime_voluntarios: [
-      { id: 'v1', zona_id: 'z7', cpf: '11122233344', nome: 'ANA VOLUNTARIA', telefone_whatsapp: '5586999991111', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: 'Grupo Escolar A', observacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-27T10:00:00.000Z' },
-      { id: 'v2', zona_id: 'z7', cpf: '22233344455', nome: 'BRUNO VOLUNTARIO', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, observacao: 'Disponível só de manhã', status: 'convocado', ativo: true, created_at: '2026-08-26T10:00:00.000Z' },
+      { id: 'v1', zona_id: 'z7', documento: '11122233344', tipo_documento: 'cpf', nome: 'ANA VOLUNTARIA', telefone_whatsapp: '5586999991111', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: 'Grupo Escolar A', observacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-27T10:00:00.000Z' },
+      { id: 'v2', zona_id: 'z7', documento: '22233344455', tipo_documento: 'cpf', nome: 'BRUNO VOLUNTARIO', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, observacao: 'Disponível só de manhã', status: 'convocado', ativo: true, created_at: '2026-08-26T10:00:00.000Z' },
     ],
   };
 }
@@ -202,12 +200,12 @@ async function login(p) {
   check('nome vazio bloqueia salvar (nenhum insert)', !(await p.evaluate(() => window.__mock.escritas.some(e => e.tabela === 'sime_voluntarios' && e.op === 'insert'))));
 
   await p.fill('#vl-nome', 'CARLA NOVA VOLUNTARIA');
-  await p.fill('#vl-cpf', '123');
+  await p.fill('#vl-doc', '123');
   await p.click('#modal-body button:has-text("💾 Salvar")');
   await p.waitForTimeout(150);
-  check('CPF com menos de 11 dígitos bloqueia salvar', !(await p.evaluate(() => window.__mock.escritas.some(e => e.tabela === 'sime_voluntarios' && e.op === 'insert'))));
+  check('documento com tamanho que não é CPF (11) nem título (12) bloqueia salvar', !(await p.evaluate(() => window.__mock.escritas.some(e => e.tabela === 'sime_voluntarios' && e.op === 'insert'))));
 
-  await p.fill('#vl-cpf', '999.888.777-66');
+  await p.fill('#vl-doc', '999.888.777-66');
   await p.fill('#vl-tel', '(86) 98888-7766');
 
   // Município → local em cascata
@@ -239,7 +237,8 @@ async function login(p) {
   await p.waitForTimeout(250);
 
   const ins = await p.evaluate(() => window.__mock.escritas.find(e => e.tabela === 'sime_voluntarios' && e.op === 'insert' && !e.erro));
-  check('insert gravado com CPF só-dígitos (sem máscara)', !!ins && ins.payload.cpf === '99988877766', JSON.stringify(ins && ins.payload));
+  check('insert gravado com CPF só-dígitos (sem máscara)', !!ins && ins.payload.documento === '99988877766', JSON.stringify(ins && ins.payload));
+  check('insert detecta tipo_documento=cpf (11 dígitos)', !!ins && ins.payload.tipo_documento === 'cpf');
   check('insert com funcoes=[] (qualquer função)', !!ins && Array.isArray(ins.payload.funcoes) && ins.payload.funcoes.length === 0);
   check('insert com município/local escolhidos', !!ins && ins.payload.municipio === 'Jatobá do Piauí' && ins.payload.local_votacao === 'Escola Sede');
   check('telefone normalizado com prefixo 55', !!ins && ins.payload.telefone_whatsapp === '5586988887766', ins && ins.payload.telefone_whatsapp);
@@ -261,6 +260,36 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2b. Cadastrar com TÍTULO DE ELEITOR (12 dígitos) em vez de CPF —
+// pedido direto (28/08/2026): "no mesário voluntário podemos cadastrar cpf
+// ou titulo, e digitando o numero ele escolhe se cpf ou titulo de eleitor".
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-voluntarios-btn');
+  await p.waitForTimeout(300);
+
+  await p.click('button:has-text("➕ Novo voluntário")');
+  await p.waitForTimeout(200);
+  await p.fill('#vl-nome', 'DIOGO TITULO ELEITOR');
+  await p.fill('#vl-doc', '0469 1905 1583'); // 12 dígitos, com espaços (mesma tolerância de "colar lista")
+  await p.check('#vl-func-qualquer');
+  await p.click('#modal-body button:has-text("💾 Salvar")');
+  await p.waitForTimeout(250);
+
+  const insTitulo = await p.evaluate(() => window.__mock.escritas.find(e => e.tabela === 'sime_voluntarios' && e.op === 'insert' && e.payload.nome === 'DIOGO TITULO ELEITOR'));
+  check('12 dígitos é detectado como título de eleitor, não CPF', !!insTitulo && insTitulo.payload.tipo_documento === 'titulo', JSON.stringify(insTitulo && insTitulo.payload));
+  check('documento gravado só com os dígitos (espaços removidos)', !!insTitulo && insTitulo.payload.documento === '046919051583', JSON.stringify(insTitulo && insTitulo.payload));
+
+  await p.waitForTimeout(200);
+  const txtLista = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
+  check('card da lista rotula como "Título" (com o número cru, sem máscara), não "CPF"', /Título 046919051583/.test(txtLista), txtLista.slice(0, 500));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 3. CPF duplicado — erro amigável, não a mensagem crua do Postgres ──
 {
   const ctx = await b.newContext();
@@ -272,7 +301,7 @@ async function login(p) {
   await p.click('button:has-text("➕ Novo voluntário")');
   await p.waitForTimeout(200);
   await p.fill('#vl-nome', 'DUPLICADA DE ANA');
-  await p.fill('#vl-cpf', '111.222.333-44'); // mesmo CPF de ANA VOLUNTARIA (v1)
+  await p.fill('#vl-doc', '111.222.333-44'); // mesmo CPF de ANA VOLUNTARIA (v1)
   await p.check('#vl-func-qualquer');
   await p.click('#modal-body button:has-text("💾 Salvar")');
   await p.waitForTimeout(200);
@@ -388,6 +417,81 @@ async function login(p) {
   check('copiar link do WhatsApp monta link wa.me com o telefone da pessoa', (copiado || '').includes('5586999991111'), copiado);
   check('mensagem menciona o cadastro de voluntário', /volunt/i.test(decodeURIComponent(copiado || '')), copiado);
 
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 8. Dashboard: sugestão de quem deve ocupar a vaga (28/08/2026) — pedido
+// direto: "se aparecer seção incompleta e/ou marcado para substituição
+// indicar quem deve ocupar a vaga, deve vir por ordem de cadastro". Testa
+// que a sugestão respeita função + status disponível, e que entre vários
+// candidatos válidos vence quem se cadastrou primeiro — mesmo que outro
+// candidato "case melhor" (local específico) mas tenha se cadastrado depois.
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores = [
+    { id: 'a1', nome_completo: 'PRESIDENTE JA CONFIRMADO', telefone_whatsapp: '5586999992001', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's1', zona_id: 'z7', confirmacao: 'confirmado', ativo: true },
+    { id: 'a2', nome_completo: 'MESARIO PRECISA SUBSTITUIR', telefone_whatsapp: '5586999992002', funcao: 'mesario', funcao_mesa: '1º Mesário', secao_id: 's1', zona_id: 'z7', confirmacao: 'confirmado', precisa_substituir: true, ativo: true },
+    // "2º Mesário" e "1º Secretário" da seção s1 ficam sem ninguém (❌).
+  ];
+  m.sime_voluntarios = [
+    // Função errada (só topa acessibilidade) — mesmo sendo o mais antigo de
+    // todos, nunca deve ser sugerido pra uma vaga de mesário.
+    { id: 'v_wrongfunc', zona_id: 'z7', documento: '10000000001', tipo_documento: 'cpf', nome: 'WRONGFUNC EARLIEST', telefone_whatsapp: '', funcoes: ['coord_acessibilidade'], municipio: null, local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-05T08:00:00.000Z' },
+    // Topa mesário, qualquer local (município=null) — se cadastrou ANTES da
+    // ANA (que é específica de Campo Maior/Grupo Escolar A) — deve vencer a
+    // fila mesmo sem casar tão "certinho" quanto a ANA.
+    { id: 'v_cm', zona_id: 'z7', documento: '10000000002', tipo_documento: 'cpf', nome: 'CAMILA MAIOR PRIMEIRA', telefone_whatsapp: '5586999993000', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-10T08:00:00.000Z' },
+    { id: 'v_ana_tarde', zona_id: 'z7', documento: '10000000004', tipo_documento: 'cpf', nome: 'ANA TARDIA ESPECIFICA', telefone_whatsapp: '5586999995000', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: 'Grupo Escolar A', status: 'disponivel', ativo: true, created_at: '2026-08-27T10:00:00.000Z' },
+    // Já convocado — não conta mais como disponível, mesmo sendo o mais
+    // antigo de todos.
+    { id: 'v_convocado', zona_id: 'z7', documento: '10000000005', tipo_documento: 'cpf', nome: 'CONVOCADO NAO CONTA MAIS', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'convocado', ativo: true, created_at: '2026-08-01T08:00:00.000Z' },
+  ];
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+
+  await p.click('.import-card:has-text("Grupo Escolar A")');
+  await p.waitForTimeout(300);
+
+  // title carrega o nome COMPLETO da sugestão (o texto visível no cartão só
+  // mostra o primeiro nome) — checar pelo title evita falso positivo/negativo
+  // com nomes que compartilham o primeiro nome.
+  const qtdCamila = await p.locator('[title*="CAMILA MAIOR PRIMEIRA"]').count();
+  const qtdAna = await p.locator('[title*="ANA TARDIA ESPECIFICA"]').count();
+  check('sugestão é CAMILA (10/08, cadastrada antes) em todos os cargos em aberto', qtdCamila === 3, String(qtdCamila));
+  check('ANA (27/08, mais específica porém mais tardia) nunca é sugerida — fila é por ordem de cadastro, não por especificidade', qtdAna === 0, String(qtdAna));
+  check('candidato com função errada nunca aparece como sugestão', (await p.locator('[title*="WRONGFUNC"]').count()) === 0);
+  check('candidato com status != disponível nunca aparece como sugestão', (await p.locator('[title*="CONVOCADO NAO CONTA"]').count()) === 0);
+
+  // 3 cargos em aberto na seção s1: "1º Mesário" (precisa_substituir, 🔁) +
+  // "2º Mesário" e "1º Secretário" (sem ninguém designado, ❌) — só
+  // "Presidente" (confirmado) não ganha sugestão.
+  const qtdSugestoes = await p.locator('[title*="Sugestão pela fila de voluntários"]').count();
+  check('sugestão aparece nos 3 cargos em aberto (1 precisa_substituir + 2 vazios)', qtdSugestoes === 3, String(qtdSugestoes));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 9. Dashboard: sugestão respeita município (voluntário de outra cidade não é oferecido) ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores = []; // seção s3 (Jatobá do Piauí) inteira em aberto
+  m.sime_voluntarios = [
+    { id: 'v_cm2', zona_id: 'z7', documento: '20000000001', tipo_documento: 'cpf', nome: 'SO CAMPO MAIOR', telefone_whatsapp: '', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-01T08:00:00.000Z' },
+    { id: 'v_jat2', zona_id: 'z7', documento: '20000000002', tipo_documento: 'cpf', nome: 'CANDIDATO DE JATOBA', telefone_whatsapp: '', funcoes: ['mesario'], municipio: 'Jatobá do Piauí', local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-15T08:00:00.000Z' },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+  await p.click('.import-card:has-text("Escola Sede")');
+  await p.waitForTimeout(300);
+  check('voluntário registrado só pra Campo Maior não é sugerido numa seção de Jatobá do Piauí', (await p.locator('[title*="SO CAMPO MAIOR"]').count()) === 0);
+  check('voluntário do próprio município é sugerido', (await p.locator('[title*="CANDIDATO DE JATOBA"]').count()) === 4, String(await p.locator('[title*="CANDIDATO DE JATOBA"]').count()));
   check('nenhum erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

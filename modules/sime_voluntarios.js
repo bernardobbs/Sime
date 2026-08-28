@@ -41,12 +41,29 @@ function vlEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// "000.000.000-00" — só formatação de exibição; o que é gravado é sempre 11
-// dígitos crus (mesmo padrão de telefone_whatsapp sem máscara).
+// "000.000.000-00" pro CPF; título de eleitor fica cru (mesmo padrão de
+// sime_atores.inscricao_eleitoral em todo o resto do sistema — nunca
+// formatado com máscara). O que é gravado é sempre dígitos crus (mesmo
+// padrão de telefone_whatsapp sem máscara).
 function vlSoDigitos(s) { return String(s || '').replace(/\D/g, ''); }
-function vlFmtCpf(cpf) {
-  const d = vlSoDigitos(cpf);
-  return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (cpf || '—');
+function vlFmtDocumento(documento, tipo) {
+  const d = vlSoDigitos(documento);
+  if (tipo === 'cpf' && d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  return documento || '—';
+}
+// Detecta CPF (11 dígitos) vs. título de eleitor (12) só pelo TAMANHO —
+// pedido direto (28/08/2026): "podemos cadastrar cpf ou titulo, e digitando
+// o numero ele escolhe se cpf ou titulo de eleitor". Mesma convenção de 12
+// dígitos já usada em normalizarTituloEleitor() (sime_ui_utils.js). Nunca
+// adivinha em cima de 11 dígitos "poderia ser um título sem o zero à
+// esquerda" — 11 dígitos é CPF válido de sobra, então título incompleto
+// exige o zero de propósito (mesmo problema documentado alhures pra
+// inscricao_eleitoral: quem digitar sem o zero cai como CPF, precisa
+// corrigir manualmente).
+function vlDetectarTipoDocumento(digitos) {
+  if (digitos.length === 11) return 'cpf';
+  if (digitos.length === 12) return 'titulo';
+  return null;
 }
 
 async function vlCarregar() {
@@ -92,8 +109,8 @@ function vlFiltrar() {
       // Só compara CPF quando a busca de fato tem dígito pra comparar.
       const digitos = q.replace(/\D/g, '');
       const bateNome = (v.nome || '').toLowerCase().includes(q);
-      const bateCpf = digitos && vlSoDigitos(v.cpf).includes(digitos);
-      if (!bateNome && !bateCpf) return false;
+      const bateDocumento = digitos && vlSoDigitos(v.documento).includes(digitos);
+      if (!bateNome && !bateDocumento) return false;
     }
     return true;
   });
@@ -148,7 +165,7 @@ function renderVoluntarios() {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
           <div>
             <div style="font-weight:800;font-size:.86rem;cursor:pointer" onclick="vlAbrirEditar('${v.id}')">${vlEsc(v.nome)}</div>
-            <div class="ic-sub" style="margin:2px 0 0">CPF ${vlEsc(vlFmtCpf(v.cpf))} · ${vlBadgeFuncoes(v)} · ${vlBadgeLocal(v)}</div>
+            <div class="ic-sub" style="margin:2px 0 0">${v.tipo_documento === 'titulo' ? 'Título' : 'CPF'} ${vlEsc(vlFmtDocumento(v.documento, v.tipo_documento))} · ${vlBadgeFuncoes(v)} · ${vlBadgeLocal(v)}</div>
             ${v.observacao ? `<div class="ic-sub" style="margin:2px 0 0">${vlEsc(v.observacao)}</div>` : ''}
           </div>
           <span class="import-result ${v.status === 'disponivel' ? 'ir-ok' : v.status === 'indisponivel' ? '' : 'ir-warn'}" style="margin-top:0;white-space:nowrap">${VL_STATUS_LABEL[v.status] || v.status}</span>
@@ -196,8 +213,9 @@ function vlRenderModal() {
     <div class="m-body">
       <div class="form-group"><label for="vl-nome">Nome completo</label>
         <input type="text" id="vl-nome" value="${vlEsc(v?.nome || '')}" placeholder="Nome do voluntário"></div>
-      <div class="form-group"><label for="vl-cpf">CPF</label>
-        <input type="text" id="vl-cpf" value="${v ? vlFmtCpf(v.cpf) : ''}" placeholder="000.000.000-00" maxlength="14"></div>
+      <div class="form-group"><label for="vl-doc">CPF ou título de eleitor</label>
+        <input type="text" id="vl-doc" value="${v ? vlFmtDocumento(v.documento, v.tipo_documento) : ''}" placeholder="000.000.000-00 ou nº do título (12 dígitos)" maxlength="20">
+        <div class="dz-sub" style="margin-top:2px">11 dígitos = CPF · 12 dígitos = título de eleitor — detectado sozinho pelo tamanho</div></div>
       <div class="form-group"><label for="vl-tel">WhatsApp (opcional)</label>
         <input type="text" id="vl-tel" value="${v?.telefone_whatsapp ? vlEsc(fmtTelefone(v.telefone_whatsapp)) : ''}" placeholder="(86) 9xxxx-xxxx"></div>
 
@@ -250,9 +268,10 @@ function vlOnMunicipioChange() {
 async function vlSalvar() {
   const sb = window.supabaseAtores;
   const nome = document.getElementById('vl-nome').value.trim();
-  const cpf = vlSoDigitos(document.getElementById('vl-cpf').value);
+  const documento = vlSoDigitos(document.getElementById('vl-doc').value);
   if (!nome) { showToast('⚠ Nome obrigatório'); return; }
-  if (cpf.length !== 11) { showToast('⚠ CPF precisa ter 11 dígitos'); return; }
+  const tipo_documento = vlDetectarTipoDocumento(documento);
+  if (!tipo_documento) { showToast('⚠ Digite um CPF (11 dígitos) ou título de eleitor (12 dígitos) válido'); return; }
 
   const qualquerFuncao = document.getElementById('vl-func-qualquer').checked;
   const funcoes = qualquerFuncao ? [] : [...document.querySelectorAll('.vl-func-especifica:checked')].map(el => el.value);
@@ -272,24 +291,24 @@ async function vlSalvar() {
       const { data: { user } } = await sb.auth.getUser();
       const { data: meu } = await sb.from('sime_usuarios').select('id').eq('auth_user_id', user?.id).maybeSingle();
       const { error } = await sb.from('sime_voluntarios').insert({
-        zona_id: zonaId, cpf, nome, telefone_whatsapp, funcoes, municipio, local_votacao, observacao,
+        zona_id: zonaId, documento, tipo_documento, nome, telefone_whatsapp, funcoes, municipio, local_votacao, observacao,
         created_by: meu?.id || null,
       });
       if (error) {
-        // CPF duplicado na mesma zona (idx_voluntarios_zona_cpf) — erro
-        // amigável em vez do "duplicate key" cru do Postgres.
-        if (/duplicate key|unique constraint/i.test(error.message)) { showToast('⚠ Já existe um voluntário com esse CPF cadastrado nesta zona'); return; }
+        // CPF/título duplicado na mesma zona (idx_voluntarios_zona_documento)
+        // — erro amigável em vez do "duplicate key" cru do Postgres.
+        if (/duplicate key|unique constraint/i.test(error.message)) { showToast(`⚠ Já existe um voluntário com esse ${tipo_documento === 'titulo' ? 'título de eleitor' : 'CPF'} cadastrado nesta zona`); return; }
         showToast('⚠ ' + error.message); return;
       }
-      await log('voluntario_cadastrado', '', { nome, cpf });
+      await log('voluntario_cadastrado', '', { nome, documento, tipo_documento });
       showToast('✓ Voluntário cadastrado');
     } else {
       const { data: ts } = await sb.rpc('sime_now');
       const { error } = await sb.from('sime_voluntarios').update({
-        nome, cpf, telefone_whatsapp, funcoes, municipio, local_votacao, observacao, updated_at: ts,
+        nome, documento, tipo_documento, telefone_whatsapp, funcoes, municipio, local_votacao, observacao, updated_at: ts,
       }).eq('id', vlModalId);
       if (error) {
-        if (/duplicate key|unique constraint/i.test(error.message)) { showToast('⚠ Já existe um voluntário com esse CPF cadastrado nesta zona'); return; }
+        if (/duplicate key|unique constraint/i.test(error.message)) { showToast(`⚠ Já existe um voluntário com esse ${tipo_documento === 'titulo' ? 'título de eleitor' : 'CPF'} cadastrado nesta zona`); return; }
         showToast('⚠ ' + error.message); return;
       }
       await log('voluntario_editado', '', { id: vlModalId, nome });

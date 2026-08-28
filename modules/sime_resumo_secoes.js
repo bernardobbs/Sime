@@ -31,7 +31,7 @@ async function rsCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { rsDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { data: apoio, error: e3 }] = await Promise.all([
+  const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { data: apoio, error: e3 }, { data: voluntarios, error: e4 }] = await Promise.all([
     sb.from('sime_secoes').select('id, numero, municipio, local_nome, eleitores').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_atores').select('id, nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
     // Antes era só `count` (head:true) — trocado por linha completa com
@@ -46,8 +46,14 @@ async function rsCarregar() {
     // combinado "apoio logístico"); sem a função aqui não dava pra saber
     // qual dos dois cada linha representa.
     sb.from('sime_atores').select('id, confirmacao, secao_id, funcao').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    // Fila de voluntários disponíveis (28/08/2026, pedido direto: "se
+    // aparecer seção incompleta e/ou marcado para substituição indicar quem
+    // deve ocupar a vaga, deve vir por ordem de cadastro") — já vem ordenada
+    // por created_at ascendente (quem se cadastrou primeiro é sugerido
+    // primeiro), pra rsProximoVoluntario() só pegar o primeiro que casar.
+    sb.from('sime_voluntarios').select('id, nome, telefone_whatsapp, funcoes, municipio, local_votacao, created_at').eq('zona_id', zonaId).eq('ativo', true).eq('status', 'disponivel').order('created_at', { ascending: true }),
   ]);
-  if (e1 || e2 || e3) { rsDados = { erro: (e1 || e2 || e3).message }; render(); return; }
+  if (e1 || e2 || e3 || e4) { rsDados = { erro: (e1 || e2 || e3 || e4).message }; render(); return; }
 
   // Por local, quem tem alguém designado/confirmado de CADA função de apoio
   // separadamente — 1 vaga por local pra cada uma (mesma premissa já usada
@@ -100,8 +106,25 @@ async function rsCarregar() {
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
     auxiliarTotal, auxiliarConfirmado,
     secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado,
+    voluntarios: voluntarios || [],
   };
   render();
+}
+
+// Primeiro voluntário DISPONÍVEL que topa trabalhar como mesário (MRV) nessa
+// seção — lista já vem ordenada por created_at ascendente (ver rsCarregar),
+// então o primeiro que casar é literalmente quem se cadastrou há mais tempo
+// (fila por ordem de cadastro, não por sorteio nem por proximidade). município/
+// local_votacao vazios no cadastro do voluntário = "topo qualquer lugar",
+// então casam com qualquer seção — mesma regra de "qualquer" já usada no
+// resto do cadastro de voluntários (vlBadgeFuncoes/vlBadgeLocal).
+function rsProximoVoluntario(municipio, localNome) {
+  const lista = rsDados.voluntarios || [];
+  return lista.find(v =>
+    (!v.funcoes || !v.funcoes.length || v.funcoes.includes('mesario')) &&
+    (!v.municipio || v.municipio === municipio) &&
+    (!v.local_votacao || v.local_votacao === localNome)
+  ) || null;
 }
 
 function rsEsc(s) {
@@ -137,6 +160,17 @@ function rsFecharLocal() { rsLocalAberto = null; render(); }
 function rsCalcular() {
   const linhas = rsDados.secoes.map(s => {
     const cargos = RS_CARGOS.map(cargo => rsStatusCargo(rsDados.porSecao[s.id]?.[cargo]));
+    // Sugestão de quem deve ocupar a vaga (28/08/2026) — só quando o cargo
+    // está mesmo em aberto: sem ninguém designado (❌) ou com alguém marcado
+    // pra ser substituído (🔁). Confirmado/convocado/aguardando resposta não
+    // precisam de sugestão — a vaga já está (ou está a caminho de estar)
+    // ocupada.
+    for (const cg of cargos) {
+      if (cg.cls === 'rs-sem' || cg.icone === '🔁') {
+        const sug = rsProximoVoluntario(s.municipio, s.local_nome);
+        if (sug) { cg.sugestaoNome = sug.nome; cg.sugestaoId = sug.id; }
+      }
+    }
     const designados = cargos.filter(x => x.cls !== 'rs-sem').length;
     const confirmados = cargos.filter(x => x.cls === 'rs-ok').length;
     return { secao: s, cargos, designados, confirmados, atualizado: rsDados.atualizadoPorSecao[s.id] };
@@ -432,6 +466,7 @@ function rsCardSecao(l) {
             <div style="font-size:1.1rem">${cg.icone}</div>
             <div style="font-size:.68rem;color:var(--text2);margin-top:2px">${RS_CARGOS[i]}</div>
             ${cg.nome ? `<div style="font-size:.66rem;color:${cg.id ? 'var(--blue)' : 'var(--text3)'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${cg.id ? 'text-decoration:underline' : ''}">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
+            ${cg.sugestaoNome ? `<div style="font-size:.62rem;color:var(--green);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Sugestão pela fila de voluntários disponíveis, por ordem de cadastro: ${rsEsc(cg.sugestaoNome)}">🙋 ${rsEsc(cg.sugestaoNome.split(' ')[0])}</div>` : ''}
           </div>`).join('')}
       </div>
       <div class="ic-sub" style="margin-top:10px;margin-bottom:0">Atualizado em ${rsFmtData(l.atualizado)}</div>
