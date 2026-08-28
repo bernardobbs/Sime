@@ -337,7 +337,10 @@ async function mcAtualizar() {
     // fora do padrão que o resto do sistema assume em telefone_whatsapp.
     const telBruto = [l.whatsapp, l.celular, l.telefone2].find(v => mcSoDigitos(v));
     if (telBruto) patch.telefone_whatsapp = normalizarTelefoneWhatsapp(telBruto);
-    if (l.ciente === '1') patch.confirmacao = 'confirmado';
+    // convocacao_recebida junto (28/08/2026) — confirmar participação já
+    // implica ter recebido a convocação, mesma regra aplicada ao botão
+    // "Confirmado" do modal e à confirmação via Hermes.
+    if (l.ciente === '1') { patch.confirmacao = 'confirmado'; patch.convocacao_recebida = true; }
     else if (l.ciente === '2') patch.confirmacao = 'contato_incorreto';
     if (!Object.keys(patch).length) continue;
 

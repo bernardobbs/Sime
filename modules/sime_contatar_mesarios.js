@@ -93,6 +93,7 @@ const CM_BUCKETS = [
   { valor: 'pendente',          label: '❌ Falta contactar / sem resposta' },
   { valor: 'aguardando_resposta', label: '🕓 Aguardando resposta (já tentamos)' },
   { valor: 'confirmado',        label: '✅ Confirmados' },
+  { valor: 'convocado',         label: '📋 Convocado (recebeu, aguardando confirmação)' },
   { valor: 'recusou',           label: '⚠️ Recusou (é a pessoa certa)' },
   { valor: 'contato_incorreto', label: '🔍 Contato incorreto (não é a pessoa)' },
   { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
@@ -180,6 +181,7 @@ const CM_LOG_LABEL = {
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
   mesario_confirmado_manual: () => 'Confirmado manualmente pelo cartório',
   mesario_marcado_convocado: () => 'Marcado como convocado (aguardando confirmação)',
+  mesario_convocacao_recebida: (p) => p.recebida ? '📬 Marcado: eleitor recebeu a convocação' : '↩ Desmarcado: recebimento da convocação',
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
   mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
@@ -225,7 +227,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }, { data: tentativasManuais }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -303,7 +305,7 @@ async function cmMarcarContatoIncorreto(id) {
 // ligou e a pessoa confirmou, confirmou pessoalmente, etc.) — pensado pro
 // fluxo "ir de pessoa em pessoa" quando a campanha automática do TRE/Hermes
 // não alcançou todo mundo. Marca confirmacao='confirmado' igual o Hermes
-// marcaria — SÓ isso.
+// marcaria.
 //
 // Bug real corrigido em 21/08/2026: até aqui, este botão também enfileirava
 // a mensagem de convocação em sime_campanhas_confirmacao pro Hermes
@@ -312,38 +314,73 @@ async function cmMarcarContatoIncorreto(id) {
 // nenhuma, só marcar. Se quiser mandar mensagem de verdade, o caminho é o
 // motor de campanha em massa de SIME_atores.html (disparo com verificação
 // SIM/NÃO), não este atalho.
+//
+// convocacao_recebida=true junto (28/08/2026, pedido direto: "o confirmado,
+// quando vier do elo, serve para confirmar a convocação e a confirmação do
+// eleitor") — confirmar participação já implica ter recebido a convocação,
+// então este botão sozinho cobre os dois fatos de uma vez, sem precisar
+// passar pelo passo intermediário do botão "Convocado".
 async function cmConfirmarParticipacao(id) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { data: ts } = await sb.rpc('sime_now');
-  const { error } = await sb.from('sime_atores').update({ confirmacao: 'confirmado', data_confirmacao: ts }).eq('id', id);
+  const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  p.confirmacao = 'confirmado';
-  p.data_confirmacao = ts;
+  Object.assign(p, patch);
   await cmLog('mesario_confirmado_manual', '', { ator_id: id });
   showToast('✅ Participação confirmada');
   render();
   if (cmModalId === id) cmRenderModal();
 }
 
+// Fato manual e independente de `confirmacao` (28/08/2026, pedido direto:
+// "o botão de convocado deve ser habilitado somente quando informamos que o
+// eleitor recebeu a convocação") — o cartório marca isto quando SABE, por
+// qualquer via (ligou e confirmou, viu o AR chegar, WhatsApp respondeu),
+// que o eleitor recebeu a convocação. É o pré-requisito pro botão
+// "Convocado" ficar disponível (ver cmMarcarConvocado) — deliberadamente
+// nunca escrito pelo Hermes, só pelo cartório.
+async function cmToggleConvocacaoRecebida(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const novo = !p.convocacao_recebida;
+  const { data: ts } = await sb.rpc('sime_now');
+  const patch = { convocacao_recebida: novo, convocacao_recebida_ts: novo ? ts : null };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  Object.assign(p, patch);
+  await cmLog('mesario_convocacao_recebida', '', { ator_id: id, recebida: novo });
+  showToast(novo ? '📬 Marcado: eleitor recebeu a convocação' : '↩ Desmarcado');
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
 // "Convocado" (27/08/2026, pedido direto do cartório ao ver o modal:
 // "convocado significa que ele recebeu a carta, mas pode ser substituído" —
-// diferente de "confirmado", que já disse que vai participar). Não é um
-// status novo — é o mesmo `pendente` de sempre, só que setado
-// explicitamente pelo botão em vez de só ser o valor-padrão de quem nunca
-// respondeu. Serve tanto pra registrar "sabemos que foi notificado, só
-// ainda não confirmou" quanto pra desfazer um confirmado/recusado marcado
-// por engano — por isso limpa `data_confirmacao` junto, senão a data ficaria
-// mentindo que a pessoa confirmou numa data em que na verdade só foi
-// convocada.
+// diferente de "confirmado", que já disse que vai participar). Virou um
+// valor de confirmacao de verdade em 28/08/2026 (antes era só o mesmo
+// `pendente` de sempre, setado explicitamente pelo botão) — e ganhou um
+// pré-requisito: só pode ser marcado depois que convocacao_recebida=true
+// (ver cmToggleConvocacaoRecebida), pra não virar "convocado" clicado sem
+// ninguém ter de fato confirmado que a carta/mensagem chegou. Serve tanto
+// pra registrar "sabemos que foi notificado, só ainda não confirmou" quanto
+// pra desfazer um confirmado/recusado marcado por engano — por isso limpa
+// `data_confirmacao` junto, senão a data ficaria mentindo que a pessoa
+// confirmou numa data em que na verdade só foi convocada.
 async function cmMarcarConvocado(id) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
-  const { error } = await sb.from('sime_atores').update({ confirmacao: 'pendente', data_confirmacao: null }).eq('id', id);
+  // Botão nunca fica `disabled` (mesmo critério já usado no resto do
+  // sistema — um disabled sem feedback nenhum já causou confusão real numa
+  // tela de correspondência) — sempre clicável, mas explica o que falta.
+  if (!p.convocacao_recebida) { showToast('⚠ Confirme antes que o eleitor recebeu a convocação (caixa acima dos botões)'); return; }
+  const { error } = await sb.from('sime_atores').update({ confirmacao: 'convocado', data_confirmacao: null }).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  p.confirmacao = 'pendente';
+  p.confirmacao = 'convocado';
   p.data_confirmacao = null;
   await cmLog('mesario_marcado_convocado', '', { ator_id: id });
   showToast('📋 Marcado como convocado — aguardando confirmação');
@@ -1021,15 +1058,19 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.convocacao_recebida && (p.confirmacao || 'pendente') === 'pendente' ? ' · 📬 Recebeu a convocação (falta marcar Convocado)' : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
       </div>
 
+      <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--text2);margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" ${p.convocacao_recebida ? 'checked' : ''} onchange="cmToggleConvocacaoRecebida('${p.id}')">
+        📬 Eleitor recebeu a convocação (por qualquer meio — confirmação manual do cartório)
+      </label>
       <div style="display:flex;gap:6px;margin-bottom:4px">
         <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
-        <button class="btn ${(p.confirmacao || 'pendente') === 'pendente' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
+        <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
       </div>
-      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = recebeu o contato, ainda não confirmou (mas pode ser substituído). Nenhum dos três manda mensagem — é status manual, não depende de resposta automática por WhatsApp.</div>
+      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar (marca sozinho que recebeu a convocação também). Convocado = confirmamos que recebeu, ainda não disse se vai participar — só fica disponível depois de marcar a caixa acima. Nenhum dos três manda mensagem — é status manual, não depende de resposta automática por WhatsApp.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
@@ -1259,9 +1300,11 @@ async function cmSalvarModal() {
 }
 
 // Já contactado (campanha ou tentativa manual) mas ainda pendente — ver
-// comentário em CM_BUCKETS.
+// comentário em CM_BUCKETS. Inclui 'convocado' (28/08/2026) — confirmamos
+// que recebeu a convocação, mas ainda não disse se vai participar, então
+// continua sendo alguém "aguardando resposta" na prática.
 function cmEhAguardandoResposta(p) {
-  return (p.confirmacao || 'pendente') === 'pendente' && p.tentativas > 0;
+  return ['pendente', 'convocado'].includes(p.confirmacao || 'pendente') && p.tentativas > 0;
 }
 
 // Indicador de bolinha (27/08/2026, pedido direto: "verde amarela e
@@ -1273,7 +1316,7 @@ function cmEhAguardandoResposta(p) {
 // bolinha. cmDiaChave() é a mesma função do agrupamento por dia das
 // tentativas — "hoje" é sempre local (fuso do navegador).
 function cmDotStatus(p) {
-  if ((p.confirmacao || 'pendente') !== 'pendente') return null;
+  if (!['pendente', 'convocado'].includes(p.confirmacao || 'pendente')) return null;
   if (!p.tentativas) return { emoji: '🔴', texto: 'Nunca contactado' };
   if (p.ultimaTentativaTs && cmDiaChave(p.ultimaTentativaTs) === cmDiaChave(new Date())) {
     return { emoji: '🟢', texto: `Já contactado (${p.tentativas}x) — contactado hoje` };
@@ -1291,7 +1334,7 @@ function cmDotStatus(p) {
 // Ofício — trocar de novo não seria "escalar", seria redundante.
 const CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO = 3;
 function cmPrecisaEscalonamento(p) {
-  return (p.confirmacao || 'pendente') === 'pendente'
+  return ['pendente', 'convocado'].includes(p.confirmacao || 'pendente')
     && p.tentativas >= CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO
     && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica';
 }

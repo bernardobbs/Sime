@@ -189,6 +189,10 @@ resetDB();
 r = await call('POST', Z7, { acao: 'confirmar', telefone: '558611110001' });
 check('confirmar → 200 encontrado 1', r.code === 200 && r.body.encontrado === 1, JSON.stringify(r.body));
 check('confirmar grava confirmacao=confirmado, ativo=true', globalThis.__SUPA.atores[0].confirmacao === 'confirmado' && globalThis.__SUPA.atores[0].ativo === true);
+// convocacao_recebida junto (28/08/2026) — confirmar participação por
+// WhatsApp já implica ter recebido a convocação, mesma regra do botão
+// "Confirmado" do modal.
+check('confirmar também marca convocacao_recebida=true', globalThis.__SUPA.atores[0].convocacao_recebida === true);
 check('confirmar registra log de auditoria', globalThis.__SUPA.logs.length === 1 && globalThis.__SUPA.logs[0].acao === 'hermes_confirmou_mesario');
 
 // telefone com DDI/DDD diferente casa pelos últimos 8 dígitos
@@ -196,10 +200,15 @@ resetDB();
 r = await call('POST', Z7, { acao: 'confirmar', telefone: '+55 (86) 1111-0002' });
 check('casa telefone por sufixo (8 díg.)', r.code === 200 && globalThis.__SUPA.atores[1].confirmacao === 'confirmado', JSON.stringify(r.body));
 
-// ── RECUSAR / SUBSTITUIR zeram ativo ──
+// ── RECUSAR mantém ativo (28/08/2026) / SUBSTITUIR zera ativo ──
+// Antes, recusar também zerava ativo=false — a pessoa SUMIA da fila de
+// "Contatar mesários" (que só lista ativo=true), sem deixar rastro de que
+// aquela vaga precisava de gente nova. Agora continua ativa e fica marcada
+// precisa_substituir=true — visível e acionável, em vez de desaparecer.
 resetDB();
 r = await call('POST', Z7, { acao: 'recusar', telefone: '558611110001' });
-check('recusar → confirmacao=recusou, ativo=false', globalThis.__SUPA.atores[0].confirmacao === 'recusou' && globalThis.__SUPA.atores[0].ativo === false, JSON.stringify(r.body));
+check('recusar → confirmacao=recusou, ativo=true (continua na fila)', globalThis.__SUPA.atores[0].confirmacao === 'recusou' && globalThis.__SUPA.atores[0].ativo === true, JSON.stringify(r.body));
+check('recusar → precisa_substituir=true (sinaliza que a vaga precisa de gente nova)', globalThis.__SUPA.atores[0].precisa_substituir === true);
 
 resetDB();
 r = await call('POST', Z7, { acao: 'substituir', telefone: '558611110002' });

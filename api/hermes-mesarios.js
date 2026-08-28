@@ -31,7 +31,15 @@
 //                          telefone_whatsapp principal, que é o que
 //                          Hermes/campanha usam por padrão)
 //   - acao='confirmar' → marca sime_atores.confirmacao='confirmado' (permanece)
-//   - acao='recusar'   → 'recusou'     (+ ativo=false — não vai atuar)
+//                          + convocacao_recebida=true (confirmar participação
+//                          já implica ter recebido a convocação, 28/08/2026)
+//   - acao='recusar'   → 'recusou' + precisa_substituir=true (28/08/2026 —
+//                          ANTES também zerava ativo=false, e a pessoa
+//                          simplesmente SUMIA da fila de "Contatar mesários"
+//                          [que só lista ativo=true], sem deixar rastro de
+//                          que aquela vaga precisa de gente nova; agora
+//                          continua ativa e aparece marcada "precisa
+//                          substituir")
 //   - acao='substituir'→ 'substituido' (+ ativo=false)
 //
 // Fecha o ciclo do painel "Confirmação de mesários" do SIME_admin.html: o Hermes
@@ -188,8 +196,8 @@ function mensagemConsulta(pessoas, secoesPorId) {
 }
 
 const ACAO_CONF = {
-  confirmar:  { confirmacao: 'confirmado',  ativo: true  },
-  recusar:    { confirmacao: 'recusou',     ativo: false },
+  confirmar:  { confirmacao: 'confirmado',  ativo: true,  convocacao_recebida: true },
+  recusar:    { confirmacao: 'recusou',     ativo: true,  precisa_substituir: true },
   substituir: { confirmacao: 'substituido', ativo: false },
 };
 
@@ -535,9 +543,15 @@ export default async function handler(req, res) {
     }
 
     const ts = await serverTs();
+    // convocacao_recebida/precisa_substituir só entram no patch quando a ação
+    // de fato define um valor pra eles (ver ACAO_CONF) — 'substituir' não
+    // mexe em nenhum dos dois, por exemplo.
+    const patch = { confirmacao: conf.confirmacao, ativo: conf.ativo };
+    if ('convocacao_recebida' in conf) { patch.convocacao_recebida = conf.convocacao_recebida; patch.convocacao_recebida_ts = ts; }
+    if ('precisa_substituir' in conf) patch.precisa_substituir = conf.precisa_substituir;
     for (const p of alvos) {
       const { error: upErr } = await supabase.from('sime_atores')
-        .update({ confirmacao: conf.confirmacao, ativo: conf.ativo })
+        .update(patch)
         .eq('id', p.id);
       if (upErr) throw upErr;
     }

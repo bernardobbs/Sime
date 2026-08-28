@@ -522,12 +522,13 @@ cada um com propósito diferente:
   nem fechar/reabrir o modal.
   - **Confirmado** — mesmo `cmConfirmarParticipacao()` de sempre (marca
     `confirmacao='confirmado'`, não enfileira mensagem nenhuma).
-  - **Convocado** (nova, `cmMarcarConvocado()`) — explicado pelo cartório:
+  - **Convocado** (`cmMarcarConvocado()`) — explicado pelo cartório:
     "convocado significa que ele recebeu a carta, mas pode ser substituído",
-    diferente de confirmado, que já disse que vai participar. Não é um
-    status novo no banco — grava `confirmacao='pendente'` (o mesmo valor-
-    padrão de quem nunca respondeu), só que agora como ação explícita, e
-    limpa `data_confirmacao` junto (senão a data ficaria mentindo que a
+    diferente de confirmado, que já disse que vai participar. Até
+    28/08/2026 não era um status novo no banco (gravava `confirmacao=
+    'pendente'`, o mesmo valor-padrão de sempre, só como ação explícita) —
+    virou valor de verdade nessa data, ver bloco "4 status" logo abaixo.
+    Limpa `data_confirmacao` junto (senão a data ficaria mentindo que a
     pessoa confirmou numa data em que só foi convocada). Serve tanto pra
     registrar "sabemos que foi notificado, só não confirmou" quanto pra
     desfazer um confirmado/recusado marcado por engano.
@@ -545,7 +546,82 @@ cada um com propósito diferente:
   participação some depois de confirmado, Marcar para substituir com texto
   que troca), porque o pedido foi especificamente sobre o formato do modal.
 
-  **Apoio logístico entrou na mesma fila de contato (21/08/2026) — achado
+  **4 status de verdade + gate manual pro "Convocado" (28/08/2026, pedido
+  direto: "o botão de convocado deve ser habilitado somente quando
+  informamos que o eleitor recebeu a convocação. o confirmado, quando vier
+  do elo, serve para confirmar a convocação e a confirmação do eleitor.
+  cada mesário deve ter 4 status então: não contactado, precisa substituir,
+  convocado e confirmado. os meios de convocação/contato são whatsapp,
+  carta, ligação telefônica, e oficial de justiça.").** Esclarecido em
+  conversa que isso NÃO substitui os 5 valores de `confirmacao` que já
+  existiam (pendente/confirmado/recusou/substituido/contato_incorreto
+  continuam todos ali — nenhum foi removido); o pedido foi ganhar um 6º
+  valor, `'convocado'`, e ligar `recusou` visualmente a "precisa
+  substituir". Os "meios" (WhatsApp/Carta/Ligação/Oficial de Justiça) já
+  existiam por inteiro em `meio_contato` desde 20/08/2026 — nada novo ali,
+  só confirmação de que já cobre o pedido.
+  `sql/SIME_atores_convocado_status.sql` (aplicado em produção nas duas
+  zonas em 28/08/2026):
+  - `sime_atores.convocacao_recebida` (boolean, default false) +
+    `convocacao_recebida_ts` — o FATO "o eleitor recebeu a convocação",
+    **sempre confirmação manual do cartório** (ligou e confirmou, viu o AR
+    chegar, etc.) — nunca escrito pelo Hermes, nunca detectado
+    automaticamente por meio (a resposta escolhida quando perguntado "o que
+    especificamente libera o botão" foi "confirmação manual", não
+    "automático pelo meio de contato"). Novo checkbox no modal ("📬 Eleitor
+    recebeu a convocação"), acima da linha de 3 botões,
+    `cmToggleConvocacaoRecebida()`.
+  - `sime_atores_confirmacao_chk` ganha `'convocado'`. `cmMarcarConvocado()`
+    agora grava `confirmacao='convocado'` de verdade (antes era `'pendente'`
+    — ver bullet acima) — **e só executa se `p.convocacao_recebida` for
+    true**; sem isso, mostra toast explicando o que falta e não grava nada.
+    Botão nunca fica `disabled` de propósito — mesmo critério já usado no
+    resto do sistema (um `disabled` sem feedback nenhum já causou confusão
+    real numa tela de correspondência, ver bloco de Correspondência) — é
+    sempre clicável, só que a função em si recusa agir sem o pré-requisito.
+  - **"Confirmado" (`cmConfirmarParticipacao()`) agora também marca
+    `convocacao_recebida=true` sozinho** — confirmar participação já
+    implica ter recebido a convocação, então este botão cobre os dois fatos
+    de uma vez, sem precisar passar pelo passo intermediário. Mesma regra
+    aplicada em mais dois lugares que também podem confirmar alguém sem
+    passar pelo modal: `ACAO_CONF.confirmar` em `api/hermes-mesarios.js`
+    (confirmação via resposta de WhatsApp) e o caminho `Ciente='1'` de
+    "📞 Atualizar contatos" (`sime_mesarios_sync.js`, `mcAtualizar()`) — os
+    três pontos que gravam `confirmacao='confirmado'` agora gravam
+    `convocacao_recebida=true` junto.
+  - **`recusou` passou a marcar `precisa_substituir=true` também**
+    (`ACAO_CONF.recusar`) — achado real investigando isto: `recusar` também
+    zerava `ativo=false`, e `cmCarregar()` só lista `ativo=true`, então uma
+    recusa fazia a pessoa **sumir silenciosamente** da fila de "Contatar
+    mesários", sem deixar rastro nenhum de que aquela vaga precisava de
+    gente nova (checado em produção: 1 registro `recusou` existia, e por
+    algum motivo já estava com `ativo=true` — não deu pra saber se o bug
+    chegou a se manifestar de fato, mas o código permitia). Corrigido:
+    `recusar` mantém `ativo=true` e liga `precisa_substituir=true` — a
+    pessoa continua visível, agora marcada como "precisa substituir" em vez
+    de desaparecer. Migração fez o backfill do único registro existente.
+    `substituir` continua zerando `ativo=false` normalmente — esse é o
+    status JÁ RESOLVIDO, faz sentido sumir da fila ativa.
+  - `cmDotStatus()`/`cmEhAguardandoResposta()`/`cmPrecisaEscalonamento()`
+    passam a tratar `'convocado'` igual a `'pendente'` (ainda em aberto,
+    não é desfecho final) — alguém convocado que não confirma depois de
+    várias tentativas ainda deve aparecer com a bolinha 🔴🟡🟢 e receber a
+    sugestão de escalonamento, mesmo já tendo o fato de recebimento
+    registrado.
+  - `sime_resumo_secoes.js`: `rsStatusCargo()` ganha ícone/rótulo próprio
+    pra `convocado` (📋, antes caía no fallback genérico "🔶 Aguardando
+    confirmação" — mesma classe CSS `rs-aguardando`, então as contagens de
+    designados/pizzas não mudam); `prioridade` (pra decidir qual status
+    mostrar quando há mais de um ativo no mesmo cargo) ganha `convocado: 2`
+    — sem isso, `convocado` ficava com prioridade 0 (undefined), mais BAIXA
+    que `recusou`/`contato_incorreto` (1), o que faria a tela preferir
+    mostrar um recusado no lugar de alguém convocado. **As pizzas do
+    Dashboard não precisaram de nenhuma mudança** — a fatia "Convocado" ali
+    já era um conceito DERIVADO (designado − confirmado − vazio), não um
+    filtro por `confirmacao==='convocado'` — um mesário com esse status
+    novo já cai automaticamente na fatia certa, e por coincidência o nome
+    bate com o conceito (mesmo termo, dois lugares diferentes do código —
+    vale não confundir um com o outro ao mexer em qualquer um dos dois).
   real: era contado no card do Dashboard, mas não tinha como contactar/
   confirmar um por um.** `cmCarregar()` foi de `.eq('funcao','mesario')`
   pra `.in('funcao', ['mesario','coord_acessibilidade','auxiliar_eleicao'])`
@@ -1687,6 +1763,56 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 > Zona" no formulário e cria o primeiro `coordenador` de lá; dali em diante,
 > esse coordenador já consegue logar e cadastrar o resto da própria equipe
 > normalmente (sem precisar mais do seletor).
+
+> **Enviar as credenciais de acesso por WhatsApp ao criar um membro
+> (28/08/2026, pedido direto: "quando criar um usuário, e constar o telefone
+> podemos enviar os dados pelo whatsapp").** O campo de telefone do
+> formulário "+ Novo membro" — antes rotulado "WhatsApp (escalonamento de
+> pânico)" e visível só pra Gestor de Problemas/Chefe de Cartório — virou
+> **"WhatsApp de contato"**, de uso geral: agora aparece ao criar QUALQUER
+> perfil (`showMemberModal()`/`onPerfilChange()`, `isNew || ehEscalonamento`),
+> e ao editar continua restrito a gestor_prob/coordenador (só eles usam o
+> número pra escalonamento; reenviar credenciais numa edição não faz
+> sentido). Preenchido, `saveMember()` enfileira as credenciais
+> (painel/e-mail/senha temporária) direto em `sime_campanhas_confirmacao` —
+> **fluxo "SIMPLES"** já existente (`campanha_id` nulo, sem `ator_id` porque
+> não é mesário), a mesma fila que `api/hermes-campanhas.js` já drena pro
+> Hermes mandar por WhatsApp. Nenhum código novo do lado do Hermes foi
+> necessário — o fluxo simples já suportava exatamente isto.
+>
+> **Bug real, achado no caminho: `sime_usuarios.telefone_whatsapp` gravava
+> dígito cru, sem "55" na frente** — único telefone do projeto fora da
+> convenção usada em `sime_atores`/`sime_campanhas_confirmacao`. Nunca dava
+> pra perceber porque, até agora, nada de fato ENVIAVA mensagem pra esse
+> número (só existia pra `hermes-contatos.js` ler); ligar o envio de
+> credenciais teria quebrado em silêncio com o formato errado. Corrigido:
+> grava sempre com "55" (`telSemPais(...)` + `'55'+d`), e o campo agora
+> EXIBE formatado (`fmtTelefone()`, mesmo padrão dos cartões de telefone de
+> Contatar mesários) em vez do valor cru.
+>
+> **Bug real, mais sério, achado no mesmo caminho: o modal "✓ Acesso criado"
+> (senha temporária) abria e fechava sozinho, no mesmo instante, sem
+> ninguém nunca conseguir vê-lo.** `saveMember()` sempre terminava com
+> `saveTeam(team); closeModal(); renderTeam();` incondicional — um
+> `closeModal()` que rodava LOGO depois de `mostrarSenhaTemporaria()` ter
+> acabado de abrir esse mesmo modal, na mesma execução síncrona, sem
+> nenhuma interação do usuário no meio. Ou seja: desde que esse fluxo
+> existe, a senha temporária de um login novo nunca ficou de fato visível
+> pra ninguém — fechava sozinha antes de qualquer clique. Corrigido
+> restringindo o `closeModal()` de baixo à mesma condição que já decidia o
+> toast "Membro salvo" (`!(email && !jaTinhaEmail)`) — ou seja, só fecha
+> quando NÃO acabamos de criar um login novo; quando criamos, o modal de
+> credenciais fica aberto até a própria pessoa clicar "Copiar"/"Fechar".
+>
+> Quando o envio por WhatsApp é enfileirado com sucesso, o modal de
+> credenciais ganha uma nota extra ("💬 Essas credenciais também já foram
+> enfileiradas...") — não substitui a tela, é reforço pra quando o WhatsApp/
+> Hermes falhar ou não for o canal mais rápido no momento. Log de auditoria
+> (`membro_credenciais_whatsapp_enfileiradas`) usa `window.ELEICAO_ID`
+> (já resolvido no boot por `iniciarMesaEstadoReal()`) — não o
+> `getEleicaoAtiva` importado no `<script type="module">` do topo, que é
+> invisível pro `<script>` clássico onde `saveMember()` vive
+> (`ReferenceError` achado testando isto).
 - **Data de carga e lacre da 7ª Zona** (`data_dx_ini`) nula — não há padrão
   legal, é decisão do cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.

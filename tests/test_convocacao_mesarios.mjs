@@ -1088,16 +1088,63 @@ async function login(p) {
   check('botão "Confirmado" fica destacado (sem precisar fechar/reabrir)', (await p.locator('#modal-body button:has-text("✅ Confirmado")').getAttribute('class') || '').includes('btn-dark'));
 
   // "Convocado" (27/08/2026, pedido direto: "convocado significa que ele
-  // recebeu a carta, mas pode ser substituído" — diferente de confirmado)
-  // volta confirmacao pra 'pendente' e limpa data_confirmacao, pra desfazer
-  // uma confirmação marcada por engano ou registrar "sabemos que foi
-  // notificado, só não confirmou ainda".
+  // recebeu a carta, mas pode ser substituído" — diferente de confirmado).
+  // Virou um valor de confirmacao de verdade em 28/08/2026 (antes era o
+  // mesmo 'pendente' de sempre) — grava confirmacao='convocado' e limpa
+  // data_confirmacao, pra desfazer uma confirmação marcada por engano ou
+  // registrar "sabemos que foi notificado, só não confirmou ainda". CARLA já
+  // tem convocacao_recebida=true (o clique em "Confirmado" logo acima já
+  // marca isso sozinho), então o gate do botão nem entra em jogo aqui — ver
+  // bloco 2.86 abaixo pra testar o gate em si.
   await btnConvocadoModal.click();
   await p.waitForTimeout(250);
-  const updConvocado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'pendente'));
-  check('"Convocado" grava confirmacao=pendente e limpa data_confirmacao', !!updConvocado && updConvocado.payload.data_confirmacao === null, JSON.stringify(updConvocado));
+  const updConvocado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a3' && e.payload.confirmacao === 'convocado'));
+  check('"Convocado" grava confirmacao=convocado e limpa data_confirmacao', !!updConvocado && updConvocado.payload.data_confirmacao === null, JSON.stringify(updConvocado));
   check('botão "Convocado" fica destacado depois de clicar, "Confirmado" perde o destaque', (await btnConvocadoModal.getAttribute('class') || '').includes('btn-dark') && !(await btnConfirmadoModal.getAttribute('class') || '').includes('btn-dark'));
   check('grava log de auditoria "mesario_marcado_convocado"', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_marcado_convocado' && e.payload.payload.ator_id === 'a3')));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.855 Botão "Convocado" só destrava depois de marcar "recebeu a
+// convocação" (28/08/2026, pedido direto: "o botão de convocado deve ser
+// habilitado somente quando informamos que o eleitor recebeu a
+// convocação") ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+
+  const checkbox = p.locator('#modal-body input[type="checkbox"]');
+  check('caixa "recebeu a convocação" começa desmarcada (fixture padrão)', !(await checkbox.isChecked()));
+
+  // Clicar "Convocado" sem marcar a caixa primeiro: nunca fica `disabled`
+  // (mesmo critério já usado no resto do sistema — um botão disabled sem
+  // feedback nenhum já causou confusão real numa tela de correspondência),
+  // mas avisa por toast e NÃO grava nada.
+  await p.locator('#modal-body button:has-text("📋 Convocado")').click();
+  await p.waitForTimeout(200);
+  const semGate = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'convocado'));
+  check('sem marcar a caixa, "Convocado" não grava nada', !semGate, JSON.stringify(semGate));
+
+  // Marca a caixa — vira um update em convocacao_recebida.
+  await checkbox.click();
+  await p.waitForTimeout(200);
+  const updRecebida = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.convocacao_recebida === true));
+  check('marcar a caixa grava convocacao_recebida=true (+ ts)', !!updRecebida && !!updRecebida.payload.convocacao_recebida_ts, JSON.stringify(updRecebida));
+  check('grava log de auditoria "mesario_convocacao_recebida"', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_convocacao_recebida' && e.payload.payload.ator_id === 'a1' && e.payload.payload.recebida === true)));
+
+  // Agora sim "Convocado" funciona.
+  await p.locator('#modal-body button:has-text("📋 Convocado")').click();
+  await p.waitForTimeout(200);
+  const comGate = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'convocado'));
+  check('depois de marcar a caixa, "Convocado" grava confirmacao=convocado', !!comGate, JSON.stringify(comGate));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -1547,6 +1594,10 @@ async function login(p) {
 
   const updBruno = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.inscricao_eleitoral === '046919051589'));
   check('atualiza confirmacao=confirmado pra Ciente=1', updBruno?.payload?.confirmacao === 'confirmado', JSON.stringify(updBruno));
+  // convocacao_recebida junto (28/08/2026) — confirmar já implica ter
+  // recebido a convocação, mesma regra aplicada ao botão "Confirmado" do
+  // modal e à confirmação via Hermes.
+  check('marca convocacao_recebida=true junto', updBruno?.payload?.convocacao_recebida === true, JSON.stringify(updBruno));
   // Com "55" na frente (21/08/2026) — antes gravava os dígitos crus do
   // arquivo, fora do padrão que o resto do sistema assume.
   check('atualiza telefone junto, já normalizado com 55', updBruno?.payload?.telefone_whatsapp === '5586988887777', JSON.stringify(updBruno));

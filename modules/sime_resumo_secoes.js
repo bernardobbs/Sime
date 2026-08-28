@@ -72,7 +72,7 @@ async function rsCarregar() {
     // inteiro agora (não só a string de confirmacao) — o card da seção
     // mostra o nome de quem está designado, não só um ícone.
     const atual = porSecao[a.secao_id][a.funcao_mesa];
-    const prioridade = { confirmado: 3, pendente: 2, substituido: 1, recusou: 1, contato_incorreto: 1 };
+    const prioridade = { confirmado: 3, convocado: 2, pendente: 2, substituido: 1, recusou: 1, contato_incorreto: 1 };
     if (!atual || (prioridade[a.confirmacao] || 0) >= (prioridade[atual.confirmacao] || 0)) {
       porSecao[a.secao_id][a.funcao_mesa] = a;
     }
@@ -118,6 +118,7 @@ function rsStatusCargo(ator) {
   const nome = ator.nome_completo, id = ator.id;
   if (ator.precisa_substituir) return { icone: '🔁', label: `Precisa ser substituído — ${nome}`, cls: 'rs-alerta', nome, id };
   if (ator.confirmacao === 'confirmado') return { icone: '✅', label: `Confirmado — ${nome}`, cls: 'rs-ok', nome, id };
+  if (ator.confirmacao === 'convocado') return { icone: '📋', label: `Convocado, aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome, id };
   if (ator.confirmacao === 'recusou') return { icone: '⚠️', label: `Recusou — precisa substituto — ${nome}`, cls: 'rs-alerta', nome, id };
   if (ator.confirmacao === 'contato_incorreto') return { icone: '🔍', label: `Contato incorreto — ${nome}`, cls: 'rs-alerta', nome, id };
   return { icone: '🔶', label: `Aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome, id }; // pendente/substituido/outros
