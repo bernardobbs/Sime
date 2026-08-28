@@ -1477,13 +1477,20 @@ function showMemberModal(m){
         <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Só super_admin escolhe a zona — os demais perfis sempre criam na própria.</div>
       </div>` : ''}
 
-      <!-- Escalonamento: WhatsApp (Gestor de Problemas / Chefe de Cartório) —
-           é pra onde o Hermes manda aviso quando um problema não é resolvido
-           a tempo (10 min sem dono, 30 min sem solução — ver CLAUDE.md). -->
+      <!-- WhatsApp de contato — dois usos, ambos opcionais e independentes:
+           (1) escalonamento de pânico (hermes-contatos.js), só relevante pra
+           Gestor de Problemas/Chefe de Cartório — Hermes avisa quando um
+           problema não é resolvido a tempo (10 min sem dono, 30 min sem
+           solução, ver CLAUDE.md); (2) enviar as credenciais de acesso por
+           WhatsApp assim que a conta é criada (28/08/2026, pedido direto:
+           "quando criar um usuário, e constar o telefone podemos enviar os
+           dados pelo whatsapp") — vale pra QUALQUER perfil, só ao criar (não
+           faz sentido reenviar credenciais numa edição). onPerfilChange()
+           decide visibilidade e o texto de ajuda conforme o caso. -->
       <div class="form-group" id="grp-tel-escalonamento" style="display:none">
-        <label for="m-tel">WhatsApp (escalonamento de pânico)</label>
-        <input type="text" id="m-tel" value="${m?.telefone_whatsapp||''}" placeholder="86999998888">
-        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.</div>
+        <label for="m-tel">WhatsApp de contato</label>
+        <input type="text" id="m-tel" value="${m?.telefone_whatsapp ? fmtTelefone(m.telefone_whatsapp) : ''}" placeholder="(86) 9xxxx-xxxx">
+        <div id="m-tel-helper" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
       </div>
 
       <!-- Escopo: Local (Coord. de Acessibilidade) -->
@@ -1545,7 +1552,20 @@ function onPerfilChange(){
   const esc = PERFIS[p]?.escopo || 'tudo';
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
-  show('grp-tel-escalonamento', p==='gestor_prob' || p==='coordenador');
+  // isNew inferido do mesmo jeito que o resto da tela já faz pra e-mail
+  // (disabled = login já existe, ver template de m-email acima) — o campo
+  // de WhatsApp em si sempre existe no DOM, só a visibilidade/texto mudam.
+  const isNew = !document.getElementById('m-email')?.disabled;
+  const ehEscalonamento = p==='gestor_prob' || p==='coordenador';
+  show('grp-tel-escalonamento', isNew || ehEscalonamento);
+  const telHelper = document.getElementById('m-tel-helper');
+  if(telHelper){
+    telHelper.textContent = ehEscalonamento
+      ? (isNew
+        ? 'Recebe aviso automático do Hermes quando um problema não é resolvido a tempo, e as credenciais de acesso por WhatsApp assim que a conta for criada.'
+        : 'Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.')
+      : (isNew ? 'Opcional — se preenchido, as credenciais de acesso são enviadas por WhatsApp assim que a conta for criada.' : '');
+  }
   show('grp-local',      esc==='local');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
@@ -1598,9 +1618,15 @@ async function saveMember(id){
               : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
     substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
-    // Escalonamento de pânico (hermes-contatos.js): só relevante pra quem o
-    // Hermes pode precisar avisar — Gestor de Problemas e Chefe de Cartório.
-    telefone_whatsapp: (perfil==='gestor_prob'||perfil==='coordenador') ? (document.getElementById('m-tel')?.value.replace(/\D/g,'')||'') : '',
+    // 28/08/2026: campo deixou de ser exclusivo de gestor_prob/coordenador —
+    // qualquer perfil pode ter um WhatsApp de contato agora (ver
+    // showMemberModal/onPerfilChange). Gravado com "55" na frente, mesma
+    // convenção usada em sime_atores/sime_campanhas_confirmacao — antes
+    // gravava dígito cru sem "55", inconsistente com o resto do projeto (só
+    // não dava pra perceber porque nada ainda enviava mensagem de fato pra
+    // este número; ao ligar o envio de credenciais abaixo, o formato errado
+    // quebraria o envio em silêncio).
+    telefone_whatsapp: (() => { const d = telSemPais(document.getElementById('m-tel')?.value||''); return d ? '55'+d : ''; })(),
   };
   const team=loadTeam();
   const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
@@ -1631,14 +1657,55 @@ async function saveMember(id){
       trackSync(true);
       base.auth_user_id=out.auth_user_id;
       base.usuario_id=out.usuario_id;
-      mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
       // sime-admin-user não aceita telefone — a Edge Function só cria o login
-      // (nome/email/perfil); o telefone de escalonamento é gravado à parte,
-      // aqui, com a sessão normal do admin (mesma RLS do update abaixo).
+      // (nome/email/perfil); o telefone de contato é gravado à parte, aqui,
+      // com a sessão normal do admin (mesma RLS do update abaixo).
+      let enviadoPorWhatsapp = false;
       if(base.telefone_whatsapp){
         const { error: telErr } = await supabase.from('sime_usuarios').update({ telefone_whatsapp: base.telefone_whatsapp }).eq('id', out.usuario_id);
-        if(telErr){ trackSync(false); showToast('⚠ WhatsApp de escalonamento não sincronizou: '+telErr.message); }
+        if(telErr){ trackSync(false); showToast('⚠ WhatsApp de contato não sincronizou: '+telErr.message); }
+
+        // Enfileira as credenciais pro Hermes mandar por WhatsApp (28/08/2026,
+        // pedido direto: "quando criar um usuário, e constar o telefone
+        // podemos enviar os dados pelo whatsapp") — mesma fila de disparo já
+        // usada em todo o resto do sistema (sime_campanhas_confirmacao),
+        // fluxo "SIMPLES": campanha_id nulo, sem ator_id (não é mesário),
+        // sem gate de campanha nenhuma (ver api/hermes-campanhas.js — item
+        // sem campanha_id passa direto). Não substitui a tela abaixo, que
+        // continua mostrando a senha uma vez — é reforço pra quando não dá
+        // pra repassar por outro canal na hora, ou WhatsApp/Hermes falhar.
+        const zonaIdCriado = zonaEl ? zonaEl.value : window.MINHA_ZONA_ID;
+        const painelUrl = location.origin + location.pathname;
+        const msgCredenciais = `Olá, ${nome}! Seu acesso ao SIME (Sistema de Monitoramento Eleitoral) foi criado.\n\n`
+          + `🌐 Painel: ${painelUrl}\n`
+          + `📧 E-mail: ${email}\n`
+          + `🔑 Senha temporária: ${out.senha_temporaria}\n\n`
+          + `No primeiro login você vai precisar trocar essa senha.`;
+        const { error: msgErr } = await supabase.from('sime_campanhas_confirmacao').insert({
+          telefone_whatsapp: base.telefone_whatsapp, zona_id: zonaIdCriado,
+          mensagem_enviada: msgCredenciais, status: 'pendente',
+        });
+        if(msgErr){ showToast('⚠ Credenciais criadas, mas não deu pra enfileirar o envio por WhatsApp: '+msgErr.message); }
+        else {
+          enviadoPorWhatsapp = true;
+          // eleicao_id preenchido de propósito — sem ele o log grava (INSERT
+          // é livre) mas fica invisível pra sempre em qualquer SELECT (RLS de
+          // sime_logs exige eleicao_id numa eleição da zona visível), mesmo
+          // bug já documentado e corrigido noutras telas deste projeto.
+          // window.ELEICAO_ID (não getEleicaoAtiva importado direto — aquele
+          // import vive só no <script type="module"> do topo, invisível pro
+          // <script> clássico onde saveMember() roda; ReferenceError achado
+          // testando isto) já é resolvido no boot por iniciarMesaEstadoReal()
+          // e é o mesmo campo que o resto desta tela usa (ver p_eleicao_id
+          // nas ações de seção). Sempre a eleição da zona de QUEM ESTÁ
+          // LOGADO — se um super_admin criar alguém noutra zona, o log fica
+          // com a eleição da própria zona dele, não da zona de destino;
+          // aceitável pra uma anotação de auditoria, não vale a query extra.
+          const { data: tsLog } = await supabase.rpc('sime_now');
+          await supabase.from('sime_logs').insert({ acao: 'membro_credenciais_whatsapp_enfileiradas', modulo: 'admin', eleicao_id: window.ELEICAO_ID || null, payload: { usuario_id: out.usuario_id }, ts: tsLog });
+        }
       }
+      mostrarSenhaTemporaria(nome, email, out.senha_temporaria, enviadoPorWhatsapp);
     }catch(e){
       trackSync(false);
       showToast('⚠ Sem conexão — acesso não criado');
@@ -1666,14 +1733,32 @@ async function saveMember(id){
     // fica no id local mesmo — não tem como ligar a uma linha real ainda.
     team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
-  saveTeam(team); closeModal(); renderTeam();
+  saveTeam(team); renderTeam();
   // Se o usuário atual foi editado, reaplica o escopo
   if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
-  if(!(email && !jaTinhaEmail)) showToast('✓ Membro salvo');
+  // Bug real corrigido em 28/08/2026, achado ao adicionar a nota de envio por
+  // WhatsApp na tela de credenciais: quando acabamos de criar um login novo,
+  // mostrarSenhaTemporaria() já abriu o modal de senha — um closeModal()
+  // incondicional aqui embaixo fechava esse modal de volta no MESMO instante
+  // (mesma execução síncrona, sem nenhuma interação do usuário no meio), então
+  // a senha temporária nunca ficava visível pra ninguém lá. Fecha só quando
+  // NÃO acabamos de criar login — mesma condição que já decidia o toast
+  // "Membro salvo" antes desta correção, agora unificada aqui.
+  if(email && !jaTinhaEmail){
+    // credenciais na tela — fica aberto até a pessoa clicar Copiar/Fechar
+  } else {
+    closeModal();
+    showToast('✓ Membro salvo');
+  }
 }
 
 // Modal que exibe a senha temporária UMA vez (não fica salva em lugar nenhum).
-function mostrarSenhaTemporaria(nome, email, senha){
+// enviadoPorWhatsapp (28/08/2026): quando a pessoa tinha telefone cadastrado,
+// as mesmas credenciais já foram enfileiradas pro Hermes mandar por WhatsApp
+// (ver saveMember) — a tela continua mostrando a senha de qualquer forma,
+// pro caso do WhatsApp falhar ou o admin preferir repassar na hora por outro
+// canal.
+function mostrarSenhaTemporaria(nome, email, senha, enviadoPorWhatsapp){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">✓ Acesso criado</div></div>
@@ -1681,6 +1766,7 @@ function mostrarSenhaTemporaria(nome, email, senha){
     </div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
+      ${enviadoPorWhatsapp ? `<p style="margin:0 0 10px;font-size:.8rem;color:var(--accent,#1a7f37)">💬 Essas credenciais também já foram enfileiradas pra sair por WhatsApp no número informado.</p>` : ''}
       <div class="form-group"><label for="credenciais-email">E-mail</label>
         <input type="text" id="credenciais-email" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
       </div>
@@ -1716,7 +1802,38 @@ function resetarSenhaMembro(id){
       });
       const out=await resp.json().catch(()=>({}));
       if(!resp.ok){ closeModal(); showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
-      mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
+
+      // Manda a senha nova por WhatsApp também (28/08/2026, pedido direto:
+      // "e quando gerar nova senha enviar por whatsapp tb a senha
+      // temporaria") — mesmo fluxo SIMPLES de sempre (ver saveMember()),
+      // só que aqui reaproveitando o telefone JÁ salvo do membro
+      // (m.telefone_whatsapp, vindo de loadTeam()/EQUIPE_REAL — já grava com
+      // "55" na frente desde a correção em saveMember()), sem pedir de novo.
+      // zona_id: window.MINHA_ZONA_ID (não vem no objeto `m` — loadTeam()
+      // não carrega esse campo) — cobre o caso comum (quem reseta é da
+      // própria zona do membro, único caso que a Edge Function libera pra
+      // não-super_admin); um super_admin resetando alguém de outra zona é
+      // exceção rara, mesmo trade-off já aceito no log de criação acima.
+      let enviadoPorWhatsapp = false;
+      if(m.telefone_whatsapp){
+        const painelUrl = location.origin + location.pathname;
+        const msgReset = `Olá, ${m.nome}! Sua senha do SIME foi redefinida.\n\n`
+          + `🌐 Painel: ${painelUrl}\n`
+          + `📧 E-mail: ${m.email}\n`
+          + `🔑 Nova senha temporária: ${out.senha_temporaria}\n\n`
+          + `No próximo login você vai precisar trocar essa senha.`;
+        const { error: msgErr } = await supabase.from('sime_campanhas_confirmacao').insert({
+          telefone_whatsapp: m.telefone_whatsapp, zona_id: window.MINHA_ZONA_ID,
+          mensagem_enviada: msgReset, status: 'pendente',
+        });
+        if(msgErr){ showToast('⚠ Senha redefinida, mas não deu pra enfileirar o envio por WhatsApp: '+msgErr.message); }
+        else {
+          enviadoPorWhatsapp = true;
+          const { data: tsLog } = await supabase.rpc('sime_now');
+          await supabase.from('sime_logs').insert({ acao: 'membro_senha_resetada_whatsapp_enfileirada', modulo: 'admin', eleicao_id: window.ELEICAO_ID || null, payload: { usuario_id: id }, ts: tsLog });
+        }
+      }
+      mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria, enviadoPorWhatsapp);
     }catch(e){ closeModal(); showToast('⚠ Sem conexão'); }
   }, { titulo:'Redefinir senha', labelOk:'🔑 Gerar nova senha' });
 }

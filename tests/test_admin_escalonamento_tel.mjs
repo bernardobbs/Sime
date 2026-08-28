@@ -1,9 +1,14 @@
-// Testa o campo "WhatsApp (escalonamento de pânico)" em SIME_admin.html: só
-// aparece pra Gestor de Problemas e Chefe de Cartório (os dois perfis que o
-// endpoint hermes-contatos.js resolve — ver CLAUDE.md), pré-preenche ao
-// editar um membro real (sime_usuarios.telefone_whatsapp) e sincroniza de
-// volta ao salvar. Sem esse fio, o endpoint fica sempre de mãos vazias: não
-// havia UI nenhuma pra gravar o telefone.
+// Testa o campo "WhatsApp de contato" em SIME_admin.html (renomeado em
+// 28/08/2026 — antes só existia pra Gestor de Problemas/Chefe de Cartório,
+// rótulo "WhatsApp (escalonamento de pânico)"). Dupla finalidade agora:
+// (1) escalonamento de pânico (hermes-contatos.js) — só relevante pra
+// gestor_prob/coordenador, os dois perfis que o endpoint resolve; (2) enviar
+// as credenciais de acesso por WhatsApp assim que a conta é criada (pedido
+// direto: "quando criar um usuário, e constar o telefone podemos enviar os
+// dados pelo whatsapp") — vale pra QUALQUER perfil, só ao criar. Por isso o
+// campo aparece sempre que isNew (independente do perfil), e ao editar só
+// continua visível pra gestor_prob/coordenador (não faz sentido reenviar
+// credenciais numa edição).
 import pw from 'playwright';
 const { chromium } = pw;
 
@@ -52,7 +57,7 @@ export function createClient(url, key) {
       };
       return qb;
     },
-    rpc(name) { if (name === 'sime_now') return Promise.resolve({ data: '2026-08-08T12:00:00.000Z', error: null }); return Promise.resolve({ data: null, error: null }); },
+    rpc(name) { if (name === 'sime_now') return Promise.resolve({ data: '2026-08-28T12:00:00.000Z', error: null }); return Promise.resolve({ data: null, error: null }); },
     channel() { return { on() { return this; }, subscribe() { return this; } }; },
     removeChannel() {},
   };
@@ -67,7 +72,7 @@ async function fazerLogin(p) {
   await p.waitForTimeout(400);
 }
 
-// ── Caso 1: campo só aparece pra gestor_prob/coordenador ──
+// ── Caso 1: ao CRIAR, campo aparece pra QUALQUER perfil ──
 {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
@@ -84,19 +89,55 @@ async function fazerLogin(p) {
   await p.evaluate(() => window.openNewMember());
 
   await p.selectOption('#m-perfil', 'observador');
-  check('observador: campo de WhatsApp escondido', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display === 'none'));
+  check('criar: observador também mostra o campo (uso geral agora, não só escalonamento)', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
 
   await p.selectOption('#m-perfil', 'gestor_prob');
-  check('gestor_prob: campo de WhatsApp aparece', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
+  check('criar: gestor_prob mostra o campo', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
 
   await p.selectOption('#m-perfil', 'coordenador');
-  check('coordenador: campo de WhatsApp aparece', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
+  check('criar: coordenador mostra o campo', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
 
   check('zero erros JS', erros.length === 0, erros.join('; '));
   await ctx.close();
 }
 
-// ── Caso 2: editar membro real pré-preenche o telefone já salvo no banco ──
+// ── Caso 1b: ao EDITAR, campo só continua visível pra gestor_prob/coordenador
+// — reenviar credenciais não faz sentido numa edição, e outro perfil não
+// recebe aviso de pânico mesmo. ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
+      usuarios: [
+        { id: 'admin-1', nome: 'Rafael A.', email: 'x@sime.gov.br', perfil: 'coordenador', zona_id: 'zona-7', ativo: true, telefone_whatsapp: null },
+        { id: 'u-obs', nome: 'Otávio Observador', email: 'otavio@sime.gov.br', perfil: 'observador', zona_id: 'zona-7', ativo: true, telefone_whatsapp: null },
+        { id: 'u-gestor', nome: 'Ana Gestora', email: 'ana@sime.gov.br', perfil: 'gestor_prob', zona_id: 'zona-7', ativo: true, telefone_whatsapp: '558611110099' },
+      ],
+    }) });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_admin.html');
+  await p.waitForTimeout(300);
+  await fazerLogin(p);
+  await p.waitForTimeout(200);
+
+  await p.evaluate(() => window.editMember('u-obs'));
+  check('editar observador: campo escondido', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display === 'none'));
+  await p.evaluate(() => window.closeModal());
+  await p.waitForTimeout(80);
+
+  await p.evaluate(() => window.editMember('u-gestor'));
+  check('editar gestor_prob: campo visível', await p.evaluate(() => document.getElementById('grp-tel-escalonamento').style.display !== 'none'));
+
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
+// ── Caso 2: editar membro real pré-preenche o telefone já salvo no banco,
+// formatado (não mais o valor cru com "55") — mesmo padrão de fmtTelefone()
+// já usado em Contatar mesários. Salvar volta a gravar com "55" na frente. ──
 {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
@@ -117,26 +158,34 @@ async function fazerLogin(p) {
 
   await p.evaluate(() => window.editMember('u-gestor'));
   const telVal = await p.locator('#m-tel').inputValue();
-  check('editar: campo pré-preenchido com o telefone do banco', telVal === '558611110099', 'got=' + telVal);
+  check('editar: campo pré-preenchido e FORMATADO (sem o "55")', telVal === '(86) 1111-0099', 'got=' + telVal);
 
-  // Troca o telefone e salva — precisa sincronizar de volta pro sime_usuarios
-  await p.fill('#m-tel', '558699998888');
+  // Troca o telefone (digitado no formato local, como a pessoa realmente
+  // digitaria) e salva — precisa sincronizar de volta pro sime_usuarios já
+  // com "55" na frente.
+  await p.fill('#m-tel', '(86) 99999-8888');
   await p.evaluate(() => window.saveMember('u-gestor'));
   await p.waitForTimeout(200);
 
   const updates = await p.evaluate(() => window.__updates);
   const upd = updates.find(u => u.filters.id === 'u-gestor');
-  check('salvar: telefone_whatsapp sincronizou com sime_usuarios', upd?.payload?.telefone_whatsapp === '558699998888', JSON.stringify(upd));
+  check('salvar: telefone_whatsapp sincronizou com "55" na frente', upd?.payload?.telefone_whatsapp === '5586999998888', JSON.stringify(upd));
 
   const usuarios = await p.evaluate(() => window.__usuarios());
   const gestor = usuarios.find(u => u.id === 'u-gestor');
-  check('banco (mock) refletiu o novo telefone', gestor?.telefone_whatsapp === '558699998888', JSON.stringify(gestor));
+  check('banco (mock) refletiu o novo telefone', gestor?.telefone_whatsapp === '5586999998888', JSON.stringify(gestor));
 
   check('zero erros JS', erros.length === 0, erros.join('; '));
   await ctx.close();
 }
 
-// ── Caso 3: trocar o perfil pra fora do escalonamento limpa o telefone no banco ──
+// ── Caso 3: mudar o perfil pra fora do escalonamento NÃO apaga mais o
+// telefone (28/08/2026) — antes a captura só existia pra gestor_prob/
+// coordenador, então trocar de perfil limpava o valor sem querer; agora o
+// campo é de uso geral (contato/credenciais), então o número persiste — só
+// deixa de ser lido pra escalonamento (hermes-contatos.js já filtra por
+// perfil, então um observador com telefone salvo nunca recebe aviso de
+// pânico mesmo assim). ──
 {
   const ctx = await b.newContext();
   const p = await ctx.newPage();
@@ -162,7 +211,7 @@ async function fazerLogin(p) {
 
   const usuarios = await p.evaluate(() => window.__usuarios());
   const gestor = usuarios.find(u => u.id === 'u-gestor');
-  check('mudar perfil pra fora do escalonamento limpa o telefone', gestor?.telefone_whatsapp === null, JSON.stringify(gestor));
+  check('mudar perfil pra fora do escalonamento MANTÉM o telefone', gestor?.telefone_whatsapp === '558611110099', JSON.stringify(gestor));
   check('zero erros JS', erros.length === 0, erros.join('; '));
   await ctx.close();
 }
