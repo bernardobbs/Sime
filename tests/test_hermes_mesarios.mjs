@@ -224,6 +224,28 @@ resetDB();
 r = await call('POST', Z7, { acao: 'confirmar', telefone: '558611110003' });
 check('zona 7 não altera mesário da zona 96', r.code === 404 && globalThis.__SUPA.atores[2].confirmacao === 'pendente', JSON.stringify(r.body));
 
+// ── DISPENSADO (ativo=false) NÃO deve mais aparecer em nada (31/08/2026,
+// pedido direto: "se o mesário esta dispensado ele não deve mais aparecer
+// na lista de mesários") — bug real: a query base de TODAS as ações deste
+// endpoint (listar/consultar/buscar_nome/confirmar/...) nunca filtrava
+// ativo=true, então quem já tinha sido dispensado (seja pelo cartório, seja
+// substituído via WhatsApp) continuava aparecendo em 'listar' e o
+// autoatendimento respondia como se a pessoa ainda estivesse na mesa.
+resetDB();
+globalThis.__SUPA.atores.push({ id: 'm6', zona_id: 'zona-7', funcao: 'mesario', nome_completo: 'ELIAS DISPENSADO', telefone_whatsapp: '558611110006', observacao: 'Função: 2º Mesário | Seção votação: 63 | Local: X', confirmacao: 'substituido', ativo: false, secao_id: null, funcao_mesa: null });
+
+r = await call('POST', Z7, { acao: 'listar' });
+check('dispensado não aparece em listar', r.body.mesarios.every(m => m.nome !== 'ELIAS DISPENSADO'), JSON.stringify(r.body));
+
+r = await call('POST', Z7, { acao: 'consultar', telefone: '558611110006' });
+check('dispensado manda "oi" → não encontrado, não responde como se ainda estivesse na mesa', r.code === 404 && r.body.encontrado === 0, JSON.stringify(r.body));
+
+r = await call('POST', Z7, { acao: 'buscar_nome', nome: 'ELIAS DISPENSADO' });
+check('dispensado não aparece em buscar_nome', r.code === 404, JSON.stringify(r.body));
+
+r = await call('POST', Z7, { acao: 'confirmar', telefone: '558611110006' });
+check('dispensado não consegue confirmar/recusar/substituir de novo pelo telefone antigo', r.code === 404, JSON.stringify(r.body));
+
 let pass = 0, fail = 0;
 for (const x of results) { console.log((x.ok ? 'PASS' : 'FAIL') + ' — ' + x.n + (x.e ? '  [' + x.e + ']' : '')); x.ok ? pass++ : fail++; }
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -268,15 +268,15 @@ function coHtmlAr(p, zona) {
           <colgroup><col class="co-ar-col-a"><col class="co-ar-col-b"><col class="co-ar-col-c"></colgroup>
           <tr>
             <td colspan="2" class="co-ar-titulo">AVISO DE RECEBIMENTO <span class="co-ar-sigla">AR</span></td>
-            <td class="co-ar-campo">DATA DE POSTAGEM<div class="co-ar-linha-data">___ / ___ / ______</div></td>
+            <td class="co-ar-campo">DATA DE POSTAGEM</td>
           </tr>
           <tr>
             <td colspan="2" rowspan="2">
-              <div class="co-ar-rotulo">DESTINATÁRIO:</div>
+              <div class="co-ar-rotulo">DESTINATÁRIO</div>
               ${coLinhasDestinatario(p)}
-              <div class="co-ar-nota">${funcaoSecao}<br>Observação: Carta de convocação</div>
-              <div class="co-ar-codigo">COLE AQUI O NÚMERO DE REGISTRO DO OBJETO</div>
-              <div class="co-ar-rotulo">Endereço de devolução do AR:</div>
+              <div class="co-ar-nota">${funcaoSecao}</div>
+              <div class="co-ar-codigo">(CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO)</div>
+              <div class="co-ar-rotulo">ENDEREÇO PARA DEVOLUÇÃO DO AR</div>
               ${coLinhasRemetente(zona)}
             </td>
             <td class="co-ar-campo">UNIDADE DE POSTAGEM</td>
@@ -292,20 +292,21 @@ function coHtmlAr(p, zona) {
               3ª ___ / ___ / ______&nbsp;&nbsp;___:___h
             </td>
             <td>
-              <b>MOTIVO DA DEVOLUÇÃO</b>
+              <b>OBSERVAÇÃO</b><br>Carta de convocação<br><br>
+              <b>MOTIVO DE DEVOLUÇÃO</b>
               <div class="co-ar-motivos">
-                <div><span class="co-ar-check"></span>Mudou-se</div><div><span class="co-ar-check"></span>Recusado</div>
-                <div><span class="co-ar-check"></span>Endereço insuficiente</div><div><span class="co-ar-check"></span>Não procurado</div>
-                <div><span class="co-ar-check"></span>Não existe o número</div><div><span class="co-ar-check"></span>Ausente</div>
-                <div><span class="co-ar-check"></span>Desconhecido</div><div><span class="co-ar-check"></span>Falecido</div>
+                <div><span class="co-ar-check">1</span>Mudou-se</div><div><span class="co-ar-check">5</span>Recusado</div>
+                <div><span class="co-ar-check">2</span>Endereço insuficiente</div><div><span class="co-ar-check">6</span>Não procurado</div>
+                <div><span class="co-ar-check">3</span>Não existe o número</div><div><span class="co-ar-check">7</span>Ausente</div>
+                <div><span class="co-ar-check">4</span>Desconhecido</div><div><span class="co-ar-check">8</span>Falecido</div>
+                <div><span class="co-ar-check">9</span>Outros</div>
               </div>
-              <div class="co-ar-outros"><span class="co-ar-check"></span>Outros <span class="co-ar-linha-outros"></span></div>
             </td>
             <td class="co-ar-rubrica">RUBRICA E MATRÍCULA DO<br>CARTEIRO</td>
           </tr>
           <tr>
             <td colspan="2" class="co-ar-campo">ASSINATURA DO RECEBEDOR</td>
-            <td class="co-ar-campo">DATA DE ENTREGA<div class="co-ar-linha-data">___ / ___ / ______</div></td>
+            <td class="co-ar-campo">DATA DE ENTREGA</td>
           </tr>
           <tr>
             <td colspan="2" class="co-ar-campo">NOME LEGÍVEL DO RECEBEDOR</td>

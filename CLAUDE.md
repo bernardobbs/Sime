@@ -1529,6 +1529,57 @@ cada um com propósito diferente:
   entrega, os dois testados como os pontos mais arriscados de quebrar de
   novo, couberam numa linha só cada.
 
+  **AR revisado uma 3ª vez no mesmo dia — desta vez com o FONTE REAL do
+  gerador oficial ("verifique o site então", depois o HTML literal
+  salvo de `www2.correios.com.br/enderecador/encomendas/act/gerarAR.cfm`,
+  e por fim o PDF gerado por ele com dados de teste).** Diferente das
+  duas rodadas anteriores (Enderecador de Encomendas e idcore.com.br — os
+  dois APROXIMAÇÕES de terceiro, ou a interface de entrada, não o AR
+  impresso em si), isto é o HTML/PDF literal que o próprio `gerarAR.cfm`
+  dos Correios devolve — a fonte mais confiável possível, sem
+  intermediário. Comparado com calma, três coisas que as rodadas
+  anteriores tinham "corrigido" pro lado ERRADO, e uma real:
+  - **"(CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO)" com parênteses**
+    é o texto oficial de verdade — a versão da 1ª rodada (baseada no
+    Enderecador de Encomendas) já estava certa; a troca pra "COLE AQUI…"
+    da 2ª rodada (idcore.com.br) tinha se afastado do original.
+  - **"DESTINATÁRIO" e "ENDEREÇO PARA DEVOLUÇÃO DO AR" são MAIÚSCULAS,
+    SEM dois-pontos** — de novo, a 1ª rodada já estava certa; os dois
+    pontos/case misto vieram do idcore.com.br, não do formulário oficial.
+  - **"MOTIVO DE DEVOLUÇÃO"** (preposição "DE", não "DA") — mesmo padrão:
+    1ª rodada certa, "DA" era estilo próprio do idcore.com.br.
+  - **As caixinhas do motivo SÃO numeradas (1 a 9) no formulário real** —
+    achado genuíno, nenhuma das duas rodadas anteriores tinha isso certo
+    ao mesmo tempo (a 1ª tinha número mas culpava a numeração pelo bug de
+    "esticado", quando na verdade o culpado era só a largura da coluna,
+    já corrigida; a 2ª tirou o número copiando o idcore.com.br). Números
+    voltaram: 1 Mudou-se/2 Endereço insuficiente/3 Não existe o número/
+    4 Desconhecido/9 Outros na esquerda, 5 Recusado/6 Não procurado/
+    7 Ausente/8 Falecido na direita — ordem exata do PDF real, "Outros"
+    de volta pro grid (não é mais linha própria com espaço em branco;
+    o oficial não tem isso).
+  - **A coluna OBSERVAÇÃO existe de verdade no formulário oficial**
+    (o dono do projeto testou o gerador com "teste" no campo, e apareceu
+    ali) — a 2ª rodada tinha removido essa coluna por engano, achando que
+    era exclusividade do SIME; "Carta de convocação" volta pra lá, e a
+    nota de função/seção do destinatário continua onde sempre esteve
+    (não precisa dividir espaço com a observação).
+  - **Larguras de coluna recalculadas usando as COORDENADAS VETORIAIS do
+    PDF oficial** (não pixel de screenshot, não estimativa) — a coluna da
+    direita (DATA DE POSTAGEM/UNIDADE DE POSTAGEM/CARIMBO/RUBRICA/DATA DE
+    ENTREGA/Nº DOC.) é 25% da largura útil, TENTATIVAS DE ENTREGA 42%,
+    OBSERVAÇÃO+MOTIVO DE DEVOLUÇÃO 33% — nem os 32% (Enderecador de
+    Encomendas) nem os 45% (idcore.com.br) da direita batiam com o
+    original de verdade.
+  - **Linha em branco sob DATA DE POSTAGEM/DATA DE ENTREGA, removida** —
+    era um acréscimo do idcore.com.br; o formulário oficial não desenha
+    nada ali, só o rótulo.
+  Verificado de novo com `page.pdf()` — mesmo com col-a caindo pra 42% (só
+  um pouco menor que os 45% de antes), "TENTATIVAS DE ENTREGA" continua
+  cabendo numa linha por tentativa; e com col-b subindo pra 33%, o grid de
+  2 colunas do motivo (agora com número de novo, ligeiramente mais largo
+  por caixinha) também não quebra.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**

@@ -142,38 +142,37 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .co-ar-cola{position:absolute;left:0;top:0;bottom:0;width:6mm;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
   .co-ar-cola span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:6.5pt;letter-spacing:.5px;color:#333;white-space:nowrap;}
   .co-ar-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
-  /* Larguras recalculadas em 31/08/2026 pra bater com o AR gerado pelo
-     idcore.com.br ("USE A MESMA estrutura do ar", print real anexado) —
-     medido por pixel no PDF de referência: coluna da direita (DATA DE
-     POSTAGEM/UNIDADE DE POSTAGEM/CARIMBO/RUBRICA/DATA DE ENTREGA/Nº DOC.)
-     ocupa ~45% da tabela ali, não os 32% que a gente tinha copiado do
-     Enderecador de Encomendas — referências diferentes, proporções
-     diferentes. col-a+col-b (a "célula grande" com colspan=2) cai pra 55%. */
-  .co-ar-col-a{width:27%;}
-  .co-ar-col-b{width:28%;}
-  .co-ar-col-c{width:45%;}
+  /* Larguras recalculadas em 31/08/2026 — pedido direto: "verifique o
+     site então" / o usuário anexou o HTML *real* do gerarAR.cfm oficial
+     (não um clone de terceiro) e depois o PDF gerado por ele. Medido a
+     partir das coordenadas VETORIAIS do PDF oficial (não pixel de
+     screenshot): a coluna da direita (DATA DE POSTAGEM/UNIDADE DE
+     POSTAGEM/CARIMBO/RUBRICA/DATA DE ENTREGA/Nº DOC.) é 25% da largura
+     útil ali — nem os 32% copiados do Enderecador de Encomendas, nem os
+     45% estimados a partir do idcore.com.br (nenhum dos dois é o
+     original de verdade). TENTATIVAS DE ENTREGA fica com 42%,
+     OBSERVAÇÃO+MOTIVO DE DEVOLUÇÃO com 33%. */
+  .co-ar-col-a{width:42%;}
+  .co-ar-col-b{width:33%;}
+  .co-ar-col-c{width:25%;}
   .co-ar-tabela td{border:1px solid #000;padding:2.5mm 3mm;vertical-align:top;}
   .co-ar-titulo{font-weight:800;font-size:11pt;font-style:italic;}
   .co-ar-sigla{font-size:20pt;font-style:normal;font-weight:800;margin-left:4mm;}
   .co-ar-campo{font-size:7pt;font-weight:700;color:#333;}
-  .co-ar-linha-data{font-size:8pt;font-weight:400;color:#000;margin-top:5mm;letter-spacing:.5px;}
   .co-ar-rotulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
   .co-ar-nota{font-size:7.5pt;color:#333;margin-top:2mm;}
   .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;border:1px dashed #666;padding:3mm;margin:3mm 0;}
-  /* Grid de 2 colunas de novo (voltou a bater com o modelo do idcore.com.br
-     — o da "esticado" era só estreito demais na largura antiga de 23%;
-     com col-b em 28% + fonte um pouco menor, cabe sem quebrar — conferido
-     com page.pdf() de impressão real, não só screenshot). "Outros" fica
-     FORA do grid, linha própria com espaço em branco pra escrever — mesmo
-     padrão do formulário oficial (não é mais um item numerado do grid). */
-  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:.7mm 2mm;font-size:6.8pt;margin:1.5mm 0;}
+  /* Checkbox NUMERADO de volta (1-9) — o PDF real do gerarAR.cfm mostra
+     números dentro dos quadrados; a versão sem número era baseada só no
+     idcore.com.br, que simplifica isso. "Outros" (9) volta pro grid —
+     no oficial ele é só mais um item numerado, sem linha em branco
+     própria. Grid de 2 colunas com 9 itens em ordem par (1,5,2,6,3,7,4,8,9)
+     — o auto-flow "row" do CSS Grid preenche linha a linha, então isso
+     resulta em coluna esquerda=1,2,3,4,9 e direita=5,6,7,8, igual ao
+     original (9 fica sozinho na última linha, coluna esquerda). */
+  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:.7mm 2mm;font-size:7pt;margin:1.5mm 0;}
   .co-ar-motivos>div{white-space:nowrap;}
-  .co-ar-check{display:inline-flex;width:2.6mm;height:2.6mm;border:1px solid #000;margin-right:1mm;}
-  .co-ar-outros{font-size:6.8pt;margin-top:1mm;white-space:nowrap;}
-  .co-ar-linha-outros{display:inline-block;border-bottom:1px solid #000;width:60%;height:2.8mm;vertical-align:bottom;margin-left:1mm;}
-  /* col-a caiu de 45% pra 27% junto da revisão acima — sem nowrap, cada
-     linha "1ª ___ / ___ / ______  ___:___h" quebrava em 2, diferente do
-     modelo oficial (1 linha por tentativa). */
+  .co-ar-check{display:inline-flex;align-items:center;justify-content:center;width:3mm;height:3mm;border:1px solid #000;font-size:5.5pt;font-weight:700;margin-right:1mm;}
   .co-ar-tentativas{font-size:7.5pt;white-space:nowrap;}
   .co-ar-rubrica{font-size:7.5pt;}
   .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}

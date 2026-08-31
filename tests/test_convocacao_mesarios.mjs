@@ -1879,13 +1879,12 @@ async function login(p) {
   check('gerar AR chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 2);
   const printHtmlAr = await p.locator('#print-area').innerHTML();
   check('AR impresso tem o modelo de confirmação de recebimento, não uma etiqueta', /AVISO DE RECEBIMENTO/.test(printHtmlAr) && /NOME LEGÍVEL DO RECEBEDOR/.test(printHtmlAr) && /NUNO DADOS MESARIO/.test(printHtmlAr) && /Av\. Nova, 50/.test(printHtmlAr), printHtmlAr.slice(0, 600));
-  check('AR segue o modelo oficial: tentativas de entrega, motivo da devolução, endereço de devolução', /TENTATIVAS DE ENTREGA/.test(printHtmlAr) && /MOTIVO DA DEVOLUÇÃO/.test(printHtmlAr) && /Não procurado/.test(printHtmlAr) && /Endereço de devolução do AR:/.test(printHtmlAr), printHtmlAr.slice(0, 800));
-  check('AR nunca inventa código de rastreio — só reserva o espaço, texto igual ao modelo oficial (idcore.com.br)', /COLE AQUI O NÚMERO DE REGISTRO DO OBJETO/.test(printHtmlAr));
+  check('AR segue o modelo oficial: tentativas de entrega, motivo de devolução, endereço de devolução', /TENTATIVAS DE ENTREGA/.test(printHtmlAr) && /MOTIVO DE DEVOLUÇÃO/.test(printHtmlAr) && /Não procurado/.test(printHtmlAr) && /ENDEREÇO PARA DEVOLUÇÃO DO AR/.test(printHtmlAr), printHtmlAr.slice(0, 800));
+  check('AR nunca inventa código de rastreio — só reserva o espaço, texto idêntico ao PDF real do gerarAR.cfm oficial', /\(CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO\)/.test(printHtmlAr));
   check('AR segue a mesma estrutura de célula única do modelo oficial: destinatário, código e devolução juntos (sem quebra de linha entre eles), pareados com UNIDADE DE POSTAGEM/CARIMBO empilhados à direita', /rowspan="2"/.test(printHtmlAr) && /UNIDADE DE POSTAGEM/.test(printHtmlAr) && /CARIMBO/.test(printHtmlAr));
   check('AR tem a 3ª coluna própria (RUBRICA E MATRÍCULA DO CARTEIRO), não misturada com motivo', /RUBRICA E MATRÍCULA DO/.test(printHtmlAr));
-  check('AR tem caixinha de verdade no motivo da devolução (sem número, igual ao modelo oficial) + "Outros" com linha em branco fora do grid', (printHtmlAr.match(/co-ar-check/g) || []).length === 9 && /co-ar-outros/.test(printHtmlAr) && /co-ar-linha-outros/.test(printHtmlAr));
-  check('AR mostra a observação (carta de convocação) junto da nota do destinatário, não numa coluna própria', /Observação: Carta de convocação/.test(printHtmlAr));
-  check('AR tem linha em branco pra data de postagem/entrega, igual ao modelo oficial', (printHtmlAr.match(/co-ar-linha-data/g) || []).length === 2);
+  check('AR tem caixinha NUMERADA de verdade no motivo de devolução (1 a 9), igual ao PDF real do gerarAR.cfm', /co-ar-check">1</.test(printHtmlAr) && /co-ar-check">9</.test(printHtmlAr));
+  check('AR tem a coluna OBSERVAÇÃO própria (existe no formulário oficial de verdade) com "Carta de convocação"', /<b>OBSERVAÇÃO<\/b><br>Carta de convocação/.test(printHtmlAr));
   check('AR tem a faixa "(ÁREA DE COLA NO VERSO)" fora da tabela, igual ao modelo oficial', /ÁREA DE COLA NO VERSO/.test(printHtmlAr));
   check('grava log de AR impresso', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso')));
 

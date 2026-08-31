@@ -220,10 +220,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Base: mesários + apoio logístico da zona autenticada (isolamento por zona_id).
+    // Base: mesários + apoio logístico da zona autenticada (isolamento por
+    // zona_id), só quem está ATIVO — bug real corrigido em 31/08/2026: sem
+    // esse filtro, um mesário dispensado (ativo=false — seja pelo cartório,
+    // seja pela própria pessoa confirmando substituição via WhatsApp)
+    // continuava aparecendo em 'listar', e o autoatendimento ('consultar'/
+    // 'buscar_nome') respondia como se ele ainda estivesse na mesa. Todas as
+    // ações abaixo (listar, consultar, buscar_nome, atualizar, relatar_
+    // terceiro, atualizar_telefone_terceiro, confirmar/recusar/substituir)
+    // partem deste mesmo `pessoas`, então o filtro corrige todas de uma vez.
     let q = supabase.from('sime_atores')
       .select('id, nome_completo, telefone_whatsapp, observacao, confirmacao, ativo, secao_id, funcao, funcao_mesa')
       .eq('zona_id', zonaId)
+      .eq('ativo', true)
       .in('funcao', FUNCOES_TRE);
     if (status) q = q.eq('confirmacao', status);
     const { data, error } = await q.order('nome_completo');
