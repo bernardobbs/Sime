@@ -1880,7 +1880,11 @@ async function login(p) {
   const printHtmlAr = await p.locator('#print-area').innerHTML();
   check('AR impresso tem o modelo de confirmação de recebimento, não uma etiqueta', /AVISO DE RECEBIMENTO/.test(printHtmlAr) && /NOME LEGÍVEL DO RECEBEDOR/.test(printHtmlAr) && /NUNO DADOS MESARIO/.test(printHtmlAr) && /Av\. Nova, 50/.test(printHtmlAr), printHtmlAr.slice(0, 600));
   check('AR segue o modelo oficial: tentativas de entrega, motivo de devolução, endereço de devolução', /TENTATIVAS DE ENTREGA/.test(printHtmlAr) && /MOTIVO DE DEVOLUÇÃO/.test(printHtmlAr) && /Não procurado/.test(printHtmlAr) && /ENDEREÇO PARA DEVOLUÇÃO DO AR/.test(printHtmlAr), printHtmlAr.slice(0, 800));
-  check('AR nunca inventa código de rastreio — só reserva o espaço pra colar', /cole aqui a etiqueta de rastreio/.test(printHtmlAr));
+  check('AR nunca inventa código de rastreio — só reserva o espaço, texto igual ao modelo oficial dos Correios', /CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO/.test(printHtmlAr));
+  check('AR segue a mesma estrutura de célula única do modelo oficial: destinatário, código e devolução juntos (sem quebra de linha entre eles), pareados com UNIDADE DE POSTAGEM/CARIMBO empilhados à direita', /rowspan="2"/.test(printHtmlAr) && /UNIDADE DE POSTAGEM/.test(printHtmlAr) && /CARIMBO/.test(printHtmlAr));
+  check('AR tem a 3ª coluna própria (RUBRICA E MATRÍCULA DO CARTEIRO), não misturada com observação/motivo', /RUBRICA E MATRÍCULA DO/.test(printHtmlAr));
+  check('AR tem caixinha numerada de verdade no motivo de devolução (não só o número em texto corrido)', /co-ar-check">1</.test(printHtmlAr) && /co-ar-check">9</.test(printHtmlAr));
+  check('AR tem a faixa "(ÁREA DE COLA NO VERSO)" fora da tabela, igual ao modelo oficial', /ÁREA DE COLA NO VERSO/.test(printHtmlAr));
   check('grava log de AR impresso', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso')));
 
   // Seleção em massa: marca DIEGO, imprime etiquetas selecionadas.

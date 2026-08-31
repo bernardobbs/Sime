@@ -201,71 +201,87 @@ function coHtmlEtiqueta(p, zona) {
     </div>`;
 }
 
-// AR — mesma estrutura do modelo público (Aviso de Recebimento), como
-// tabela porque é literalmente um formulário de grade: cabeçalho com "AR" +
-// data de postagem, destinatário + unidade de postagem, espaço reservado do
-// código do objeto (mesmo critério "nunca inventa" da etiqueta) + carimbo da
-// unidade de entrega, endereço de devolução (o remetente), tentativas de
-// entrega + observação + motivo de devolução (9 códigos oficiais) + rubrica
-// do carteiro, e por fim assinatura/nome/documento de quem recebeu. Sem a
-// marca dos Correios (só a estrutura de campos é reproduzida, não o logo) —
-// ver nota de rodapé.
+// AR — reconstruído em 31/08/2026 pra bater ESTRUTURA POR ESTRUTURA com o
+// PDF real gerado pelo Enderecador de Encomendas dos Correios (pedido
+// direto, comparando os dois PDFs lado a lado: "quero o ar literalmente
+// igual aos dos correios"). Três diferenças estruturais achadas nessa
+// comparação, todas corrigidas aqui:
+// 1) DESTINATÁRIO + espaço do código + ENDEREÇO PARA DEVOLUÇÃO DO AR são
+//    UMA célula só no original (rowspan), emparelhada com UNIDADE DE
+//    POSTAGEM (em cima) e CARIMBO/UNIDADE DE ENTREGA (embaixo) empilhados
+//    na mesma coluna à direita — antes cada um virava uma linha cheia
+//    própria, sem parear nada à direita no meio.
+// 2) A linha de baixo é 3 colunas de verdade (TENTATIVAS | OBSERVAÇÃO+
+//    MOTIVO | RUBRICA), não 2 — RUBRICA tinha virado texto solto dentro da
+//    célula de observação. `<colgroup>` fixa as 3 larguras (45/23/32%, a
+//    mesma proporção 68/32 do resto da tabela) e as linhas de 2 colunas
+//    usam colspan="2" nas duas primeiras.
+// 3) MOTIVO DE DEVOLUÇÃO ganha as caixinhas quadradas numeradas de verdade
+//    (`.co-ar-check`), não só o número em texto corrido.
+// Fora da tabela, a faixa "(ÁREA DE COLA NO VERSO)" na margem esquerda
+// (`.co-ar-cola`, texto girado) também não existia — é assim no original
+// porque o AR é colado no verso do envelope.
+// Texto do espaço reservado ao código virou a mesma frase estática do
+// original ("CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO") em vez da
+// instrução própria do SIME — o COMPORTAMENTO não muda (nunca mostra
+// `codigo_rastreio`, mesmo campo, mesmo critério "nunca inventa" de sempre,
+// ver nota de rodapé), só a palavra pra bater com o modelo oficial.
 function coHtmlAr(p, zona) {
   const funcaoSecao = coEsc(coRotuloFuncao(p)) + (p.sec ? ` — Seção ${coEsc(p.sec.numero)}, ${coEsc(p.sec.local_nome || '')}` : '');
   return `
     <div class="co-pagina-ar">
-      <table class="co-ar-tabela">
-        <tr>
-          <td class="co-ar-titulo">AVISO DE RECEBIMENTO <span class="co-ar-sigla">AR</span></td>
-          <td class="co-ar-campo">DATA DE POSTAGEM</td>
-        </tr>
-        <tr>
-          <td>
-            <div class="co-ar-rotulo">DESTINATÁRIO</div>
-            ${coLinhasDestinatario(p)}
-            <div class="co-ar-nota">${funcaoSecao}</div>
-          </td>
-          <td class="co-ar-campo">UNIDADE DE POSTAGEM</td>
-        </tr>
-        <tr>
-          <td class="co-ar-codigo">(cole aqui a etiqueta de rastreio ou anote o nº de registro do objeto)</td>
-          <td class="co-ar-campo">CARIMBO<br>UNIDADE DE ENTREGA</td>
-        </tr>
-        <tr>
-          <td colspan="2">
-            <div class="co-ar-rotulo">ENDEREÇO PARA DEVOLUÇÃO DO AR</div>
-            ${coLinhasRemetente(zona)}
-          </td>
-        </tr>
-        <tr>
-          <td class="co-ar-tentativas">
-            <b>TENTATIVAS DE ENTREGA</b><br><br>
-            1ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
-            2ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
-            3ª ___ / ___ / ______&nbsp;&nbsp;___:___h
-          </td>
-          <td>
-            <b>OBSERVAÇÃO</b><br>Carta de convocação<br><br>
-            <b>MOTIVO DE DEVOLUÇÃO</b>
-            <div class="co-ar-motivos">
-              <div>1&nbsp;Mudou-se</div><div>5&nbsp;Recusado</div>
-              <div>2&nbsp;Endereço insuficiente</div><div>6&nbsp;Não procurado</div>
-              <div>3&nbsp;Não existe o número</div><div>7&nbsp;Ausente</div>
-              <div>4&nbsp;Desconhecido</div><div>8&nbsp;Falecido</div>
-              <div>9&nbsp;Outros</div><div></div>
-            </div>
-            <div class="co-ar-nota">RUBRICA E MATRÍCULA DO CARTEIRO: ___________________________</div>
-          </td>
-        </tr>
-        <tr>
-          <td class="co-ar-campo">ASSINATURA DO RECEBEDOR</td>
-          <td class="co-ar-campo">DATA DE ENTREGA</td>
-        </tr>
-        <tr>
-          <td class="co-ar-campo">NOME LEGÍVEL DO RECEBEDOR</td>
-          <td class="co-ar-campo">Nº DOC. DE IDENTIDADE</td>
-        </tr>
-      </table>
+      <div class="co-ar-outer">
+        <div class="co-ar-cola"><span>(ÁREA DE COLA NO VERSO)</span></div>
+        <table class="co-ar-tabela">
+          <colgroup><col class="co-ar-col-a"><col class="co-ar-col-b"><col class="co-ar-col-c"></colgroup>
+          <tr>
+            <td colspan="2" class="co-ar-titulo">AVISO DE RECEBIMENTO <span class="co-ar-sigla">AR</span></td>
+            <td class="co-ar-campo">DATA DE POSTAGEM</td>
+          </tr>
+          <tr>
+            <td colspan="2" rowspan="2">
+              <div class="co-ar-rotulo">DESTINATÁRIO</div>
+              ${coLinhasDestinatario(p)}
+              <div class="co-ar-nota">${funcaoSecao}</div>
+              <div class="co-ar-codigo">(CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO)</div>
+              <div class="co-ar-rotulo">ENDEREÇO PARA DEVOLUÇÃO DO AR</div>
+              ${coLinhasRemetente(zona)}
+            </td>
+            <td class="co-ar-campo">UNIDADE DE POSTAGEM</td>
+          </tr>
+          <tr>
+            <td class="co-ar-campo">CARIMBO<br>UNIDADE DE ENTREGA</td>
+          </tr>
+          <tr>
+            <td class="co-ar-tentativas">
+              <b>TENTATIVAS DE ENTREGA</b><br><br>
+              1ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
+              2ª ___ / ___ / ______&nbsp;&nbsp;___:___h<br><br>
+              3ª ___ / ___ / ______&nbsp;&nbsp;___:___h
+            </td>
+            <td>
+              <b>OBSERVAÇÃO</b><br>Carta de convocação<br><br>
+              <b>MOTIVO DE DEVOLUÇÃO</b>
+              <div class="co-ar-motivos">
+                <div><span class="co-ar-check">1</span>Mudou-se</div><div><span class="co-ar-check">5</span>Recusado</div>
+                <div><span class="co-ar-check">2</span>Endereço insuficiente</div><div><span class="co-ar-check">6</span>Não procurado</div>
+                <div><span class="co-ar-check">3</span>Não existe o número</div><div><span class="co-ar-check">7</span>Ausente</div>
+                <div><span class="co-ar-check">4</span>Desconhecido</div><div><span class="co-ar-check">8</span>Falecido</div>
+                <div><span class="co-ar-check">9</span>Outros</div><div></div>
+              </div>
+            </td>
+            <td class="co-ar-rubrica">RUBRICA E MATRÍCULA DO<br>CARTEIRO</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="co-ar-campo">ASSINATURA DO RECEBEDOR</td>
+            <td class="co-ar-campo">DATA DE ENTREGA</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="co-ar-campo">NOME LEGÍVEL DO RECEBEDOR</td>
+            <td class="co-ar-campo">Nº DOC. DE IDENTIDADE</td>
+          </tr>
+        </table>
+      </div>
       <div class="co-ar-rodape">Modelo gerado pelo SIME, sem integração com rastreamento dos Correios (sem contrato SIGEP) — o código do objeto é o que a agência emite na postagem.</div>
     </div>`;
 }

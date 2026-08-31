@@ -109,18 +109,29 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .co-et-obs{font-size:8pt;}
   .co-et-remetente{font-size:8pt;margin-top:6mm;padding-left:1mm;line-height:1.5;}
 
-  /* ── AR ── */
+  /* ── AR — estrutura batida contra o PDF real do Enderecador de Encomendas
+     dos Correios (31/08/2026, ver nota em coHtmlAr): destinatário+código+
+     devolução numa célula só (rowspan), 3 colunas na linha de baixo
+     (tentativas | observação+motivo | rubrica), checkbox quadrado no
+     motivo, faixa "(ÁREA DE COLA NO VERSO)" fora da tabela. ── */
   .co-pagina-ar{page-break-after:always;padding:12mm;font-family:Arial,Helvetica,sans-serif;}
-  .co-ar-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
+  .co-ar-outer{display:flex;border:1px dashed #999;}
+  .co-ar-cola{width:6mm;flex:none;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
+  .co-ar-cola span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:6.5pt;letter-spacing:.5px;color:#333;white-space:nowrap;}
+  .co-ar-tabela{flex:1;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
+  .co-ar-col-a{width:45%;}
+  .co-ar-col-b{width:23%;}
+  .co-ar-col-c{width:32%;}
   .co-ar-tabela td{border:1px solid #000;padding:2.5mm 3mm;vertical-align:top;}
-  .co-ar-tabela td:first-child{width:68%;}
-  .co-ar-titulo{font-weight:800;font-size:12pt;}
-  .co-ar-sigla{font-size:15pt;margin-left:2mm;}
+  .co-ar-titulo{font-weight:800;font-size:11pt;font-style:italic;}
+  .co-ar-sigla{font-size:20pt;font-style:normal;font-weight:800;margin-left:4mm;}
   .co-ar-campo{font-size:7pt;font-weight:700;color:#333;}
   .co-ar-rotulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
   .co-ar-nota{font-size:7.5pt;color:#333;margin-top:2mm;}
-  .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;padding:6mm 3mm;}
-  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:0 3mm;font-size:7.5pt;margin:1.5mm 0;}
+  .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;border:1px dashed #666;padding:3mm;margin:3mm 0;}
+  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:.8mm 3mm;font-size:7.5pt;margin:1.5mm 0;}
+  .co-ar-check{display:inline-flex;align-items:center;justify-content:center;width:3.2mm;height:3.2mm;border:1px solid #000;font-size:6pt;font-weight:700;margin-right:1mm;}
+  .co-ar-rubrica{font-size:7.5pt;}
   .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
 }
 </style>

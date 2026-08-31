@@ -1412,6 +1412,32 @@ cada um com propósito diferente:
     referência: Rua Benjamin Constant, 948, Centro, 64280-000, Campo
     Maior-PI — preenchido direto em `sime_zonas` (antes vazio).
 
+  **AR reconstruído em 31/08/2026 pra bater ESTRUTURA POR ESTRUTURA com o
+  PDF real (pedido direto, comparando os dois PDFs lado a lado: "quero o ar
+  literalmente igual aos dos correios").** A versão de 27/08 já tinha os
+  campos certos, mas a disposição na tabela divergia em três pontos:
+  - DESTINATÁRIO + espaço do código + ENDEREÇO PARA DEVOLUÇÃO DO AR viravam
+    3 linhas cheias separadas, cada uma com borda própria — no original é
+    **uma célula só** (rowspan), sem linha divisória entre as três partes,
+    emparelhada com UNIDADE DE POSTAGEM (em cima) e CARIMBO/UNIDADE DE
+    ENTREGA (embaixo) empilhados na mesma coluna à direita.
+  - A linha de baixo era 2 colunas (rubrica virava texto solto dentro da
+    célula de observação) — o original é **3 colunas de verdade**
+    (TENTATIVAS | OBSERVAÇÃO+MOTIVO | RUBRICA). `<colgroup>` fixa as larguras
+    (45/23/32%, mesma proporção 68/32 do resto da tabela); linhas de 2
+    colunas usam `colspan="2"` nas duas primeiras.
+  - MOTIVO DE DEVOLUÇÃO ganhou caixinhas quadradas numeradas de verdade
+    (`.co-ar-check`), não só o número em texto corrido.
+  Fora da tabela, ganhou a faixa **"(ÁREA DE COLA NO VERSO)"** na margem
+  esquerda (texto girado 90°, `writing-mode:vertical-rl`) — existe no
+  original porque o AR é colado no verso do envelope, sem ela o SIME não
+  tinha esse elemento visual nenhum. O texto do espaço reservado ao código
+  também virou a frase estática do original ("CÓDIGO DE BARRAS OU Nº DE
+  REGISTRO DO OBJETO") em vez da instrução própria do SIME ("cole aqui...")
+  — o comportamento não muda (nunca mostra `codigo_rastreio`, mesmo campo,
+  mesmo critério "nunca inventa" de sempre), só a palavra, pra bater com o
+  modelo oficial. Etiqueta não mudou nesta rodada — só o AR.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**
