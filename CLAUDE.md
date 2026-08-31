@@ -1905,6 +1905,41 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 > estiver pronta. Retomar a 94ª como tarefa própria, não como item que puxa
 > os demais.
 
+> **Rotas de recolhimento de mídia da 7ª Zona substituídas pelo MaxLog
+> (31/08/2026, pedido direto: "essas rotas que enviei hoje são as
+> definitivas, as que existiam antes vamos desconsiderar").** O cartório
+> mandou um export do MaxLog (Sistema de Logística das Eleições do TRE) com
+> as rotas oficiais de recolhimento — `sql/SIME_rotas_7zona_maxlog_2026-08-31.sql`
+> (aplicado em produção, não idempotente, ver nota no próprio arquivo)
+> reescreveu `sime_rotas`/`sime_secoes.rota_id` da zona a partir dele.
+>
+> - **12 rotas antigas (001-012) tiveram o conteúdo TROCADO** pelo do MaxLog
+>   — mesmo código, itinerário totalmente diferente. Rota 005 não veio no
+>   export desta vez e ficou intocada.
+> - **8 rotas novas**: 013-018 vêm direto do MaxLog; 019 e 020 são rotas
+>   próprias criadas pra dois "pontos de consolidação" (Creche Mamãe Lima
+>   M. Oliveira, em Jatobá, e G.E. Monsenhor Mateus, em Sigefredo Pacheco)
+>   onde 3 rotas diferentes convergiam sem dar pra saber qual delas de fato
+>   atende as seções que ficam fisicamente ali — pedido direto do cartório
+>   pra separar isso em vez de adivinhar.
+> - **"Rota 4" tinha duas versões no export** (1º turno 04/10, com paradas
+>   em Corredores; 2º turno 24/10, com paradas completamente diferentes em
+>   Tangará) — `sime_rotas` não distingue por turno, então só a versão de
+>   1º turno foi gravada (decisão do cartório: "só gravar a do 1º turno
+>   agora"). Se houver 2º turno, revisar essa rota específica na época.
+> - **⚠️ Cobertura parcial, pendência real:** o export só tinha 42 dos ~64
+>   locais de votação da zona. Os outros 22 (CAIC, EMATER, FSESP, Prefeitura
+>   Municipal, Sec. Mun. de Educação, IFPI, SAAE, Sec. Est. de Fazenda, Col.
+>   Est. Profª Raimundinho, Centro Ed. JA Mulata Lima, Clube dos Comerciários
+>   em Campo Maior; U.E. Tertuliano Pereira, U.E. João Félix de Andrade em
+>   Jatobá; U.E. Dr. Jerônimo S. Silva, U.E. José Ribeiro da Luz em
+>   Sigefredo) ficaram **sem rota** — 76 seções ao todo. Isso inclui 16
+>   locais que tinham rota atribuída ANTES (nas rotas 004/006/009/012, que
+>   foram redefinidas) e ficaram órfãos de propósito, em vez de continuar
+>   apontando pra uma rota que agora significa outra coisa. Falta o cartório
+>   trazer o restante do export do MaxLog (ou confirmar que esses locais
+>   ainda não têm rota definida no sistema oficial).
+
 > **Como adicionar o primeiro usuário de uma zona vazia (27/08/2026, pedido
 > direto: "como adicionamos usuários a zona 94?").** A Edge Function
 > `sime-admin-user` (aba Equipe → "+ Novo membro") já aceitava `zona_id` no
