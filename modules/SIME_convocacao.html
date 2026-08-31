@@ -80,16 +80,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
    marca deles. */
 #print-area{display:none;}
 /* Bug real reportado em 31/08/2026 — "proporcionalmente perfeito, mas não
-   ficou bom pra impressão": o PDF impresso de verdade veio em A4 PAISAGEM
-   (conferido pelas dimensões do PDF enviado — 297×210mm, e não 210×297mm),
+   ficou bom pra impressão": o PDF impresso de verdade veio em A4 PAISAGEM,
    sem nenhum `@page` no CSS pra fixar isso — a orientação ficava por conta
-   do que a caixa de diálogo de impressão do navegador tinha usado da última
-   vez. Em paisagem, a altura útil da página cai de ~277mm pra ~190mm, e o
-   rodapé (fora da tabela) transbordava sozinho pra uma 2ª página quase em
-   branco. `@page{size:portrait}` fixa a orientação que o layout sempre
-   assumiu (colunas estreitas, tabela alta) — não depende mais do que
-   ficou selecionado da impressão anterior. */
+   do que a caixa de diálogo de impressão do navegador tinha usado da
+   última vez. Corrigido na hora forçando A4 PORTRAIT — mas o PDF real do
+   `gerarAR.cfm` oficial (conferido depois, no mesmo dia, com o HTML/PDF
+   literais do gerador dos Correios) mostrou que o AR OFICIAL É PAISAGEM
+   de propósito (tabela larga e baixa, 552×371 no HTML de origem) — o bug
+   nunca foi "paisagem é errado", foi "sem largura de coluna nem @page
+   controlados, uma orientação claramente pensada pra ficar larga
+   transbordava quando saía estreita". A etiqueta continua PORTRAIT (padrão
+   do Enderecador de Encomendas); só o AR usa uma `@page` NOMEADA em
+   paisagem (`page: co-ar-page`, ver `.co-pagina-ar` abaixo) — CSS Paged
+   Media padrão, suportado pelo motor de impressão do Chrome/Chromium (que
+   é o que interessa aqui — não precisa funcionar em todo navegador). */
 @page{size:A4 portrait;margin:10mm;}
+@page co-ar-page{size:A4 landscape;margin:10mm;}
 @media print{
   body > *:not(#print-area){display:none!important;}
   /* Bug real corrigido em 27/08/2026, achado no primeiro teste em produção:
@@ -137,7 +143,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      verificação anterior usou e por isso não pegou o defeito). Virou
      posicionamento absoluto — não participa mais do cálculo de altura do
      conteúdo ao lado. */
-  .co-pagina-ar{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-pagina-ar{page:co-ar-page;page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
   .co-ar-outer{position:relative;border:1px dashed #999;padding-left:6mm;}
   .co-ar-cola{position:absolute;left:0;top:0;bottom:0;width:6mm;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
   .co-ar-cola span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:6.5pt;letter-spacing:.5px;color:#333;white-space:nowrap;}

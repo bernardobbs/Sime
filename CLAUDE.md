@@ -1580,6 +1580,38 @@ cada um com propósito diferente:
   2 colunas do motivo (agora com número de novo, ligeiramente mais largo
   por caixinha) também não quebra.
 
+  **AR revisado uma 4ª vez no mesmo dia — orientação da página, não só
+  conteúdo (pedido direto: "até o tamanho do ar ficou igual?").** As três
+  rodadas anteriores corrigiram texto/estrutura mas mantiveram
+  `@page{size:A4 portrait}` — herdado do fix de 31/08 pro bug da "2ª
+  página" (a primeira vez que o AR saiu em paisagem, sem nenhum `@page`
+  controlando isso, o conteúdo transbordava). Comparando as DIMENSÕES do
+  PDF real do `gerarAR.cfm` oficial (841.9×595.0pt) com o HTML de origem
+  (tabela 552×371, larga e baixa) ficou claro: **o AR oficial É paisagem
+  de propósito** — o bug nunca foi "paisagem é a orientação errada", foi
+  "sem @page nem largura de coluna controlados, um layout pensado pra
+  ficar largo transbordava quando saía estreito por acidente". A etiqueta
+  não muda — ela segue o padrão portrait do Enderecador de Encomendas, uma
+  referência diferente.
+  Implementado com **CSS Paged Media nomeado** (`@page co-ar-page{size:A4
+  landscape}` + `.co-pagina-ar{page:co-ar-page}`), técnica padrão (não
+  vendor-specific) que o motor de impressão do Chrome/Chromium respeita —
+  suficiente aqui, já que a impressão sempre passa por um desses dois. Só
+  `.co-pagina-ar` recebe a página nomeada; `.co-pagina-etiqueta` continua
+  na `@page` default (portrait), então os dois modelos podem ter
+  orientações diferentes no MESMO documento/job de impressão, sem precisar
+  de dois `window.print()` separados.
+  Verificado com `page.pdf()` de novo — não só innerHTML/screenshot, que
+  não pegam orientação real — lendo o `/MediaBox` cru do PDF gerado (sem
+  lib de PDF no projeto, o MediaBox fica em texto puro, não comprimido):
+  AR sai em 1 página só, largura > altura (igual ao oficial); etiqueta
+  continua com altura > largura, sem regressão. Reduzir a altura útil
+  disponível (a preocupação real de virar paisagem, já que a altura da
+  folha cai de ~277mm pra ~190mm) não voltou a estourar pra 2ª página —
+  a largura extra (190mm→277mm) mais do que compensa, dando ainda mais
+  folga pro grid de motivo e pras tentativas de entrega do que a versão
+  portrait tinha.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**

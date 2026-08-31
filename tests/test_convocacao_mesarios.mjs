@@ -1873,6 +1873,19 @@ async function login(p) {
   check('etiqueta nunca inventa código de rastreio — só reserva o espaço pra colar', /Cole aqui a etiqueta de rastreio/.test(printHtmlEtiqueta));
   check('grava log de etiqueta impressa', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_etiqueta_impressa')));
 
+  // Etiqueta continua RETRATO mesmo depois do AR virar paisagem (31/08/2026)
+  // — `page: co-ar-page` só é atribuído a `.co-pagina-ar`, nunca a
+  // `.co-pagina-etiqueta`; sem regressão pro padrão do Enderecador de
+  // Encomendas que a etiqueta segue.
+  await p.emulateMedia({ media: 'print' });
+  const etqPdf = await p.pdf({ printBackground: true });
+  const etqBox = [...etqPdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('etiqueta continua A4 RETRATO (altura > largura) — só o AR virou paisagem', etqBox.length >= 1 && parseFloat(etqBox[0][4]) > parseFloat(etqBox[0][3]), etqBox[0] ? `${etqBox[0][3]}x${etqBox[0][4]}` : 'sem MediaBox');
+  // emulateMedia('print') deixa a UI normal `display:none` (só #print-area
+  // fica visível) — sem voltar pra 'screen' aqui, o próximo clique (no
+  // botão AR de NUNO) trava esperando um elemento "invisível" pra sempre.
+  await p.emulateMedia({ media: 'screen' });
+
   // Gera o AR de NUNO (botão individual).
   await p.locator('[data-ator-id="a21"] button:has-text("📄 AR")').click();
   await p.waitForTimeout(200);
@@ -1887,6 +1900,24 @@ async function login(p) {
   check('AR tem a coluna OBSERVAÇÃO própria (existe no formulário oficial de verdade) com "Carta de convocação"', /<b>OBSERVAÇÃO<\/b><br>Carta de convocação/.test(printHtmlAr));
   check('AR tem a faixa "(ÁREA DE COLA NO VERSO)" fora da tabela, igual ao modelo oficial', /ÁREA DE COLA NO VERSO/.test(printHtmlAr));
   check('grava log de AR impresso', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso')));
+
+  // 31/08/2026, pedido direto "até o tamanho do ar ficou igual?" — o PDF
+  // real do gerarAR.cfm oficial enviado é A4 PAISAGEM (tabela larga e
+  // baixa, 552×371 no HTML de origem), não retrato. page.pdf() faz
+  // paginação/orientação de verdade (ao contrário de innerHTML/screenshot),
+  // então é o único jeito confiável de testar isso — via `page: co-ar-page`
+  // (CSS Paged Media nomeado) o AR vira paisagem sem mexer na etiqueta
+  // (que continua retrato, padrão do Enderecador de Encomendas).
+  await p.emulateMedia({ media: 'print' });
+  const arPdf = await p.pdf({ printBackground: true });
+  // Sem lib de PDF no projeto — o MediaBox de cada página fica em texto
+  // puro no PDF (não comprimido), então dá pra ler direto do buffer.
+  const arPdfTxt = arPdf.toString('latin1');
+  const mediaBoxes = [...arPdfTxt.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('AR real gerado em 1 página só (sem transbordar)', mediaBoxes.length === 1, String(mediaBoxes.length));
+  const [, , , wStr, hStr] = mediaBoxes[0];
+  check('AR real sai em A4 PAISAGEM (largura > altura), igual ao PDF do gerarAR.cfm oficial', parseFloat(wStr) > parseFloat(hStr), `${wStr}x${hStr}`);
+  await p.emulateMedia({ media: 'screen' }); // mesmo motivo de cima — volta a UI a ficar clicável
 
   // Seleção em massa: marca DIEGO, imprime etiquetas selecionadas.
   await p.locator('[data-ator-id="a4"] input[type=checkbox]').check();
