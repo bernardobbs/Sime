@@ -553,6 +553,57 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 8. Conferência automática: voluntário com título de eleitor já no
+// roster oficial vira "convocado" sozinho (30/08/2026, pedido direto:
+// "quero que o sistema verifique se os mesários voluntarios já foram
+// atribuidos na parte de convocação e ja marcar como convocado") ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores = [
+    // Já é mesário de verdade no roster — mesmo título do voluntário FLAVIA.
+    { id: 'a_flavia', nome_completo: 'FLAVIA JA DESIGNADA', inscricao_eleitoral: '055566677788', funcao: 'mesario', funcao_mesa: '2º Secretário', secao_id: 's1', zona_id: 'z7', confirmacao: 'pendente', ativo: true },
+  ];
+  m.sime_voluntarios = [
+    // Título batendo com a FLAVIA do roster — deve virar convocado sozinho.
+    { id: 'v_titulo_bate', zona_id: 'z7', documento: '055566677788', tipo_documento: 'titulo', nome: 'FLAVIA JA DESIGNADA', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-20T08:00:00.000Z' },
+    // Título que não bate com ninguém no roster — continua disponível.
+    { id: 'v_titulo_sem_match', zona_id: 'z7', documento: '099998887766', tipo_documento: 'titulo', nome: 'GABRIEL SEM ROSTER', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-20T08:00:00.000Z' },
+    // CPF não dá pra cruzar com o roster (sime_atores não tem CPF) — mesmo
+    // que o "documento" seja igual à inscrição de alguém, nunca casa (tipo
+    // errado), e o status não deve mudar sozinho.
+    { id: 'v_cpf_nao_verifica', zona_id: 'z7', documento: '11133355577', tipo_documento: 'cpf', nome: 'HELIO SO CPF', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-20T08:00:00.000Z' },
+    // Já convocado antes — não deve gerar update nem log de novo (idempotente).
+    { id: 'v_ja_convocado', zona_id: 'z7', documento: '000011112222', tipo_documento: 'titulo', nome: 'IVO JA CONVOCADO', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'convocado', ativo: true, ator_id: 'a_flavia', created_at: '2026-08-01T08:00:00.000Z' },
+  ];
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-voluntarios-btn');
+  await p.waitForTimeout(400); // dá tempo da conferência automática (vlCarregar → vlVerificarAtribuicoes) rodar
+
+  const txt = await p.locator('.content').textContent();
+  check('FLAVIA (título batendo) aparece como Convocado sozinha, sem clicar em nada', /FLAVIA JA DESIGNADA/.test(txt) && /📋 Convocado/.test(txt));
+  check('badge mostra o cargo do roster oficial (2º Secretário)', /Já designado no roster oficial/.test(txt) && /2º Secretário/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 600));
+  check('GABRIEL (título sem match) continua disponível', /GABRIEL SEM ROSTER/.test(txt) && (await p.locator('.import-card:has-text("GABRIEL SEM ROSTER")').textContent()).includes('🟢 Disponível'));
+  check('HELIO (só CPF) continua disponível — CPF nunca cruza com o roster', (await p.locator('.import-card:has-text("HELIO SO CPF")').textContent()).includes('🟢 Disponível'));
+
+  const updFlavia = await p.evaluate(() => window.__mock.escritas.find(e => e.tabela === 'sime_voluntarios' && e.op === 'update' && e.filtro.id === 'v_titulo_bate'));
+  check('update grava status=convocado + ator_id da FLAVIA', !!updFlavia && updFlavia.payload.status === 'convocado' && updFlavia.payload.ator_id === 'a_flavia', JSON.stringify(updFlavia));
+  check('grava log voluntario_convocado_auto', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'voluntario_convocado_auto' && e.payload.payload.ator_id === 'a_flavia')));
+  const updIvo = await p.evaluate(() => window.__mock.escritas.find(e => e.tabela === 'sime_voluntarios' && e.op === 'update' && e.filtro.id === 'v_ja_convocado'));
+  check('quem já estava convocado não gera update de novo (idempotente)', !updIvo);
+
+  // Botão manual "🔄 Verificar atribuições" — reconfere na hora, sem sair e
+  // voltar da aba (ex.: logo depois de sincronizar o roster em outra aba).
+  await p.click('button:has-text("🔄 Verificar atribuições")');
+  await p.waitForTimeout(300);
+  check('clicar de novo sem nada novo pra achar avisa por toast (não falha calado)', (await p.textContent('#toast')).includes('Nenhum voluntário novo'));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhas = results.filter(r => !r.ok);
 for (const r of results) console.log((r.ok ? 'OK  ' : 'FAIL') + ' — ' + r.n + (r.ok ? '' : ('  [' + r.e + ']')));

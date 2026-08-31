@@ -1489,6 +1489,46 @@ cada um com propósito diferente:
   volta a ter a altura que o conteúdo de fato precisa. Verificado com
   `page.pdf()` de novo (não screenshot) — nenhum item quebra mais linha.
 
+  **AR revisado de novo no mesmo dia — pedido direto: "USE A MESMA
+  estrutura do ar", apontando um PDF real gerado pelo idcore.com.br
+  (Endereçador ++ Pro), outro gerador gratuito de etiqueta+AR.** Diferente
+  do Enderecador de Encomendas dos Correios (usado nas duas rodadas
+  acima), o idcore.com.br desenha o AR sobre a IMAGEM autêntica do
+  formulário oficial (não recriada em HTML) — referência mais confiável.
+  Comparado lado a lado, achou-se:
+  - "DESTINATÁRIO:" e "Endereço de devolução do AR:" ganharam os dois
+    pontos/case do original (antes eram maiúsculas sem pontuação).
+  - Texto do espaço do código virou "COLE AQUI O NÚMERO DE REGISTRO DO
+    OBJETO" (sem parênteses) — outra frase do que o Enderecador de
+    Encomendas usava; comportamento continua o mesmo de sempre (nunca
+    mostra `codigo_rastreio`).
+  - "MOTIVO DE DEVOLUÇÃO" virou "MOTIVO DA DEVOLUÇÃO" (preposição do
+    original) e voltou a ser grid de 2 colunas — a versão de 1 coluna do
+    fix de "esticado" era só workaround pra largura estreita; a largura
+    da coluna foi corrigida junto (ver abaixo), então o grid de 2 colunas
+    cabe sem quebrar de novo. As caixinhas perderam o número (no original
+    são só quadrados vazios) e "Outros" saiu do grid — virou linha própria
+    com espaço em branco pra escrever à mão, igual ao formulário oficial.
+  - O original NÃO tem coluna "OBSERVAÇÃO" — só TENTATIVAS | MOTIVO DA
+    DEVOLUÇÃO | RUBRICA. "Carta de convocação" (contexto que o SIME
+    precisa manter, mesmo sem existir no formulário genérico) migrou pra
+    dentro da nota do destinatário, junto da função/seção.
+  - DATA DE POSTAGEM e DATA DE ENTREGA ganharam uma linha em branco
+    (`___ / ___ / ______`) pra preencher à mão, igual ao original.
+  - Largura das colunas recalculada por MEDIÇÃO DE PIXEL no PDF de
+    referência (não estimativa): a coluna da direita (UNIDADE DE
+    POSTAGEM/CARIMBO/RUBRICA/DATA DE ENTREGA/Nº DOC.) é ~45% da tabela
+    ali, não os 32% copiados do Enderecador de Encomendas — são
+    referências visuais diferentes, com proporções diferentes.
+  - `.co-ar-tentativas` ganhou `white-space:nowrap` — col-a caiu de 45%
+    pra 27% na mudança acima, e sem isso cada linha "1ª ___ / ___ /
+    ______ ___:___h" passou a quebrar em 2, diferente do original (1
+    linha por tentativa).
+  Verificado de novo com `page.pdf()` (impressão real paginada, não
+  screenshot) antes de subir — motivo da devolução e tentativas de
+  entrega, os dois testados como os pontos mais arriscados de quebrar de
+  novo, couberam numa linha só cada.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**
@@ -1661,6 +1701,41 @@ cada um com propósito diferente:
   exato do pedido. `rsJsStr()` (nova) escapa nome de local pra dentro do
   atributo `onclick="..."` — nomes de local têm apóstrofo de verdade (ex.:
   "Salão Com. 'Mario Cazuza'"), que quebraria o HTML sem isso.
+
+  **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
+  pedido direto: "quero que o sistema verifique se os mesários voluntarios
+  já foram atribuidos na parte de convocação e ja marcar como convocado").**
+  Até aqui `status` só mudava por clique manual do cartório — se um
+  voluntário virasse mesário de verdade pelas telas de sempre (Convocação/
+  Atores), nada em Voluntários sabia disso sozinho, então a pessoa
+  continuava aparecendo como "🟢 Disponível" mesmo já ocupando uma vaga.
+  `vlVerificarAtribuicoes()` casa `sime_voluntarios` com o roster oficial
+  só por **título de eleitor** (`tipo_documento==='titulo'`, comparado
+  direto com `sime_atores.inscricao_eleitoral` — os dois já normalizados
+  pra 12 dígitos por construção, ver `vlDetectarTipoDocumento`) — quando
+  bate um `sime_atores` ativo com o mesmo título, marca
+  `status='convocado'` + `ator_id=<id>` e loga `voluntario_convocado_auto`
+  (com o cargo atribuído no payload, pra auditoria). **CPF nunca é
+  verificado sozinho** — `sime_atores` não tem coluna de CPF nenhuma (só o
+  TRE tem esse dado), então não há como cruzar; fica exatamente como
+  documentado desde sempre pro resto do cadastro de voluntários ("nunca
+  adivinha por nome"). Quem já está `convocado` nunca é tocado de novo
+  (idempotente, sem gravação nem log repetido).
+
+  Roda sozinha toda vez que a aba **carrega** (dentro de `vlCarregar()`),
+  silenciosa quando não muda nada — não interrompe o cartório com um toast
+  à toa cada vez que abre a aba; só avisa quando de fato marca alguém. Tem
+  também um botão **"🔄 Verificar atribuições"** (card do topo) pra
+  reconferir na hora sem sair e voltar da aba — útil logo depois de
+  sincronizar o roster (aba 🔄 Sincronizar) em outra sessão/aba do
+  navegador, quando o carregamento inicial já ficou pra trás. Quem tem
+  `ator_id` ganha um selo verde no card, **"🔗 Já designado no roster
+  oficial — {cargo}"** (`vlBadgeAtribuido`, cargo resolvido de
+  `vlDados.atoresPorId`, o mesmo mapa montado durante a conferência) — sem
+  isso o vínculo ficava invisível na lista, só consultável olhando o banco.
+  **Continua não sendo um automatismo que cria `sime_atores`** — só lê o
+  que já existe lá; transformar um voluntário em designação oficial
+  continua manual, mesma linha de sempre.
 
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —

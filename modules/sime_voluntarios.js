@@ -89,6 +89,62 @@ async function vlCarregar() {
   for (const m of municipios) locaisPorMunicipio[m] = [...locaisPorMunicipio[m]].filter(Boolean).sort();
 
   vlDados = { voluntarios: voluntarios || [], municipios, locaisPorMunicipio, zonaId };
+  // Conferência automática (30/08/2026, pedido direto: "quero que o sistema
+  // verifique se os mesários voluntarios já foram atribuidos na parte de
+  // convocação e ja marcar como convocado") — roda sozinha toda vez que a
+  // aba carrega, silenciosa quando não muda nada (não incomoda o cartório
+  // todo dia com um toast à toa); vlVerificarAtribuicoes() já chama render().
+  await vlVerificarAtribuicoes({ silencioso: true });
+}
+
+// Casa voluntário ↔ roster oficial só por TÍTULO DE ELEITOR — `sime_atores`
+// não tem coluna de CPF nenhuma (só o TRE tem esse dado, fora do SIME), então
+// um voluntário cadastrado com CPF não tem como ser conferido sozinho; fica
+// como está até o cartório mesmo confirmar (mesmo critério "nunca adivinha"
+// de sempre). "Atribuído" aqui significa "já existe uma designação ativa no
+// roster com esse título" — não exige confirmação, só presença.
+async function vlVerificarAtribuicoes(opts = {}) {
+  const sb = window.supabaseAtores;
+  if (!vlDados || vlDados.erro) return;
+  const zonaId = vlDados.zonaId;
+  const candidatos = (vlDados.voluntarios || []).filter(v => v.tipo_documento === 'titulo' && v.status !== 'convocado');
+
+  const { data: atores, error } = candidatos.length
+    ? await sb.from('sime_atores')
+        .select('id, inscricao_eleitoral, funcao, funcao_mesa, secao_id')
+        .eq('zona_id', zonaId).eq('ativo', true)
+    : { data: [], error: null };
+  if (error) { if (!opts.silencioso) showToast('⚠ ' + error.message); render(); return; }
+
+  const porTitulo = new Map();
+  for (const a of atores || []) if (a.inscricao_eleitoral) porTitulo.set(a.inscricao_eleitoral, a);
+  vlDados.atoresPorId = new Map((atores || []).map(a => [a.id, a]));
+
+  let marcados = 0;
+  if (candidatos.length) {
+    const { data: ts } = await sb.rpc('sime_now');
+    for (const v of candidatos) {
+      const ator = porTitulo.get(v.documento);
+      if (!ator) continue;
+      const { error: eUp } = await sb.from('sime_voluntarios')
+        .update({ status: 'convocado', ator_id: ator.id, updated_at: ts })
+        .eq('id', v.id);
+      if (eUp) continue;
+      v.status = 'convocado';
+      v.ator_id = ator.id;
+      await log('voluntario_convocado_auto', '', {
+        id: v.id, nome: v.nome, documento: v.documento, ator_id: ator.id,
+        funcao_atribuida: ator.funcao_mesa || VL_FUNCAO_LABEL[ator.funcao] || ator.funcao,
+      });
+      marcados++;
+    }
+  }
+
+  if (marcados) {
+    showToast(`✓ ${marcados} voluntário(s) já estava(m) no roster oficial — marcado(s) como convocado`);
+  } else if (!opts.silencioso) {
+    showToast('Nenhum voluntário novo encontrado no roster oficial (conferência é só por título de eleitor)');
+  }
   render();
 }
 
@@ -124,6 +180,14 @@ function vlBadgeLocal(v) {
   if (!v.municipio) return 'Qualquer município';
   return v.local_votacao ? `${vlEsc(v.municipio)} — ${vlEsc(v.local_votacao)}` : `${vlEsc(v.municipio)} (qualquer local)`;
 }
+// Só existe pra quem a conferência automática (vlVerificarAtribuicoes) já
+// achou no roster — nada mais escreve em ator_id ainda.
+function vlBadgeAtribuido(v) {
+  if (!v.ator_id) return '';
+  const ator = vlDados.atoresPorId?.get(v.ator_id);
+  const cargo = ator ? (ator.funcao_mesa || VL_FUNCAO_LABEL[ator.funcao] || ator.funcao) : null;
+  return `🔗 Já designado no roster oficial${cargo ? ` — ${vlEsc(cargo)}` : ''}`;
+}
 
 function renderVoluntarios() {
   const content = document.getElementById('content');
@@ -138,7 +202,11 @@ function renderVoluntarios() {
     <div class="import-card">
       <div class="ic-title">🙋 Voluntários</div>
       <div class="ic-sub">Cadastro de quem se ofereceu pra ajudar como mesário, apoio logístico ou coordenador de acessibilidade — separado do roster oficial do TRE. Use pra ter de onde tirar gente quando uma vaga precisar ser preenchida (ex.: alguém marcado "precisa substituir" na aba Contatar mesários).</div>
-      <button class="btn btn-dark" onclick="vlAbrirNovo()">➕ Novo voluntário</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-dark" onclick="vlAbrirNovo()">➕ Novo voluntário</button>
+        <button class="btn btn-out" onclick="vlVerificarAtribuicoes()" title="Confere quem já tem título de eleitor batendo com o roster oficial (sime_atores) e marca como convocado">🔄 Verificar atribuições</button>
+      </div>
+      <div class="ic-sub" style="margin:6px 0 0">A conferência já roda sozinha toda vez que essa aba abre — o botão é só pra checar de novo na hora, sem sair e voltar (ex.: logo depois de sincronizar o roster). Só confere quem se cadastrou com título de eleitor — CPF não dá pra cruzar com o roster oficial.</div>
     </div>
 
     <div class="import-card">
@@ -167,6 +235,7 @@ function renderVoluntarios() {
             <div style="font-weight:800;font-size:.86rem;cursor:pointer" onclick="vlAbrirEditar('${v.id}')">${vlEsc(v.nome)}</div>
             <div class="ic-sub" style="margin:2px 0 0">${v.tipo_documento === 'titulo' ? 'Título' : 'CPF'} ${vlEsc(vlFmtDocumento(v.documento, v.tipo_documento))} · ${vlBadgeFuncoes(v)} · ${vlBadgeLocal(v)}</div>
             ${v.observacao ? `<div class="ic-sub" style="margin:2px 0 0">${vlEsc(v.observacao)}</div>` : ''}
+            ${v.ator_id ? `<div class="ic-sub" style="margin:2px 0 0;color:var(--green,#2e7d32)">${vlBadgeAtribuido(v)}</div>` : ''}
           </div>
           <span class="import-result ${v.status === 'disponivel' ? 'ir-ok' : v.status === 'indisponivel' ? '' : 'ir-warn'}" style="margin-top:0;white-space:nowrap">${VL_STATUS_LABEL[v.status] || v.status}</span>
         </div>
