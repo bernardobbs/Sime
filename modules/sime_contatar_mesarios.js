@@ -122,8 +122,40 @@ let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
 let cmFiltroFuncao = '';
 let cmBusca = '';
+let cmBuscaTimer = null;
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
+
+// Bug real (31/08/2026, reportado pelo cartório: "só permite digitar uma
+// letra por vez, e está demorando muito"). Causa: o campo de busca chamava
+// render() a cada tecla — e render() reconstrói #content inteiro via
+// innerHTML, o que RECRIA o próprio <input> como um elemento novo. O
+// elemento antigo (que tinha o foco) é destruído no meio do próprio evento
+// de digitação; o novo nunca ganha foco sozinho, então a tecla seguinte não
+// vai pra lugar nenhum até a pessoa clicar de volta no campo — daí "uma
+// letra por vez". Com até ~700 pessoas na zona, reconstruir a lista inteira
+// (centenas de cards, cada um com vários cálculos — bolinha de status,
+// sugestão de escalonamento, etc.) a cada tecla também é pesado por si só
+// ("demorando muito"). Corrigido em duas frentes:
+// 1) debounce — só re-renderiza ~250ms depois da pessoa parar de digitar,
+//    em vez de a cada tecla;
+// 2) cmRestaurarFocoBusca() — depois do innerHTML, se o campo de busca
+//    estava com foco antes do render, foca de novo e restaura a posição do
+//    cursor no <input> novo. Isso cobre tanto o re-render debounced quanto
+//    qualquer outro render() disparado enquanto a pessoa está no campo
+//    (ex.: uma resposta do Hermes chegando ao vivo).
+function cmOnBuscaInput(v) {
+  cmBusca = v;
+  clearTimeout(cmBuscaTimer);
+  cmBuscaTimer = setTimeout(render, 250);
+}
+function cmRestaurarFocoBusca(prevAtivo, selStart, selEnd) {
+  if (!prevAtivo) return;
+  const el = document.getElementById('cm-busca');
+  if (!el) return;
+  el.focus();
+  try { el.setSelectionRange(selStart, selEnd); } catch (e) { /* tipo de input sem seleção — ignora */ }
+}
 
 // Rodar script conversacional pra um número indicado (28/08/2026) — pedido
 // direto do cartório: mandar a etapa 1 de um script salvo (aba 🧩 Campanhas
@@ -1393,6 +1425,10 @@ function cmSubstitutoLabel(p) {
 
 function renderContatarMesarios() {
   const c = document.getElementById('content');
+  const buscaEl = document.getElementById('cm-busca');
+  const buscaAtiva = document.activeElement === buscaEl;
+  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
+  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
   if (!window.supabaseAtores) {
     c.innerHTML = '<div class="import-card"><div class="import-result ir-warn">Entre com a conta da equipe.</div></div>';
     return;
@@ -1436,7 +1472,7 @@ function renderContatarMesarios() {
         <select id="cm-filtro-funcao" onchange="cmFiltroFuncao=this.value;render()">
           ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${cmFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
         </select>
-        <input type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmBusca=this.value;render()" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <input id="cm-busca" type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmOnBuscaInput(this.value)" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${cmDados.pessoas.length} pessoa(s)</div>
@@ -1498,4 +1534,5 @@ function renderContatarMesarios() {
         </div>`;
       }).join('') || '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Ninguém encontrado com esse filtro.</div></div>'}
     </div>`;
+  cmRestaurarFocoBusca(buscaAtiva, buscaSelStart, buscaSelEnd);
 }

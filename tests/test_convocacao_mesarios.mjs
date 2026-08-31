@@ -424,9 +424,38 @@ async function login(p) {
   check('card mostra o título de eleitor de quem tem cadastrado', /046919051589/.test(await cardBruno.textContent()));
 
   await p.fill('input[placeholder*="título de eleitor"]', '046919051589');
-  await p.waitForTimeout(200);
+  await p.waitForTimeout(350); // busca agora tem debounce de 250ms (ver cmOnBuscaInput)
   const porTitulo = await p.locator('.content').textContent();
   check('buscar pelo número do título encontra só quem bate', /BRUNO MESARIO/.test(porTitulo) && !/ANA PRESIDENTE/.test(porTitulo), porTitulo.slice(0, 200));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.71 Bug real corrigido em 31/08/2026, reportado pelo cartório: "só
+// permite digitar uma letra por vez, e está demorando muito". Causa: o
+// campo de busca chamava render() a cada tecla, e render() reconstrói
+// #content inteiro via innerHTML — o que recria o <input> como um elemento
+// novo a cada tecla, derrubando o foco no meio da própria digitação. Testa
+// digitando devagar o bastante (300ms/tecla) pra estourar o debounce de
+// 250ms várias vezes DURANTE a digitação — se o foco se perdesse, letras
+// subsequentes cairiam no vazio e o valor final ficaria incompleto. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const busca = p.locator('#cm-busca');
+  await busca.click();
+  await busca.pressSequentially('BRUNO', { delay: 300 });
+  await p.waitForTimeout(400); // além do último debounce
+
+  check('nenhuma letra se perde — valor final tem a palavra inteira', await busca.inputValue() === 'BRUNO', await busca.inputValue());
+  check('campo continua com o foco depois de vários re-renders no meio da digitação', await p.evaluate(() => document.activeElement?.id === 'cm-busca'));
+  const listaFiltrada = await p.locator('.content').textContent();
+  check('filtro aplicado corretamente ao fim da digitação', /BRUNO MESARIO/.test(listaFiltrada) && !/ANA PRESIDENTE/.test(listaFiltrada));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
