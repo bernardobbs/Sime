@@ -1944,6 +1944,72 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 3.8 Oficial de Justiça — relação de controle interno pra convocação
+// entregue em mão (31/08/2026, pedido direto: "ELABORE MAIS UMA ABA PARA O
+// OFICIAL DE JUSTIÇA CONTROLE A CONVOCAÇÃO DOS MESÁRIOS") ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push(
+    // PAULO: oficial_justica com endereço no ELO (cadastro de eleitor).
+    { id:'a30', nome_completo:'PAULO OFICIAL', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'oficial_justica', status_contato_alternativo:null, inscricao_eleitoral:'055555555555' },
+    // QUITERIA: oficial_justica SEM nenhuma linha no ELO — "sem endereço".
+    { id:'a31', nome_completo:'QUITERIA SEM ENDERECO', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:null, zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'oficial_justica', status_contato_alternativo:'a_enviar', inscricao_eleitoral:'066666666666' },
+    // RAFAEL: WhatsApp, não oficial de justiça — não deve aparecer aqui.
+    { id:'a32', nome_completo:'RAFAEL WHATSAPP', telefone_whatsapp:'5586999990032', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', inscricao_eleitoral:'077000000000' },
+  );
+  m.sime_mesarios_raw.push(
+    { id:'raw30', inscricao:'055555555555', endereco_eleitor:'Rua do Oficial, 200', bairro_eleitor:'Centro', cep_eleitor:'64280200', nome_municipio_endereco_eleitor:'Campo Maior', uf_endereco_eleitor:'PI' },
+  );
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-oficial-justica-btn');
+  await p.waitForTimeout(300);
+
+  let txt = await p.locator('.content').textContent();
+  const txtFlat = txt.replace(/\s+/g, ' ');
+  check('lista PAULO (oficial_justica, com endereço)', /PAULO OFICIAL/.test(txt), txtFlat.slice(0, 500));
+  check('não lista RAFAEL (meio de contato é WhatsApp, não oficial de justiça)', !/RAFAEL WHATSAPP/.test(txt));
+  check('QUITERIA (sem linha no ELO) cai na lista "sem endereço", à parte', /Sem endereço no ELO/.test(txt) && /QUITERIA SEM ENDERECO/.test(txt), txtFlat.slice(0, 800));
+  check('endereço de PAULO vem do ELO (cadastro de eleitor)', /Rua do Oficial, 200/.test(txt), txtFlat.slice(0, 800));
+  check('resumo de status (mesmo vocabulário de Carta Registrada: A enviar/Enviado/Entregue/Devolvido)', /A enviar:/.test(txt) && /Enviado:/.test(txt) && /Entregue:/.test(txt) && /Devolvido:/.test(txt), txtFlat.slice(0, 400));
+
+  // Troca o status de PAULO pelo <select> do card — mesma ação de log que o
+  // modal de "Contatar mesários" já usa (mesario_status_contato_alt), pra
+  // aparecer certinho na timeline de Atualizações da pessoa lá.
+  await p.locator('[data-ator-id="a30"] select').selectOption('enviado');
+  await p.waitForTimeout(200);
+  const atorPaulo = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a30'));
+  check('status gravado em sime_atores.status_contato_alternativo', atorPaulo.status_contato_alternativo === 'enviado', JSON.stringify(atorPaulo));
+  const logStatus = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_status_contato_alt' && e.payload.payload?.ator_id === 'a30'));
+  check('grava log mesario_status_contato_alt (mesma ação do modal de Contatar mesários)', !!logStatus && logStatus.payload.payload.status === 'enviado', JSON.stringify(logStatus));
+
+  // Imprime a relação de PAULO (botão individual).
+  await p.locator('[data-ator-id="a30"] button:has-text("🖨️ Relação")').click();
+  await p.waitForTimeout(200);
+  check('imprimir relação chama window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('relação impressa mostra o nome e o endereço do destinatário', /PAULO OFICIAL/.test(printHtml) && /Rua do Oficial, 200/.test(printHtml), printHtml.slice(0, 600));
+  check('relação tem título e rótulo de controle interno (não finge ser mandado oficial)', /Relação para Convocação via Oficial de Justiça/.test(printHtml) && /não substitui o mandado/.test(printHtml), printHtml.slice(0, 800));
+  check('relação tem colunas de assinatura e data pro cumprimento', /Assinatura \/ recebimento/.test(printHtml) && /<th>Data<\/th>/.test(printHtml));
+  check('grava log de relação impressa (quantidade=1)', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'oficial_justica_relacao_impressa' && e.payload.payload?.quantidade === 1)));
+
+  // Seleção em massa: marca PAULO + QUITERIA, imprime relação selecionados.
+  await p.locator('[data-ator-id="a30"] input[type=checkbox]').check();
+  await p.locator('[data-ator-id="a31"] input[type=checkbox]').check();
+  await p.click('button:has-text("Imprimir relação selecionados (2)")');
+  await p.waitForTimeout(200);
+  check('imprimir relação em lote chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 2);
+  const printHtmlLote = await p.locator('#print-area').innerHTML();
+  check('relação em lote traz as duas pessoas selecionadas (PAULO e QUITERIA)', /PAULO OFICIAL/.test(printHtmlLote) && /QUITERIA SEM ENDERECO/.test(printHtmlLote), printHtmlLote.slice(0, 300));
+  check('quem está sem endereço no ELO ainda entra na relação (marcado à parte, não some da lista)', /Sem endereço no ELO/.test(printHtmlLote));
+  check('grava log de relação impressa em lote (quantidade=2)', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'oficial_justica_relacao_impressa' && e.payload.payload?.quantidade === 2)));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 4. Histórico ──
 {
   const ctx = await b.newContext();

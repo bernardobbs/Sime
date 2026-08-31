@@ -182,6 +182,28 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .co-ar-tentativas{font-size:7.5pt;white-space:nowrap;}
   .co-ar-rubrica{font-size:7.5pt;}
   .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+
+  /* ── Oficial de Justiça — relação de controle interno (31/08/2026) ──
+     Diferente de etiqueta/AR (fluxo postal, com referência oficial dos
+     Correios pra reproduzir), aqui não existe um mandado/certidão do
+     TJ-PI pra copiar — a relação é deliberadamente um documento de
+     CONTROLE INTERNO do cartório pra entregar ao oficial de justiça
+     (nome, endereço, campo de assinatura/data), rotulado como tal no
+     rodapé. Layout simples de lista/tabela em retrato — sem @page nomeada
+     própria, o padrão A4 portrait do topo do arquivo já serve. */
+  .oj-pagina-relacao{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .oj-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
+  .oj-titulo{font-weight:800;font-size:12pt;}
+  .oj-sub{font-size:8pt;color:#333;margin-top:1mm;}
+  .oj-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
+  .oj-tabela th,.oj-tabela td{border:1px solid #000;padding:2.5mm 2.5mm;vertical-align:top;text-align:left;}
+  .oj-tabela th{background:#eee;font-size:8pt;}
+  .oj-col-num{width:6%;text-align:center;}
+  .oj-col-nome{width:28%;}
+  .oj-col-end{width:34%;}
+  .oj-col-assinatura{width:22%;}
+  .oj-col-data{width:10%;}
+  .oj-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
 }
 </style>
 </head>
@@ -217,6 +239,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
     <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
+    <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
   </div>
 
   <div class="content" id="content"></div>
@@ -237,6 +260,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_relatorio_elo.js"></script>
 <script src="./sime_correspondencia.js"></script>
 <script src="./sime_voluntarios.js"></script>
+<script src="./sime_oficial_justica.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -342,6 +366,7 @@ function goTab(tab, btn) {
   if (tab === 'relatorio-elo' && typeof reDados !== 'undefined') reDados = null;
   if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
   if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
+  if (tab === 'oficial-justica' && typeof ojDados !== 'undefined') ojDados = null;
   render();
 }
 function render() {
@@ -352,6 +377,7 @@ function render() {
   if (curTab === 'relatorio-elo') { renderRelatorioElo(); return; }
   if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
   if (curTab === 'voluntarios') { renderVoluntarios(); return; }
+  if (curTab === 'oficial-justica') { renderOficialJustica(); return; }
 }
 window.render = render;
 </script>

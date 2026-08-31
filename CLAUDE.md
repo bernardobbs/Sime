@@ -1820,6 +1820,54 @@ cada um com propósito diferente:
   que já existe lá; transformar um voluntário em designação oficial
   continua manual, mesma linha de sempre.
 
+- **⚖️ Oficial de Justiça** (`sime_oficial_justica.js`, 31/08/2026, pedido
+  direto: "ELABORE MAIS UMA ABA PARA O OFICIAL DE JUSTIÇA CONTROLE A
+  CONVOCAÇÃO DOS MESÁRIOS") — `sime_atores.meio_contato='oficial_justica'`
+  já existia no cadastro desde 20/08/2026 (junto de Carta Registrada e
+  Ligação telefônica, `sql/SIME_atores_meio_contato.sql`), mas nunca tinha
+  tela própria: ficava só dentro da fila geral de "📞 Contatar mesários",
+  sem visão dedicada de quem está nessa fila nem uma relação pra entregar
+  ao oficial. Mesmo espírito da aba 📬 Correspondência (que cobre Carta
+  Registrada), reaproveitando o que já existe em vez de duplicar:
+  `CM_STATUS_ALT_LABEL`/vocabulário de status (Carta Registrada e Oficial
+  de Justiça já compartilhavam a_enviar/enviado/entregue/devolvido, ver
+  `cmStatusLabelSet`), `coEnderecoDestinatario()`/`coFmtCep()`/
+  `coRotuloFuncao()` (mesma fonte de endereço — `sime_mesarios_raw`, casando
+  por título de eleitor, mesma prioridade dados do mesário → eleitor →
+  comercial), e `cmLog()` gravando com a MESMA ação `mesario_status_contato_alt`
+  que o `<select>` de status do modal de "Contatar mesários" já usa — uma
+  mudança de status feita aqui aparece certinho na timeline "📜
+  Atualizações" da pessoa lá, sem duplicar rótulo de log nem criar ação
+  nova.
+
+  **Diferente da Correspondência: sem etiqueta nem AR** — isso é fluxo
+  postal (Correios), e o oficial de justiça entrega em mão. O que o
+  cartório precisa é uma **relação** simples pra entregar a ele: nº, nome/
+  função/seção, endereço, e espaço em branco pra assinatura e data de
+  cumprimento (`ojHtmlRelacao()`, imprime via `#print-area`/`window.print()`,
+  mesmo mecanismo sem popup de Correspondência). Individual (botão "🖨️
+  Relação" no card) ou em lote (checkbox + "Imprimir relação selecionados").
+  Cada impressão grava log de auditoria (`oficial_justica_relacao_impressa`,
+  com autor/quantidade/lista de atores) — não é confirmação de que o
+  oficial recebeu, só de que o cartório gerou o documento (mesmo critério
+  já usado nos logs de etiqueta/AR impressos).
+
+  **Decisão deliberada: a relação é rotulada como documento de CONTROLE
+  INTERNO do SIME, não uma peça processual.** Diferente do AR, onde havia
+  referência oficial real (`gerarAR.cfm` dos Correios) pra reproduzir com
+  fidelidade, não existe um mandado/certidão do TJ-PI de referência pra
+  copiar — inventar um formato que parecesse oficial seria o oposto do
+  critério "nunca adivinha" de todo o resto do sistema. O rodapé da relação
+  deixa isso explícito: "Relação de controle interno do SIME — não
+  substitui o mandado/certidão próprios do processo de convocação."
+
+  Quem não tem nenhuma linha correspondente em `sime_mesarios_raw` (sem
+  título de eleitor casável) cai numa seção "⚠ Sem endereço no ELO" à
+  parte, mesmo critério de Correspondência — entra na relação mesmo assim
+  (o oficial pode ter o endereço por outra via), só marcado visualmente pra
+  conferência. Coberto por teste de regressão dedicado em
+  `tests/test_convocacao_mesarios.mjs` (bloco "3.8").
+
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
 > qualquer um que loga cai no hub de módulos, não numa página específica.
