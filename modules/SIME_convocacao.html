@@ -79,6 +79,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
    comentário no topo de sime_correspondencia.js) — texto/estrutura, sem a
    marca deles. */
 #print-area{display:none;}
+/* Bug real reportado em 31/08/2026 — "proporcionalmente perfeito, mas não
+   ficou bom pra impressão": o PDF impresso de verdade veio em A4 PAISAGEM
+   (conferido pelas dimensões do PDF enviado — 297×210mm, e não 210×297mm),
+   sem nenhum `@page` no CSS pra fixar isso — a orientação ficava por conta
+   do que a caixa de diálogo de impressão do navegador tinha usado da última
+   vez. Em paisagem, a altura útil da página cai de ~277mm pra ~190mm, e o
+   rodapé (fora da tabela) transbordava sozinho pra uma 2ª página quase em
+   branco. `@page{size:portrait}` fixa a orientação que o layout sempre
+   assumiu (colunas estreitas, tabela alta) — não depende mais do que
+   ficou selecionado da impressão anterior. */
+@page{size:A4 portrait;margin:10mm;}
 @media print{
   body > *:not(#print-area){display:none!important;}
   /* Bug real corrigido em 27/08/2026, achado no primeiro teste em produção:
@@ -93,7 +104,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   #print-area{display:block!important;color:#000;}
 
   /* ── Etiqueta ── */
-  .co-pagina-etiqueta{page-break-after:always;padding:14mm;font-family:Arial,Helvetica,sans-serif;}
+  /* Padding reduzido de 14mm pra 6mm em 31/08/2026 — `@page{margin:10mm}`
+     acima já reserva a margem da folha; somar os dois padding+margin dava
+     24mm de sobra em cada lado, terreno perdido bem na hora em que a folha
+     precisa de toda altura disponível (ver nota do AR, mesmo dia). */
+  .co-pagina-etiqueta{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
   .co-et-topo{border:1px solid #000;padding:4mm;margin-bottom:10mm;text-align:center;font-size:8pt;}
   .co-et-topo-tit{font-weight:700;margin-bottom:1mm;}
   .co-etiqueta{border:1px solid #000;width:120mm;font-size:9pt;line-height:1.5;}
@@ -114,11 +129,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      devolução numa célula só (rowspan), 3 colunas na linha de baixo
      (tentativas | observação+motivo | rubrica), checkbox quadrado no
      motivo, faixa "(ÁREA DE COLA NO VERSO)" fora da tabela. ── */
-  .co-pagina-ar{page-break-after:always;padding:12mm;font-family:Arial,Helvetica,sans-serif;}
-  .co-ar-outer{display:flex;border:1px dashed #999;}
-  .co-ar-cola{width:6mm;flex:none;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
+  /* Padding reduzido de 12mm pra 6mm (mesmo motivo da etiqueta acima) e
+     ".co-ar-outer" deixou de ser `display:flex` — a faixa de cola girada
+     (`writing-mode:vertical-rl` + `transform`) dentro de um container flex
+     é um combo conhecido por calcular altura errado na paginação real de
+     impressão (funciona certo em tela/screenshot, que foi o que a
+     verificação anterior usou e por isso não pegou o defeito). Virou
+     posicionamento absoluto — não participa mais do cálculo de altura do
+     conteúdo ao lado. */
+  .co-pagina-ar{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-ar-outer{position:relative;border:1px dashed #999;padding-left:6mm;}
+  .co-ar-cola{position:absolute;left:0;top:0;bottom:0;width:6mm;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
   .co-ar-cola span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:6.5pt;letter-spacing:.5px;color:#333;white-space:nowrap;}
-  .co-ar-tabela{flex:1;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
+  .co-ar-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
   .co-ar-col-a{width:45%;}
   .co-ar-col-b{width:23%;}
   .co-ar-col-c{width:32%;}

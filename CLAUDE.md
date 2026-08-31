@@ -1438,6 +1438,40 @@ cada um com propósito diferente:
   mesmo critério "nunca inventa" de sempre), só a palavra, pra bater com o
   modelo oficial. Etiqueta não mudou nesta rodada — só o AR.
 
+  **Bug real, mais grave, corrigido no mesmo dia — o AR "ficou
+  proporcionalmente perfeito, mas não ficou bom pra impressão" (pedido
+  direto, com o PDF impresso de verdade anexado).** A verificação anterior
+  (screenshot com `page.emulateMedia({media:'print'})`) só renderiza o CSS
+  de impressão num único frame contínuo — não simula PAGINAÇÃO real
+  (quebra de página, `@page`, margem/cabeçalho do navegador), então passou
+  limpo mesmo com o defeito presente. Comparado com `page.pdf()` do
+  Playwright (que pagina de verdade, igual ao motor de impressão do
+  Chrome), o problema apareceu: o PDF real veio em **A4 PAISAGEM**
+  (297×210mm, conferido pelas dimensões do arquivo enviado), e o CSS nunca
+  tinha uma regra `@page` nenhuma — a orientação ficava por conta do que a
+  caixa de diálogo de impressão do navegador tinha usado da última vez, não
+  do que o layout (colunas estreitas, tabela alta) sempre assumiu. Em
+  paisagem a altura útil da página cai bastante, e o rodapé (fora da
+  tabela) transbordava sozinho pra uma 2ª página quase em branco. Testado e
+  confirmado à parte (`@page{size:landscape}` sem nenhum parâmetro de
+  orientação no `page.pdf()` produziu mesmo um PDF em paisagem): o
+  `@page` do CSS de fato dirige a orientação no motor de impressão do
+  Chromium, então `@page{size:A4 portrait;margin:10mm;}` (novo, topo do
+  `@media print` de `SIME_convocacao.html`) força portrait sempre, não
+  importa o que ficou selecionado da impressão anterior.
+  Aproveitado pra tirar mais uma fragilidade: `.co-pagina-ar`/
+  `.co-pagina-etiqueta` tinham padding próprio de 12mm/14mm SOMADO ao
+  padrão do navegador (que nunca tinha `@page{margin}` nenhum pra fixar) —
+  virou 6mm em ambos, já que o `@page{margin:10mm}` novo cobre a margem da
+  folha; dobrar a margem tirava justamente a altura que faltava na hora do
+  aperto. `.co-ar-outer` (a faixa de cola + tabela) também deixou de ser
+  `display:flex`: cola girada (`writing-mode:vertical-rl` + `transform`)
+  dentro de flex é um combo conhecido por calcular altura errado
+  especificamente na paginação de impressão (funciona certo em tela — é
+  exatamente por isso que o screenshot anterior não pegou) — virou
+  posicionamento absoluto, fora do fluxo, sem participar do cálculo de
+  altura da tabela ao lado.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**
