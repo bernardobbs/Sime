@@ -1556,6 +1556,28 @@ cada um com propósito diferente:
   tira ela de `status='disponivel'` e, portanto, das próximas sugestões
   (sem precisar de nenhuma lógica de reserva/exclusão adicional).
 
+  **Clicar no cargo vazio abre a fila inteira, não só o primeiro (31/08/2026,
+  pedido direto: "ao clicar em cima da função vazia poderia aparecer os
+  voluntários disponíveis").** Antes, o 🙋 no card era só informativo —
+  mostrava o nome do primeiro da fila (`rsProximoVoluntario`), sem clique
+  nenhum. `rsProximoVoluntario` virou uma casca fina sobre
+  `rsVoluntariosDisponiveis()` (nova, mesmo critério de casamento função+
+  local de sempre, só que devolve a lista inteira, não só o primeiro).
+  Cargo ❌ (sem ninguém designado) ganhou `onclick` pra
+  `rsAbrirVoluntarios(municipio, localNome, cargoLabel)` — abre o mesmo
+  `#overlay`/`#modal-body` compartilhado da página (o mesmo que "Contatar
+  mesários" e "Voluntários" já usam) com a lista completa, em ordem de fila,
+  com link de WhatsApp por pessoa. **Só leitura/contato — não designa
+  ninguém sozinho**: apontar um voluntário pra vaga continua sendo feito
+  manualmente pelas telas de sempre (`SIME_convocacao.html`/
+  `SIME_atores.html`), mesma linha do resto do cadastro de voluntários
+  ("é um REGISTRO com status, não um automatismo"). Cargo 🔁 (precisa
+  substituir) e cargos já designados continuam abrindo o modal de CONTATO de
+  sempre (`cmAbrirModal`) — só o ❌ ganhou o comportamento novo, escopo
+  exato do pedido. `rsJsStr()` (nova) escapa nome de local pra dentro do
+  atributo `onclick="..."` — nomes de local têm apóstrofo de verdade (ex.:
+  "Salão Com. 'Mario Cazuza'"), que quebraria o HTML sem isso.
+
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
 > qualquer um que loga cai no hub de módulos, não numa página específica.
@@ -1612,6 +1634,30 @@ cada um com propósito diferente:
 > SIME só muda quando a pessoa responde de fato pelo WhatsApp, via
 > `api/hermes-mesarios.js`. É esse campo real que a aba **📊 Dashboard**
 > mostra (não o da planilha).
+
+> **Varredura "Situação=DISPENSADO" do ELO (31/08/2026) — o roster de 81
+> colunas não tem coluna de situação, mas existe outra tela do ELO que tem**
+> (Nome/Inscrição/.../Seção trabalho/Função/**Situação**/Ações — o cartório
+> colou o conteúdo dessa tela, não um CSV). Diferente do
+> `confirmou_convocacao` acima (que é resposta da PESSOA, nunca vira status
+> sozinho), `Situação=DISPENSADO` é o próprio TRE dizendo que aquela
+> designação específica acabou — mas **"dispensado de uma função pode ser
+> pra assumir outra"** (pedido direto do cartório, achado real: 8 das 56
+> pessoas coladas já apareciam no cadastro com OUTRA função de mesa e/ou
+> seção — remanejadas, não removidas). Por isso a varredura casa cada linha
+> por **título de eleitor** e só desativa quando a seção **e** a função de
+> mesa (`funcao_mesa`) atuais em `sime_atores` batem exatamente com o que o
+> relatório diz que foi dispensado — se qualquer um dos dois já mudou, a
+> pessoa fica intocada (está ativa sob a designação nova). Das 56, 39
+> bateram e foram desativadas (`ativo=false`, mesma observação/log de
+> auditoria do padrão HEMANUELA/Francisco); 8 ficaram de fora por
+> remanejamento (duas delas, FRANCYELLE e JEAN, literalmente trocaram de
+> cargo entre si na mesma seção 225). Rodado uma vez via SQL Editor/MCP —
+> não é uma migração, não reaplica sozinha. **Pendência real**: se o
+> cartório conseguir um export em CSV dessa mesma tela do ELO (em vez de
+> colar o texto), dá pra automatizar essa checagem seção+função dentro de
+> "🔄 Sincronizar" como um 4º caminho — hoje ainda depende de colar
+> manualmente.
 
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o

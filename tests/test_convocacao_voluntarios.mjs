@@ -496,6 +496,63 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 10. Dashboard: clicar no cargo VAZIO abre a lista inteira de voluntários
+// disponíveis (31/08/2026, pedido direto: "ao clicar em cima da função
+// vazia poderia aparecer os voluntários disponíveis") — antes o 🙋 no card
+// era só informativo (mostrava só o primeiro da fila, sem clique nenhum).
+// Reaproveita a mesma fixture do teste 8 (seção s1: Presidente confirmado,
+// 1º Mesário precisa_substituir, 2º Mesário e 1º Secretário vazios). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores = [
+    { id: 'a1', nome_completo: 'PRESIDENTE JA CONFIRMADO', telefone_whatsapp: '5586999992001', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's1', zona_id: 'z7', confirmacao: 'confirmado', ativo: true },
+    { id: 'a2', nome_completo: 'MESARIO PRECISA SUBSTITUIR', telefone_whatsapp: '5586999992002', funcao: 'mesario', funcao_mesa: '1º Mesário', secao_id: 's1', zona_id: 'z7', confirmacao: 'confirmado', precisa_substituir: true, ativo: true },
+  ];
+  m.sime_voluntarios = [
+    { id: 'v_wrongfunc', zona_id: 'z7', documento: '10000000001', tipo_documento: 'cpf', nome: 'WRONGFUNC EARLIEST', telefone_whatsapp: '', funcoes: ['coord_acessibilidade'], municipio: null, local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-05T08:00:00.000Z' },
+    { id: 'v_cm', zona_id: 'z7', documento: '10000000002', tipo_documento: 'cpf', nome: 'CAMILA MAIOR PRIMEIRA', telefone_whatsapp: '5586999993000', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: null, status: 'disponivel', ativo: true, created_at: '2026-08-10T08:00:00.000Z' },
+    { id: 'v_ana_tarde', zona_id: 'z7', documento: '10000000004', tipo_documento: 'cpf', nome: 'ANA TARDIA ESPECIFICA', telefone_whatsapp: '5586999995000', funcoes: ['mesario'], municipio: 'Campo Maior', local_votacao: 'Grupo Escolar A', status: 'disponivel', ativo: true, created_at: '2026-08-27T10:00:00.000Z' },
+    { id: 'v_convocado', zona_id: 'z7', documento: '10000000005', tipo_documento: 'cpf', nome: 'CONVOCADO NAO CONTA MAIS', telefone_whatsapp: '', funcoes: [], municipio: null, local_votacao: null, status: 'convocado', ativo: true, created_at: '2026-08-01T08:00:00.000Z' },
+  ];
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+  await p.click('.import-card:has-text("Grupo Escolar A")');
+  await p.waitForTimeout(300);
+
+  // Título do cargo vazio é "Sem designação — clique pra ver voluntários
+  // disponíveis" (o nome do cargo — "2º Mesário" — fica num <div> visível
+  // abaixo, não no title). .first() pega o primeiro dos dois vazios em ordem
+  // de DOM (Presidente, 1º Mesário, 2º Mesário, 1º Secretário → "2º Mesário").
+  const cargoVazio = p.locator('div[title="Sem designação — clique pra ver voluntários disponíveis"]').first();
+  await cargoVazio.click();
+  await p.waitForTimeout(200);
+
+  check('modal abre com título "Voluntários disponíveis"', /Voluntários disponíveis/.test(await p.locator('#modal-body').textContent()));
+  const modalTxt = await p.locator('#modal-body').textContent();
+  check('lista mostra os dois voluntários que casam, na ordem de cadastro (CAMILA antes de ANA)', modalTxt.indexOf('CAMILA MAIOR PRIMEIRA') < modalTxt.indexOf('ANA TARDIA ESPECIFICA') && modalTxt.indexOf('CAMILA MAIOR PRIMEIRA') >= 0, modalTxt.replace(/\s+/g, ' ').slice(0, 300));
+  check('candidato com função errada não aparece na lista completa', !/WRONGFUNC/.test(modalTxt));
+  check('candidato já convocado não aparece na lista completa', !/CONVOCADO NAO CONTA/.test(modalTxt));
+  check('link de WhatsApp aparece pra quem tem telefone', await p.locator('#modal-body a:has-text("WhatsApp")').count() >= 1);
+
+  // Fecha clicando no fundo (overlay) — mesmo padrão dos outros modais da página.
+  await p.click('#overlay', { position: { x: 5, y: 5 } });
+  await p.waitForTimeout(150);
+  check('clicar no overlay fecha o modal', await p.locator('#overlay.open').count() === 0);
+
+  // Cargo com gente designada (mesmo o 🔁 precisa_substituir) continua abrindo
+  // o modal de CONTATO de sempre, não a lista de voluntários — sem regressão.
+  const cargoOcupado = p.locator('.import-card:has-text("Seção")').locator('div[title*="MESARIO PRECISA SUBSTITUIR"]').first();
+  await cargoOcupado.click();
+  await p.waitForTimeout(200);
+  check('cargo já designado (mesmo precisa_substituir) abre o modal de contato, não a lista de voluntários', /MESARIO PRECISA SUBSTITUIR/.test(await p.locator('#modal-body').textContent()) && !/Voluntários disponíveis/.test(await p.locator('#modal-body').textContent()));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhas = results.filter(r => !r.ok);
 for (const r of results) console.log((r.ok ? 'OK  ' : 'FAIL') + ' — ' + r.n + (r.ok ? '' : ('  [' + r.e + ']')));

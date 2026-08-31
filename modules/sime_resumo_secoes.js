@@ -118,13 +118,54 @@ async function rsCarregar() {
 // local_votacao vazios no cadastro do voluntário = "topo qualquer lugar",
 // então casam com qualquer seção — mesma regra de "qualquer" já usada no
 // resto do cadastro de voluntários (vlBadgeFuncoes/vlBadgeLocal).
-function rsProximoVoluntario(municipio, localNome) {
+function rsVoluntariosDisponiveis(municipio, localNome) {
   const lista = rsDados.voluntarios || [];
-  return lista.find(v =>
+  return lista.filter(v =>
     (!v.funcoes || !v.funcoes.length || v.funcoes.includes('mesario')) &&
     (!v.municipio || v.municipio === municipio) &&
     (!v.local_votacao || v.local_votacao === localNome)
-  ) || null;
+  );
+}
+function rsProximoVoluntario(municipio, localNome) {
+  return rsVoluntariosDisponiveis(municipio, localNome)[0] || null;
+}
+
+// Escapa pra uso dentro de uma string JS de aspas simples num atributo
+// onclick="..." (contexto diferente de rsEsc, que escapa pra texto/atributo
+// HTML) — nomes de local têm apóstrofo de verdade (ex.: "Salão Com. 'Mario
+// Cazuza'"), então sem isso o onclick quebraria no meio do próprio HTML.
+function rsJsStr(s) {
+  return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// "ao clicar em cima da função vazia poderia aparecer os voluntários
+// disponíveis" (31/08/2026, pedido direto) — antes a sugestão (🙋) era só
+// informativa, sem clique, e mostrava só o PRIMEIRO da fila. Clicar no
+// cargo vazio agora abre a lista inteira de voluntários que casam (função +
+// local), na mesma ordem de fila (cadastro mais antigo primeiro) — só
+// leitura/contato (WhatsApp), não designa ninguém sozinho: designar
+// continua sendo feito manualmente pelas telas de sempre.
+function rsAbrirVoluntarios(municipio, localNome, cargoLabel) {
+  const lista = rsVoluntariosDisponiveis(municipio, localNome);
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">🙋 Voluntários disponíveis — ${rsEsc(cargoLabel)}</div>
+      <button class="close-btn" aria-label="Fechar" onclick="rsFecharModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="ic-sub">Vaga em ${rsEsc(localNome || '—')}${municipio ? `, ${rsEsc(municipio)}` : ''} — por ordem de cadastro. Só mostra quem já topou trabalhar; designar continua manual, pelas telas de sempre.</div>
+      ${lista.length ? `<div class="m-hist">${lista.map((v, i) => `
+        <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div><b>${i + 1}º</b> ${rsEsc(v.nome)}${!v.funcoes || !v.funcoes.length ? ' <span style="color:var(--text2);font-size:.68rem">(qualquer função)</span>' : ''}${!v.municipio ? ' <span style="color:var(--text2);font-size:.68rem">(qualquer local)</span>' : ''}</div>
+          ${v.telefone_whatsapp && linkWhatsApp(v.telefone_whatsapp) ? `<a href="${linkWhatsApp(v.telefone_whatsapp)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : '<span style="color:var(--text2);font-size:.7rem">sem telefone</span>'}
+        </div>`).join('')}</div>` : '<div class="ic-sub" style="margin-bottom:0">Nenhum voluntário disponível pra esse local no momento.</div>'}
+    </div>`;
+}
+function rsFecharModal(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay')?.classList.remove('open');
+  }
 }
 
 function rsEsc(s) {
@@ -461,13 +502,25 @@ function rsCardSecao(l) {
         </div>
       </div>
       <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap">
-        ${l.cargos.map((cg, i) => `
-          <div style="text-align:center;max-width:78px${cg.id ? ';cursor:pointer' : ''}" title="${rsEsc(cg.label)}${cg.id ? ' — clique pra ver tentativas de contato' : ''}"${cg.id ? ` onclick="event.stopPropagation();cmAbrirModal('${cg.id}')"` : ''}>
+        ${l.cargos.map((cg, i) => {
+          // Cargo vazio (❌, sem ninguém designado) fica clicável pra abrir a
+          // fila inteira de voluntários disponíveis — antes só o card tinha
+          // a sugestão do primeiro da fila (🙋), sem clique nenhum. Cargo com
+          // gente designada (id preenchido — inclusive 🔁 precisa substituir)
+          // continua abrindo o modal de contato de sempre, sem mudança.
+          const vago = !cg.id && cg.cls === 'rs-sem';
+          const onclick = cg.id ? `onclick="event.stopPropagation();cmAbrirModal('${cg.id}')"`
+            : vago ? `onclick="event.stopPropagation();rsAbrirVoluntarios('${rsJsStr(l.secao.municipio)}','${rsJsStr(l.secao.local_nome)}','${rsJsStr(RS_CARGOS[i])}')"`
+            : '';
+          const titulo = cg.id ? `${rsEsc(cg.label)} — clique pra ver tentativas de contato` : vago ? `${rsEsc(cg.label)} — clique pra ver voluntários disponíveis` : rsEsc(cg.label);
+          return `
+          <div style="text-align:center;max-width:78px${onclick ? ';cursor:pointer' : ''}" title="${titulo}" ${onclick}>
             <div style="font-size:1.1rem">${cg.icone}</div>
             <div style="font-size:.68rem;color:var(--text2);margin-top:2px">${RS_CARGOS[i]}</div>
             ${cg.nome ? `<div style="font-size:.66rem;color:${cg.id ? 'var(--blue)' : 'var(--text3)'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${cg.id ? 'text-decoration:underline' : ''}">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
-            ${cg.sugestaoNome ? `<div style="font-size:.62rem;color:var(--green);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Sugestão pela fila de voluntários disponíveis, por ordem de cadastro: ${rsEsc(cg.sugestaoNome)}">🙋 ${rsEsc(cg.sugestaoNome.split(' ')[0])}</div>` : ''}
-          </div>`).join('')}
+            ${cg.sugestaoNome ? `<div style="font-size:.62rem;color:var(--green);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${vago ? 'text-decoration:underline' : ''}" title="Sugestão pela fila de voluntários disponíveis, por ordem de cadastro: ${rsEsc(cg.sugestaoNome)}">🙋 ${rsEsc(cg.sugestaoNome.split(' ')[0])}</div>` : ''}
+          </div>`;
+        }).join('')}
       </div>
       <div class="ic-sub" style="margin-top:10px;margin-bottom:0">Atualizado em ${rsFmtData(l.atualizado)}</div>
     </div>`;
