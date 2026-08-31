@@ -1472,6 +1472,23 @@ cada um com propósito diferente:
   posicionamento absoluto, fora do fluxo, sem participar do cálculo de
   altura da tabela ao lado.
 
+  **Bug real, mesmo dia, achado no PDF impresso depois do fix acima —
+  "fica muito esticado".** Com a orientação corrigida (retrato), o motivo
+  ficou visível: o grid de 2 colunas do MOTIVO DE DEVOLUÇÃO vive dentro da
+  coluna OBSERVAÇÃO/MOTIVO, que é só 23% da largura da tabela — estreita
+  demais pros rótulos de 2 palavras ("Endereço insuficiente", "Não existe o
+  número"), que quebravam em 2 linhas. Como a altura de uma linha de tabela
+  é sempre a da célula mais alta, essa quebra inflava a linha inteira
+  (TENTATIVAS/OBSERVAÇÃO+MOTIVO/RUBRICA) bem além do necessário — e
+  TENTATIVAS/RUBRICA, sem conteúdo pra preencher esse espaço extra, ficavam
+  com um vazio esticado entre as linhas, dando a impressão de formulário
+  "esticado" mesmo sem nenhum erro de proporção de página. Corrigido
+  trocando o grid de 2 colunas (`display:grid;grid-template-columns:1fr
+  1fr`) por lista de 1 coluna (`display:flex;flex-direction:column`) — cada
+  motivo cabe inteiro na largura cheia da célula, sem quebrar, e a linha
+  volta a ter a altura que o conteúdo de fato precisa. Verificado com
+  `page.pdf()` de novo (não screenshot) — nenhum item quebra mais linha.
+
   **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
   de construir isto — nenhuma das duas é bug, as duas já eram decisões
   antigas documentadas alhures:**

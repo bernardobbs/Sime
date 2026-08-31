@@ -263,11 +263,15 @@ function coHtmlAr(p, zona) {
               <b>OBSERVAÇÃO</b><br>Carta de convocação<br><br>
               <b>MOTIVO DE DEVOLUÇÃO</b>
               <div class="co-ar-motivos">
-                <div><span class="co-ar-check">1</span>Mudou-se</div><div><span class="co-ar-check">5</span>Recusado</div>
-                <div><span class="co-ar-check">2</span>Endereço insuficiente</div><div><span class="co-ar-check">6</span>Não procurado</div>
-                <div><span class="co-ar-check">3</span>Não existe o número</div><div><span class="co-ar-check">7</span>Ausente</div>
-                <div><span class="co-ar-check">4</span>Desconhecido</div><div><span class="co-ar-check">8</span>Falecido</div>
-                <div><span class="co-ar-check">9</span>Outros</div><div></div>
+                <div><span class="co-ar-check">1</span>Mudou-se</div>
+                <div><span class="co-ar-check">2</span>Endereço insuficiente</div>
+                <div><span class="co-ar-check">3</span>Não existe o número</div>
+                <div><span class="co-ar-check">4</span>Desconhecido</div>
+                <div><span class="co-ar-check">5</span>Recusado</div>
+                <div><span class="co-ar-check">6</span>Não procurado</div>
+                <div><span class="co-ar-check">7</span>Ausente</div>
+                <div><span class="co-ar-check">8</span>Falecido</div>
+                <div><span class="co-ar-check">9</span>Outros</div>
               </div>
             </td>
             <td class="co-ar-rubrica">RUBRICA E MATRÍCULA DO<br>CARTEIRO</td>

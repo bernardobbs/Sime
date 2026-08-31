@@ -152,7 +152,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .co-ar-rotulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
   .co-ar-nota{font-size:7.5pt;color:#333;margin-top:2mm;}
   .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;border:1px dashed #666;padding:3mm;margin:3mm 0;}
-  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:.8mm 3mm;font-size:7.5pt;margin:1.5mm 0;}
+  /* Bug real reportado em 31/08/2026, mesmo dia da correção de orientação —
+     "fica muito esticado": grid de 2 colunas quebrava "Endereço
+     insuficiente" e "Não existe o número" em 2 linhas dentro dos 23% de
+     largura da coluna OBSERVAÇÃO/MOTIVO — como a altura da linha da tabela
+     é ditada pela célula mais alta, isso esticava TENTATIVAS e RUBRICA
+     junto, mesmo sem precisarem de mais espaço. Virou lista de 1 coluna —
+     cada item cabe inteiro na largura da célula, sem quebra. */
+  .co-ar-motivos{display:flex;flex-direction:column;gap:.8mm;font-size:7.5pt;margin:1.5mm 0;}
+  .co-ar-motivos>div{white-space:nowrap;}
   .co-ar-check{display:inline-flex;align-items:center;justify-content:center;width:3.2mm;height:3.2mm;border:1px solid #000;font-size:6pt;font-weight:700;margin-right:1mm;}
   .co-ar-rubrica{font-size:7.5pt;}
   .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
