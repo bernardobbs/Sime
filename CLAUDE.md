@@ -1436,8 +1436,15 @@ cada um com propósito diferente:
   escreve o HTML nele e chama `window.print()` direto, sem depender de
   `window.open()` (bloqueado por popup blocker em muitos navegadores).
   Etiqueta e AR aceitam impressão de 1 pessoa (botão no card) ou em lote
-  (checkbox + "Imprimir etiquetas selecionadas") — AR só existe por pessoa
-  (assinatura é individual, não faz sentido em lote). Cada impressão grava
+  (checkbox + "Imprimir etiquetas selecionadas" / "Imprimir AR selecionados"
+  — 31/08/2026, pedido direto: "quero poder imprimir os ar também". Decisão
+  original do dia do lançamento dizia que AR "não fazia sentido em lote"
+  porque a assinatura é individual — mas isso confundia a ASSINATURA (que é
+  mesmo individual, uma pessoa por vez, na hora da entrega) com a IMPRESSÃO
+  do formulário em branco, que não tem esse problema: `coImprimir(ids, tipo)`
+  já era genérica pra qualquer `tipo` desde o início, só faltava o botão de
+  lote na tela — nenhuma mudança na função em si, só um segundo botão ao
+  lado do de etiquetas). Cada impressão grava
   log de auditoria (`correspondencia_etiqueta_impressa`/
   `correspondencia_ar_impresso`, com autor e lista de atores) — não é
   confirmação de que o Correio recebeu, só de que o cartório gerou o

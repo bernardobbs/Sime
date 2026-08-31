@@ -344,6 +344,7 @@ function renderCorrespondencia() {
         <button class="btn btn-out" onclick="coSelecionados=new Set(coDados.pessoas.filter(p=>p.endereco).map(p=>p.id));render()">Selecionar todos</button>
         <button class="btn btn-out" onclick="coSelecionados=new Set();render()">Limpar seleção</button>
         <button class="btn btn-dark" ${!selecionaveis.length ? 'disabled' : ''} onclick="coImprimir([...coSelecionados],'etiqueta')">🏷️ Imprimir etiquetas selecionadas (${selecionaveis.length})</button>
+        <button class="btn btn-dark" ${!selecionaveis.length ? 'disabled' : ''} onclick="coImprimir([...coSelecionados],'ar')">📄 Imprimir AR selecionados (${selecionaveis.length})</button>
       </div>
       <div class="cm-lista-pessoas" style="display:flex;flex-direction:column;gap:8px">
         ${comEndereco.map(p => `

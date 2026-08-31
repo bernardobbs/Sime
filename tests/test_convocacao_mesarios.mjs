@@ -1889,6 +1889,21 @@ async function login(p) {
   await p.waitForTimeout(200);
   check('imprimir em massa chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 3);
 
+  // ── AR em lote (31/08/2026, pedido direto: "quero poder imprimir os ar
+  // também") — antes só existia "Imprimir etiquetas selecionadas"; AR só
+  // saía um de cada vez, pelo botão individual do card. coImprimir() já
+  // aceitava lista de ids pra qualquer tipo — só faltava o botão. Marca
+  // DIEGO (já selecionado acima) + NUNO e confirma que o lote gera as DUAS
+  // páginas de AR, não só uma. ──
+  await p.locator('[data-ator-id="a21"] input[type=checkbox]').check();
+  await p.click('button:has-text("Imprimir AR selecionados (2)")');
+  await p.waitForTimeout(200);
+  check('imprimir AR em lote chama window.print() de novo', await p.evaluate(() => window.__printCalls) === 4);
+  const printHtmlArLote = await p.locator('#print-area').innerHTML();
+  check('AR em lote gera uma página por pessoa selecionada (DIEGO e NUNO, não só uma)', /DIEGO CARTA/.test(printHtmlArLote) && /NUNO DADOS MESARIO/.test(printHtmlArLote), printHtmlArLote.slice(0, 200));
+  check('AR em lote usa o modelo de AR, não a etiqueta', (printHtmlArLote.match(/AVISO DE RECEBIMENTO/g) || []).length === 2, printHtmlArLote.slice(0, 200));
+  check('grava log de AR impresso em lote (quantidade=2)', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'correspondencia_ar_impresso' && e.payload.payload?.quantidade === 2)));
+
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
