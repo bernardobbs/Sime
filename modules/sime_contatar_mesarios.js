@@ -185,6 +185,7 @@ const CM_LOG_LABEL = {
   mesario_telefone_alt_adicionado: () => 'Telefone alternativo adicionado',
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
   mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
+  mesario_substituicao_concluida: (p) => `✅ Substituição concluída${p.substituto_nome ? ` — ${p.substituto_nome}` : ''}${p.substituto_telefone ? ` (${fmtTelefone(p.substituto_telefone)})` : ''}`,
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -421,6 +422,34 @@ async function cmSalvarSubstitutoNome(id) {
   showToast('✓ Nome do substituto salvo');
   render();
   if (cmModalId === id) cmRenderModal();
+}
+
+// Fecha de vez uma substituição que o cartório já decidiu por fora (ligação,
+// presencial, WhatsApp pessoal) — diferente de cmTogglePrecisaSubstituir
+// (que só marca "precisa achar alguém", item ainda em aberto), isto é o
+// DESFECHO: mesmo efeito que já acontece quando o próprio mesário confirma
+// a troca pelo WhatsApp (ACAO_CONF.substituir em api/hermes-mesarios.js —
+// confirmacao='substituido' + ativo=false), só que aqui é o cartório
+// fechando manualmente. Sem isso não havia nenhum jeito de tirar alguém da
+// fila ativa quando a substituição já estava resolvida — a pessoa ficava
+// presa em "precisa substituir" pra sempre, mesmo com o nome do substituto
+// já anotado (achado real: FRANCISCO LUIZ NETO, 31/08/2026 — cartório já
+// tinha escrito "dispensado" e o nome de quem substituiu em Observações,
+// mas nada tinha de fato mudado o status). Mantém substituto_nome/telefone
+// no registro (não limpa, ao contrário de desmarcar a flag) — é histórico
+// de quem assumiu a vaga.
+async function cmConcluirSubstituicao(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const patch = { confirmacao: 'substituido', ativo: false, precisa_substituir: false };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  await cmLog('mesario_substituicao_concluida', '', { ator_id: id, substituto_nome: p.substituto_nome || null, substituto_telefone: p.substituto_telefone || null });
+  showToast('✅ Substituição concluída — saiu da lista de Contatar mesários');
+  cmDados.pessoas = cmDados.pessoas.filter(x => x.id !== id); // ativo=false — cmCarregar só lista ativo=true
+  cmFecharModal();
+  render();
 }
 
 // Telefone do substituto (27/08/2026, pedido direto: "deve vir para
@@ -1063,7 +1092,8 @@ function cmRenderModal() {
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Telefone do substituto (opcional)
             <input id="mm-substituto-telefone" type="text" value="${cmEsc(fmtTelefone(p.substituto_telefone || ''))}" placeholder="(86) 9xxxx-xxxx" onblur="cmSalvarSubstitutoTelefone('${p.id}')" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
             ${p.substituto_telefone && linkWhatsApp(p.substituto_telefone) ? `<a href="${linkWhatsApp(p.substituto_telefone)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px">💬 Abrir WhatsApp do substituto</a>` : ''}
-          </label>` : ''}
+          </label>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px;white-space:nowrap" onclick="cmConcluirSubstituicao('${p.id}')" title="Já foi resolvido por fora (ligação, presencial) — fecha a substituição e tira esta pessoa da fila">✅ Concluir substituição</button>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
         <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no número pra editar (salva sozinho ao sair do campo) e no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho:</div>

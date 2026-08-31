@@ -1039,6 +1039,49 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.815 "✅ Concluir substituição" (31/08/2026, achado real: FRANCISCO LUIZ
+// NETO estava dispensado e substituído por Sanndra havia dias, mas ficou
+// preso em "precisa substituir" pra sempre — não existia nenhum jeito do
+// cartório fechar uma substituição já resolvida por fora do WhatsApp).
+// Diferente de "🔁 Substituir" (só marca/desmarca o item de trabalho em
+// aberto), este é o DESFECHO: confirmacao='substituido' + ativo=false, a
+// pessoa sai da fila ativa. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('button:has-text("Marcar para substituir")').click();
+  await p.waitForTimeout(150);
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+
+  await p.fill('#modal-body input#mm-substituto-nome', 'Sanndra Conceição Soares');
+  await p.locator('#modal-body input#mm-substituto-nome').press('Tab');
+  await p.waitForTimeout(150);
+
+  const botaoConcluir = p.locator('#modal-body button:has-text("Concluir substituição")');
+  check('botão "Concluir substituição" aparece no modal enquanto a flag está marcada', await botaoConcluir.count() === 1);
+
+  await botaoConcluir.click();
+  await p.waitForTimeout(200);
+
+  const updFinal = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.confirmacao === 'substituido'));
+  check('conclui grava confirmacao=substituido + ativo=false + precisa_substituir=false, tudo de uma vez', !!updFinal && updFinal.payload.ativo === false && updFinal.payload.precisa_substituir === false, JSON.stringify(updFinal));
+
+  const logFinal = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_substituicao_concluida'));
+  check('grava log mesario_substituicao_concluida com o nome do substituto', logFinal?.payload?.payload?.substituto_nome === 'Sanndra Conceição Soares', JSON.stringify(logFinal));
+
+  check('modal fecha sozinho', await p.locator('#overlay.open').count() === 0);
+  await p.waitForTimeout(150);
+  check('pessoa some da lista (ativo=false, cmCarregar só lista ativo=true)', await p.locator('.import-card:has-text("ANA PRESIDENTE")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.85 Confirmar participação: só marca confirmado, NÃO enfileira mensagem
 // nenhuma pro Hermes — bug real corrigido em 21/08/2026 (o cartório reportou
 // que o botão estava criando fila automática de mensagem sem ter pedido). ──

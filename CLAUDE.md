@@ -469,6 +469,47 @@ cada um com propósito diferente:
   confirmou nada ainda). "Situação" do modal e badge do card (`cmSubstitutoLabel`)
   agora mostram nome — telefone juntos quando os dois existem. Desmarcar
   `precisa_substituir` limpa os dois campos junto, mesma regra de sempre.
+
+  **"✅ Concluir substituição" (31/08/2026, pedido direto — achado real: FRANCISCO
+  LUIZ NETO já tinha sido dispensado e substituído por Sanndra Conceição
+  Soares havia dias, nome e telefone dela já anotados nos campos de
+  substituto, mas o cartório reportou "já foi dispensando e substituído... como
+  iremos desabilitar os mesários substituídos" — em "📜 Atualizações" só
+  apareciam os registros de "Marcado para substituição" e "Nome/telefone do
+  substituto", nunca uma mudança de status de verdade.** Investigando: `confirmacao=
+  'substituido'` (que já vem com `ativo=false` — esse é o status JÁ
+  RESOLVIDO, mesma regra documentada acima em "precisa_substituir tem
+  prioridade visual sobre confirmacao") só era gravado por UMA via em todo o
+  sistema — `ACAO_CONF.substituir` em `api/hermes-mesarios.js`, ou seja, só
+  quando o PRÓPRIO mesário confirma a troca pelo WhatsApp. O botão "🔁
+  Substituir" do SIME só liga/desliga a flag `precisa_substituir` (item de
+  trabalho em aberto — "ainda precisamos achar alguém"); não existia nenhum
+  jeito do cartório fechar uma substituição que ele mesmo já resolveu por
+  fora (ligação, presencial, WhatsApp pessoal) — a pessoa ficava presa em
+  "precisa substituir" pra sempre, mesmo com o substituto já nomeado.
+  Francisco foi corrigido manualmente (`confirmacao='substituido'`,
+  `ativo=false`, `precisa_substituir=false`) e uma varredura na 7ª Zona
+  não achou mais ninguém na mesma situação (substituto já nomeado + ainda
+  ativo) — era só ele.
+
+  Corrigido com um botão novo, só dentro do modal (mesmo escopo dos outros
+  dois — "🔁 Substituir" também só existe lá, ver acima): **"✅ Concluir
+  substituição"**, ao lado dos campos de nome/telefone do substituto,
+  visível sempre que `precisa_substituir=true` (`cmConcluirSubstituicao`).
+  Grava os três campos de uma vez (`confirmacao='substituido'`,
+  `ativo=false`, `precisa_substituir=false`) — mesmo efeito final de quando
+  o Hermes confirma pela resposta do mesário, só que disparado pelo
+  cartório. **Não limpa `substituto_nome`/`substituto_telefone`** (ao
+  contrário de desmarcar a flag, que limpa os dois) — aqui os dois viram
+  registro histórico de quem assumiu a vaga, não um item em aberto sendo
+  cancelado. Como `ativo` vira `false`, a pessoa desaparece da lista de
+  "Contatar mesários" na hora (`cmCarregar()` só lista `ativo=true`) — o
+  clique já remove ela de `cmDados.pessoas` e fecha o modal, sem precisar
+  recarregar a aba. Log `mesario_substituicao_concluida` (com o nome/
+  telefone do substituto no payload) aparece em "📜 Atualizações" com
+  rótulo próprio. Coberto por teste de regressão dedicado em
+  `tests/test_convocacao_mesarios.mjs`.
+
   por status (falta contactar, confirmado, recusou, contato incorreto,
   **precisa ser substituído** — filtro próprio, independente do bucket
   "já substituído" — e substituído), mostra o recado (`observacao`) de quem
