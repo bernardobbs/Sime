@@ -1907,11 +1907,15 @@ async function login(p) {
   check('número excluído some da lista de telefones', !/Telefone 1 \(eleitor\)/.test(textoDepoisExcluir), textoDepoisExcluir.replace(/\s+/g, ' ').slice(0, 500));
 
   // Excluir o PRINCIPAL limpa telefone_whatsapp direto (campo próprio do
-  // SIME, ao contrário do número do TRE acima).
+  // SIME) E TAMBÉM entra em telefones_ignorados (01/09/2026, achado real:
+  // WANESSA ALVES DE SOUZA — sem isso, o mesmo número podia reaparecer
+  // depois vindo de um campo do TRE, já que nada mais "segurava" aquele
+  // dígito).
   await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button[aria-label="Excluir número"]').click();
   await p.waitForTimeout(250);
   const atorSemPrincipal = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
-  check('excluir o principal limpa telefone_whatsapp (não vira "ignorado")', atorSemPrincipal.telefone_whatsapp === null, JSON.stringify(atorSemPrincipal.telefone_whatsapp));
+  check('excluir o principal limpa telefone_whatsapp', atorSemPrincipal.telefone_whatsapp === null, JSON.stringify(atorSemPrincipal.telefone_whatsapp));
+  check('excluir o principal TAMBÉM grava o dígito em telefones_ignorados', (atorSemPrincipal.telefones_ignorados || []).includes('86999990002'), JSON.stringify(atorSemPrincipal.telefones_ignorados));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -2007,6 +2011,15 @@ async function login(p) {
   await p.waitForTimeout(250);
   const atorExcluido = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a45'));
   check('excluir o único cartão restante realmente limpa telefone_whatsapp', atorExcluido.telefone_whatsapp === null, JSON.stringify(atorExcluido.telefone_whatsapp));
+
+  // Achado real, mesmo caso: excluir só o principal NÃO bastava — o campo
+  // do TRE (mesmo número, sem DDD) reaparecia como cartão próprio depois,
+  // já que nada mais segurava aquele dígito. Confirma que o dígito
+  // normalizado foi pro telefones_ignorados, e que reabrir o modal não
+  // ressuscita o número por nenhuma via.
+  check('excluir o principal também grava o dígito NORMALIZADO em telefones_ignorados', (atorExcluido.telefones_ignorados || []).includes('86994719268'), JSON.stringify(atorExcluido.telefones_ignorados));
+  const textoAposExcluir = await p.locator('#modal-body').textContent();
+  check('depois de excluir, o número não reaparece de nenhuma forma (nem via campo do TRE)', !/99471.?9268/.test(textoAposExcluir), textoAposExcluir.replace(/\s+/g, ' ').slice(0, 500));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

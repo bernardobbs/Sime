@@ -514,31 +514,35 @@ async function cmToggleNumeroConfirmado(id, digitos) {
 // vindos do TRE (sime_mesarios_raw, só leitura) não dá pra apagar de lá —
 // só entra numa lista de ignorados pra sumir da lista desta pessoa daqui em
 // diante (campo=null identifica esse caso).
+//
+// SEMPRE entra em telefones_ignorados, mesmo excluindo o principal/
+// alternativo — não só quando campo=null (01/09/2026, achado real:
+// WANESSA ALVES DE SOUZA, excluir só o principal não bastou porque o MESMO
+// número também existia — sem DDD — num campo do TRE; sem marcar o dígito
+// como ignorado, esse campo do TRE reaparecia como cartão próprio depois,
+// já que nada mais estava "segurando" aquele dígito). Assim, uma vez que o
+// cartório diz "não é dela", aquele número nunca mais reaparece nesta
+// pessoa — nem se o mesmo número voltar num resync futuro por outro campo.
 async function cmExcluirTelefoneCard(id, digitos, campo) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p || !digitos) return;
-  if (campo) {
-    const { error } = await sb.from('sime_atores').update({ [campo]: null }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
-    p[campo] = null;
-    await cmLog('mesario_editar_telefone', '', { ator_id: id, telefone: fmtTelefone(digitos), motivo: 'excluído — não é o número desta pessoa' });
-  } else {
-    const atual = Array.isArray(p.telefones_ignorados) ? p.telefones_ignorados : [];
-    if (atual.includes(digitos)) return;
-    const novo = [...atual, digitos];
-    const { error } = await sb.from('sime_atores').update({ telefones_ignorados: novo }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
-    p.telefones_ignorados = novo;
-    await cmLog('mesario_telefone_ignorado', '', { ator_id: id, telefone: fmtTelefone(digitos) });
-  }
-  // Não faz sentido continuar guardando "não é WhatsApp" pra um número que
-  // acabou de ser excluído por não ser mais desta pessoa.
+  const patch = {};
+  if (campo) patch[campo] = null;
+  const ignoradosAtual = Array.isArray(p.telefones_ignorados) ? p.telefones_ignorados : [];
+  if (!ignoradosAtual.includes(digitos)) patch.telefones_ignorados = [...ignoradosAtual, digitos];
+  // Não faz sentido continuar guardando "sem WhatsApp"/"confirmado" pra um
+  // número que acabou de ser excluído por não ser mais desta pessoa.
   if (Array.isArray(p.telefones_sem_whatsapp) && p.telefones_sem_whatsapp.includes(digitos)) {
-    const semWhatsappNovo = p.telefones_sem_whatsapp.filter(d => d !== digitos);
-    await sb.from('sime_atores').update({ telefones_sem_whatsapp: semWhatsappNovo }).eq('id', id);
-    p.telefones_sem_whatsapp = semWhatsappNovo;
+    patch.telefones_sem_whatsapp = p.telefones_sem_whatsapp.filter(d => d !== digitos);
   }
+  if (Array.isArray(p.telefones_confirmados) && p.telefones_confirmados.includes(digitos)) {
+    patch.telefones_confirmados = p.telefones_confirmados.filter(d => d !== digitos);
+  }
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  Object.assign(p, patch);
+  await cmLog(campo ? 'mesario_editar_telefone' : 'mesario_telefone_ignorado', '', { ator_id: id, telefone: fmtTelefone(digitos), motivo: 'excluído — não é o número desta pessoa' });
   showToast('✕ Número excluído');
   render();
   // cmModalHist.telefones é uma foto tirada na hora que o modal abriu — like

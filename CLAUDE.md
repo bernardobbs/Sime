@@ -1480,6 +1480,24 @@ cada um com propósito diferente:
   banco no mesmo dia (telefone_whatsapp limpo, telefones_ignorados
   resetado — mesmo efeito que excluir o cartão único faria depois do fix).
   Coberto por teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`.
+
+  **Segunda rodada no mesmo dia — "mesmo assim o contato no sistema não é
+  dela".** A primeira correção só limpou `telefone_whatsapp` e ZEROU
+  `telefones_ignorados` da WANESSA — mas o campo do TRE (`telefone_2_eleitor`,
+  ainda "994719268" no staging) continuava lá, e sem nada mais "segurando"
+  aquele dígito (nem o principal, que tinha acabado de ser esvaziado; nem a
+  lista de ignorados, que eu tinha zerado por engano), ele voltava a
+  aparecer como cartão PRÓPRIO no próximo carregamento do modal — exatamente
+  o mesmo número, de novo. Corrigido em duas frentes: **dado** — regravei
+  `telefones_ignorados` da WANESSA com o dígito certo (`86994719268`, já
+  normalizado); **código** — `cmExcluirTelefoneCard()` agora grava o dígito
+  em `telefones_ignorados` **sempre**, mesmo excluindo o principal ou o
+  alternativo (antes só fazia isso pros números do TRE, `campo=null`) — sem
+  isso, o mesmo bug se repetiria pra qualquer pessoa cujo número excluído do
+  principal também exista (com ou sem DDD) em algum campo do TRE. Exclui de
+  `telefones_sem_whatsapp`/`telefones_confirmados` também, se estava lá —
+  não faz sentido guardar status de um número que acabou de deixar de ser
+  desta pessoa.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
