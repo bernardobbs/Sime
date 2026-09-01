@@ -1825,6 +1825,50 @@ cada um com propósito diferente:
   busca original não trazia. Nome de local é sempre uma frase com espaço, e
   separar por vírgula não tem esse conflito — só isso ficou.
 
+  **Bug real corrigido em 01/09/2026 — a busca perdia o foco a cada tecla
+  digitada, dando a impressão de só aceitar "um caractere por vez".**
+  Reportado como "a consulta ainda esta sendo caracter por caracter":
+  `renderResumoSecoes()` reconstrói `#content.innerHTML` inteiro a cada
+  `render()`, mesmo padrão do resto do app — pra um botão/select isso não
+  importa, mas pro campo de busca (`oninput`, dispara a cada tecla) trocava
+  o `<input>` por um elemento novo a cada caractere, derrubando o foco:
+  quem digitava "245" de verdade (não colando) só via o "2" entrar, porque
+  o navegador perdia o alvo do teclado depois do primeiro re-render, e
+  precisava clicar de novo no campo pra continuar. Corrigido guardando, no
+  topo de `renderResumoSecoes()` e ANTES de qualquer `innerHTML` ser
+  reescrito, se `document.activeElement` era o campo de busca
+  (`id="rs-busca"`, novo) e a posição do cursor (`selectionStart`); depois
+  do HTML novo estar no ar, reaplica `.focus()` + `.setSelectionRange()` no
+  elemento recriado. Só mexe nesse campo — os outros controles (select de
+  filtro, botões grade/lista) continuam exatamente como eram. Não pego por
+  nenhum teste antes porque `page.fill()` do Playwright seta o valor final
+  de uma vez (um `input` só), sem simular tecla por tecla — só
+  `page.locator(...).pressSequentially()` reproduz o bug de verdade; o teste
+  de regressão usa esse método especificamente por isso.
+
+  **Nome do Coordenador de Acessibilidade no drilldown do local (01/09/2026,
+  pedido direto: "no dashboard abaixo do nome pode indicar o nome do
+  coordenador de acessibilidade designado?").** O drilldown por seção
+  (clicar num local) já mostrava os 4 cargos de MRV com nome de quem está
+  designado, mas nunca dizia quem é o Coordenador de Acessibilidade daquele
+  prédio — só dava pra saber que "tem alguém" (Set usado pelas pizzas/vaga
+  por local), nunca o nome. `rsCarregar()` passou a trazer
+  `nome_completo`/`precisa_substituir` no select de apoio (antes só
+  `id, confirmacao, secao_id, funcao`) e monta `coordPorSecao` (secao_id →
+  melhor registro de `coord_acessibilidade`, mesma prioridade
+  confirmado>convocado/pendente>recusou/etc. já usada pra mesário).
+  `rsCalcular()` dedupe isso por local (`loc.coordenadores`, já que a vaga é
+  por PRÉDIO, não por seção — mais de uma seção do mesmo local apontando pro
+  mesmo `coordPorSecao` é a mesma pessoa). Nova linha no cabeçalho do
+  drilldown ("🧏 Coordenador(a) de Acessibilidade: ...") reaproveita
+  `rsStatusCargo()` pra manter o mesmo ícone de status dos cargos de mesa
+  (✅/📋/🔶/⚠️/🔍/🔁); sem ninguém designado, mostra "❌ Sem coordenador de
+  acessibilidade designado" em vez de deixar a linha em branco. Auxiliar de
+  Eleição não ganhou a mesma linha nesta v1 — o TRE nunca traz o código do
+  local pra essa função (ver "Auxiliar de Eleição virou contagem por
+  PESSOA" acima), então não haveria como saber QUAL auxiliar pertence a
+  QUAL prédio sem inventar o vínculo.
+
   **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
   pedido direto: "quero que o sistema verifique se os mesários voluntarios
   já foram atribuidos na parte de convocação e ja marcar como convocado").**

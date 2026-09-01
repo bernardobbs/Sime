@@ -54,7 +54,12 @@ async function rsCarregar() {
     // Acessibilidade de Auxiliar de Eleição (antes só existia o bucket
     // combinado "apoio logístico"); sem a função aqui não dava pra saber
     // qual dos dois cada linha representa.
-    sb.from('sime_atores').select('id, confirmacao, secao_id, funcao').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    // nome_completo/precisa_substituir junto (01/09/2026, pedido direto:
+    // "no dashboard abaixo do nome pode indicar o nome do coordenador de
+    // acessibilidade designado?") — antes só dava pra saber SE tinha alguém
+    // (pra pizza/vaga por local), não QUEM era, porque o select não trazia
+    // esses dois campos.
+    sb.from('sime_atores').select('id, nome_completo, confirmacao, secao_id, funcao, precisa_substituir').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
     // Fila de voluntários disponíveis (28/08/2026, pedido direto: "se
     // aparecer seção incompleta e/ou marcado para substituição indicar quem
     // deve ocupar a vaga, deve vir por ordem de cadastro") — já vem ordenada
@@ -70,10 +75,22 @@ async function rsCarregar() {
   // eleição têm cargo fixo no schema, então a "vaga" é por prédio).
   const secaoIdsPorFuncaoTodos = { coord_acessibilidade: new Set(), auxiliar_eleicao: new Set() };
   const secaoIdsPorFuncaoConfirmado = { coord_acessibilidade: new Set(), auxiliar_eleicao: new Set() };
+  // Quem exatamente está designado como Coordenador de Acessibilidade em
+  // cada seção (não só "tem alguém ou não", como os Sets acima já davam) —
+  // pra mostrar o nome no drilldown do local, mesmo critério de prioridade
+  // já usado pra mesário (confirmado > convocado/pendente > recusou/etc.).
+  const coordPorSecao = {};
+  const prioridadeApoio = { confirmado: 3, convocado: 2, pendente: 2, substituido: 1, recusou: 1, contato_incorreto: 1 };
   for (const a of apoio || []) {
     if (!a.secao_id || !secaoIdsPorFuncaoTodos[a.funcao]) continue;
     secaoIdsPorFuncaoTodos[a.funcao].add(a.secao_id);
     if (a.confirmacao === 'confirmado') secaoIdsPorFuncaoConfirmado[a.funcao].add(a.secao_id);
+    if (a.funcao === 'coord_acessibilidade') {
+      const atual = coordPorSecao[a.secao_id];
+      if (!atual || (prioridadeApoio[a.confirmacao] || 0) >= (prioridadeApoio[atual.confirmacao] || 0)) {
+        coordPorSecao[a.secao_id] = a;
+      }
+    }
   }
 
   const porSecao = {};
@@ -114,7 +131,7 @@ async function rsCarregar() {
     confirmadosMRV: (atores || []).filter(a => a.confirmacao === 'confirmado').length,
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
     auxiliarTotal, auxiliarConfirmado,
-    secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado,
+    secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado, coordPorSecao,
     voluntarios: voluntarios || [],
   };
   render();
@@ -252,7 +269,18 @@ function rsCalcular() {
     const temCoordConfirmado = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoConfirmado.coord_acessibilidade.has(l.secao.id));
     const temAuxiliar = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoTodos.auxiliar_eleicao.has(l.secao.id));
     const temAuxiliarConfirmado = loc.secoes.some(l => rsDados.secaoIdsPorFuncaoConfirmado.auxiliar_eleicao.has(l.secao.id));
-    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct, temCoord, temCoordConfirmado, temAuxiliar, temAuxiliarConfirmado };
+    // Quem exatamente é o Coordenador de Acessibilidade do local (01/09/2026,
+    // pedido direto: "no dashboard abaixo do nome pode indicar o nome do
+    // coordenador de acessibilidade designado?") — dedupe por id, já que
+    // mais de uma seção do mesmo local aponta pro mesmo `coordPorSecao` só
+    // quando é literalmente a mesma pessoa (vaga é por local, não por seção).
+    const coordenadoresMap = {};
+    for (const l of loc.secoes) {
+      const c = rsDados.coordPorSecao[l.secao.id];
+      if (c) coordenadoresMap[c.id] = c;
+    }
+    const coordenadores = Object.values(coordenadoresMap);
+    return { ...loc, totalCargos, designados, confirmados, semNenhumNoLocal, pct, temCoord, temCoordConfirmado, temAuxiliar, temAuxiliarConfirmado, coordenadores };
   }).sort((a, b) => (a.local_nome || '').localeCompare(b.local_nome || ''));
 
   // Totais pros gráficos de pizza (nomeado x vazio, confirmado x total) —
@@ -537,6 +565,17 @@ function rsCardSecao(l) {
 
 function renderResumoSecoes() {
   const c = document.getElementById('content');
+  // Preserva foco + posição do cursor do campo de busca entre re-renders
+  // (01/09/2026, achado real reportado pelo cartório: "a consulta ainda
+  // esta sendo caracter por caracter" — cada render() reconstrói
+  // #content.innerHTML do zero, mesmo padrão do resto do app; pra um botão
+  // isso não importa, mas pra um <input> de digitação isso troca o elemento
+  // por um novo a cada tecla e derruba o foco, obrigando a clicar de novo
+  // pra continuar digitando o próximo caractere). Captado aqui, antes de
+  // qualquer innerHTML ser reescrito, e reaplicado no fim da função — só
+  // quando o campo de busca era de fato o elemento focado.
+  const rsBuscaFocada = document.activeElement?.id === 'rs-busca';
+  const rsBuscaCursor = rsBuscaFocada ? document.activeElement.selectionStart : null;
   if (!window.supabaseAtores) {
     c.innerHTML = '<div class="import-card"><div class="import-result ir-warn">Entre com a conta da equipe pra ver o dashboard.</div></div>';
     return;
@@ -618,6 +657,14 @@ function renderResumoSecoes() {
   if (rsLocalAberto) {
     const loc = porLocal.find(l => l.chave === rsLocalAberto);
     if (!loc) { rsLocalAberto = null; } else {
+      // Nome do(s) Coordenador(es) de Acessibilidade do local (01/09/2026,
+      // pedido direto: "abaixo do nome pode indicar o nome do coordenador de
+      // acessibilidade designado?") — mesmo ícone de status já usado nos
+      // cargos de mesa (rsStatusCargo), pra ficar consistente com o resto da
+      // tela; "vaga" é por local (não por seção), então normalmente é só 1.
+      const coordHTML = loc.coordenadores.length
+        ? loc.coordenadores.map(c => { const st = rsStatusCargo(c); return `${st.icone} ${rsEsc(st.nome)}`; }).join(', ')
+        : '❌ Sem coordenador de acessibilidade designado';
       c.innerHTML = `
         ${statsHTML}
         <div class="import-card" style="padding:12px 16px;display:flex;align-items:center;gap:10px">
@@ -625,6 +672,7 @@ function renderResumoSecoes() {
           <div>
             <div style="font-weight:800">${loc.local_nome || '(sem local)'}</div>
             <div class="ic-sub" style="margin-bottom:0">📍 ${loc.municipio || ''} — ${loc.secoes.length} seção(ões), ${loc.designados}/${loc.totalCargos} cargos designados</div>
+            <div class="ic-sub" style="margin-bottom:0;margin-top:2px">🧏 Coordenador(a) de Acessibilidade: ${coordHTML}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
@@ -679,7 +727,7 @@ function renderResumoSecoes() {
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <input type="text" placeholder="🔍 Pesquisar local ou nº da seção — separe vários por vírgula…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <input type="text" id="rs-busca" placeholder="🔍 Pesquisar local ou nº da seção — separe vários por vírgula…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
         <select onchange="rsFiltroStatus=this.value;render()" aria-label="Filtrar por situação" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
           <option value="todos" ${rsFiltroStatus === 'todos' ? 'selected' : ''}>Todos os locais</option>
           <option value="confirmadas" ${rsFiltroStatus === 'confirmadas' ? 'selected' : ''}>✅ Todas as seções confirmadas</option>
@@ -701,4 +749,15 @@ function renderResumoSecoes() {
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px">${filtrados.map(rsCardLocal).join('')}</div>`
         : `<div style="display:flex;flex-direction:column;gap:8px">${filtrados.map(rsLinhaLocal).join('')}</div>`
     ) : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhum local encontrado com essa busca/filtro.</div></div>'}`;
+
+  // Reaplica o foco (ver comentário no topo da função) — só depois do
+  // innerHTML novo estar no ar, senão o elemento com esse id ainda não existe.
+  if (rsBuscaFocada) {
+    const buscaEl = document.getElementById('rs-busca');
+    if (buscaEl) {
+      buscaEl.focus();
+      const pos = rsBuscaCursor ?? buscaEl.value.length;
+      buscaEl.setSelectionRange(pos, pos);
+    }
+  }
 }

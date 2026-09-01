@@ -286,6 +286,14 @@ async function login(p) {
   check('drilldown: seção 30 mostra ✅ (Presidente confirmado)', cardSecao30.includes('✅'), cardSecao30);
   check('drilldown: seção 30 mostra o nome de quem está designado em cada cargo', /ANA/.test(cardSecao30) && /BRUNO/.test(cardSecao30), cardSecao30.replace(/\s+/g, ' '));
 
+  // Nome do Coordenador de Acessibilidade abaixo do nome do local (01/09/2026,
+  // pedido direto: "abaixo do nome pode indicar o nome do coordenador de
+  // acessibilidade designado?") — GEORGE COORD (fixture a7) está na seção 31
+  // (s2), que faz parte do mesmo local "Grupo Escolar A" que a seção 30 (s1);
+  // ele é pendente, então o ícone é 🔶 (mesmo critério de rsStatusCargo).
+  const drilldownFlat = drilldown.replace(/\s+/g, ' ');
+  check('drilldown: mostra o nome do Coordenador de Acessibilidade do local (GEORGE COORD)', /Coordenador\(a\) de Acessibilidade: 🔶 GEORGE COORD/.test(drilldownFlat), drilldownFlat.slice(0, 300));
+
   // Clicar no nome do mesário no Dashboard abre o mesmo modal de "Contatar
   // mesários" (tentativas de contato) — mesmo sem essa aba ter sido visitada
   // ainda nesta sessão (cmDados começa null, precisa carregar na hora).
@@ -302,6 +310,33 @@ async function login(p) {
   await p.click('button:has-text("← Voltar")');
   await p.waitForTimeout(150);
   check('voltar: volta pra grade de locais', /Grupo Escolar A/.test(await p.locator('.content').textContent()) && await p.locator('button:has-text("← Voltar")').count() === 0);
+
+  // Local sem NENHUM Coordenador de Acessibilidade designado (Escola B, só
+  // tem a seção 63/s3, sem apoio nenhum na fixture) — mostra o aviso
+  // explícito em vez de deixar a linha em branco.
+  await p.click('.import-card:has-text("Escola B")');
+  await p.waitForTimeout(200);
+  const drilldownEscolaB = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('drilldown: local sem coordenador mostra aviso explícito', /Coordenador\(a\) de Acessibilidade: ❌ Sem coordenador de acessibilidade designado/.test(drilldownEscolaB), drilldownEscolaB.slice(0, 300));
+  await p.click('button:has-text("← Voltar")');
+  await p.waitForTimeout(150);
+
+  // Bug real corrigido em 01/09/2026 — cada tecla digitada na busca
+  // reconstrói #content.innerHTML do zero, trocando o <input> por um
+  // elemento novo; sem restaurar foco/cursor, o campo perdia o foco a cada
+  // caractere (reportado como "a consulta ainda esta sendo caracter por
+  // caracter" — só dava pra digitar 1 caractere por clique). Digita
+  // caractere por caractere de verdade (pressSequentially simula teclas
+  // reais, uma de cada vez — diferente de fill(), que seta o valor inteiro
+  // de uma vez e não reproduziria o bug) e confirma que o campo continua
+  // focado e com o texto completo no final.
+  await p.click('#rs-busca');
+  await p.locator('#rs-busca').pressSequentially('245', { delay: 30 });
+  await p.waitForTimeout(150);
+  check('busca real (tecla por tecla) mantém o foco no campo depois de cada caractere', await p.evaluate(() => document.activeElement?.id === 'rs-busca'));
+  check('busca real (tecla por tecla) chega com o texto completo, não só o 1º caractere', await p.locator('#rs-busca').inputValue() === '245');
+  await p.fill('#rs-busca', '');
+  await p.waitForTimeout(150);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
