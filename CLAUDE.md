@@ -1434,6 +1434,52 @@ cada um com propósito diferente:
   incorreto" alhures) — mesmo critério de "nunca adivinha": não marcada
   automaticamente, fica pro cartório revisar manualmente pelo cartãozinho
   (✕ se for número errado, 📵 se for só sem WhatsApp).
+
+  **Terceiro botão de canto — ✅ confirmar número (01/09/2026, pedido
+  direto: "alem de sem whastapp poderia haver um botão para numero
+  confirmado").** `sime_atores.telefones_confirmados` (`sql/
+  SIME_atores_telefones_confirmados.sql`), mesmo formato de array por
+  dígito dos outros dois. Diferente de `sime_atores.confirmacao` (a PESSOA
+  confirmando que vai participar), este é sobre o NÚMERO: o cartório ligou/
+  verificou por fora que aquele telefone específico é mesmo dela — útil
+  quando a lista tem vários candidatos (principal, os do TRE, o
+  alternativo) e nem todos foram checados. `cmToggleNumeroConfirmado()`,
+  botão no canto inferior direito do cartão (✕ fica no superior direito, 📵
+  no superior esquerdo — o terceiro canto disponível), borda verde quando
+  marcado e legenda "✅ Confirmado" abaixo do rótulo. **Não é mutuamente
+  exclusivo com "sem WhatsApp"** — um fixo pode ser confirmado como dela e
+  ainda assim não ter WhatsApp; a borda vermelha (sem WhatsApp) tem
+  prioridade visual sobre a verde quando os dois coexistem, mesmo critério
+  de "o aviso mais acionável vence" já usado noutros lugares do sistema.
+
+  **Bug real, grave, corrigido em 01/09/2026 — número do TRE sem DDD virava
+  cartão duplicado do principal, e excluí-lo não tinha efeito visível
+  nenhum.** Achado real reportado direto: "WANESSA ALVES DE SOUZA mesmo o
+  contato vindo do elo verificamos que não é dela (86) 99471-9268, deveria
+  poder excluir o contato, faltou limpar o modal com as informações".
+  Investigado: `telefone_2_eleitor` dela no TRE trazia "994719268" — o
+  MESMO número do `telefone_whatsapp` principal, só que sem os 2 dígitos do
+  DDD. `cmListaTelefones()` deduplicava só comparando a string de dígitos
+  crua, então "994719268" nunca batia com "86994719268" (do principal) e
+  virava um SEGUNDO cartão pro mesmo número físico — excluir esse cartão
+  (só leitura, ia pra `telefones_ignorados`) não tinha efeito nenhum
+  visível, porque o principal continuava mostrando o mesmo número intocado
+  do lado dele. Varredura antes de corrigir: **331 pessoas na 7ª Zona**
+  tinham pelo menos um campo do TRE nesse formato (8-9 dígitos, sem DDD) —
+  não era só ela, e provavelmente gerava a mesma confusão silenciosa pra
+  qualquer um que tentasse excluir esse tipo de cartão.
+
+  Corrigido passando os dois lados (dígito de dedupe E valor exibido/
+  copiado) pelo mesmo `normalizarTelefoneWhatsapp()` (`sime_ui_utils.js`)
+  já usado em todo import — assume DDD 86 pra número de 8-9 dígitos soltos,
+  mesma premissa segura que o resto do projeto já usa (as duas zonas do SIME
+  são só no Piauí). Um número do TRE sem DDD que é o MESMO que o principal
+  agora dedupe corretamente (nem chega a virar cartão); um que é
+  GENUINAMENTE diferente (só também sem DDD) continua aparecendo como
+  cartão próprio, agora formatado certo. WANESSA corrigida diretamente no
+  banco no mesmo dia (telefone_whatsapp limpo, telefones_ignorados
+  resetado — mesmo efeito que excluir o cartão único faria depois do fix).
+  Coberto por teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

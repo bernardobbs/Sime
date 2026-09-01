@@ -1917,6 +1917,101 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.6c Cartãozinho de telefone: 3º botão de canto — ✅ confirmar número
+// (01/09/2026, pedido direto: "alem de sem whastapp poderia haver um botão
+// para numero confirmado"). Diferente de sime_atores.confirmacao (a PESSOA
+// confirmando participação), este é sobre o NÚMERO — o cartório verificou
+// por fora que é mesmo dela. Não é mutuamente exclusivo com "sem
+// WhatsApp". ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+
+  const cartaoPrincipal = p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' });
+  check('cartão já nasce com o 3º botão de canto (✅ confirmar)', await cartaoPrincipal.locator('button[aria-label="Confirmar número"]').count() === 1);
+
+  await cartaoPrincipal.locator('button[aria-label="Confirmar número"]').click();
+  await p.waitForTimeout(200);
+  const atorConfirmado = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('confirmar grava o dígito em telefones_confirmados', (atorConfirmado.telefones_confirmados || []).includes('86999990002'), JSON.stringify(atorConfirmado.telefones_confirmados));
+  const logConfirmado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_telefone_confirmado' && e.payload.payload?.ator_id === 'a2'));
+  check('grava log mesario_telefone_confirmado', !!logConfirmado && logConfirmado.payload.payload.confirmado === true, JSON.stringify(logConfirmado));
+  const textoConfirmado = await p.locator('#modal-body').textContent();
+  check('cartão confirmado mostra a legenda "✅ Confirmado"', /✅ Confirmado/.test(textoConfirmado), textoConfirmado.replace(/\s+/g, ' ').slice(0, 500));
+
+  // Marcar "sem WhatsApp" no MESMO cartão não desfaz a confirmação — os
+  // dois eixos são independentes (um fixo pode ser confirmado como dela e
+  // ainda assim não ter WhatsApp).
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button[aria-label="Marcar sem WhatsApp"]').click();
+  await p.waitForTimeout(200);
+  const atorDois = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('marcar sem WhatsApp não desfaz a confirmação do número', (atorDois.telefones_confirmados || []).includes('86999990002') && (atorDois.telefones_sem_whatsapp || []).includes('86999990002'), JSON.stringify({ confirmados: atorDois.telefones_confirmados, sem_whatsapp: atorDois.telefones_sem_whatsapp }));
+
+  // Desfazer a confirmação.
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button[aria-label="Confirmar número"]').click();
+  await p.waitForTimeout(200);
+  const atorDesconfirmado = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('desfazer a confirmação tira o dígito de telefones_confirmados', !(atorDesconfirmado.telefones_confirmados || []).includes('86999990002'), JSON.stringify(atorDesconfirmado.telefones_confirmados));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.6d Cartãozinho de telefone: número do TRE sem DDD não vira cartão
+// duplicado do principal (01/09/2026, achado real: WANESSA ALVES DE SOUZA
+// — "mesmo o contato vindo do elo verificamos que não é dela (86)
+// 99471-9268, deveria poder excluir o contato, faltou limpar o modal com
+// as informações"). Investigado: telefone_2_eleitor dela no TRE era
+// "994719268" (sem o DDD 86) — o mesmo número do telefone_whatsapp
+// principal, só que sem os dois primeiros dígitos. cmListaTelefones()
+// deduplicava só por string de dígitos crua, então "994719268" nunca batia
+// com "86994719268" (do principal) e virava um SEGUNDO cartão pro MESMO
+// número — excluir esse cartão (só leitura, foi pra telefones_ignorados)
+// não tinha efeito nenhum visível, porque o principal continuava mostrando
+// o mesmo número intocado. Corrigido normalizando os dois lados pelo
+// mesmo normalizarTelefoneWhatsapp() usado em todo import (assume DDD 86
+// pra número de 9 dígitos soltos) ANTES de comparar — 331 pessoas na 7ª
+// Zona tinham esse mesmo padrão no TRE, não era só ela. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push(
+    { id:'a45', nome_completo:'WANESSA TESTE SEM DDD', telefone_whatsapp:'5586994719268', funcao:'coord_acessibilidade', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', inscricao_eleitoral:'099999998888' },
+  );
+  m.sime_mesarios_raw.push(
+    // Mesmo número do principal (86994719268), só que sem o DDD — exatamente
+    // como o TRE mandou pra WANESSA de verdade.
+    { id:'raw45', inscricao:'099999998888', telefone_pessoal_mesario:'', telefone_1_eleitor:'', telefone_2_eleitor:'994719268', telefone_contato_eleitor:'', telefone_comercial_mesario:'', importado_em:'2026-08-20T09:00:00.000Z' },
+  );
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("WANESSA TESTE SEM DDD")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
+
+  check('só aparece 1 cartão pro número (o do TRE sem DDD não vira duplicata)', await p.locator('#modal-body .cm-tel-card').count() === 1);
+  check('não sobra nenhum vestígio de "Telefone 2 (eleitor)" — foi deduplicado, não excluído', await p.locator('#modal-body').locator('text=Telefone 2 (eleitor)').count() === 0);
+
+  // Agora que só existe 1 cartão (o principal), excluí-lo de fato limpa o
+  // número — o cenário real que a WANESSA esperava.
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button[aria-label="Excluir número"]').click();
+  await p.waitForTimeout(250);
+  const atorExcluido = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a45'));
+  check('excluir o único cartão restante realmente limpa telefone_whatsapp', atorExcluido.telefone_whatsapp === null, JSON.stringify(atorExcluido.telefone_whatsapp));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.7 Botão "🚫 Dispensar (ELO)" (01/09/2026, achado real: ANA ALICE DOS
 // SANTOS DA SILVA tinha um carimbo manual em observação dizendo "Marcado
 // ativo=false" — escrito à mão, via SQL Editor — mas voltou a aparecer ativa
