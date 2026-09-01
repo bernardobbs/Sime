@@ -639,12 +639,26 @@ function renderResumoSecoes() {
   // pedido direto: "quero poder pesquisar o numero da seção") — um local
   // "casa" se qualquer seção dele tiver o número buscado como substring
   // (ex.: "63" acha a seção 0063), não só nome/município como antes.
-  const q = rsBusca.trim().toLowerCase();
-  let filtrados = q
-    ? porLocal.filter(l =>
-        (l.local_nome || '').toLowerCase().includes(q) ||
-        (l.municipio || '').toLowerCase().includes(q) ||
-        l.secoes.some(sl => String(sl.secao.numero).includes(q)))
+  //
+  // Vários termos de uma vez, separados por VÍRGULA (01/09/2026, pedido
+  // direto: "no filtro do dashboard so permite consultar numero por
+  // numero" — antes o campo inteiro virava UM substring só, então buscar
+  // duas seções ao mesmo tempo, ex. "63,245", não achava nada — nenhum local
+  // tem as duas como substring do próprio texto). Cada termo (separado por
+  // vírgula) é tratado à parte (nome/município/nº de seção); um local entra
+  // se casar com QUALQUER termo. Só vírgula, não espaço — nome de local é
+  // sempre uma frase com espaço (ex. "Grupo Escolar A", "Escola B"), e
+  // partir por espaço também quebraria esses nomes em palavras soltas,
+  // fazendo "Escola B" casar com qualquer local que só tivesse "escola" no
+  // nome (ex. "Grupo ESCOLAr A") — regressão real, pegou no teste da busca
+  // por nome que já existia antes desta mudança.
+  const termos = rsBusca.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+  const rsLocalCasaTermo = (l, t) =>
+    (l.local_nome || '').toLowerCase().includes(t) ||
+    (l.municipio || '').toLowerCase().includes(t) ||
+    l.secoes.some(sl => String(sl.secao.numero).includes(t));
+  let filtrados = termos.length
+    ? porLocal.filter(l => termos.some(t => rsLocalCasaTermo(l, t)))
     : porLocal;
   // Filtro por situação (01/09/2026) — três lentes sobre os mesmos locais já
   // filtrados pela busca, não substituem a busca.
@@ -665,7 +679,7 @@ function renderResumoSecoes() {
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <input type="text" placeholder="🔍 Pesquisar local de votação ou nº da seção…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <input type="text" placeholder="🔍 Pesquisar local ou nº da seção — separe vários por vírgula…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
         <select onchange="rsFiltroStatus=this.value;render()" aria-label="Filtrar por situação" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
           <option value="todos" ${rsFiltroStatus === 'todos' ? 'selected' : ''}>Todos os locais</option>
           <option value="confirmadas" ${rsFiltroStatus === 'confirmadas' ? 'selected' : ''}>✅ Todas as seções confirmadas</option>

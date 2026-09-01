@@ -30,6 +30,19 @@
 // AR, onde tínhamos o PDF real do gerador dos Correios) — então a relação é
 // deliberadamente um documento de CONTROLE INTERNO do SIME, não uma peça
 // processual, e não finge ser uma.
+//
+// Duas amarrações com o resto do sistema (01/09/2026, pedidos diretos):
+// - Quem já `confirmacao='confirmado'` (por qualquer via — WhatsApp, botão
+//   manual, ELO em massa) sai da lista sozinho: já não precisa mais do
+//   oficial, então continuar mostrando seria trabalho repetido. Filtrado na
+//   carga (`ojCarregar`), não escondido só na tela — reaparece se o status
+//   for desfeito por algum motivo.
+// - Marcar "Entregue" é, por definição, o cartório confirmando que a pessoa
+//   RECEBEU a convocação — mesmo critério que "Convocado" já usa em
+//   Contatar mesários (`cmMarcarConvocado`). `ojSalvarStatus` replica esse
+//   mesmo patch (`confirmacao='convocado'`, `convocacao_recebida=true`)
+//   quando o status novo é `entregue` e a pessoa ainda não tinha avançado
+//   sozinha (já confirmada ou já convocada) — não regride ninguém.
 
 let ojDados = null; // { pessoas:[...], zona:{...} }
 let ojSelecionados = new Set();
@@ -43,15 +56,21 @@ async function ojCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { ojDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: pessoas, error: e1 }, { data: zona, error: e2 }, { data: secoes }] = await Promise.all([
+  const [{ data: pessoasBrutas, error: e1 }, { data: zona, error: e2 }, { data: secoes }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, status_contato_alternativo')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, status_contato_alternativo, confirmacao')
       .eq('zona_id', zonaId).eq('ativo', true).eq('meio_contato', 'oficial_justica')
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao']).order('nome_completo'),
     sb.from('sime_zonas').select('id, numero, municipio').eq('id', zonaId).maybeSingle(),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
   ]);
   if (e1 || e2) { ojDados = { erro: (e1 || e2).message }; render(); return; }
+
+  // Quem já confirmou (por qualquer via) não precisa mais do oficial — sai
+  // da lista sozinho (01/09/2026, pedido direto). Guarda a contagem só pra
+  // dar transparência na tela, não é escondido em silêncio.
+  const pessoas = (pessoasBrutas || []).filter(p => p.confirmacao !== 'confirmado');
+  const confirmadosOcultos = (pessoasBrutas || []).length - pessoas.length;
 
   const titulos = [...new Set((pessoas || []).map(p => p.inscricao_eleitoral).filter(Boolean))];
   const titulosBusca = [...new Set(titulos.flatMap(t => [t, t.replace(/^0+/, '') || t]))];
@@ -72,7 +91,7 @@ async function ojCarregar() {
     p.sec = p.secao_id ? secoesPorId[p.secao_id] : null;
   }
 
-  ojDados = { pessoas: pessoas || [], zona: zona || {} };
+  ojDados = { pessoas, confirmadosOcultos, zona: zona || {} };
   render();
 }
 
@@ -83,15 +102,30 @@ function ojToggleSelecionado(id) {
 
 async function ojSalvarStatus(id, status) {
   const sb = window.supabaseAtores;
-  const { error } = await sb.from('sime_atores').update({ status_contato_alternativo: status || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
   const p = ojDados.pessoas.find(x => x.id === id);
-  if (p) p.status_contato_alternativo = status || null;
+  if (!p) return;
+  const patch = { status_contato_alternativo: status || null };
+  // "Entregue" pelo oficial de justiça É, por definição, o cartório
+  // confirmando que a pessoa recebeu a convocação — mesmo critério que
+  // "Convocado" já usa em Contatar mesários (cmMarcarConvocado). Só dispara
+  // se a pessoa ainda não tinha avançado sozinha (já confirmada — nem
+  // apareceria mais aqui — ou já convocada por outra via), pra nunca
+  // regredir um status mais adiantado (01/09/2026, pedido direto: "quando
+  // marcar entregue pelo oficial ja marca como convocado").
+  const vaiMarcarConvocado = status === 'entregue' && p.confirmacao !== 'confirmado' && p.confirmacao !== 'convocado';
+  if (vaiMarcarConvocado) {
+    const { data: ts } = await sb.rpc('sime_now');
+    Object.assign(patch, { confirmacao: 'convocado', data_confirmacao: null, convocacao_recebida: true, convocacao_recebida_ts: ts });
+  }
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  Object.assign(p, patch);
   // Mesma ação que o modal de "Contatar mesários" já usa (cmSalvarStatusAlt)
   // — uma mudança feita aqui aparece na timeline de Atualizações da pessoa
   // lá, sem precisar de um rótulo de log próprio.
   await cmLog('mesario_status_contato_alt', '', { ator_id: id, status });
-  showToast('✓ Status atualizado');
+  if (vaiMarcarConvocado) await cmLog('mesario_marcado_convocado', '', { ator_id: id });
+  showToast(vaiMarcarConvocado ? '📋 Entregue — marcado como convocado' : '✓ Status atualizado');
   render();
 }
 
@@ -168,10 +202,13 @@ function renderOficialJustica() {
       <div class="ic-title">⚖️ Oficial de Justiça — controle da convocação</div>
       <div class="ic-sub">Pra quem está marcado com meio de contato "Oficial de Justiça" (aba 📞 Contatar mesários) — acompanha o
         andamento da entrega em mão e gera a relação pra entregar ao oficial. O endereço vem da planilha do TRE (mesma fonte e
-        prioridade da aba Correspondência); a convocação formal em si continua sendo o processo de sempre do cartório.</div>
+        prioridade da aba Correspondência); a convocação formal em si continua sendo o processo de sempre do cartório. Marcar
+        "Entregue" já registra que a pessoa recebeu a convocação (vira "convocado"); quem confirma participação (por qualquer
+        via) sai da lista sozinho — não precisa mais do oficial.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:.74rem;color:var(--text2)">
         ${Object.entries(CM_STATUS_ALT_LABEL).map(([v, l]) => `<span>${l}: <b>${contagem[v] || 0}</b></span>`).join('')}
       </div>
+      ${ojDados.confirmadosOcultos ? `<div class="ic-sub" style="margin-top:6px;margin-bottom:0">✅ ${ojDados.confirmadosOcultos} já confirmado(s) — saíram desta lista automaticamente.</div>` : ''}
     </div>
 
     <div class="import-card">

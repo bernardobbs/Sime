@@ -1811,6 +1811,20 @@ cada um com propósito diferente:
   altera o drilldown por seção nem os stat cards/pizzas, que continuam
   somando a zona inteira independente do filtro.
 
+  **Busca com vários termos, só por vírgula (01/09/2026, pedido direto: "no
+  filtro do dashboard so permite consultar numero por numero").** A busca
+  acima virava sempre UM substring só — buscar duas seções ao mesmo tempo
+  (ex. "63,245") não achava nada, porque nenhum local tem esse texto exato.
+  `rsBusca.split(',')` quebra em termos, cada um comparado à parte
+  (nome/município/nº de seção) — um local entra se casar com QUALQUER termo.
+  Cogitado (e revertido no mesmo dia) separar também por ESPAÇO — quebrou o
+  teste de busca por nome já existente: "Escola B" virava dois termos
+  soltos ("escola" + "b"), e "escola" sozinho já casa com qualquer local que
+  tenha a palavra "escolar" no nome (ex. "Grupo Escolar A" — "escolar"
+  contém "escola" como substring), fazendo o resultado incluir locais que a
+  busca original não trazia. Nome de local é sempre uma frase com espaço, e
+  separar por vírgula não tem esse conflito — só isso ficou.
+
   **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
   pedido direto: "quero que o sistema verifique se os mesários voluntarios
   já foram atribuidos na parte de convocação e ja marcar como convocado").**
@@ -1893,6 +1907,36 @@ cada um com propósito diferente:
   (o oficial pode ter o endereço por outra via), só marcado visualmente pra
   conferência. Coberto por teste de regressão dedicado em
   `tests/test_convocacao_mesarios.mjs` (bloco "3.8").
+
+  **Duas amarrações com o resto do fluxo de convocação (01/09/2026, pedidos
+  diretos).**
+  - **Quem confirma sai da lista sozinho** — "quando o mesário for
+    confirmado e estiver na lista de oficial justiça, pode retirar da lista
+    do oficial de justiça". `ojCarregar()` passou a trazer `confirmacao`
+    também e filtra fora `confirmacao='confirmado'` na carga (não só
+    esconder na tela — a pessoa nem entra em `ojDados.pessoas`), venha a
+    confirmação de qualquer via (WhatsApp, botão manual, ELO em massa) — se
+    já confirmou, não precisa mais do oficial. Não é silencioso: um card no
+    topo mostra "✅ N já confirmado(s) — saíram desta lista automaticamente"
+    quando `confirmadosOcultos > 0`, pra não parecer que a pessoa "sumiu"
+    sem explicação.
+  - **"Entregue" já marca convocado** — "quando marcar entregue pelo
+    oficial ja marca como convocado". Marcar o `<select>` de status como
+    "Entregue" é, por definição, o cartório confirmando que a pessoa
+    recebeu a convocação — mesmo critério que "Convocado" já usa em
+    Contatar mesários (`cmMarcarConvocado`, ver seção Dashboard/Contatar
+    acima). `ojSalvarStatus()` replica o mesmo patch
+    (`confirmacao='convocado'`, `data_confirmacao=null`,
+    `convocacao_recebida=true` + `convocacao_recebida_ts`) nesse caso, e
+    grava o mesmo `mesario_marcado_convocado` que aquele botão já usa (a
+    timeline de Atualizações da pessoa mostra os dois fatos — status de
+    contato E confirmação — sem rótulo de log novo). **Só dispara se a
+    pessoa ainda não tinha avançado sozinha** (guarda contra
+    `confirmacao==='confirmado'` — nem apareceria mais na lista — e contra
+    `confirmacao==='convocado'` — já feito, marcar "Entregue" de novo não
+    duplica o log nem regride nada). Como "convocado" ≠ "confirmado", a
+    pessoa CONTINUA na lista depois disso (só muda de aparência — ainda
+    pode ser preciso acompanhar até ela de fato confirmar participação).
 
 > **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
 > pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —

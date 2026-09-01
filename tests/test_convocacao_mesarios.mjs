@@ -403,6 +403,22 @@ async function login(p) {
   await p.waitForTimeout(150);
   txt = await p.locator('.content').textContent();
   check('busca "300" acha o local pelo número da seção (Local Pendente)', /Local Pendente/.test(txt) && !/Local Completo/.test(txt) && !/Local Vazio/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Vários números de uma vez, separados por VÍRGULA (01/09/2026, pedido
+  // direto: "no filtro do dashboard so permite consultar numero por
+  // numero") — antes o campo inteiro virava UM substring só, então "200,300"
+  // não achava nenhum local (nenhum tem essa string exata). Só vírgula, não
+  // espaço — nome de local é frase com espaço (testado logo abaixo, no bloco
+  // 1: "Escola B" continua achando só Escola B, não qualquer local com
+  // "escola" solto no nome).
+  await p.fill('input[placeholder*="Pesquisar"]', '200,300');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('busca "200,300" (vírgula) acha os DOIS locais, não zero', /Local Vazio/.test(txt) && /Local Pendente/.test(txt) && !/Local Completo/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+  await p.fill('input[placeholder*="Pesquisar"]', '200, 300');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('busca "200, 300" (vírgula + espaço, cada termo é trimado) também acha os dois', /Local Vazio/.test(txt) && /Local Pendente/.test(txt) && !/Local Completo/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
   await p.fill('input[placeholder*="Pesquisar"]', '');
   await p.waitForTimeout(150);
 
@@ -2028,6 +2044,9 @@ async function login(p) {
     { id:'a31', nome_completo:'QUITERIA SEM ENDERECO', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:null, zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'oficial_justica', status_contato_alternativo:'a_enviar', inscricao_eleitoral:'066666666666' },
     // RAFAEL: WhatsApp, não oficial de justiça — não deve aparecer aqui.
     { id:'a32', nome_completo:'RAFAEL WHATSAPP', telefone_whatsapp:'5586999990032', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', inscricao_eleitoral:'077000000000' },
+    // SILVIA: oficial_justica mas JÁ confirmada — não precisa mais do
+    // oficial, então não deve aparecer na lista (01/09/2026, pedido direto).
+    { id:'a33', nome_completo:'SILVIA JA CONFIRMADA', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, meio_contato:'oficial_justica', inscricao_eleitoral:'088000000000' },
   );
   m.sime_mesarios_raw.push(
     { id:'raw30', inscricao:'055555555555', endereco_eleitor:'Rua do Oficial, 200', bairro_eleitor:'Centro', cep_eleitor:'64280200', nome_municipio_endereco_eleitor:'Campo Maior', uf_endereco_eleitor:'PI' },
@@ -2045,6 +2064,8 @@ async function login(p) {
   check('QUITERIA (sem linha no ELO) cai na lista "sem endereço", à parte', /Sem endereço no ELO/.test(txt) && /QUITERIA SEM ENDERECO/.test(txt), txtFlat.slice(0, 800));
   check('endereço de PAULO vem do ELO (cadastro de eleitor)', /Rua do Oficial, 200/.test(txt), txtFlat.slice(0, 800));
   check('resumo de status (mesmo vocabulário de Carta Registrada: A enviar/Enviado/Entregue/Devolvido)', /A enviar:/.test(txt) && /Enviado:/.test(txt) && /Entregue:/.test(txt) && /Devolvido:/.test(txt), txtFlat.slice(0, 400));
+  check('não lista SILVIA (já confirmada — não precisa mais do oficial)', !/SILVIA JA CONFIRMADA/.test(txt));
+  check('nota de transparência: 1 já confirmado saiu da lista sozinho', /1 já confirmado\(s\) — saíram desta lista automaticamente/.test(txtFlat), txtFlat.slice(0, 500));
 
   // Troca o status de PAULO pelo <select> do card — mesma ação de log que o
   // modal de "Contatar mesários" já usa (mesario_status_contato_alt), pra
@@ -2055,6 +2076,29 @@ async function login(p) {
   check('status gravado em sime_atores.status_contato_alternativo', atorPaulo.status_contato_alternativo === 'enviado', JSON.stringify(atorPaulo));
   const logStatus = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_status_contato_alt' && e.payload.payload?.ator_id === 'a30'));
   check('grava log mesario_status_contato_alt (mesma ação do modal de Contatar mesários)', !!logStatus && logStatus.payload.payload.status === 'enviado', JSON.stringify(logStatus));
+  check('"enviado" NÃO marca convocado sozinho — só "entregue" faz isso', atorPaulo.confirmacao === 'pendente');
+
+  // "Entregue" pelo oficial marca convocado sozinho (01/09/2026, pedido
+  // direto: "quando marcar entregue pelo oficial ja marca como convocado")
+  // — testado com QUITERIA (ainda intocada, confirmacao='pendente').
+  await p.locator('[data-ator-id="a31"] select').selectOption('entregue');
+  await p.waitForTimeout(200);
+  let atorQuiteria = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a31'));
+  check('"entregue" marca confirmacao=convocado + convocacao_recebida=true', atorQuiteria.confirmacao === 'convocado' && atorQuiteria.convocacao_recebida === true, JSON.stringify(atorQuiteria));
+  check('toast avisa que marcou como convocado', (await p.textContent('#toast')).includes('convocado'));
+  check('grava log mesario_marcado_convocado (mesma ação de "Convocado" em Contatar mesários)', await p.evaluate(() => window.__mock.escritas.some(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_marcado_convocado' && e.payload.payload?.ator_id === 'a31')));
+
+  // Marcar "entregue" de novo (já convocado) não regride nem duplica o log —
+  // guarda contra reaplicar o mesmo efeito colateral à toa.
+  const qtdLogsConvocadoAntes = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_marcado_convocado' && e.payload.payload?.ator_id === 'a31').length);
+  await p.locator('[data-ator-id="a31"] select').selectOption('a_enviar');
+  await p.waitForTimeout(150);
+  await p.locator('[data-ator-id="a31"] select').selectOption('entregue');
+  await p.waitForTimeout(200);
+  const qtdLogsConvocadoDepois = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_marcado_convocado' && e.payload.payload?.ator_id === 'a31').length);
+  check('marcar "entregue" de novo (já convocado) não duplica o log de convocado', qtdLogsConvocadoDepois === qtdLogsConvocadoAntes, `antes=${qtdLogsConvocadoAntes} depois=${qtdLogsConvocadoDepois}`);
+  atorQuiteria = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a31'));
+  check('continua convocado (não regrediu)', atorQuiteria.confirmacao === 'convocado');
 
   // Imprime a relação de PAULO (botão individual).
   await p.locator('[data-ator-id="a30"] button:has-text("🖨️ Relação")').click();
