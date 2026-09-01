@@ -42,7 +42,14 @@ async function rsCarregar() {
 
   const [{ data: secoes, error: e1 }, { data: atores, error: e2 }, { data: apoio, error: e3 }, { data: voluntarios, error: e4 }] = await Promise.all([
     sb.from('sime_secoes').select('id, numero, municipio, local_nome, eleitores').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
-    sb.from('sime_atores').select('id, nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
+    // inscricao_eleitoral junto (01/09/2026, pedido direto: "um mesário
+    // nunca pode ser coordenador de acessibilidade e membro da mesa ao
+    // mesmo tempo") — é a chave usada pra cruzar com o apoio logístico e
+    // achar esse conflito (mesma pessoa, dois papéis).
+    // meio_contato junto (01/09/2026, pedido direto: ícone do cargo muda
+    // conforme o meio de contato quando ainda não confirmou — carta, oficial
+    // de justiça ou ligação, ver rsStatusCargo).
+    sb.from('sime_atores').select('id, nome_completo, secao_id, funcao_mesa, confirmacao, precisa_substituir, data_confirmacao, inscricao_eleitoral, meio_contato').eq('zona_id', zonaId).eq('funcao', 'mesario').eq('ativo', true),
     // Antes era só `count` (head:true) — trocado por linha completa com
     // confirmacao pra poder quebrar confirmados/faltam também pro apoio
     // logístico nos stat cards, não só o total.
@@ -59,7 +66,7 @@ async function rsCarregar() {
     // acessibilidade designado?") — antes só dava pra saber SE tinha alguém
     // (pra pizza/vaga por local), não QUEM era, porque o select não trazia
     // esses dois campos.
-    sb.from('sime_atores').select('id, nome_completo, confirmacao, secao_id, funcao, precisa_substituir').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
+    sb.from('sime_atores').select('id, nome_completo, confirmacao, secao_id, funcao, precisa_substituir, inscricao_eleitoral, meio_contato').eq('zona_id', zonaId).eq('ativo', true).in('funcao', ['coord_acessibilidade', 'auxiliar_eleicao']),
     // Fila de voluntários disponíveis (28/08/2026, pedido direto: "se
     // aparecer seção incompleta e/ou marcado para substituição indicar quem
     // deve ocupar a vaga, deve vir por ordem de cadastro") — já vem ordenada
@@ -68,6 +75,27 @@ async function rsCarregar() {
     sb.from('sime_voluntarios').select('id, nome, telefone_whatsapp, funcoes, municipio, local_votacao, created_at').eq('zona_id', zonaId).eq('ativo', true).eq('status', 'disponivel').order('created_at', { ascending: true }),
   ]);
   if (e1 || e2 || e3 || e4) { rsDados = { erro: (e1 || e2 || e3 || e4).message }; render(); return; }
+
+  const secoesPorId = Object.fromEntries((secoes || []).map(s => [s.id, s]));
+
+  // Conflito: mesário e Coordenador de Acessibilidade não podem ser a mesma
+  // pessoa ao mesmo tempo (01/09/2026, pedido direto) — achado real
+  // cruzando por título de eleitor: já existem casos assim na 7ª Zona (duas
+  // pessoas confirmadas nos dois papéis, em seções diferentes, ao mesmo
+  // tempo). Cada mapa guarda só o PRIMEIRO achado por pessoa — suficiente
+  // pra avisar "também está no outro papel", sem precisar listar todos.
+  const mesarioPorInscricao = {};
+  for (const a of atores || []) {
+    if (!a.inscricao_eleitoral || !a.funcao_mesa || mesarioPorInscricao[a.inscricao_eleitoral]) continue;
+    const sec = a.secao_id ? secoesPorId[a.secao_id] : null;
+    mesarioPorInscricao[a.inscricao_eleitoral] = { funcao_mesa: a.funcao_mesa, secaoNumero: sec?.numero };
+  }
+  const coordPorInscricao = {};
+  for (const a of apoio || []) {
+    if (a.funcao !== 'coord_acessibilidade' || !a.inscricao_eleitoral || coordPorInscricao[a.inscricao_eleitoral]) continue;
+    const sec = a.secao_id ? secoesPorId[a.secao_id] : null;
+    coordPorInscricao[a.inscricao_eleitoral] = { secaoNumero: sec?.numero };
+  }
 
   // Por local, quem tem alguém designado/confirmado de CADA função de apoio
   // separadamente — 1 vaga por local pra cada uma (mesma premissa já usada
@@ -132,6 +160,7 @@ async function rsCarregar() {
     confirmadosApoio: (apoio || []).filter(a => a.confirmacao === 'confirmado').length,
     auxiliarTotal, auxiliarConfirmado,
     secaoIdsPorFuncaoTodos, secaoIdsPorFuncaoConfirmado, coordPorSecao,
+    mesarioPorInscricao, coordPorInscricao,
     voluntarios: voluntarios || [],
   };
   render();
@@ -211,7 +240,40 @@ function rsStatusCargo(ator) {
   if (ator.confirmacao === 'convocado') return { icone: '📋', label: `Convocado, aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome, id };
   if (ator.confirmacao === 'recusou') return { icone: '⚠️', label: `Recusou — precisa substituto — ${nome}`, cls: 'rs-alerta', nome, id };
   if (ator.confirmacao === 'contato_incorreto') return { icone: '🔍', label: `Contato incorreto — ${nome}`, cls: 'rs-alerta', nome, id };
-  return { icone: '🔶', label: `Aguardando confirmação — ${nome}`, cls: 'rs-aguardando', nome, id }; // pendente/substituido/outros
+  // pendente/substituido/outros — ainda não confirmou. O losango 🔶
+  // continua sendo o padrão (WhatsApp/sem meio definido); quando o meio de
+  // contato é outro, o ícone passa a refletir isso (01/09/2026, pedido
+  // direto: "mude o icone se for ainda não confirmado permanece o losango,
+  // se mudar para carta de convocação mude o icone para uma carta, se for
+  // oficial de justiça mude o icone para um policial..., se for contato
+  // telefonico mude o [ícone] para um telefone") — só essa faixa muda; as
+  // demais (✅/📋/⚠️/🔍/🔁 acima) continuam com o ícone de sempre, mesmo se
+  // o meio de contato também estiver marcado.
+  const RS_ICONE_POR_MEIO = { carta_registrada: '✉️', oficial_justica: '👮', ligacao: '📞' };
+  const RS_MEIO_SUFIXO = { carta_registrada: ' (Carta Registrada)', oficial_justica: ' (Oficial de Justiça)', ligacao: ' (Ligação telefônica)' };
+  const icone = RS_ICONE_POR_MEIO[ator.meio_contato] || '🔶';
+  const sufixo = RS_MEIO_SUFIXO[ator.meio_contato] || '';
+  return { icone, label: `Aguardando confirmação${sufixo} — ${nome}`, cls: 'rs-aguardando', nome, id };
+}
+
+// Conflito de papel — mesário e Coordenador de Acessibilidade não podem ser
+// a mesma pessoa ao mesmo tempo (01/09/2026, pedido direto: "um mesário
+// nunca pode ser coordenador de acessibilidade e membro da mesa ao mesmo
+// tempo") — na prática, um exige ficar fixo na própria seção o dia todo, o
+// outro exige circular pelas seções do local ajudando eleitor com
+// deficiência; ninguém faz os dois ao mesmo tempo. As duas funções abaixo
+// checam nos dois sentidos, sempre por título de eleitor (mesma pessoa),
+// usando os mapas montados em rsCarregar (mesarioPorInscricao/
+// coordPorInscricao). Não bloqueia nada — só avisa, pro cartório resolver
+// manualmente (mesmo critério "não adivinha" de sempre: o SIME não decide
+// sozinho qual dos dois papéis a pessoa deveria manter).
+function rsConflitoMesarioComoCoord(ator) {
+  if (!ator?.inscricao_eleitoral) return null;
+  return rsDados?.coordPorInscricao?.[ator.inscricao_eleitoral] || null;
+}
+function rsConflitoCoordComoMesario(coordAtor) {
+  if (!coordAtor?.inscricao_eleitoral) return null;
+  return rsDados?.mesarioPorInscricao?.[coordAtor.inscricao_eleitoral] || null;
 }
 
 function rsFmtData(iso) {
@@ -226,7 +288,12 @@ function rsFecharLocal() { rsLocalAberto = null; render(); }
 
 function rsCalcular() {
   const linhas = rsDados.secoes.map(s => {
-    const cargos = RS_CARGOS.map(cargo => rsStatusCargo(rsDados.porSecao[s.id]?.[cargo]));
+    const cargos = RS_CARGOS.map(cargo => {
+      const ator = rsDados.porSecao[s.id]?.[cargo];
+      const st = rsStatusCargo(ator);
+      st.conflito = rsConflitoMesarioComoCoord(ator);
+      return st;
+    });
     // Sugestão de quem deve ocupar a vaga (28/08/2026) — só quando o cargo
     // está mesmo em aberto: sem ninguém designado (❌) ou com alguém marcado
     // pra ser substituído (🔁). Confirmado/convocado/aguardando resposta não
@@ -549,13 +616,18 @@ function rsCardSecao(l) {
           const onclick = cg.id ? `onclick="event.stopPropagation();cmAbrirModal('${cg.id}')"`
             : vago ? `onclick="event.stopPropagation();rsAbrirVoluntarios('${rsJsStr(l.secao.municipio)}','${rsJsStr(l.secao.local_nome)}','${rsJsStr(RS_CARGOS[i])}')"`
             : '';
-          const titulo = cg.id ? `${rsEsc(cg.label)} — clique pra ver tentativas de contato` : vago ? `${rsEsc(cg.label)} — clique pra ver voluntários disponíveis` : rsEsc(cg.label);
+          let titulo = cg.id ? `${rsEsc(cg.label)} — clique pra ver tentativas de contato` : vago ? `${rsEsc(cg.label)} — clique pra ver voluntários disponíveis` : rsEsc(cg.label);
+          // Conflito de papel (01/09/2026) — a mesma pessoa também está
+          // designada Coordenador(a) de Acessibilidade em outra seção; não
+          // pode estar nos dois cargos ao mesmo tempo no Dia D.
+          if (cg.conflito) titulo += ` — ⚠️ também é Coordenador(a) de Acessibilidade na Seção ${cg.conflito.secaoNumero}`;
           return `
           <div style="text-align:center;max-width:78px${onclick ? ';cursor:pointer' : ''}" title="${titulo}" ${onclick}>
             <div style="font-size:1.1rem">${cg.icone}</div>
             <div style="font-size:.68rem;color:var(--text2);margin-top:2px">${RS_CARGOS[i]}</div>
             ${cg.nome ? `<div style="font-size:.66rem;color:${cg.id ? 'var(--blue)' : 'var(--text3)'};margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${cg.id ? 'text-decoration:underline' : ''}">${rsEsc(cg.nome.split(' ')[0])}</div>` : ''}
             ${cg.sugestaoNome ? `<div style="font-size:.62rem;color:var(--green);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${vago ? 'text-decoration:underline' : ''}" title="Sugestão pela fila de voluntários disponíveis, por ordem de cadastro: ${rsEsc(cg.sugestaoNome)}">🙋 ${rsEsc(cg.sugestaoNome.split(' ')[0])}</div>` : ''}
+            ${cg.conflito ? `<div style="font-size:.6rem;color:var(--red);font-weight:700;margin-top:1px">⚠️ tb. Coord. Seção ${rsEsc(cg.conflito.secaoNumero)}</div>` : ''}
           </div>`;
         }).join('')}
       </div>
@@ -662,8 +734,19 @@ function renderResumoSecoes() {
       // acessibilidade designado?") — mesmo ícone de status já usado nos
       // cargos de mesa (rsStatusCargo), pra ficar consistente com o resto da
       // tela; "vaga" é por local (não por seção), então normalmente é só 1.
+      // Clicável (mesmo dia, pedido direto: "permita clicar no nome do
+      // coordenador para verificar a situação") — abre o mesmo modal de
+      // tentativas de contato que o nome do mesário já abre nos cargos de
+      // mesa (cmAbrirModal), mesmo estilo visual (azul, sublinhado).
       const coordHTML = loc.coordenadores.length
-        ? loc.coordenadores.map(c => { const st = rsStatusCargo(c); return `${st.icone} ${rsEsc(st.nome)}`; }).join(', ')
+        ? loc.coordenadores.map(c => {
+            const st = rsStatusCargo(c);
+            const conflito = rsConflitoCoordComoMesario(c);
+            const aviso = conflito
+              ? ` <span style="color:var(--red);font-weight:700;font-size:.8em" title="Também é mesário(a) — ${rsEsc(conflito.funcao_mesa)} da Seção ${rsEsc(conflito.secaoNumero)} — não pode estar nos dois cargos ao mesmo tempo">⚠️ também é mesário (Seção ${rsEsc(conflito.secaoNumero)})</span>`
+              : '';
+            return `${st.icone} <span style="color:var(--blue);text-decoration:underline;cursor:pointer" onclick="cmAbrirModal('${c.id}')" title="Ver tentativas de contato">${rsEsc(st.nome)}</span>${aviso}`;
+          }).join(', ')
         : '❌ Sem coordenador de acessibilidade designado';
       c.innerHTML = `
         ${statsHTML}

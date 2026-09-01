@@ -294,6 +294,17 @@ async function login(p) {
   const drilldownFlat = drilldown.replace(/\s+/g, ' ');
   check('drilldown: mostra o nome do Coordenador de Acessibilidade do local (GEORGE COORD)', /Coordenador\(a\) de Acessibilidade: 🔶 GEORGE COORD/.test(drilldownFlat), drilldownFlat.slice(0, 300));
 
+  // Clicar no nome do coordenador também abre o modal de tentativas de
+  // contato (mesmo dia, pedido direto: "permita clicar no nome do
+  // coordenador para verificar a situação") — mesmo mecanismo do clique no
+  // nome do mesário, só que a partir do cabeçalho do local, não de um cargo.
+  await p.locator('span[onclick*="cmAbrirModal(\'a7\')"]').click();
+  await p.waitForTimeout(300);
+  check('clicar no nome do coordenador de acessibilidade abre o modal', await p.evaluate(() => document.getElementById('overlay').classList.contains('open')));
+  check('modal aberto a partir do coordenador mostra a pessoa certa (GEORGE COORD)', /GEORGE COORD/.test(await p.locator('#modal-body').textContent()));
+  await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
+  await p.waitForTimeout(100);
+
   // Clicar no nome do mesário no Dashboard abre o mesmo modal de "Contatar
   // mesários" (tentativas de contato) — mesmo sem essa aba ter sido visitada
   // ainda nesta sessão (cmDados começa null, precisa carregar na hora).
@@ -482,6 +493,99 @@ async function login(p) {
   await p.waitForTimeout(150);
   txt = await p.locator('.content').textContent();
   check('filtro todos: os 3 locais aparecem de novo', /Local Completo/.test(txt) && /Local Vazio/.test(txt) && /Local Pendente/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 1.7 Dashboard: conflito mesário × Coordenador de Acessibilidade
+// (01/09/2026, pedido direto: "um mesário nunca pode ser coordenador de
+// acessibilidade e membro da mesa ao mesmo tempo" — achado real conferindo
+// isso no banco: existem casos assim na 7ª Zona, mesma pessoa confirmada
+// nos dois papéis em seções diferentes ao mesmo tempo). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes = [
+    { id:'secConflitoMesa', numero:10, local_nome:'Local X', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+    { id:'secConflitoCoord', numero:20, local_nome:'Local Y', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+  ];
+  // Mesma pessoa (mesmo título de eleitor) designada como mesário no Local X
+  // E como Coordenador de Acessibilidade no Local Y, ao mesmo tempo.
+  m.sime_atores = [
+    { id:'mesA', nome_completo:'CARLOS DUPLO PAPEL', telefone_whatsapp:'', funcao:'mesario', funcao_mesa:'Presidente', secao_id:'secConflitoMesa', zona_id:'z7', confirmacao:'confirmado', ativo:true, inscricao_eleitoral:'099999999999' },
+    { id:'coordA', nome_completo:'CARLOS DUPLO PAPEL', telefone_whatsapp:'', funcao:'coord_acessibilidade', secao_id:'secConflitoCoord', zona_id:'z7', confirmacao:'confirmado', ativo:true, inscricao_eleitoral:'099999999999' },
+  ];
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+
+  // Abre o local do mesário (Local X) — o cargo Presidente deve mostrar o
+  // aviso de que essa pessoa também é coordenador em outra seção.
+  await p.click('.import-card:has-text("Local X")');
+  await p.waitForTimeout(200);
+  const drilldownX = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('conflito: card do mesário mostra aviso de que também é Coord. Acessibilidade (Seção 20)', /tb\. Coord\. Seção 20/.test(drilldownX), drilldownX.slice(0, 400));
+  const tituloPresidente = await p.locator('[title*="também é Coordenador"]').first().getAttribute('title');
+  check('conflito: tooltip do cargo explica o conflito por extenso', !!tituloPresidente && /também é Coordenador\(a\) de Acessibilidade na Seção 20/.test(tituloPresidente), tituloPresidente || '(sem title)');
+  await p.click('button:has-text("← Voltar")');
+  await p.waitForTimeout(150);
+
+  // Abre o local do coordenador (Local Y) — a linha do coordenador deve
+  // mostrar o aviso recíproco (também é mesário em outra seção).
+  await p.click('.import-card:has-text("Local Y")');
+  await p.waitForTimeout(200);
+  const drilldownY = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('conflito: linha do coordenador mostra aviso de que também é mesário (Seção 10)', /também é mesário \(Seção 10\)/.test(drilldownY), drilldownY.slice(0, 400));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 1.8 Dashboard: ícone do cargo reflete o meio de contato quando ainda
+// não confirmou (01/09/2026, pedido direto: "mude o icone se for ainda não
+// confirmado permanece o losango, se mudar para carta de convocação mude o
+// icone para uma carta, se for oficial de justiça mude o icone para um
+// policial..., se for contato telefonico mude o [icone] para um
+// telefone"). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes = [
+    { id:'secIcones', numero:50, local_nome:'Local Ícones', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+    { id:'secIconeConfirmado', numero:51, local_nome:'Local Ícones', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+  ];
+  const cargo = (id, secao_id, funcao_mesa, confirmacao, meio_contato) => ({ id, nome_completo:id, telefone_whatsapp:'', funcao:'mesario', funcao_mesa, secao_id, zona_id:'z7', confirmacao, ativo:true, meio_contato });
+  m.sime_atores = [
+    // Seção 50: os 4 cargos, cada um com um meio de contato diferente,
+    // todos ainda pendentes (nenhum confirmou).
+    cargo('icPresidente','secIcones','Presidente','pendente','whatsapp'),        // padrão — continua losango
+    cargo('icMesario1','secIcones','1º Mesário','pendente','carta_registrada'),  // vira carta
+    cargo('icMesario2','secIcones','2º Mesário','pendente','oficial_justica'),   // vira "policial"
+    cargo('icSecretario','secIcones','1º Secretário','pendente','ligacao'),      // vira telefone
+    // Seção 51: mesmo meio (carta_registrada), mas JÁ confirmado — prova que
+    // o ícone de status confirmado (✅) tem prioridade, não muda pra carta.
+    cargo('icConfirmadoCarta','secIconeConfirmado','Presidente','confirmado','carta_registrada'),
+  ];
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+  await p.click('.import-card:has-text("Local Ícones")');
+  await p.waitForTimeout(200);
+
+  const cardSecao50 = await p.locator('.import-card:has-text("Seção 50")').first().textContent();
+  check('meio WhatsApp/padrão, ainda pendente: continua o losango 🔶', cardSecao50.includes('🔶'), cardSecao50.replace(/\s+/g, ' '));
+  check('meio Carta Registrada, ainda pendente: ícone vira carta ✉️', cardSecao50.includes('✉️'), cardSecao50.replace(/\s+/g, ' '));
+  check('meio Oficial de Justiça, ainda pendente: ícone vira "policial" 👮', cardSecao50.includes('👮'), cardSecao50.replace(/\s+/g, ' '));
+  check('meio Ligação telefônica, ainda pendente: ícone vira telefone 📞', cardSecao50.includes('📞'), cardSecao50.replace(/\s+/g, ' '));
+
+  const tituloCarta = await p.locator('[title*="✉️"], div[title*="Carta Registrada"]').first().getAttribute('title').catch(() => null);
+  check('tooltip do cargo carta explica o meio por extenso', !!tituloCarta && /Aguardando confirmação \(Carta Registrada\)/.test(tituloCarta), tituloCarta || '(sem title)');
+
+  const cardSecao51 = await p.locator('.import-card:has-text("Seção 51")').first().textContent();
+  check('confirmado com meio Carta Registrada: continua ✅, NÃO vira carta (status confirmado tem prioridade)', cardSecao51.includes('✅') && !cardSecao51.includes('✉️'), cardSecao51.replace(/\s+/g, ' '));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

@@ -1869,6 +1869,50 @@ cada um com propósito diferente:
   PESSOA" acima), então não haveria como saber QUAL auxiliar pertence a
   QUAL prédio sem inventar o vínculo.
 
+  **Nome do coordenador clicável (01/09/2026, pedido direto: "permita
+  clicar no nome do coordenador para verificar a situação").** Mesmo dia da
+  feature acima — a linha nova ganhou o mesmo comportamento que o nome do
+  mesário já tem nos cargos de mesa: clicar abre o modal de tentativas de
+  contato (`cmAbrirModal`), mesmo estilo visual (azul, sublinhado).
+
+  **Conflito de papel: mesário × Coordenador de Acessibilidade (01/09/2026,
+  pedido direto: "um mesário nunca pode ser coordenador de acessibilidade e
+  membro da mesa ao mesmo tempo").** Achado real ao conferir isso direto no
+  banco (cruzando por título de eleitor): já existem casos assim na 7ª
+  Zona — duas pessoas confirmadas nos dois papéis, em seções diferentes, ao
+  mesmo tempo (fariam falta uma na outra função no Dia D, já que um cargo
+  exige ficar fixo na seção e o outro exige circular pelo local todo).
+  `rsCarregar()` passou a trazer `inscricao_eleitoral` nos dois selects
+  (mesário e apoio) e monta dois mapas — `mesarioPorInscricao`/
+  `coordPorInscricao` — cada um guardando só o primeiro achado por pessoa.
+  `rsConflitoMesarioComoCoord(ator)`/`rsConflitoCoordComoMesario(coordAtor)`
+  cruzam nos dois sentidos. Não bloqueia nada (mesmo critério "não adivinha"
+  de sempre — o SIME não decide sozinho qual papel a pessoa deveria manter),
+  só avisa: cargo de mesa com conflito ganha uma linha vermelha "⚠️ tb.
+  Coord. Seção N" embaixo do nome (`rsCardSecao`); a linha do coordenador no
+  cabeçalho do drilldown ganha o aviso recíproco "⚠️ também é mesário (Seção
+  N)". Cabe ao cartório resolver manualmente qual dos dois papéis a pessoa
+  fica.
+
+  **Ícone do cargo reflete o meio de contato quando ainda não confirmou
+  (01/09/2026, pedido direto: "mude o icone se for ainda não confirmado
+  permanece o losango, se mudar para carta de convocação mude o icone para
+  uma carta, se for oficial de justiça mude o icone para um policial..., se
+  for contato telefonico mude o [icone] para um telefone").** Só afeta o
+  ÚLTIMO estado de `rsStatusCargo()` (o fallback pendente/substituído/outros,
+  ícone 🔶 "losango") — os demais estados (✅ confirmado, 📋 convocado, ⚠️
+  recusou, 🔍 contato incorreto, 🔁 precisa substituir) continuam com o
+  ícone de sempre, mesmo que a pessoa tenha `meio_contato` diferente de
+  WhatsApp, porque esses já são fatos mais específicos que o meio de
+  contato não deveria sobrescrever. `rsCarregar()` passou a trazer
+  `meio_contato` nos dois selects (mesário e apoio, pra manter
+  `rsStatusCargo()` consistente nos dois lugares que a usam — cargo de mesa
+  e linha do coordenador). Mapa `carta_registrada→✉️`/
+  `oficial_justica→👮` (mais próximo de "policial" que o emoji set
+  oferece)/`ligacao→📞`; sem meio ou WhatsApp continua `🔶`. O rótulo/tooltip
+  também ganha o meio por extenso ("Aguardando confirmação (Carta
+  Registrada) — Nome"), útil tanto no cargo quanto no aviso de conflito.
+
   **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
   pedido direto: "quero que o sistema verifique se os mesários voluntarios
   já foram atribuidos na parte de convocação e ja marcar como convocado").**
