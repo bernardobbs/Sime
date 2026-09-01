@@ -510,6 +510,41 @@ cada um com propósito diferente:
   rótulo próprio. Coberto por teste de regressão dedicado em
   `tests/test_convocacao_mesarios.mjs`.
 
+  **"🚫 Dispensar (ELO)" (01/09/2026, pedido direto a partir de um caso
+  real).** ANA ALICE DOS SANTOS DA SILVA tinha uma recusa formal registrada
+  no ELO (07/08/2026) e já tinha sido marcada `ativo=false` manualmente pelo
+  cartório — mas o carimbo em observação dizia "Dispensad**a**" (feminino),
+  e a varredura automática que resgatou os 52 outros casos de reativação
+  silenciosa (ver `dispensado_manual` acima) buscava só a forma masculina
+  ("Dispensad**o**"). Ela ficou de fora, voltou a aparecer ativa no resync
+  seguinte, e só foi achada de novo por revisão manual do cartório: "e ela
+  foi dispensada no elo, deve haver um botao para indicar que ela foi
+  dispensada e tirar ela do cadastro". Até este pedido, marcar isso só
+  existia via SQL Editor/MCP.
+  Botão **"🚫 Dispensar e tirar do cadastro"** (`cmDispensarManual`), seção
+  própria no fim do modal, separada visualmente (borda vermelha) por ser a
+  ação mais definitiva do modal. Grava `ativo=false` + `dispensado_manual=
+  true` de uma vez (mesmo efeito final da correção manual de sempre — nunca
+  mais reativada sozinha por um resync futuro do roster) e anexa a
+  Observações via `cmAppendObservacao()` — **nunca mais um carimbo digitado
+  à mão**: sempre o mesmo texto fixo `Dispensado(a) — <motivo>` (gênero
+  neutro de propósito, pra não repetir o problema que escondeu a ANA ALICE
+  da varredura automática) com o autor de verdade. Motivo é um campo de
+  texto opcional (`#mm-dispensar-motivo`) — nunca bloqueia a ação, mesma
+  filosofia de sempre; sem motivo, grava "sem motivo informado". Log
+  `mesario_dispensado_manual` (com o motivo no payload) aparece em "📜
+  Atualizações" com rótulo próprio.
+  Se já existir outra pessoa designada pro mesmo cargo/seção (caso comum de
+  substituição já processada pelo TRE — cada uma é um `sime_atores`
+  independente, como aconteceu com ANA ALICE/ANA KAROLINE DA SILVA, as duas
+  como `1º Secretário` da mesma seção), ela continua intocada e passa a ser
+  a única ativa ali; se não houver mais ninguém, o cargo aparece vazio no
+  Dashboard — os dois comportamentos já são automáticos (o botão só mexe na
+  pessoa dispensada), nenhuma lógica nova precisou ser escrita pra eles.
+  ANA ALICE foi corrigida diretamente no banco no mesmo dia (mesmo efeito
+  que este botão passou a fazer). Coberto por teste de regressão dedicado
+  em `tests/test_convocacao_mesarios.mjs`.
+
   por status (falta contactar, confirmado, recusou, contato incorreto,
   **precisa ser substituído** — filtro próprio, independente do bucket
   "já substituído" — e substituído), mostra o recado (`observacao`) de quem
@@ -1882,6 +1917,23 @@ cada um com propósito diferente:
   de uma vez (um `input` só), sem simular tecla por tecla — só
   `page.locator(...).pressSequentially()` reproduz o bug de verdade; o teste
   de regressão usa esse método especificamente por isso.
+
+  **Barra de progresso em gradiente vermelho→amarelo→verde (01/09/2026,
+  pedido direto a partir de um print do card "8/8 designados... 75%"): "a
+  barra de progresso dos convocados pode ir do vermelho ao verde?"** Antes,
+  `rsBarraCor()` era um degrau de 3 valores (vermelho só em 0%, verde só em
+  100%, azul genérico pra tudo entre os dois) — um local em 75% e um em 30%
+  tinham a mesma barra azul, sem noção nenhuma de "quão perto" estava. Em
+  vez de calcular a cor em JS (exigiria saber o hex exato de cada tema —
+  `sime_theme_dark.css` e `sime_theme_cream.css` usam tons de vermelho/
+  amarelo/verde diferentes), `rsBarraGradienteHTML(pct)` pinta o gradiente
+  inteiro (`var(--red)` → `var(--yellow)` → `var(--green)`, que cada tema já
+  define certo) num elemento cheio e usa `clip-path: inset(0 ${100-pct}% 0
+  0)` pra revelar só os primeiros `pct%` dele — o resultado é a mesma barra
+  "termômetro" de sempre, só que a cor do trecho preenchido já é a cor certa
+  daquele ponto da escala. `rsBarraCor()` continua existindo do jeito que
+  sempre foi (degrau de 3 cores) só pro texto do percentual ao lado da
+  barra — não foi trocado, o pedido era especificamente sobre a barra.
 
   **Nome do Coordenador de Acessibilidade no drilldown do local (01/09/2026,
   pedido direto: "no dashboard abaixo do nome pode indicar o nome do

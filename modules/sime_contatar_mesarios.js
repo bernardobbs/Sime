@@ -220,6 +220,7 @@ const CM_LOG_LABEL = {
   mesario_telefone_alt_removido: () => 'Telefone alternativo removido',
   mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
   mesario_substituicao_concluida: (p) => `✅ Substituição concluída${p.substituto_nome ? ` — ${p.substituto_nome}` : ''}${p.substituto_telefone ? ` (${fmtTelefone(p.substituto_telefone)})` : ''}`,
+  mesario_dispensado_manual: (p) => `🚫 Dispensado(a)${p.motivo ? ` — ${p.motivo}` : ''}`,
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -512,6 +513,42 @@ async function cmConcluirSubstituicao(id) {
   if (error) { showToast('⚠ ' + error.message); return; }
   await cmLog('mesario_substituicao_concluida', '', { ator_id: id, substituto_nome: p.substituto_nome || null, substituto_telefone: p.substituto_telefone || null });
   showToast('✅ Substituição concluída — saiu da lista de Contatar mesários');
+  cmDados.pessoas = cmDados.pessoas.filter(x => x.id !== id); // ativo=false — cmCarregar só lista ativo=true
+  cmFecharModal();
+  render();
+}
+
+// Dispensar (ELO) — 01/09/2026, pedido direto a partir de um caso real (ANA
+// ALICE DOS SANTOS DA SILVA, recusa formal registrada no ELO em 07/08/2026,
+// aceita pelo cartório): "deve haver um botao para indicar que ela foi
+// dispensada e tirar ela do cadastro". Até aqui, marcar isso só existia via
+// SQL Editor/MCP (ver dispensado_manual em CLAUDE.md — mesma flag, mesmo
+// efeito: ativo=false + dispensado_manual=true, nunca reativada sozinha por
+// um resync futuro do roster). Achado no caminho: a própria ANA ALICE já
+// tinha sido "dispensada" à mão em 31/08, mas com o carimbo escrito
+// "Dispensada" (feminino) em vez de "Dispensado" — a varredura automática
+// que resgatou os outros 52 casos buscava só a forma masculina e não achou
+// ela, então ela voltou a aparecer ativa no próximo resync. Por isso este
+// botão nunca escreve o carimbo à mão: usa cmAppendObservacao() (mesmo
+// helper de toda observação desta tela), que grava sempre o mesmo texto
+// "Dispensado(a) — ..." e o autor de verdade, sem depender de digitação.
+// Se já existir outra pessoa designada pro mesmo cargo/seção (caso comum de
+// substituição já processada pelo TRE, cada uma é um sime_atores
+// independente), ela continua intocada e passa a ser a única ativa ali; se
+// não houver mais ninguém, o cargo aparece vazio no Dashboard — os dois
+// comportamentos já são automáticos, nenhuma lógica extra precisou ser
+// escrita pra eles.
+async function cmDispensarManual(id) {
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const campo = document.getElementById('mm-dispensar-motivo');
+  const motivo = (campo?.value || '').trim();
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ ativo: false, dispensado_manual: true }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  await cmAppendObservacao(id, `Dispensado(a) — ${motivo || 'sem motivo informado'}`);
+  await cmLog('mesario_dispensado_manual', '', { ator_id: id, motivo: motivo || null });
+  showToast('🚫 Dispensado(a) — saiu da lista de Contatar mesários');
   cmDados.pessoas = cmDados.pessoas.filter(x => x.id !== id); // ativo=false — cmCarregar só lista ativo=true
   cmFecharModal();
   render();
@@ -1260,6 +1297,13 @@ function cmRenderModal() {
         ${!cmScriptCampanhas.filter(c => c.status !== 'encerrada').length ? '<div class="ic-sub" style="margin-top:4px;margin-bottom:0">Nenhum script salvo nesta zona ainda — crie um na aba 🧩 Campanhas de Cadastro de Atores.</div>' : ''}
         ${cmScriptEtapa1 ? `<div class="ic-sub" style="margin-top:8px;margin-bottom:0"><b>Prévia da etapa 1:</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${cmEsc(cmScriptEtapa1)}</pre>${cmScriptEtapa1Imagem ? `<img src="${cmEsc(cmScriptEtapa1Imagem)}" alt="Prévia da imagem da etapa 1" style="max-width:160px;max-height:160px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : ''}
         ` : ''}
+      </div>
+
+      <div class="m-section" style="border-top:1px solid var(--red-bd,#e0a09a)">
+        <div class="m-section-hdr" style="color:var(--red,#c0392b)">🚫 Dispensar (ELO)</div>
+        <div class="ic-sub">Pra quando o ELO já registra a dispensa/recusa formal desta pessoa (ex.: justificativa aceita pelo cartório) — tira ela de vez da lista ativa (mesmo efeito de ativo=false + dispensado_manual=true), sem risco de um resync do roster reativar sozinha depois. Se já houver outra pessoa designada pro mesmo cargo/seção, ela continua normalmente e assume a vaga; se não houver, o cargo passa a aparecer vazio no Dashboard. Motivo é opcional, mas fica registrado em Observações.</div>
+        <textarea id="mm-dispensar-motivo" rows="2" placeholder="Motivo da dispensa (opcional) — ex.: recusa formal registrada no ELO em .../.../....." style="width:100%;margin:6px 0;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
+        <button class="btn btn-red" style="font-size:.72rem;padding:6px 12px" onclick="cmDispensarManual('${p.id}')">🚫 Dispensar e tirar do cadastro</button>
       </div>
     </div>
     <div class="m-foot">

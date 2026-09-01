@@ -557,6 +557,22 @@ function rsBarraCor(pct) {
   return 'var(--blue)';
 }
 
+// Barra de progresso em gradiente vermelho→amarelo→verde (01/09/2026, pedido
+// direto a partir de um print do card "8/8 designados... 75%" — a barra era
+// sempre azul enquanto não batia 100%, sem noção de "quão perto" estava).
+// Em vez de calcular a cor em JS (que exigiria saber o hex exato de cada tema
+// — sime_theme_dark.css e sime_theme_cream.css usam tons de verde/vermelho
+// diferentes), o gradiente inteiro fica pintado no elemento (var(--red) →
+// var(--yellow) → var(--green), que cada tema já define do jeito certo) e um
+// clip-path revela só os primeiros pct% dele — o resultado é a MESMA barra
+// "termômetro" de sempre, só que a cor do trecho preenchido já é a cor certa
+// daquele ponto da escala (baixo = vermelho, meio = amarelo, alto = verde),
+// em vez de azul genérico.
+function rsBarraGradienteHTML(pct) {
+  const p = Math.min(Math.max(pct, 0), 100);
+  return `<div style="position:absolute;inset:0;background:linear-gradient(90deg,var(--red),var(--yellow) 50%,var(--green));clip-path:inset(0 ${100 - p}% 0 0);border-radius:99px"></div>`;
+}
+
 function rsCardLocal(loc) {
   const cor = rsBarraCor(loc.pct);
   return `
@@ -569,8 +585,8 @@ function rsCardLocal(loc) {
       </div>
       ${loc.designados !== loc.confirmados ? `<div class="ic-sub" style="margin-bottom:4px">${loc.designados}/${loc.totalCargos} designados (nem todos confirmaram)</div>` : ''}
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden">
-          <div style="height:100%;width:${Math.min(loc.pct, 100)}%;background:${cor};border-radius:99px"></div>
+        <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden;position:relative">
+          ${rsBarraGradienteHTML(loc.pct)}
         </div>
         <span style="font-size:.72rem;font-weight:700;color:${cor};white-space:nowrap">${loc.pct}%</span>
       </div>
@@ -588,8 +604,8 @@ function rsLinhaLocal(loc) {
       <div style="font-size:.76rem;color:var(--text2);white-space:nowrap">Seções: <b style="color:var(--text)">${loc.secoes.length}</b></div>
       <div style="font-size:.76rem;color:var(--text2);white-space:nowrap">Confirmados: <b style="color:var(--text)">${loc.confirmados}/${loc.totalCargos}</b>${loc.designados !== loc.confirmados ? ` <span style="color:var(--text3)">(${loc.designados} designados)</span>` : ''}</div>
       <div style="display:flex;align-items:center;gap:8px;width:140px">
-        <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden">
-          <div style="height:100%;width:${Math.min(loc.pct, 100)}%;background:${cor};border-radius:99px"></div>
+        <div style="flex:1;height:6px;border-radius:99px;background:var(--bg2);overflow:hidden;position:relative">
+          ${rsBarraGradienteHTML(loc.pct)}
         </div>
         <span style="font-size:.72rem;font-weight:700;color:${cor}">${loc.pct}%</span>
       </div>

@@ -1875,6 +1875,71 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.7 Botão "🚫 Dispensar (ELO)" (01/09/2026, achado real: ANA ALICE DOS
+// SANTOS DA SILVA tinha um carimbo manual em observação dizendo "Marcado
+// ativo=false" — escrito à mão, via SQL Editor — mas voltou a aparecer ativa
+// depois de um resync porque não existia flag nenhuma protegendo a marcação.
+// Até este pedido, o único jeito de dispensar alguém era pelo SQL Editor;
+// pedido direto: "deve haver um botao para indicar que ela foi dispensada e
+// tirar ela do cadastro"). Mesmo efeito final que a correção manual sempre
+// fez (ativo=false + dispensado_manual=true), só que pelo botão. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push(
+    // OLIVIA: vai ser dispensada. PATRICIA: já ocupa o MESMO cargo/seção
+    // (caso comum de substituição já processada pelo TRE — cada uma é um
+    // sime_atores independente) e deve continuar intocada depois.
+    { id:'a50', nome_completo:'OLIVIA DISPENSADA', telefone_whatsapp:'5586999995050', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', dispensado_manual:false },
+    { id:'a51', nome_completo:'PATRICIA SUBSTITUTA', telefone_whatsapp:'5586999995051', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'confirmado', ativo:true, observacao:null, meio_contato:'whatsapp', dispensado_manual:false },
+  );
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  await p.locator('.import-card:has-text("OLIVIA DISPENSADA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+
+  const botaoDispensar = p.locator('#modal-body button:has-text("Dispensar e tirar do cadastro")');
+  check('botão "Dispensar" aparece no modal', await botaoDispensar.count() === 1);
+
+  await p.fill('#modal-body #mm-dispensar-motivo', 'Recusa formal registrada no ELO em 07/08/2026');
+  await botaoDispensar.click();
+  await p.waitForTimeout(250);
+
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a50' && e.payload.dispensado_manual === true));
+  check('grava ativo=false + dispensado_manual=true', !!upd && upd.payload.ativo === false, JSON.stringify(upd));
+
+  const atorOlivia = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a50'));
+  check('observação recebe o carimbo "Dispensado(a) — <motivo>" com o motivo digitado', /Dispensado\(a\) — Recusa formal registrada no ELO em 07\/08\/2026/.test(atorOlivia.observacao || ''), atorOlivia.observacao);
+
+  const log = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_dispensado_manual' && e.payload.payload?.ator_id === 'a50'));
+  check('grava log mesario_dispensado_manual com o motivo', log?.payload?.payload?.motivo === 'Recusa formal registrada no ELO em 07/08/2026', JSON.stringify(log));
+
+  check('modal fecha sozinho', await p.locator('#overlay.open').count() === 0);
+  await p.waitForTimeout(150);
+  check('OLIVIA some da lista (ativo=false, cmCarregar só lista ativo=true)', await p.locator('.import-card:has-text("OLIVIA DISPENSADA")').count() === 0);
+
+  const atorPatricia = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a51'));
+  check('quem já ocupava o mesmo cargo/seção continua intocada (ativo=true, dispensado_manual=false)', atorPatricia.ativo === true && atorPatricia.dispensado_manual === false, JSON.stringify(atorPatricia));
+  check('PATRICIA continua aparecendo na lista', await p.locator('.import-card:has-text("PATRICIA SUBSTITUTA")').count() === 1);
+
+  // Motivo é opcional — não bloqueia a ação (filosofia "nunca bloquear por
+  // campos opcionais").
+  await p.locator('.import-card:has-text("PATRICIA SUBSTITUTA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  await p.locator('#modal-body button:has-text("Dispensar e tirar do cadastro")').click();
+  await p.waitForTimeout(250);
+  const atorPatriciaDepois = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a51'));
+  check('dispensar sem preencher motivo funciona normalmente', atorPatriciaDepois.ativo === false && atorPatriciaDepois.dispensado_manual === true);
+  check('sem motivo, observação recebe o texto padrão "sem motivo informado"', /Dispensado\(a\) — sem motivo informado/.test(atorPatriciaDepois.observacao || ''), atorPatriciaDepois.observacao);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 3. Sincronizar (reaproveitado de SIME_atores.html, agora na página própria) ──
 {
   const ctx = await b.newContext();
