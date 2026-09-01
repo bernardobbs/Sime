@@ -97,7 +97,7 @@ function mock() {
   return {
     escritas: [], rpcChamadas: [],
     sime_usuarios: [{ id:'u-maria', nome:'Maria', perfil:'coordenador', zona_id:'z7', ativo:true, auth_user_id:'auth-maria' }],
-    sime_zonas: [{ id:'z7', numero:7, estado:'PI', nome:'Campo Maior' }],
+    sime_zonas: [{ id:'z7', numero:7, estado:'PI', municipio:'Campo Maior' }],
     // Necessário pra getEleicaoAtiva() (sime_dados.js), que log() agora chama
     // pra preencher eleicao_id no insert — ver bug real de 21/08/2026 (RLS de
     // SELECT em sime_logs exige eleicao_id IN (...), NULL nunca casava).

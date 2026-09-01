@@ -318,8 +318,8 @@ window.log = async function log(acao, secao, payload) {
 
 async function atualizarCabecalho() {
   const zonaId = await zonaDoUsuario();
-  const { data: zona } = await supabase.from('sime_zonas').select('numero, nome').eq('id', zonaId).maybeSingle();
-  document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.nome}` : '—';
+  const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
+  document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
 }
 
 function mostrarPainel() {

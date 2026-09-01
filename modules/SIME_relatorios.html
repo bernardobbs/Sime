@@ -136,9 +136,9 @@ async function iniciarRelatorios(){
   const { data:eleicoes } = await supabase.from('sime_eleicoes').select('id,zona_id,turno,data_d,ativa').eq('ativa',true).order('data_d',{ascending:false}).limit(1);
   ELEICAO = eleicoes?.[0] || null;
   if(ELEICAO?.zona_id){
-    const { data:z } = await supabase.from('sime_zonas').select('numero,nome,estado').eq('id',ELEICAO.zona_id).maybeSingle();
+    const { data:z } = await supabase.from('sime_zonas').select('numero,municipio,estado').eq('id',ELEICAO.zona_id).maybeSingle();
     ZONA=z;
-    document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona · ${z.nome||''}` : '';
+    document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona · ${z.municipio||''}` : '';
   }
   await recarregar();
 }

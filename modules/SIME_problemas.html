@@ -322,7 +322,7 @@ async function iniciar(){
   EU = u || null;
 
   if(EU?.zona_id){
-    const { data:z } = await supabase.from('sime_zonas').select('numero,nome').eq('id',EU.zona_id).maybeSingle();
+    const { data:z } = await supabase.from('sime_zonas').select('numero,municipio').eq('id',EU.zona_id).maybeSingle();
     ZONA=z;
     document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona` : '';
   }

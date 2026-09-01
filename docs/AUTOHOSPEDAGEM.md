@@ -77,7 +77,7 @@ Commit e push. (A anon key é pública por design; a `service_role` NUNCA entra 
 
 ## 6. Semear os dados da sua zona + criar o admin
 No **SQL Editor** do seu Supabase:
-1. **Zona + eleição:** insira uma linha em `sime_zonas` (numero, nome, estado) e uma em
+1. **Zona + eleição:** insira uma linha em `sime_zonas` (numero, municipio, estado) e uma em
    `sime_eleicoes` (zona_id, turno, data_d, `ativa=true`).
 2. **Seções e rotas:** insira em `sime_secoes` (numero, local_nome, municipio, eleitores,
    zona_id) e `sime_rotas` (codigo, nome, municipios, itinerario, urnas_estimadas, zona_id);

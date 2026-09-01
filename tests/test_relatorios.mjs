@@ -11,7 +11,7 @@ function stubSupabaseJs() {
 export function createClient(){
   let session=null;
   const EL=[{id:'el1',zona_id:'z7',turno:1,data_d:'2026-10-04',ativa:true}];
-  const ZONA={numero:7,nome:'Campo Maior',estado:'PI'};
+  const ZONA={numero:7,municipio:'Campo Maior',estado:'PI'};
   const SEC=[
     {id:'s1',numero:'0063',municipio:'<img src=x onerror="window.__xssMun=true">',local_nome:'G.E. Treze',eleitores:300,rota_id:'r1',ativo:true},
     {id:'s2',numero:'0064',municipio:'Campo Maior',local_nome:'G.E. Treze',eleitores:280,rota_id:'r1',ativo:true},

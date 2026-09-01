@@ -59,7 +59,7 @@ function baseMock({ tipo = 'energia', responsavel = null, nivel = 0, externos = 
       // Token de TV entra como observador — não é gente pra quem se delega.
       { id:'u-tv',    nome:'Token tv',    perfil:'observador',  zona_id:'z7', ativo:true, auth_user_id:'auth-tv' },
     ],
-    sime_zonas: [{ id:'z7', numero:7, nome:'Campo Maior' }],
+    sime_zonas: [{ id:'z7', numero:7, municipio:'Campo Maior' }],
     sime_eleicoes: [{ id:'ele-1', zona_id:'z7', turno:1, ativa:true }],
     sime_secoes: [
       { id:SEC_63, numero:63, local_nome:'G.E. Treze de Março', municipio:'Campo Maior' },

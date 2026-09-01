@@ -48,7 +48,7 @@ async function ojCarregar() {
       .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, status_contato_alternativo')
       .eq('zona_id', zonaId).eq('ativo', true).eq('meio_contato', 'oficial_justica')
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao']).order('nome_completo'),
-    sb.from('sime_zonas').select('id, numero, nome, municipio').eq('id', zonaId).maybeSingle(),
+    sb.from('sime_zonas').select('id, numero, municipio').eq('id', zonaId).maybeSingle(),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio').eq('zona_id', zonaId),
   ]);
   if (e1 || e2) { ojDados = { erro: (e1 || e2).message }; render(); return; }

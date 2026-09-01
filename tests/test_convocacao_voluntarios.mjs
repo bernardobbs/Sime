@@ -96,7 +96,7 @@ function mock() {
   return {
     escritas: [], rpcChamadas: [],
     sime_usuarios: [{ id: 'u-maria', nome: 'Maria', perfil: 'coordenador', zona_id: 'z7', ativo: true, auth_user_id: 'auth-maria' }],
-    sime_zonas: [{ id: 'z7', numero: 7, estado: 'PI', nome: 'Campo Maior' }],
+    sime_zonas: [{ id: 'z7', numero: 7, estado: 'PI', municipio: 'Campo Maior' }],
     sime_eleicoes: [{ id: 'el7', zona_id: 'z7', turno: 1, ativa: true, nome: 'Eleições 2026' }],
     sime_logs: [],
     sime_secoes: [
