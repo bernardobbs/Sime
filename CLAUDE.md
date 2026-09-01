@@ -2107,6 +2107,38 @@ cada um com propósito diferente:
 > "🔄 Sincronizar" como um 4º caminho — hoje ainda depende de colar
 > manualmente.
 
+> **Bug real grave, achado em 01/09/2026 — a dispensa da varredura acima
+> (e a de HEMANUELA/Francisco antes dela) tinha sido silenciosamente
+> DESFEITA por um resync do roster.** Pedido direto: "PAULO JOSE MACEDO
+> BRITO FOI DISPENSADO, TODOS DISPENSADOS A FUNÇÃO DEVE ESTAR VAZIA".
+> Investigando o PAULO especificamente: `observacao` já tinha o carimbo
+> "Dispensado ... Marcado ativo=false" de 31/08/2026, mas ele estava
+> `ativo=true` de novo. Varredura em toda a base achou **56 pessoas** (as
+> mesmas 39+ da varredura Situação=DISPENSADO, mais casos anteriores) na
+> mesma situação: dispensadas manualmente, reativadas sozinhas depois.
+>
+> Causa raiz: `sime_sync_atores_from_raw()` faz `DO UPDATE SET ... ativo =
+> true` **incondicional** — toda vez que a pessoa continua aparecendo na
+> exportação de 81 colunas do TRE (que **nunca** traz uma coluna de
+> "situação/dispensada", só percebe que alguém saiu quando ele some do
+> arquivo inteiro), o próximo "🔄 Sincronizar" reativa ela de novo. A
+> dispensa manual (SQL Editor, fora do pipeline) nunca tinha como
+> "avisar" o sync que aquele `ativo=false` era deliberado, não esquecido.
+>
+> Corrigido com uma flag própria, mesmo espírito de `precisa_substituir`
+> (manual, nunca sobrescrita pelo sync): `sime_atores.dispensado_manual`
+> (`sql/SIME_atores_dispensado_manual.sql`, aplicado em produção). A
+> função `sime_sync_atores_from_raw()` passou a gravar
+> `ativo = CASE WHEN sime_atores.dispensado_manual THEN false ELSE true
+> END` — uma vez marcada, a pessoa nunca mais é reativada sozinha, não
+> importa quantas vezes reapareça no roster do TRE; os demais campos
+> (nome, telefone, seção) continuam atualizando normalmente. A mesma
+> migração já restaurou os 52 casos existentes (`ativo=false` +
+> `dispensado_manual=true`, casando por quem já tinha o carimbo "Dispensado
+> ... Marcado ativo=false" na observação). **Ainda não existe botão na UI
+> pra marcar isso** — continua sendo SQL Editor/MCP, mesmo fluxo manual de
+> sempre; só o resync que agora respeita a marcação.
+
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
 `id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
