@@ -1785,6 +1785,32 @@ cada um com propósito diferente:
   atributo `onclick="..."` — nomes de local têm apóstrofo de verdade (ex.:
   "Salão Com. 'Mario Cazuza'"), que quebraria o HTML sem isso.
 
+  **Busca por número de seção + filtro por situação (01/09/2026, pedido
+  direto: "quero poder pesquisar o numero da seção. e um filtro para mostrar
+  seções todas confirmadas, seções com vagas e seções com mesários
+  pendentes").** A busca da grade de locais (`rsBusca`) só casava
+  `local_nome`/`municipio` — agora também casa se QUALQUER seção do local
+  tiver o número buscado como substring (`l.secoes.some(sl =>
+  String(sl.secao.numero).includes(q))`), então digitar "63" acha o local
+  que contém a seção 0063 sem precisar saber o nome do prédio. Filtro novo
+  (`rsFiltroStatus`, `<select>` ao lado da busca) com 3 lentes sobre os
+  mesmos locais já filtrados pela busca — **não mutuamente exclusivas** (um
+  local pode bater em mais de uma, o filtro é uma visão por vez, não uma
+  categorização única):
+  - **✅ Todas as seções confirmadas** — `confirmados === totalCargos`
+    (mesmo critério de "mesa completa" já usado no card do local).
+  - **❌ Com vagas** — `designados < totalCargos`: pelo menos um cargo de
+    mesa, em qualquer seção do local, ainda sem ninguém designado.
+  - **🔶 Com mesários pendentes de confirmação** — `confirmados <
+    designados`: tem gente designada em algum cargo que ainda não
+    confirmou (distinto de "vaga" — o cargo já tem alguém, só falta
+    confirmar). Um local com 0 designados (vaga total) não entra aqui —
+    "pendente" pressupõe que já tem alguém esperando confirmação, não
+    ausência total.
+  Escopado à grade de locais do Dashboard (mesmo nível da busca) — não
+  altera o drilldown por seção nem os stat cards/pizzas, que continuam
+  somando a zona inteira independente do filtro.
+
   **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
   pedido direto: "quero que o sistema verifique se os mesários voluntarios
   já foram atribuidos na parte de convocação e ja marcar como convocado").**

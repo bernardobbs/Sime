@@ -365,6 +365,77 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 1.6 Dashboard: busca por número de seção + filtro por situação
+// (01/09/2026, pedido direto: "quero poder pesquisar o numero da seção. e um
+// filtro para mostrar seções todas confirmadas, seções com vagas e seções
+// com mesários pendentes"). Fixture com 3 locais, cada um batendo só UMA das
+// três situações — pra separar claramente o que cada filtro deve trazer. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes = [
+    { id:'secCompleta', numero:100, local_nome:'Local Completo', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+    { id:'secVazia', numero:200, local_nome:'Local Vazio', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+    { id:'secPendente', numero:300, local_nome:'Local Pendente', municipio:'Campo Maior', zona_id:'z7', ativo:true, eleitores:200 },
+  ];
+  const cargo = (id, secao_id, funcao_mesa, confirmacao) => ({ id, nome_completo:id, telefone_whatsapp:'', funcao:'mesario', funcao_mesa, secao_id, zona_id:'z7', confirmacao, ativo:true });
+  m.sime_atores = [
+    // Local Completo (seção 100): mesa cheia e 100% confirmada.
+    cargo('lc1','secCompleta','Presidente','confirmado'), cargo('lc2','secCompleta','1º Mesário','confirmado'),
+    cargo('lc3','secCompleta','2º Mesário','confirmado'), cargo('lc4','secCompleta','1º Secretário','confirmado'),
+    // Local Vazio (seção 200): ninguém designado — "tem vaga", mas não "tem
+    // pendente" (não há ninguém aguardando confirmação, só cargo vazio).
+    // Local Pendente (seção 300): mesa cheia, mas ninguém confirmou ainda —
+    // "tem pendente", mas não "tem vaga" (todos os 4 cargos já têm gente).
+    cargo('lp1','secPendente','Presidente','pendente'), cargo('lp2','secPendente','1º Mesário','pendente'),
+    cargo('lp3','secPendente','2º Mesário','pendente'), cargo('lp4','secPendente','1º Secretário','pendente'),
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(300);
+
+  // Busca por número de seção — antes só casava nome de local/município.
+  await p.fill('input[placeholder*="Pesquisar"]', '200');
+  await p.waitForTimeout(150);
+  let txt = await p.locator('.content').textContent();
+  check('busca "200" acha o local pelo número da seção (Local Vazio)', /Local Vazio/.test(txt) && !/Local Completo/.test(txt) && !/Local Pendente/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+  await p.fill('input[placeholder*="Pesquisar"]', '300');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('busca "300" acha o local pelo número da seção (Local Pendente)', /Local Pendente/.test(txt) && !/Local Completo/.test(txt) && !/Local Vazio/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+  await p.fill('input[placeholder*="Pesquisar"]', '');
+  await p.waitForTimeout(150);
+
+  // Filtro "✅ Todas as seções confirmadas" — só Local Completo.
+  await p.selectOption('select[aria-label="Filtrar por situação"]', 'confirmadas');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('filtro confirmadas: só Local Completo', /Local Completo/.test(txt) && !/Local Vazio/.test(txt) && !/Local Pendente/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Filtro "❌ Com vagas" — só Local Vazio (Local Pendente tem os 4 cargos
+  // preenchidos, só não confirmados; Local Completo não tem vaga nenhuma).
+  await p.selectOption('select[aria-label="Filtrar por situação"]', 'vagas');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('filtro vagas: só Local Vazio', /Local Vazio/.test(txt) && !/Local Completo/.test(txt) && !/Local Pendente/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Filtro "🔶 Com mesários pendentes de confirmação" — só Local Pendente
+  // (Local Vazio não tem NINGUÉM designado, então não há pendente — só vaga).
+  await p.selectOption('select[aria-label="Filtrar por situação"]', 'pendentes');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('filtro pendentes: só Local Pendente', /Local Pendente/.test(txt) && !/Local Completo/.test(txt) && !/Local Vazio/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  // Volta pra "Todos os locais" — os 3 aparecem de novo.
+  await p.selectOption('select[aria-label="Filtrar por situação"]', 'todos');
+  await p.waitForTimeout(150);
+  txt = await p.locator('.content').textContent();
+  check('filtro todos: os 3 locais aparecem de novo', /Local Completo/.test(txt) && /Local Vazio/.test(txt) && /Local Pendente/.test(txt), txt.replace(/\s+/g, ' ').slice(0, 400));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2. Contatar mesários: badges, meio de contato, marcar contato incorreto ──
 {
   const ctx = await b.newContext();

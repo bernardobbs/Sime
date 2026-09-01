@@ -18,6 +18,15 @@ const RS_CARGOS = ['Presidente', '1º Mesário', '2º Mesário', '1º Secretári
 let rsDados = null;      // { secoes:[...], porSecao:{}, totalMesarios, totalApoio }
 let rsBusca = '';
 let rsModo = 'grade';    // 'grade' | 'lista'
+// Filtro por situação dos LOCAIS de votação (pedido direto, 01/09/2026: "um
+// filtro para mostrar seções todas confirmadas, seções com vagas e seções
+// com mesários pendentes"). Aplicado sobre `porLocal` (mesmo nível da busca
+// e da grade/lista) — um local "tem vaga" se pelo menos um cargo de mesa,
+// em qualquer seção dele, ainda não tem ninguém designado; "tem pendente" se
+// pelo menos um cargo tem alguém designado mas ainda não confirmou. As duas
+// condições não são mutuamente exclusivas (um local pode ter os dois ao
+// mesmo tempo) — o filtro é uma lente por vez, não uma categorização única.
+let rsFiltroStatus = 'todos'; // 'todos' | 'confirmadas' | 'vagas' | 'pendentes'
 let rsLocalAberto = null; // chave `${local_nome}|||${municipio}` do local em drilldown, ou null
 // Fechada por padrão (21/08/2026) — a tabela por município deixava o topo
 // do Dashboard denso demais competindo com a barra-funil e as pizzas;
@@ -626,8 +635,26 @@ function renderResumoSecoes() {
   }
 
   // ── Grade/lista de locais de votação ──
+  // Busca por nome do local, município OU número de seção (01/09/2026,
+  // pedido direto: "quero poder pesquisar o numero da seção") — um local
+  // "casa" se qualquer seção dele tiver o número buscado como substring
+  // (ex.: "63" acha a seção 0063), não só nome/município como antes.
   const q = rsBusca.trim().toLowerCase();
-  const filtrados = q ? porLocal.filter(l => (l.local_nome || '').toLowerCase().includes(q) || (l.municipio || '').toLowerCase().includes(q)) : porLocal;
+  let filtrados = q
+    ? porLocal.filter(l =>
+        (l.local_nome || '').toLowerCase().includes(q) ||
+        (l.municipio || '').toLowerCase().includes(q) ||
+        l.secoes.some(sl => String(sl.secao.numero).includes(q)))
+    : porLocal;
+  // Filtro por situação (01/09/2026) — três lentes sobre os mesmos locais já
+  // filtrados pela busca, não substituem a busca.
+  if (rsFiltroStatus === 'confirmadas') {
+    filtrados = filtrados.filter(l => l.totalCargos > 0 && l.confirmados === l.totalCargos);
+  } else if (rsFiltroStatus === 'vagas') {
+    filtrados = filtrados.filter(l => l.designados < l.totalCargos);
+  } else if (rsFiltroStatus === 'pendentes') {
+    filtrados = filtrados.filter(l => l.confirmados < l.designados);
+  }
   const semNenhum = linhas.filter(l => l.designados === 0).length;
   const completas = linhas.filter(l => l.confirmados === 4).length;
 
@@ -638,7 +665,13 @@ function renderResumoSecoes() {
     ${statsHTML}
     <div class="import-card" style="padding:12px 16px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <input type="text" placeholder="🔍 Pesquisar local de votação…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <input type="text" placeholder="🔍 Pesquisar local de votação ou nº da seção…" value="${rsBusca.replace(/"/g, '&quot;')}" oninput="rsBusca=this.value;render()" style="flex:1;min-width:200px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <select onchange="rsFiltroStatus=this.value;render()" aria-label="Filtrar por situação" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          <option value="todos" ${rsFiltroStatus === 'todos' ? 'selected' : ''}>Todos os locais</option>
+          <option value="confirmadas" ${rsFiltroStatus === 'confirmadas' ? 'selected' : ''}>✅ Todas as seções confirmadas</option>
+          <option value="vagas" ${rsFiltroStatus === 'vagas' ? 'selected' : ''}>❌ Com vagas (cargo sem designação)</option>
+          <option value="pendentes" ${rsFiltroStatus === 'pendentes' ? 'selected' : ''}>🔶 Com mesários pendentes de confirmação</option>
+        </select>
         <div style="display:flex;gap:4px">
           <button class="btn ${rsModo === 'grade' ? 'btn-dark' : 'btn-out'}" style="padding:7px 10px;font-size:.76rem" onclick="rsModo='grade';render()" aria-label="Ver em grade" aria-pressed="${rsModo === 'grade'}">▦</button>
           <button class="btn ${rsModo === 'lista' ? 'btn-dark' : 'btn-out'}" style="padding:7px 10px;font-size:.76rem" onclick="rsModo='lista';render()" aria-label="Ver em lista" aria-pressed="${rsModo === 'lista'}">☰</button>
@@ -653,5 +686,5 @@ function renderResumoSecoes() {
       rsModo === 'grade'
         ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px">${filtrados.map(rsCardLocal).join('')}</div>`
         : `<div style="display:flex;flex-direction:column;gap:8px">${filtrados.map(rsLinhaLocal).join('')}</div>`
-    ) : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhum local encontrado com essa busca.</div></div>'}`;
+    ) : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhum local encontrado com essa busca/filtro.</div></div>'}`;
 }
