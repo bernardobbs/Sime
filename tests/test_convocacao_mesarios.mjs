@@ -1805,6 +1805,76 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.6 Contatar mesários: indicar/filtrar quem não tem WhatsApp
+// (01/09/2026, pedido direto: "estou com uma dificildade de identificar os
+// mesário que não tem whatsapp... verifique uma forma de indicar se o
+// numero é ou não whatsapp e como filtrar isso"). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push(
+    // GERALDO: número em FORMATO DE FIXO (DDD+8, sem o 9º dígito) — sinal
+    // automático, não precisa de nenhuma flag marcada.
+    { id:'a40', nome_completo:'GERALDO TELEFONE FIXO', telefone_whatsapp:'558632220000', funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', sem_whatsapp_manual:false },
+    // IRACEMA: número em formato de CELULAR normal, mas o cartório já sabe
+    // por fora que não tem WhatsApp — só a flag manual indica isso.
+    { id:'a41', nome_completo:'IRACEMA SEM WHATSAPP MANUAL', telefone_whatsapp:'5586988887766', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', sem_whatsapp_manual:true },
+  );
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const cardGeraldo = await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO")').first().textContent();
+  check('número em formato de fixo mostra o badge automático "Formato de fixo"', /Formato de fixo/.test(cardGeraldo), cardGeraldo.replace(/\s+/g, ' '));
+  const cardIracema = await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL")').first().textContent();
+  check('quem já está marcado manualmente mostra "Sem WhatsApp" (sem o texto "Formato de fixo")', /📵 Sem WhatsApp/.test(cardIracema) && !/Formato de fixo/.test(cardIracema), cardIracema.replace(/\s+/g, ' '));
+
+  const cardAna = await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent();
+  check('número em formato de celular normal, sem marcação manual, não mostra nenhum badge de WhatsApp', !/Formato de fixo/.test(cardAna) && !/📵 Sem WhatsApp/.test(cardAna), cardAna.replace(/\s+/g, ' '));
+
+  // Filtro "📵 Sem WhatsApp" — combina os dois sinais (automático + manual).
+  await p.selectOption('#cm-filtro', 'sem_whatsapp');
+  await p.waitForTimeout(200);
+  const listaFiltrada = await p.locator('.cm-lista-pessoas').textContent();
+  check('filtro "Sem WhatsApp" mostra GERALDO (automático) e IRACEMA (manual)', /GERALDO TELEFONE FIXO/.test(listaFiltrada) && /IRACEMA SEM WHATSAPP MANUAL/.test(listaFiltrada), listaFiltrada.replace(/\s+/g, ' ').slice(0, 400));
+  check('filtro "Sem WhatsApp" esconde quem tem número de celular normal (ANA)', !/ANA PRESIDENTE/.test(listaFiltrada));
+
+  // Volta pra "Todos", marca GERALDO como "sem WhatsApp" manualmente (mesmo
+  // já tendo o sinal automático — os dois podem coexistir) e desmarca
+  // IRACEMA pelo botão do card.
+  await p.selectOption('#cm-filtro', '');
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO") button:has-text("Marcar sem WhatsApp")').click();
+  await p.waitForTimeout(200);
+  const atorGeraldo = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a40'));
+  check('marcar manualmente grava sem_whatsapp_manual=true', atorGeraldo.sem_whatsapp_manual === true, JSON.stringify(atorGeraldo));
+  const logGeraldo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_sem_whatsapp_manual' && e.payload.payload?.ator_id === 'a40'));
+  check('grava log mesario_sem_whatsapp_manual', !!logGeraldo && logGeraldo.payload.payload.sem_whatsapp_manual === true, JSON.stringify(logGeraldo));
+
+  await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL") button:has-text("Tem WhatsApp")').click();
+  await p.waitForTimeout(200);
+  const atorIracema = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a41'));
+  check('desmarcar manualmente grava sem_whatsapp_manual=false', atorIracema.sem_whatsapp_manual === false, JSON.stringify(atorIracema));
+  const cardIracemaDepois = await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL")').first().textContent();
+  // (não checa ausência de "📵" no card inteiro — o próprio botão "📵 Marcar
+  // sem WhatsApp" sempre mostra esse emoji quando a flag está desmarcada;
+  // o que importa é o BADGE de status específico não aparecer mais.)
+  check('depois de desmarcar, IRACEMA não mostra mais o badge de status (número dela é de celular)', !/📵 Sem WhatsApp/.test(cardIracemaDepois) && !/📵 Formato de fixo/.test(cardIracemaDepois), cardIracemaDepois.replace(/\s+/g, ' '));
+
+  // Modal também mostra o botão e a situação.
+  await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO") div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(200);
+  const modalTxt = await p.locator('#modal-body').textContent();
+  check('modal mostra "Sem WhatsApp (confirmado)" na Situação, já que foi marcado manualmente', /Sem WhatsApp \(confirmado\)/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
+  check('modal tem o botão de alternar Sem WhatsApp', await p.locator('#modal-body button:has-text("Sem WhatsApp")').count() >= 1);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 3. Sincronizar (reaproveitado de SIME_atores.html, agora na página própria) ──
 {
   const ctx = await b.newContext();

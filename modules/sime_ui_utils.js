@@ -125,6 +125,23 @@ function normalizarTelefoneWhatsapp(raw) {
   return d;
 }
 
+// Detecta telefone em FORMATO DE FIXO (01/09/2026, pedido direto: "verifique
+// uma forma de indicar se o numero é ou não whatsapp e como filtrar isso" —
+// achado ao investigar: whatsapp_existe, o sinal que o Hermes devolveria
+// depois de tentar mandar mensagem, nunca chegou a ser gravado em produção
+// nenhuma vez — não dá pra depender dele hoje). Não é uma verificação real
+// contra o WhatsApp (o SIME não tem como consultar isso) — é só o mesmo
+// critério de "celular vs. fixo" que normalizarTelefoneWhatsapp() já usa pra
+// decidir se adiciona o 9º dígito: um número SEM esse dígito (DDD + 8, não
+// DDD + 9) é, por definição de numeração brasileira, um fixo — e fixo não
+// tem WhatsApp. Sinal automático, sempre disponível (não depende de nenhuma
+// tentativa de envio); complementa (não substitui) sime_atores.sem_whatsapp_manual,
+// a flag que o cartório marca quando sabe por fora que um número — mesmo em
+// formato de celular — não tem WhatsApp.
+function telFormatoFixo(numero) {
+  return telSemPais(numero).length === 10;
+}
+
 // Normaliza título de eleitor pra 12 dígitos com zero à esquerda — mesma
 // convenção agora usada em sime_atores.inscricao_eleitoral por TODO caminho
 // que grava ou casa por esse campo (27/08/2026, achado real em produção:

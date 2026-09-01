@@ -99,6 +99,7 @@ const CM_BUCKETS = [
   { valor: 'precisa_substituir', label: '🔁 Precisa ser substituído' },
   { valor: 'substituido',       label: '🔁 Já substituído' },
   { valor: 'relato_terceiro_pendente', label: '⚠️ Relato de terceiro — precisa confirmar' },
+  { valor: 'sem_whatsapp', label: '📵 Sem WhatsApp (confirmado ou formato de fixo)' },
 ];
 // Filtro por função (21/08/2026) — desde que apoio logístico entrou na
 // mesma fila de mesário, dá pra querer ver só um tipo de cada vez.
@@ -208,6 +209,7 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
+  mesario_sem_whatsapp_manual: (p) => p.sem_whatsapp_manual ? '📵 Marcado — confirmado sem WhatsApp' : '✓ Desmarcado — tem WhatsApp',
   mesario_substituto_nome: (p) => p.substituto_nome ? `Nome do substituto: ${p.substituto_nome}` : 'Nome do substituto removido',
   mesario_substituto_telefone: (p) => p.substituto_telefone ? `Telefone do substituto: ${fmtTelefone(p.substituto_telefone)}` : 'Telefone do substituto removido',
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
@@ -260,7 +262,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }, { data: tentativasManuais }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, sem_whatsapp_manual')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -432,6 +434,37 @@ async function cmTogglePrecisaSubstituir(id) {
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
   render();
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
+}
+
+// "Sem WhatsApp" — dois sinais complementares (01/09/2026, pedido direto:
+// "estou com uma dificildade de identificar os mesário que não tem
+// whatsapp... verifique uma forma de indicar se o numero é ou não whatsapp
+// e como filtrar isso"):
+// 1. Automático (telFormatoFixo, sime_ui_utils.js) — um telefone salvo em
+//    formato de fixo (DDD+8, sem o 9º dígito) nunca tem WhatsApp, pela
+//    própria numeração brasileira. Não precisa de flag nenhuma, é calculado
+//    na hora a partir do número salvo.
+// 2. Manual (sem_whatsapp_manual) — pro caso do cartório saber por fora que
+//    um número, mesmo em formato de celular, não tem WhatsApp (ex.: a
+//    pessoa confirmou por telefone que não usa WhatsApp nesse chip).
+//    Mesmo espírito de precisa_substituir: flag do cartório, nunca tocada
+//    por sync nem automação.
+// cmSemWhatsapp() combina os dois — usado tanto pro badge quanto pro filtro.
+function cmSemWhatsapp(p) {
+  return !!p.sem_whatsapp_manual || telFormatoFixo(p.telefone_whatsapp);
+}
+async function cmToggleSemWhatsapp(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const novo = !p.sem_whatsapp_manual;
+  const { error } = await sb.from('sime_atores').update({ sem_whatsapp_manual: novo }).eq('id', id);
+  if (error) { showToast('⚠ ' + error.message); return; }
+  p.sem_whatsapp_manual = novo;
+  await cmLog('mesario_sem_whatsapp_manual', '', { ator_id: id, sem_whatsapp_manual: novo });
+  showToast(novo ? '📵 Marcado — sem WhatsApp' : '✓ Desmarcado — tem WhatsApp');
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 // Nome de quem vai substituir (27/08/2026, pedido direto: "ao marcar para
@@ -1104,15 +1137,16 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}${p.sem_whatsapp_manual ? ' · 📵 Sem WhatsApp (confirmado)' : telFormatoFixo(p.telefone_whatsapp) ? ' · 📵 Formato de fixo' : ''}</span></div>
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:4px">
         <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
         <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
+        <button class="btn ${p.sem_whatsapp_manual ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmToggleSemWhatsapp('${p.id}')" title="Marque quando souber, por fora, que esse número não tem WhatsApp">📵 Sem WhatsApp</button>
       </div>
-      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.</div>
+      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp. "Sem WhatsApp" é independente dos outros três — indica que esse número não recebe mensagem, não que a pessoa não vai participar.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
@@ -1388,6 +1422,7 @@ function cmFiltrar() {
     if (cmFiltroStatus === 'precisa_substituir') { if (!p.precisa_substituir) return false; }
     else if (cmFiltroStatus === 'relato_terceiro_pendente') { if (!p.tem_relato_terceiro_pendente) return false; }
     else if (cmFiltroStatus === 'aguardando_resposta') { if (!cmEhAguardandoResposta(p)) return false; }
+    else if (cmFiltroStatus === 'sem_whatsapp') { if (!cmSemWhatsapp(p)) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
@@ -1447,6 +1482,7 @@ function renderContatarMesarios() {
   for (const p of cmDados.pessoas) contagem[p.confirmacao || 'pendente'] = (contagem[p.confirmacao || 'pendente'] || 0) + 1;
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
   contagem.relato_terceiro_pendente = cmDados.pessoas.filter(p => p.tem_relato_terceiro_pendente).length;
+  contagem.sem_whatsapp = cmDados.pessoas.filter(cmSemWhatsapp).length;
   const pessoasAguardando = cmDados.pessoas.filter(cmEhAguardandoResposta);
   contagem.aguardando_resposta = pessoasAguardando.length;
   const contagemFuncao = {};
@@ -1507,6 +1543,8 @@ function renderContatarMesarios() {
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
               ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${cmSubstitutoLabel(p)}</span>` : ''}
               ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
+              ${p.sem_whatsapp_manual ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="O cartório confirmou que este número não tem WhatsApp">📵 Sem WhatsApp</span>`
+                : telFormatoFixo(p.telefone_whatsapp) ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="Número em formato de telefone fixo (sem o 9º dígito) — fixo não tem WhatsApp">📵 Formato de fixo</span>` : ''}
             </div>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
@@ -1526,6 +1564,7 @@ function renderContatarMesarios() {
             ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarParticipacao('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — só marca confirmado, não manda mensagem nenhuma">✅ Confirmar participação</button>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
+            <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmToggleSemWhatsapp('${p.id}')" title="${p.sem_whatsapp_manual ? 'Desmarcar — voltar a tratar como possível WhatsApp' : 'Marcar quando você souber, por fora, que esse número não tem WhatsApp'}">${p.sem_whatsapp_manual ? '✓ Tem WhatsApp' : '📵 Marcar sem WhatsApp'}</button>
             ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
             ${escalar ? `
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmSalvarMeio('${p.id}','carta_registrada')">📮 Passar pra Carta Registrada</button>

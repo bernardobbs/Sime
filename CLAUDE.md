@@ -1293,6 +1293,43 @@ cada um com propósito diferente:
   clique que o cartório já faria manualmente pelo seletor. Trocar de meio
   já limpa a sugestão sozinho (mesmo `render()` que `cmSalvarMeio()` sempre
   chamou).
+
+  **Indicar/filtrar quem não tem WhatsApp (01/09/2026, pedido direto:
+  "estou com uma dificildade de identificar os mesário que não tem
+  whatsapp. exemplo GILCILENE DOS SANTOS SOUSA. verifique uma forma de
+  indicar se o numero é ou não whatsapp e como filtrar isso").** Investigado
+  antes de construir: `sime_campanhas_confirmacao.whatsapp_existe` (campo
+  que o Hermes gravaria quando um envio falha por número sem WhatsApp) já
+  existe desde a campanha em massa, mas em produção **nunca foi gravado uma
+  vez sequer** — 0 linhas preenchidas, apesar de 36 tentativas registradas
+  — não dá pra depender desse sinal hoje (pendência do lado Hermes, fora
+  deste repositório). GILCILENE especificamente nunca teve nenhuma
+  tentativa de campanha registrada — pro SIME, o número dela é simplesmente
+  desconhecido, não "confirmado sem WhatsApp".
+
+  Dois sinais complementares, nenhum inventa dado:
+  - **Automático** — `telFormatoFixo()` (`sime_ui_utils.js`): um telefone
+    normalizado sem o 9º dígito (DDD+8, não DDD+9) é, pela numeração
+    brasileira, um fixo — fixo não tem WhatsApp. Sempre disponível, não
+    depende de nenhuma tentativa de envio (verificado contra a base real
+    antes de aplicar: 649 números em formato de celular contra só 6 em
+    formato de fixo e 1 caso anômalo, na 7ª Zona).
+  - **Manual** — `sime_atores.sem_whatsapp_manual` (`sql/
+    SIME_atores_sem_whatsapp_manual.sql`), mesmo espírito de
+    `precisa_substituir`: flag do cartório, nunca escrita por sync ou
+    automação, pro caso de saber por fora (a pessoa mesma disse que não usa
+    WhatsApp nesse número, mesmo ele tendo formato de celular).
+  Card ganha badge (📵 "Sem WhatsApp" quando a flag manual está marcada,
+  📵 "Formato de fixo" quando é só o sinal automático — a manual tem
+  prioridade quando as duas coexistem) e um botão de alternância
+  (`cmToggleSemWhatsapp`, mesmo padrão de toda ação rápida de card); modal
+  mostra o mesmo sinal na linha "Situação" e ganha um 4º botão na linha de
+  status (`📵 Sem WhatsApp`, ao lado de Confirmado/Convocado/Substituir) —
+  deliberadamente independente dos outros três, já que "não tem WhatsApp"
+  não é um desfecho de confirmação, é uma propriedade do número. Bucket
+  próprio em `CM_BUCKETS` (`sem_whatsapp`) reúne os dois sinais (manual OU
+  formato de fixo) pra filtrar de uma vez quem precisa de outro canal
+  (ligação, carta, oficial de justiça) em vez de WhatsApp.
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
@@ -2138,6 +2175,39 @@ cada um com propósito diferente:
 > ... Marcado ativo=false" na observação). **Ainda não existe botão na UI
 > pra marcar isso** — continua sendo SQL Editor/MCP, mesmo fluxo manual de
 > sempre; só o resync que agora respeita a marcação.
+
+> **Bug real, achado em 01/09/2026 — cargo de mesa errado gravado quando a
+> pessoa é remanejada, por desempate arbitrário no upsert.** Pedido direto:
+> "FRANCYELLE OLIVEIRA RIBEIRO esta como 2º mesário, e no elo como
+> presidente, o que pode ter havido? no ultimo arquivo atualizado ela consta
+> como presidente". Investigado: o arquivo de 81 colunas não traz uma linha
+> por PESSOA — traz uma linha por EVENTO de designação. Quando alguém é
+> remanejada de cargo, o arquivo às vezes carrega as DUAS linhas pro mesmo
+> título: a designação antiga (`data_nomeacao` preenchido, `data_convocacao`
+> nulo) e a nova (`data_convocacao` preenchido, `data_nomeacao` nulo), mesmo
+> `tipo_registro='MRV'`, `descricao_funcao_eleitoral` diferente entre as
+> duas. `sime_sync_atores_from_raw()` já sabia que podia haver mais de uma
+> linha pro mesmo `(inscricao, funcao)` num mesmo arquivo — daí o
+> `ROW_NUMBER() ... WHERE rn=1` — mas desempatava por `ORDER BY r.id`, o id
+> do STAGING (uuid gerado no INSERT), que não guarda relação nenhuma com
+> qual das duas designações é a mais recente. Na prática, um sorteio: das
+> 13 pessoas da 7ª Zona com esse conflito no arquivo de 01/09/2026, 3
+> ficaram com o cargo ERRADO gravado (FRANCYELLE, JEAN RIBEIRO DE OLIVEIRA e
+> JOAO SERGIO BRITO DO NASCIMENTO — FRANCYELLE e JEAN, aliás, são o mesmo
+> par já documentado acima trocando de cargo na seção 225); outras 5 não
+> foram afetadas na prática por já estarem com `dispensado_manual=true`.
+>
+> Confirmado nos 739 registros da 7ª Zona: `data_atribuicao` está sempre
+> preenchido, sempre em `DD/MM/AAAA`, nas duas linhas de qualquer conflito
+> — e nos 13 casos verificados, a linha com a MAIOR `data_atribuicao` é
+> sempre a que tem `data_convocacao` preenchida (a designação vigente),
+> nunca a com `data_nomeacao` (a antiga). Corrigido trocando o desempate
+> pra `ORDER BY to_date(data_atribuicao, 'DD/MM/YYYY') DESC NULLS LAST,
+> r.id` — só cai em `r.id` quando as duas linhas têm exatamente a mesma
+> data (empate de verdade, sem informação pra decidir). `sql/
+> SIME_sync_atribuicao_mais_recente.sql`, aplicado em produção; rodar de
+> novo `sime_sync_atores_from_raw(7, 'PI')` com a função corrigida já
+> resolveu as 3 pessoas afetadas, sem precisar reenviar nenhum arquivo.
 
 A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
 — UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
