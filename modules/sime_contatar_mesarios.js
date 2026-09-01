@@ -1224,12 +1224,11 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}${cmSemWhatsapp(p) ? ' · 📵 Principal sem WhatsApp' : ''}</span></div>
       </div>
 
-      <div style="display:flex;gap:6px;margin-bottom:4px">
-        <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
-        <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')" title="Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.">✅ Confirmado</button>
+        <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')" title="Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.">📋 Convocado</button>
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
       </div>
-      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
@@ -1245,7 +1244,7 @@ function cmRenderModal() {
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px;white-space:nowrap" onclick="cmConcluirSubstituicao('${p.id}')" title="Já foi resolvido por fora (ligação, presencial) — fecha a substituição e tira esta pessoa da fila">✅ Concluir substituição</button>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
-        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no número pra editar (salva sozinho ao sair do campo) e no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho. No canto de cada cartão: ✕ exclui o número (não é desta pessoa) e 📵 marca que aquele número específico não tem WhatsApp.</div>
+        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
           ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => {
             const elId = t.campo === 'telefone_whatsapp' ? 'mm-tel-principal' : t.campo === 'telefone_alternativo' ? 'mm-tel-alternativo' : null;
@@ -1258,10 +1257,10 @@ function cmRenderModal() {
             ${t.valor ? `<button onclick="cmToggleSemWhatsappNumero('${p.id}','${t.digitos}')" title="${semWhatsappManual ? 'Desmarcar — voltar a tratar como possível WhatsApp' : 'Marcar que este número não tem WhatsApp'}" aria-label="Marcar sem WhatsApp" style="position:absolute;top:-7px;left:-7px;width:20px;height:20px;border-radius:50%;background:${semWhatsappManual ? 'var(--red,#c0392b)' : 'var(--bg)'};color:${semWhatsappManual ? '#fff' : 'var(--text2)'};border:1px solid var(--red-bd,#e0a09a);font-size:.6rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">📵</button>` : ''}
             ${t.valor ? (semWhatsapp
                 ? `<span aria-hidden="true" title="Marcado como sem WhatsApp" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.35">💬</span>`
-                : `<button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>`)
+                : `<button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)} — já com a mensagem de confirmação (bom dia/boa tarde/boa noite conforme a hora) e registra a tentativa sozinho" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>`)
               : `<span aria-hidden="true" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.3">💬</span>`}
             ${t.editavel
-              ? `<input id="${elId}" type="text" value="${t.valor ? cmEsc(fmtTelefone(t.valor)) : ''}" placeholder="(86) 9xxxx-xxxx" aria-label="Editar ${cmEsc(t.label)}" onblur="cmSalvarTelefoneCard('${p.id}','${t.campo}','${elId}')" style="width:100%;text-align:center;font-size:.74rem;font-weight:700;border:1px solid var(--border2);border-radius:5px;padding:2px 4px;background:var(--bg);color:var(--text)">`
+              ? `<input id="${elId}" type="text" value="${t.valor ? cmEsc(fmtTelefone(t.valor)) : ''}" placeholder="(86) 9xxxx-xxxx" title="Clique pra editar — salva sozinho ao sair do campo" aria-label="Editar ${cmEsc(t.label)}" onblur="cmSalvarTelefoneCard('${p.id}','${t.campo}','${elId}')" style="width:100%;text-align:center;font-size:.74rem;font-weight:700;border:1px solid var(--border2);border-radius:5px;padding:2px 4px;background:var(--bg);color:var(--text)">`
               : `<b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>`}
             <span style="font-size:.6rem;color:var(--text2)">${cmEsc(t.label)}</span>
             ${semWhatsapp ? `<span style="font-size:.58rem;color:var(--red,#c0392b)">📵 ${semWhatsappManual ? 'Não é WhatsApp' : 'Formato de fixo'}</span>` : ''}

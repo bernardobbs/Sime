@@ -1402,6 +1402,38 @@ cada um com propósito diferente:
   existia no card e no topo do modal (`cmToggleSemWhatsapp`, 4º botão ao
   lado de Confirmado/Convocado/Substituir) foi removido — a marcação agora
   só existe junto do número, dentro de "📞 Todos os telefones conhecidos".
+
+  **Textos de explicação viraram tooltip, não parágrafo fixo (01/09/2026,
+  pedido direto: "assim vamos deixar o modal menos poluido").** Duas frases
+  que ficavam sempre visíveis no modal — a que explica Confirmado×Convocado
+  (abaixo da linha de 3 botões) e a que explicava os ícones da lista de
+  telefones (💬/✕/📵) — viraram `title` (tooltip ao passar o mouse) em vez de
+  texto fixo: a primeira nos botões "✅ Confirmado"/"📋 Convocado" (mesmo
+  texto nos dois, já que explica a relação entre os dois status); a segunda
+  distribuída por ícone — 💬 ganhou o texto sobre mensagem pré-pronta/
+  registro de tentativa, o campo de telefone ganhou "Clique pra editar —
+  salva sozinho ao sair do campo", e ✕/📵 já tinham tooltip próprio desde
+  que nasceram (ver acima). O rótulo "📞 Todos os telefones conhecidos"
+  continua fixo (só o texto instrucional embaixo dele que virou tooltip).
+
+  **Backfill em produção (01/09/2026, pedido direto: "verifique todos os
+  mesários que nas observações foi indicado sem whatsapp... e marque o
+  numero de telefone como não sendo whatsapp").** Varredura em
+  `sime_atores.observacao` (regex cobrindo "sem whatsapp"/"não é
+  whatsapp"/"numero não é whatsapp" e variantes de maiúscula/espaçamento)
+  achou **31 pessoas** na 7ª Zona com essa anotação explícita do cartório —
+  incluindo a própria GILCILENE DOS SANTOS SOUSA, o caso que motivou a
+  feature inteira. Rodado uma vez via SQL Editor/MCP (não é uma migração,
+  não reaplica sozinha) — grava o dígito do `telefone_whatsapp` de cada uma
+  em `telefones_sem_whatsapp`, idempotente (um caso, ANTONIO HIAGO BARBOSA
+  BORGES, já tinha sido marcado manualmente pela UI antes desta varredura e
+  não duplicou). **Um caso ficou de fora de propósito**: ANA KAROLIINE DA
+  SILVA ALVES tem observação "não é o whatsApp" — frase ambígua (pode
+  significar "esse número não tem WhatsApp" OU "esse número não é dela",
+  mesmo problema de duplo-sentido já documentado pra "recusou"/"contato
+  incorreto" alhures) — mesmo critério de "nunca adivinha": não marcada
+  automaticamente, fica pro cartório revisar manualmente pelo cartãozinho
+  (✕ se for número errado, 📵 se for só sem WhatsApp).
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
