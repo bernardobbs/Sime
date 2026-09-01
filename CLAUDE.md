@@ -1349,22 +1349,59 @@ cada um com propósito diferente:
     depende de nenhuma tentativa de envio (verificado contra a base real
     antes de aplicar: 649 números em formato de celular contra só 6 em
     formato de fixo e 1 caso anômalo, na 7ª Zona).
-  - **Manual** — `sime_atores.sem_whatsapp_manual` (`sql/
-    SIME_atores_sem_whatsapp_manual.sql`), mesmo espírito de
-    `precisa_substituir`: flag do cartório, nunca escrita por sync ou
-    automação, pro caso de saber por fora (a pessoa mesma disse que não usa
-    WhatsApp nesse número, mesmo ele tendo formato de celular).
-  Card ganha badge (📵 "Sem WhatsApp" quando a flag manual está marcada,
-  📵 "Formato de fixo" quando é só o sinal automático — a manual tem
-  prioridade quando as duas coexistem) e um botão de alternância
-  (`cmToggleSemWhatsapp`, mesmo padrão de toda ação rápida de card); modal
-  mostra o mesmo sinal na linha "Situação" e ganha um 4º botão na linha de
-  status (`📵 Sem WhatsApp`, ao lado de Confirmado/Convocado/Substituir) —
-  deliberadamente independente dos outros três, já que "não tem WhatsApp"
-  não é um desfecho de confirmação, é uma propriedade do número. Bucket
-  próprio em `CM_BUCKETS` (`sem_whatsapp`) reúne os dois sinais (manual OU
-  formato de fixo) pra filtrar de uma vez quem precisa de outro canal
-  (ligação, carta, oficial de justiça) em vez de WhatsApp.
+  - **Manual** — pro caso de saber por fora (a pessoa mesma disse que não
+    usa WhatsApp nesse número, mesmo ele tendo formato de celular).
+
+  **Redesenhado no mesmo dia, ainda antes de ganhar uso real (pedido
+  direto, olhando o cartãozinho de telefone do modal): "o marcar sem
+  whatsapp deve vir junto ao numero tipo um x no canto para excluir o
+  numero caso não seja numero da pessoa e do outro lado, sem whatsapp".**
+  A primeira versão gravava `sime_atores.sem_whatsapp_manual` — flag da
+  PESSOA — mas uma pessoa tem vários telefones na lista de "Todos os
+  telefones conhecidos" (principal, os do TRE, o cadastrado à mão), e o
+  status de WhatsApp é propriedade de CADA NÚMERO, não da pessoa como um
+  todo. Nasceu no mesmo dia, teve exatamente 1 uso real em produção (MARIA
+  DO SOCORRO OLIVEIRA DE SOUSA) antes de ser substituída — migrado pro novo
+  formato, não perdido (ver abaixo).
+
+  `sql/SIME_atores_telefones_sem_whatsapp.sql` troca a flag única por duas
+  listas, uma por NÚMERO (dígitos sem "55", mesmo formato de `telSemPais()`,
+  em `jsonb`):
+  - **`telefones_sem_whatsapp`** — dígitos dos números que o cartório
+    confirmou não terem WhatsApp, mesmo em formato de celular. Mesmo
+    espírito de `precisa_substituir`: flag do cartório, nunca escrita por
+    sync ou automação.
+  - **`telefones_ignorados`** — dígitos de números que o cartório marcou
+    como "não é o número desta pessoa" (erro de digitação na planilha do
+    TRE, número de outra pessoa). Pro `telefone_whatsapp`/
+    `telefone_alternativo` (colunas próprias do SIME) excluir já limpa o
+    campo direto — esta lista só é necessária pros números vindos de
+    `sime_mesarios_raw` (staging do TRE, só leitura): não dá pra apagar de
+    lá, então só some da lista **desta pessoa** daqui em diante, sem tocar
+    no staging nem em ninguém mais.
+
+  Cada cartão de telefone (`cmListaTelefones`) ganha os dois cantos: **✕**
+  (canto superior direito, todo cartão com valor — antes só existia no
+  telefone alternativo cadastrado à mão) chama `cmExcluirTelefoneCard()` —
+  limpa o campo (principal/alternativo) ou entra em `telefones_ignorados`
+  (número do TRE); **📵** (canto superior esquerdo, cor sólida quando
+  marcado) chama `cmToggleSemWhatsappNumero()` — alterna só aquele número em
+  `telefones_sem_whatsapp`. Quando marcado (manual OU `telFormatoFixo`), o
+  ícone 💬 de copiar link fica opaco/desabilitado (copiar um link de
+  WhatsApp pra um número confirmado sem WhatsApp não faz sentido), a borda
+  do cartão fica vermelha, e uma legenda ("📵 Não é WhatsApp" ou "📵 Formato
+  de fixo", conforme a origem do sinal) aparece embaixo do rótulo. Excluir
+  um número também tira ele de `telefones_sem_whatsapp` se estivesse lá —
+  não faz sentido guardar status de WhatsApp de um número que acabou de
+  deixar de ser desta pessoa.
+
+  `cmSemWhatsapp(p)` (usada pro badge do card na lista e pro bucket
+  `sem_whatsapp` em `CM_BUCKETS`) passou a checar só o telefone PRINCIPAL —
+  é o que Hermes/campanha em massa de fato usam, então é o que importa pra
+  bater o olho na lista sem abrir o modal; o botão de alternância avulso que
+  existia no card e no topo do modal (`cmToggleSemWhatsapp`, 4º botão ao
+  lado de Confirmado/Convocado/Substituir) foi removido — a marcação agora
+  só existe junto do número, dentro de "📞 Todos os telefones conhecidos".
 - **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.

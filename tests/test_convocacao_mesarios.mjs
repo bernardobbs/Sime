@@ -834,14 +834,16 @@ async function login(p) {
   // por inputValue().
   check('telefone alternativo cadastrado à mão aparece na lista única', /Telefone alternativo \(cartório\)/.test(modalComAlt) && (await p.locator('#mm-tel-alternativo').inputValue()) === '(86) 90000-1234', modalComAlt.replace(/\s+/g, ' ').slice(0, 500));
 
-  // Remover o que foi cadastrado à mão.
+  // Excluir o que foi cadastrado à mão — todo cartão com valor tem o ✕
+  // (01/09/2026: generalizado de "só o alternativo" pra qualquer cartão,
+  // ver bloco 2.6b).
   const linhaManual = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone alternativo (cartório)' });
-  check('só o cadastrado à mão tem botão de remover (não o do TRE nem o principal)', await linhaManual.locator('button[title="Remover telefone alternativo"]').count() === 1);
-  await linhaManual.locator('button[title="Remover telefone alternativo"]').click();
+  check('cartão com valor tem botão de excluir', await linhaManual.locator('button[aria-label="Excluir número"]').count() === 1);
+  await linhaManual.locator('button[aria-label="Excluir número"]').click();
   await p.waitForTimeout(200);
   const updRemocao = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.telefone_alternativo === null));
-  check('remover telefone alternativo grava null', !!updRemocao, JSON.stringify(updRemocao));
-  check('telefone alternativo removido some da lista', !/Telefone alternativo \(cartório\)/.test(await p.locator('#modal-body').textContent()));
+  check('excluir telefone alternativo grava null', !!updRemocao, JSON.stringify(updRemocao));
+  check('telefone alternativo excluído some da lista', !/Telefone alternativo \(cartório\)/.test(await p.locator('#modal-body').textContent()));
 
   // "Eleger" o telefone do TRE como principal (27/08/2026, pedido direto:
   // "se a pessoa tiver 4 números... eu precisar eleger um para ser o
@@ -1808,17 +1810,21 @@ async function login(p) {
 // ── 2.6 Contatar mesários: indicar/filtrar quem não tem WhatsApp
 // (01/09/2026, pedido direto: "estou com uma dificildade de identificar os
 // mesário que não tem whatsapp... verifique uma forma de indicar se o
-// numero é ou não whatsapp e como filtrar isso"). ──
+// numero é ou não whatsapp e como filtrar isso"). Redesenhado no mesmo dia,
+// por NÚMERO em vez de por pessoa (pedido direto: "o marcar sem whatsapp
+// deve vir junto ao numero tipo um x no canto para excluir o numero caso
+// não seja numero da pessoa e do outro lado, sem whatsapp") — ver bloco
+// 2.6b pros dois botões de canto do cartãozinho. ──
 {
   const ctx = await b.newContext();
   const m = mock();
   m.sime_atores.push(
     // GERALDO: número em FORMATO DE FIXO (DDD+8, sem o 9º dígito) — sinal
     // automático, não precisa de nenhuma flag marcada.
-    { id:'a40', nome_completo:'GERALDO TELEFONE FIXO', telefone_whatsapp:'558632220000', funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', sem_whatsapp_manual:false },
+    { id:'a40', nome_completo:'GERALDO TELEFONE FIXO', telefone_whatsapp:'558632220000', funcao:'mesario', funcao_mesa:'2º Mesário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', telefones_sem_whatsapp:[] },
     // IRACEMA: número em formato de CELULAR normal, mas o cartório já sabe
-    // por fora que não tem WhatsApp — só a flag manual indica isso.
-    { id:'a41', nome_completo:'IRACEMA SEM WHATSAPP MANUAL', telefone_whatsapp:'5586988887766', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', sem_whatsapp_manual:true },
+    // por fora que não tem WhatsApp — o dígito dela já está marcado.
+    { id:'a41', nome_completo:'IRACEMA SEM WHATSAPP MANUAL', telefone_whatsapp:'5586988887766', funcao:'mesario', funcao_mesa:'1º Secretário', secao_id:'s3', zona_id:'z7', confirmacao:'pendente', ativo:true, observacao:null, meio_contato:'whatsapp', telefones_sem_whatsapp:['86988887766'] },
   );
 
   const { p, erros } = await abrir(ctx, m);
@@ -1827,49 +1833,85 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const cardGeraldo = await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO")').first().textContent();
-  check('número em formato de fixo mostra o badge automático "Formato de fixo"', /Formato de fixo/.test(cardGeraldo), cardGeraldo.replace(/\s+/g, ' '));
+  check('número em formato de fixo mostra o badge "Principal sem WhatsApp"', /Principal sem WhatsApp/.test(cardGeraldo), cardGeraldo.replace(/\s+/g, ' '));
   const cardIracema = await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL")').first().textContent();
-  check('quem já está marcado manualmente mostra "Sem WhatsApp" (sem o texto "Formato de fixo")', /📵 Sem WhatsApp/.test(cardIracema) && !/Formato de fixo/.test(cardIracema), cardIracema.replace(/\s+/g, ' '));
+  check('quem tem o principal marcado manualmente também mostra o badge', /Principal sem WhatsApp/.test(cardIracema), cardIracema.replace(/\s+/g, ' '));
 
   const cardAna = await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().textContent();
-  check('número em formato de celular normal, sem marcação manual, não mostra nenhum badge de WhatsApp', !/Formato de fixo/.test(cardAna) && !/📵 Sem WhatsApp/.test(cardAna), cardAna.replace(/\s+/g, ' '));
+  check('número em formato de celular normal, sem marcação manual, não mostra o badge', !/Principal sem WhatsApp/.test(cardAna), cardAna.replace(/\s+/g, ' '));
 
-  // Filtro "📵 Sem WhatsApp" — combina os dois sinais (automático + manual).
+  // Filtro "📵 Sem WhatsApp" — combina os dois sinais (automático + manual),
+  // sempre sobre o telefone PRINCIPAL (é o que Hermes/campanha usam).
   await p.selectOption('#cm-filtro', 'sem_whatsapp');
   await p.waitForTimeout(200);
   const listaFiltrada = await p.locator('.cm-lista-pessoas').textContent();
   check('filtro "Sem WhatsApp" mostra GERALDO (automático) e IRACEMA (manual)', /GERALDO TELEFONE FIXO/.test(listaFiltrada) && /IRACEMA SEM WHATSAPP MANUAL/.test(listaFiltrada), listaFiltrada.replace(/\s+/g, ' ').slice(0, 400));
   check('filtro "Sem WhatsApp" esconde quem tem número de celular normal (ANA)', !/ANA PRESIDENTE/.test(listaFiltrada));
 
-  // Volta pra "Todos", marca GERALDO como "sem WhatsApp" manualmente (mesmo
-  // já tendo o sinal automático — os dois podem coexistir) e desmarca
-  // IRACEMA pelo botão do card.
-  await p.selectOption('#cm-filtro', '');
-  await p.waitForTimeout(200);
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
 
-  await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO") button:has-text("Marcar sem WhatsApp")').click();
-  await p.waitForTimeout(200);
-  const atorGeraldo = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a40'));
-  check('marcar manualmente grava sem_whatsapp_manual=true', atorGeraldo.sem_whatsapp_manual === true, JSON.stringify(atorGeraldo));
-  const logGeraldo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_sem_whatsapp_manual' && e.payload.payload?.ator_id === 'a40'));
-  check('grava log mesario_sem_whatsapp_manual', !!logGeraldo && logGeraldo.payload.payload.sem_whatsapp_manual === true, JSON.stringify(logGeraldo));
+// ── 2.6b Cartãozinho de telefone: ✕ excluir + 📵 marcar sem WhatsApp, por
+// NÚMERO (01/09/2026, pedido direto, olhando o cartão no modal: "o marcar
+// sem whatsapp deve vir junto ao numero tipo um x no canto para excluir o
+// numero caso não seja numero da pessoa e do outro lado, sem whatsapp").
+// Cada cartão de "Todos os telefones conhecidos" ganha os dois cantos —
+// substituiu o botão avulso "📵 Sem WhatsApp" que existia solto no topo do
+// modal (ver bloco 2.6). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
 
-  await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL") button:has-text("Tem WhatsApp")').click();
-  await p.waitForTimeout(200);
-  const atorIracema = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a41'));
-  check('desmarcar manualmente grava sem_whatsapp_manual=false', atorIracema.sem_whatsapp_manual === false, JSON.stringify(atorIracema));
-  const cardIracemaDepois = await p.locator('.import-card:has-text("IRACEMA SEM WHATSAPP MANUAL")').first().textContent();
-  // (não checa ausência de "📵" no card inteiro — o próprio botão "📵 Marcar
-  // sem WhatsApp" sempre mostra esse emoji quando a flag está desmarcada;
-  // o que importa é o BADGE de status específico não aparecer mais.)
-  check('depois de desmarcar, IRACEMA não mostra mais o badge de status (número dela é de celular)', !/📵 Sem WhatsApp/.test(cardIracemaDepois) && !/📵 Formato de fixo/.test(cardIracemaDepois), cardIracemaDepois.replace(/\s+/g, ' '));
+  // BRUNO (a2) tem principal + telefone do TRE (Telefone 1 (eleitor)) na
+  // fixture padrão (mesmo par usado no bloco "cartãozinho" mais acima).
+  await p.locator('.import-card:has-text("BRUNO MESARIO")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(300);
 
-  // Modal também mostra o botão e a situação.
-  await p.locator('.import-card:has-text("GERALDO TELEFONE FIXO") div[onclick*="cmAbrirModal"]').first().click();
+  const cartaoPrincipal = p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' });
+  check('cartão do principal já nasce com os dois botões de canto (✕ e 📵)', await cartaoPrincipal.locator('button[aria-label="Excluir número"]').count() === 1 && await cartaoPrincipal.locator('button[aria-label="Marcar sem WhatsApp"]').count() === 1);
+  const cartaoTre = p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' });
+  check('cartão de número do TRE (só leitura) também ganha os dois botões', await cartaoTre.locator('button[aria-label="Excluir número"]').count() === 1 && await cartaoTre.locator('button[aria-label="Marcar sem WhatsApp"]').count() === 1);
+
+  // Marca o número do TRE como "não é WhatsApp".
+  await cartaoTre.locator('button[aria-label="Marcar sem WhatsApp"]').click();
   await p.waitForTimeout(200);
-  const modalTxt = await p.locator('#modal-body').textContent();
-  check('modal mostra "Sem WhatsApp (confirmado)" na Situação, já que foi marcado manualmente', /Sem WhatsApp \(confirmado\)/.test(modalTxt), modalTxt.replace(/\s+/g, ' ').slice(0, 400));
-  check('modal tem o botão de alternar Sem WhatsApp', await p.locator('#modal-body button:has-text("Sem WhatsApp")').count() >= 1);
+  const atorMarcado = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('marcar grava o dígito em telefones_sem_whatsapp', (atorMarcado.telefones_sem_whatsapp || []).includes('86977778888'), JSON.stringify(atorMarcado.telefones_sem_whatsapp));
+  const logMarcado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_telefone_sem_whatsapp' && e.payload.payload?.ator_id === 'a2'));
+  check('grava log mesario_telefone_sem_whatsapp', !!logMarcado && logMarcado.payload.payload.sem_whatsapp === true, JSON.stringify(logMarcado));
+  const textoDepoisMarcar = await p.locator('#modal-body').textContent();
+  check('cartão marcado mostra a legenda "Não é WhatsApp"', /Não é WhatsApp/.test(textoDepoisMarcar), textoDepoisMarcar.replace(/\s+/g, ' ').slice(0, 500));
+  check('cartão marcado não tem mais botão de copiar link (💬 vira só texto opaco)', await p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' }).locator('button[aria-label*="Copiar link do WhatsApp"]').count() === 0);
+
+  // Desmarca de novo.
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' }).locator('button[aria-label="Marcar sem WhatsApp"]').click();
+  await p.waitForTimeout(200);
+  const atorDesmarcado = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('desmarcar tira o dígito de telefones_sem_whatsapp', !(atorDesmarcado.telefones_sem_whatsapp || []).includes('86977778888'), JSON.stringify(atorDesmarcado.telefones_sem_whatsapp));
+  check('copiar link volta a aparecer depois de desmarcar', await p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' }).locator('button[aria-label*="Copiar link do WhatsApp"]').count() === 1);
+
+  // Excluir o número do TRE (não confundir com "sem WhatsApp" — é "não é o
+  // número desta pessoa"). Não dá pra apagar de sime_mesarios_raw (só
+  // leitura), então vira um "ignorado" pra ESTA pessoa.
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'Telefone 1 (eleitor)' }).locator('button[aria-label="Excluir número"]').click();
+  await p.waitForTimeout(250);
+  const atorExcluido = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('excluir número do TRE grava o dígito em telefones_ignorados (não mexe no staging)', (atorExcluido.telefones_ignorados || []).includes('86977778888'), JSON.stringify(atorExcluido.telefones_ignorados));
+  const logIgnorado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_telefone_ignorado' && e.payload.payload?.ator_id === 'a2'));
+  check('grava log mesario_telefone_ignorado', !!logIgnorado, JSON.stringify(logIgnorado));
+  const textoDepoisExcluir = await p.locator('#modal-body').textContent();
+  check('número excluído some da lista de telefones', !/Telefone 1 \(eleitor\)/.test(textoDepoisExcluir), textoDepoisExcluir.replace(/\s+/g, ' ').slice(0, 500));
+
+  // Excluir o PRINCIPAL limpa telefone_whatsapp direto (campo próprio do
+  // SIME, ao contrário do número do TRE acima).
+  await p.locator('#modal-body .cm-tel-card', { hasText: 'WhatsApp (principal)' }).locator('button[aria-label="Excluir número"]').click();
+  await p.waitForTimeout(250);
+  const atorSemPrincipal = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('excluir o principal limpa telefone_whatsapp (não vira "ignorado")', atorSemPrincipal.telefone_whatsapp === null, JSON.stringify(atorSemPrincipal.telefone_whatsapp));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -1902,8 +1944,12 @@ async function login(p) {
   await p.locator('.import-card:has-text("OLIVIA DISPENSADA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(200);
 
+  check('seção "Dispensar (ELO)" começa recolhida (colapsável por padrão)', await p.locator('#mm-dispensar-motivo').count() === 0);
+  await p.locator('.m-section-hdr:has-text("Dispensar (ELO)")').click();
+  await p.waitForTimeout(150);
+
   const botaoDispensar = p.locator('#modal-body button:has-text("Dispensar e tirar do cadastro")');
-  check('botão "Dispensar" aparece no modal', await botaoDispensar.count() === 1);
+  check('clicar no cabeçalho expande a seção e mostra o botão "Dispensar"', await botaoDispensar.count() === 1);
 
   await p.fill('#modal-body #mm-dispensar-motivo', 'Recusa formal registrada no ELO em 07/08/2026');
   await botaoDispensar.click();

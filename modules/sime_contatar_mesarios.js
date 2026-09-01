@@ -184,6 +184,8 @@ let cmScriptEtapa1Imagem = null;
 // usado em sime_resumo_secoes.js pra tabela por município.
 let cmScriptAberto = false;
 function cmToggleScript() { cmScriptAberto = !cmScriptAberto; cmRenderModal(); }
+let cmDispensarAberto = false;
+function cmToggleDispensar() { cmDispensarAberto = !cmDispensarAberto; cmRenderModal(); }
 
 const CM_CAMP_STATUS_LABEL = {
   pendente: 'Na fila do Hermes',
@@ -209,7 +211,8 @@ const CM_LOG_LABEL = {
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
   mesario_precisa_substituir: (p) => p.precisa_substituir ? 'Marcado para substituição' : 'Desmarcado da substituição',
-  mesario_sem_whatsapp_manual: (p) => p.sem_whatsapp_manual ? '📵 Marcado — confirmado sem WhatsApp' : '✓ Desmarcado — tem WhatsApp',
+  mesario_telefone_sem_whatsapp: (p) => p.sem_whatsapp ? `📵 ${p.telefone || '—'} marcado — não é WhatsApp` : `✓ ${p.telefone || '—'} desmarcado — pode ser WhatsApp`,
+  mesario_telefone_ignorado: (p) => `✕ ${p.telefone || '—'} excluído — não é o número desta pessoa`,
   mesario_substituto_nome: (p) => p.substituto_nome ? `Nome do substituto: ${p.substituto_nome}` : 'Nome do substituto removido',
   mesario_substituto_telefone: (p) => p.substituto_telefone ? `Telefone do substituto: ${fmtTelefone(p.substituto_telefone)}` : 'Telefone do substituto removido',
   mesario_relato_terceiro_resolvido: () => '✓ Relato de terceiro resolvido (confirmado com a pessoa)',
@@ -263,7 +266,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }, { data: tentativasManuais }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, sem_whatsapp_manual')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, telefones_sem_whatsapp, telefones_ignorados')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -437,35 +440,90 @@ async function cmTogglePrecisaSubstituir(id) {
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
 }
 
-// "Sem WhatsApp" — dois sinais complementares (01/09/2026, pedido direto:
-// "estou com uma dificildade de identificar os mesário que não tem
-// whatsapp... verifique uma forma de indicar se o numero é ou não whatsapp
-// e como filtrar isso"):
+// "Sem WhatsApp" — dois sinais complementares, por NÚMERO (01/09/2026,
+// pedido direto: "estou com uma dificildade de identificar os mesário que
+// não tem whatsapp... verifique uma forma de indicar se o numero é ou não
+// whatsapp e como filtrar isso"). Nasceu como flag da PESSOA
+// (sem_whatsapp_manual), mas uma pessoa tem vários telefones na lista
+// (principal, os do TRE, o cadastrado à mão) e cada um pode ter uma
+// situação diferente — trocado, no mesmo dia, por marcação POR NÚMERO,
+// direto no cartãozinho de cada telefone (pedido direto: "o marcar sem
+// whatsapp deve vir junto ao numero"). Ver sql/SIME_atores_telefones_sem_whatsapp.sql.
 // 1. Automático (telFormatoFixo, sime_ui_utils.js) — um telefone salvo em
 //    formato de fixo (DDD+8, sem o 9º dígito) nunca tem WhatsApp, pela
 //    própria numeração brasileira. Não precisa de flag nenhuma, é calculado
-//    na hora a partir do número salvo.
-// 2. Manual (sem_whatsapp_manual) — pro caso do cartório saber por fora que
-//    um número, mesmo em formato de celular, não tem WhatsApp (ex.: a
-//    pessoa confirmou por telefone que não usa WhatsApp nesse chip).
-//    Mesmo espírito de precisa_substituir: flag do cartório, nunca tocada
-//    por sync nem automação.
-// cmSemWhatsapp() combina os dois — usado tanto pro badge quanto pro filtro.
-function cmSemWhatsapp(p) {
-  return !!p.sem_whatsapp_manual || telFormatoFixo(p.telefone_whatsapp);
+//    na hora a partir do número salvo — vale pra QUALQUER número da lista.
+// 2. Manual (sime_atores.telefones_sem_whatsapp, array de dígitos sem "55")
+//    — pro caso do cartório saber por fora que um número específico, mesmo
+//    em formato de celular, não tem WhatsApp. Mesmo espírito de
+//    precisa_substituir: flag do cartório, nunca tocada por sync nem
+//    automação.
+// cmNumeroSemWhatsapp() combina os dois pra UM número específico.
+// cmSemWhatsapp() aplica isso ao telefone PRINCIPAL — é o que Hermes/
+// campanha em massa de fato usam, então é o que importa pro badge do card
+// da lista (sem abrir o modal) e pro filtro "📵 Sem WhatsApp".
+function cmNumeroSemWhatsapp(p, digitos) {
+  return (Array.isArray(p.telefones_sem_whatsapp) && p.telefones_sem_whatsapp.includes(digitos)) || telFormatoFixo(digitos);
 }
-async function cmToggleSemWhatsapp(id) {
+function cmSemWhatsapp(p) {
+  return cmNumeroSemWhatsapp(p, telSemPais(p.telefone_whatsapp || ''));
+}
+// Marca/desmarca UM número específico como "não é WhatsApp" — chamado pelo
+// botão 🚫 no canto do cartãozinho de telefone (o outro canto tem o ✕ de
+// excluir, ver cmExcluirTelefoneCard).
+async function cmToggleSemWhatsappNumero(id, digitos) {
   const sb = window.supabaseAtores;
   const p = cmDados.pessoas.find(x => x.id === id);
-  if (!p) return;
-  const novo = !p.sem_whatsapp_manual;
-  const { error } = await sb.from('sime_atores').update({ sem_whatsapp_manual: novo }).eq('id', id);
+  if (!p || !digitos) return;
+  const atual = Array.isArray(p.telefones_sem_whatsapp) ? p.telefones_sem_whatsapp : [];
+  const marcado = atual.includes(digitos);
+  const novo = marcado ? atual.filter(d => d !== digitos) : [...atual, digitos];
+  const { error } = await sb.from('sime_atores').update({ telefones_sem_whatsapp: novo }).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
-  p.sem_whatsapp_manual = novo;
-  await cmLog('mesario_sem_whatsapp_manual', '', { ator_id: id, sem_whatsapp_manual: novo });
-  showToast(novo ? '📵 Marcado — sem WhatsApp' : '✓ Desmarcado — tem WhatsApp');
+  p.telefones_sem_whatsapp = novo;
+  await cmLog('mesario_telefone_sem_whatsapp', '', { ator_id: id, telefone: fmtTelefone(digitos), sem_whatsapp: !marcado });
+  showToast(!marcado ? '📵 Marcado — este número não é WhatsApp' : '✓ Desmarcado — pode ser WhatsApp');
   render();
   if (cmModalId === id) cmRenderModal();
+}
+// Exclui um número da lista de telefones desta pessoa — "não é o número
+// dela" (erro de digitação, número de outra pessoa). Pro principal/
+// alternativo (colunas próprias do SIME) limpa o campo direto; pros números
+// vindos do TRE (sime_mesarios_raw, só leitura) não dá pra apagar de lá —
+// só entra numa lista de ignorados pra sumir da lista desta pessoa daqui em
+// diante (campo=null identifica esse caso).
+async function cmExcluirTelefoneCard(id, digitos, campo) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p || !digitos) return;
+  if (campo) {
+    const { error } = await sb.from('sime_atores').update({ [campo]: null }).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    p[campo] = null;
+    await cmLog('mesario_editar_telefone', '', { ator_id: id, telefone: fmtTelefone(digitos), motivo: 'excluído — não é o número desta pessoa' });
+  } else {
+    const atual = Array.isArray(p.telefones_ignorados) ? p.telefones_ignorados : [];
+    if (atual.includes(digitos)) return;
+    const novo = [...atual, digitos];
+    const { error } = await sb.from('sime_atores').update({ telefones_ignorados: novo }).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    p.telefones_ignorados = novo;
+    await cmLog('mesario_telefone_ignorado', '', { ator_id: id, telefone: fmtTelefone(digitos) });
+  }
+  // Não faz sentido continuar guardando "não é WhatsApp" pra um número que
+  // acabou de ser excluído por não ser mais desta pessoa.
+  if (Array.isArray(p.telefones_sem_whatsapp) && p.telefones_sem_whatsapp.includes(digitos)) {
+    const semWhatsappNovo = p.telefones_sem_whatsapp.filter(d => d !== digitos);
+    await sb.from('sime_atores').update({ telefones_sem_whatsapp: semWhatsappNovo }).eq('id', id);
+    p.telefones_sem_whatsapp = semWhatsappNovo;
+  }
+  showToast('✕ Número excluído');
+  render();
+  // cmModalHist.telefones é uma foto tirada na hora que o modal abriu — like
+  // cmUsarComoPrincipal(), reabrir busca de novo e recalcula a lista com o
+  // número já fora dela (cmRenderModal() sozinho não bastaria: a lista
+  // continuaria mostrando o cartão que acabou de ser excluído).
+  if (cmModalId === id) await cmAbrirModal(id);
 }
 
 // Nome de quem vai substituir (27/08/2026, pedido direto: "ao marcar para
@@ -755,13 +813,14 @@ const CM_RAW_TEL_CAMPOS = [
 // principal e entre si (comparando só dígitos, sem o "55", já que o TRE não
 // segue convenção nenhuma de formato).
 function cmListaTelefones(p, raw) {
+  const ignorados = Array.isArray(p.telefones_ignorados) ? p.telefones_ignorados : [];
   const vistos = new Set();
   const lista = [];
   const add = (label, valor, extra) => {
     const digitos = telSemPais(valor || '');
-    if (!digitos || digitos.length < 8 || vistos.has(digitos)) return;
+    if (!digitos || digitos.length < 8 || vistos.has(digitos) || ignorados.includes(digitos)) return;
     vistos.add(digitos);
-    lista.push({ label, valor, ...extra });
+    lista.push({ label, valor, digitos, ...extra });
   };
   // editavel+campo (27/08/2026, pedido direto: "no cartãozinho quero poder
   // editar") — só os dois telefones que o SIME de fato possui numa coluna
@@ -776,7 +835,7 @@ function cmListaTelefones(p, raw) {
   // cobria esse caso separadamente, fora da lista de telefones.
   const digitosPrincipal = telSemPais(p.telefone_whatsapp || '');
   if (digitosPrincipal) vistos.add(digitosPrincipal);
-  lista.push({ label: 'WhatsApp (principal)', valor: p.telefone_whatsapp || '', principal: true, editavel: true, campo: 'telefone_whatsapp' });
+  lista.push({ label: 'WhatsApp (principal)', valor: p.telefone_whatsapp || '', digitos: digitosPrincipal, principal: true, editavel: true, campo: 'telefone_whatsapp' });
   if (raw) for (const [campo, label] of CM_RAW_TEL_CAMPOS) add(label, raw[campo]);
   add('Telefone alternativo (cartório)', p.telefone_alternativo, { removivel: true, editavel: true, campo: 'telefone_alternativo' });
   return lista;
@@ -954,18 +1013,6 @@ async function cmAdicionarTelefoneAlt(id) {
   if (p) p.telefone_alternativo = valor;
   await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
   showToast('✓ Telefone alternativo adicionado');
-  if (cmModalId === id) await cmAbrirModal(id);
-  render();
-}
-
-async function cmRemoverTelefoneAlt(id) {
-  const sb = window.supabaseAtores;
-  const { error } = await sb.from('sime_atores').update({ telefone_alternativo: null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (p) p.telefone_alternativo = null;
-  await cmLog('mesario_telefone_alt_removido', '', { ator_id: id });
-  showToast('✓ Telefone alternativo removido');
   if (cmModalId === id) await cmAbrirModal(id);
   render();
 }
@@ -1174,16 +1221,15 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Função</b><span>${cmEsc(cmRotuloFuncao(p))}</span></div>
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
-        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}${p.sem_whatsapp_manual ? ' · 📵 Sem WhatsApp (confirmado)' : telFormatoFixo(p.telefone_whatsapp) ? ' · 📵 Formato de fixo' : ''}</span></div>
+        <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}${cmSemWhatsapp(p) ? ' · 📵 Principal sem WhatsApp' : ''}</span></div>
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:4px">
         <button class="btn ${(p.confirmacao || 'pendente') === 'confirmado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmConfirmarParticipacao('${p.id}')">✅ Confirmado</button>
         <button class="btn ${(p.confirmacao || 'pendente') === 'convocado' ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmMarcarConvocado('${p.id}')">📋 Convocado</button>
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
-        <button class="btn ${p.sem_whatsapp_manual ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmToggleSemWhatsapp('${p.id}')" title="Marque quando souber, por fora, que esse número não tem WhatsApp">📵 Sem WhatsApp</button>
       </div>
-      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp. "Sem WhatsApp" é independente dos outros três — indica que esse número não recebe mensagem, não que a pessoa não vai participar.</div>
+      <div class="ic-sub" style="margin-bottom:0">Confirmado = já disse que vai participar. Convocado = confirmamos que recebeu a carta/mensagem, ainda não disse se vai participar. Os dois já marcam sozinhos que a convocação foi recebida — nenhum manda mensagem, é status manual, não depende de resposta automática por WhatsApp.</div>
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
@@ -1199,18 +1245,26 @@ function cmRenderModal() {
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px;white-space:nowrap" onclick="cmConcluirSubstituicao('${p.id}')" title="Já foi resolvido por fora (ligação, presencial) — fecha a substituição e tira esta pessoa da fila">✅ Concluir substituição</button>` : ''}
           ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
         </div>
-        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no número pra editar (salva sozinho ao sair do campo) e no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho:</div>
+        <div class="ic-sub" style="margin-bottom:4px">📞 Todos os telefones conhecidos — clique no número pra editar (salva sozinho ao sair do campo) e no 💬 pra copiar o link do WhatsApp já com a mensagem de confirmação (com "bom dia"/"boa tarde"/"boa noite" conforme a hora) e registrar a tentativa sozinho. No canto de cada cartão: ✕ exclui o número (não é desta pessoa) e 📵 marca que aquele número específico não tem WhatsApp.</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
           ${cmModalHist?.telefones?.length ? cmModalHist.telefones.map(t => {
             const elId = t.campo === 'telefone_whatsapp' ? 'mm-tel-principal' : t.campo === 'telefone_alternativo' ? 'mm-tel-alternativo' : null;
+            const semWhatsappManual = !!(t.valor && Array.isArray(p.telefones_sem_whatsapp) && p.telefones_sem_whatsapp.includes(t.digitos));
+            const formatoFixo = !!(t.valor && telFormatoFixo(t.valor));
+            const semWhatsapp = semWhatsappManual || formatoFixo;
             return `
-          <div class="cm-tel-card" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);min-width:96px">
-            ${t.removivel ? `<button onclick="cmRemoverTelefoneAlt('${p.id}')" title="Remover telefone alternativo" aria-label="Remover telefone alternativo" style="position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--red-bg,#fae8e6);color:var(--red,#c0392b);border:1px solid var(--red-bd,#e0a09a);font-size:.62rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>` : ''}
-            ${t.valor ? `<button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>` : `<span aria-hidden="true" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.3">💬</span>`}
+          <div class="cm-tel-card" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border:1px solid ${semWhatsapp ? 'var(--red-bd,#e0a09a)' : 'var(--border2)'};border-radius:8px;background:var(--bg2);min-width:96px">
+            ${t.valor ? `<button onclick="cmExcluirTelefoneCard('${p.id}','${t.digitos}',${t.campo ? `'${t.campo}'` : 'null'})" title="Excluir — não é o número desta pessoa" aria-label="Excluir número" style="position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--red-bg,#fae8e6);color:var(--red,#c0392b);border:1px solid var(--red-bd,#e0a09a);font-size:.62rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>` : ''}
+            ${t.valor ? `<button onclick="cmToggleSemWhatsappNumero('${p.id}','${t.digitos}')" title="${semWhatsappManual ? 'Desmarcar — voltar a tratar como possível WhatsApp' : 'Marcar que este número não tem WhatsApp'}" aria-label="Marcar sem WhatsApp" style="position:absolute;top:-7px;left:-7px;width:20px;height:20px;border-radius:50%;background:${semWhatsappManual ? 'var(--red,#c0392b)' : 'var(--bg)'};color:${semWhatsappManual ? '#fff' : 'var(--text2)'};border:1px solid var(--red-bd,#e0a09a);font-size:.6rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">📵</button>` : ''}
+            ${t.valor ? (semWhatsapp
+                ? `<span aria-hidden="true" title="Marcado como sem WhatsApp" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.35">💬</span>`
+                : `<button onclick="cmCopiarLinkWhatsAppNumero('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Copiar link do WhatsApp — ${cmEsc(t.label)}" aria-label="Copiar link do WhatsApp — ${cmEsc(t.label)}" style="background:none;border:none;cursor:pointer;font-size:1.5rem;line-height:1;padding:2px">💬</button>`)
+              : `<span aria-hidden="true" style="font-size:1.5rem;line-height:1;padding:2px;opacity:.3">💬</span>`}
             ${t.editavel
               ? `<input id="${elId}" type="text" value="${t.valor ? cmEsc(fmtTelefone(t.valor)) : ''}" placeholder="(86) 9xxxx-xxxx" aria-label="Editar ${cmEsc(t.label)}" onblur="cmSalvarTelefoneCard('${p.id}','${t.campo}','${elId}')" style="width:100%;text-align:center;font-size:.74rem;font-weight:700;border:1px solid var(--border2);border-radius:5px;padding:2px 4px;background:var(--bg);color:var(--text)">`
               : `<b style="font-size:.74rem;white-space:nowrap">${cmEsc(fmtTelefone(t.valor))}</b>`}
             <span style="font-size:.6rem;color:var(--text2)">${cmEsc(t.label)}</span>
+            ${semWhatsapp ? `<span style="font-size:.58rem;color:var(--red,#c0392b)">📵 ${semWhatsappManual ? 'Não é WhatsApp' : 'Formato de fixo'}</span>` : ''}
             ${!t.principal && t.valor ? `<button onclick="cmUsarComoPrincipal('${p.id}','${cmEsc(t.valor).replace(/'/g, "\\'")}')" title="Usar este número como telefone principal" aria-label="Usar ${cmEsc(t.label)} como telefone principal" style="background:none;border:none;cursor:pointer;font-size:.62rem;color:var(--text2);padding:1px 0;text-decoration:underline">⭐ Usar como principal</button>` : ''}
           </div>`;
           }).join('') : '<div class="ic-sub" style="margin-bottom:0">Nenhum telefone cadastrado ainda.</div>'}
@@ -1300,10 +1354,15 @@ function cmRenderModal() {
       </div>
 
       <div class="m-section" style="border-top:1px solid var(--red-bd,#e0a09a)">
-        <div class="m-section-hdr" style="color:var(--red,#c0392b)">🚫 Dispensar (ELO)</div>
+        <div class="m-section-hdr" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--red,#c0392b)" onclick="cmToggleDispensar()">
+          <span>🚫 Dispensar (ELO)</span>
+          <span>${cmDispensarAberto ? '▾' : '▸'}</span>
+        </div>
+        ${cmDispensarAberto ? `
         <div class="ic-sub">Pra quando o ELO já registra a dispensa/recusa formal desta pessoa (ex.: justificativa aceita pelo cartório) — tira ela de vez da lista ativa (mesmo efeito de ativo=false + dispensado_manual=true), sem risco de um resync do roster reativar sozinha depois. Se já houver outra pessoa designada pro mesmo cargo/seção, ela continua normalmente e assume a vaga; se não houver, o cargo passa a aparecer vazio no Dashboard. Motivo é opcional, mas fica registrado em Observações.</div>
         <textarea id="mm-dispensar-motivo" rows="2" placeholder="Motivo da dispensa (opcional) — ex.: recusa formal registrada no ELO em .../.../....." style="width:100%;margin:6px 0;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
         <button class="btn btn-red" style="font-size:.72rem;padding:6px 12px" onclick="cmDispensarManual('${p.id}')">🚫 Dispensar e tirar do cadastro</button>
+        ` : ''}
       </div>
     </div>
     <div class="m-foot">
@@ -1587,8 +1646,7 @@ function renderContatarMesarios() {
               <span class="import-result ${p.confirmacao === 'confirmado' ? 'ir-ok' : p.confirmacao === 'recusou' || p.confirmacao === 'contato_incorreto' ? 'ir-warn' : ''}" style="margin-top:0;white-space:nowrap">${cmBadge(p.confirmacao)}</span>
               ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${cmSubstitutoLabel(p)}</span>` : ''}
               ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
-              ${p.sem_whatsapp_manual ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="O cartório confirmou que este número não tem WhatsApp">📵 Sem WhatsApp</span>`
-                : telFormatoFixo(p.telefone_whatsapp) ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="Número em formato de telefone fixo (sem o 9º dígito) — fixo não tem WhatsApp">📵 Formato de fixo</span>` : ''}
+              ${cmSemWhatsapp(p) ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="O telefone principal está marcado (ou tem formato de fixo) — veja qual em Contato, no modal">📵 Principal sem WhatsApp</span>` : ''}
             </div>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}
@@ -1608,7 +1666,6 @@ function renderContatarMesarios() {
             ${(p.confirmacao || 'pendente') !== 'confirmado' ? `<button class="btn btn-dark" style="font-size:.72rem;padding:5px 10px" onclick="cmConfirmarParticipacao('${p.id}')" title="Pra quando você já sabe que a pessoa confirmou por outro canal (sistema do TRE, ligação, presencial) — só marca confirmado, não manda mensagem nenhuma">✅ Confirmar participação</button>` : ''}
             ${podeMarcarIncorreto ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmMarcarContatoIncorreto('${p.id}')">🔍 Marcar contato incorreto</button>` : ''}
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmTogglePrecisaSubstituir('${p.id}')">${p.precisa_substituir ? '✓ Desmarcar substituição' : '🔁 Marcar para substituir'}</button>
-            <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmToggleSemWhatsapp('${p.id}')" title="${p.sem_whatsapp_manual ? 'Desmarcar — voltar a tratar como possível WhatsApp' : 'Marcar quando você souber, por fora, que esse número não tem WhatsApp'}">${p.sem_whatsapp_manual ? '✓ Tem WhatsApp' : '📵 Marcar sem WhatsApp'}</button>
             ${p.tem_relato_terceiro_pendente ? `<button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmResolverRelatoTerceiro('${p.id}')">✓ Marcar relato como resolvido</button>` : ''}
             ${escalar ? `
             <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmSalvarMeio('${p.id}','carta_registrada')">📮 Passar pra Carta Registrada</button>

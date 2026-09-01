@@ -135,9 +135,10 @@ function normalizarTelefoneWhatsapp(raw) {
 // decidir se adiciona o 9º dígito: um número SEM esse dígito (DDD + 8, não
 // DDD + 9) é, por definição de numeração brasileira, um fixo — e fixo não
 // tem WhatsApp. Sinal automático, sempre disponível (não depende de nenhuma
-// tentativa de envio); complementa (não substitui) sime_atores.sem_whatsapp_manual,
-// a flag que o cartório marca quando sabe por fora que um número — mesmo em
-// formato de celular — não tem WhatsApp.
+// tentativa de envio); complementa (não substitui) sime_atores.telefones_sem_whatsapp
+// (array por número, sql/SIME_atores_telefones_sem_whatsapp.sql), que o
+// cartório marca quando sabe por fora que um número — mesmo em formato de
+// celular — não tem WhatsApp.
 function telFormatoFixo(numero) {
   return telSemPais(numero).length === 10;
 }
