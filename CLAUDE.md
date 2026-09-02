@@ -1498,7 +1498,39 @@ cada um com propósito diferente:
   `telefones_sem_whatsapp`/`telefones_confirmados` também, se estava lá —
   não faz sentido guardar status de um número que acabou de deixar de ser
   desta pessoa.
-- **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
+
+  **Lote de confirmação por terceiro (02/09/2026, pedido direto: "atualize
+  os contatos dos mesários do sime, informando que é informação de
+  terceiros"), 67 nomes colados com telefone.** Casado por nome (exato,
+  case/acento-insensível — sem título de eleitor na lista colada) contra
+  `sime_atores` da 7ª Zona, rodado uma vez via SQL Editor/MCP (não é
+  migração). Três desfechos, dependendo do que já estava cadastrado —
+  nenhum sobrescreve o principal às cegas:
+  - **60 registros — número informado bate com o já cadastrado**: só
+    confirma (`telefones_confirmados`) + observação "confirmado por
+    terceiro". Inclui 4 pessoas com registro duplicado (mesmo nome, dois
+    `id`) e inativas — a duplicata/inatividade não impediu registrar a
+    confirmação, só não prioriza reativar ninguém.
+  - **4 registros — mesmo número, só faltava o 9º dígito no banco** (ex.:
+    JEAN RIBEIRO DE OLIVEIRA, `558681764945` → `5586981764945`): a versão
+    dada pelo terceiro já vinha corrigida — em vez de tratar como conflito,
+    o cadastro foi corrigido pra bater (mesmo critério de sempre: nunca
+    inventa um número, aqui só estava reaplicando a normalização de 9º
+    dígito que o próprio `sime_normalizar_telefone_whatsapp()` já teria
+    feito se o dado não tivesse entrado direto via import antigo) + também
+    confirmado.
+  - **5 registros — número genuinamente diferente do cadastrado**
+    (EDINALDO ALVES DE CARVALHO, JOSE ARINEU TEIXEIRA DE OLIVEIRA, SIMONE
+    KELLE COSTA DO NASCIMENTO, GÉSSICA MARIA OLIVEIRA DA SILVA — 2
+    registros duplicados dela): **nunca sobrescreve o principal** — o
+    número novo vai pro `telefone_alternativo` (só quando esse campo
+    estava vazio) e liga `tem_relato_terceiro_pendente=true` com
+    observação "PRECISA CONFIRMAR COM A PESSOA", mesmo padrão de
+    `relatar_terceiro`/`atualizar_telefone_terceiro` do Hermes — o
+    cartório decide qual dos dois números é o certo. Um caso (EDNETE
+    RIBEIRO DE OLIVEIRA PAZ) já tinha exatamente o número do terceiro
+    gravado no `telefone_alternativo` de antes — só confirmou esse campo,
+    sem tocar em mais nada.
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
 - **📄 Relatório ELO** (`sime_relatorio_elo.js`, 21/08/2026) — quem o SIME já
