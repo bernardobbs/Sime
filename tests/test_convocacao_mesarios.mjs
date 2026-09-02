@@ -211,9 +211,20 @@ async function login(p) {
   // Convocados = mrvDesignados(4) + locaisComCoord(1, Grupo Escolar A via GEORGE) + auxiliarTotal(1, ELIS) = 6.
   // Confirmados = mrvConfirmadoCargos(1, só ANA) + locaisComCoordConfirmado(0) + auxiliarConfirmado(1, ELIS) = 2.
   check('barra-funil da zona: Total 15, Convocados 6, Confirmados 2', /Total de vagas:\s*15/.test(dashFlat) && /Convocados:\s*6/.test(dashFlat) && /Confirmados:\s*2/.test(dashFlat), dashFlat.slice(0, 500));
+  // 02/09/2026 — barra-funil também ganhou percentual (Convocados 6/15=40%, Confirmados 2/15=13%).
+  check('barra-funil mostra percentual de Convocados e Confirmados', /Convocados:\s*6\s*\(40%\)/.test(dashFlat) && /Confirmados:\s*2\s*\(13%\)/.test(dashFlat), dashFlat.slice(0, 500));
 
   const cardPizzaMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().textContent();
   check('pizza MRV (3 fatias): confirmado 1, convocado 3, vazio 8, total 12', /Confirmado:\s*1/.test(cardPizzaMRV) && /Convocado:\s*3/.test(cardPizzaMRV) && /Vazio:\s*8/.test(cardPizzaMRV) && /Total:\s*12/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
+
+  // 02/09/2026 (pedido agendado: "achou um pouco confuso", faltava
+  // percentual) — cada linha da legenda ganhou "(N%)" ao lado da contagem,
+  // e a fatia "Vazio" trocou de cinza (quase invisível no tema claro) pra
+  // vermelho, mesmo sinal de alerta que rsBarraCor() já usa no gradiente
+  // por local.
+  check('pizza MRV mostra percentual em cada fatia (8%/25%/67%)', /8%/.test(cardPizzaMRV) && /25%/.test(cardPizzaMRV) && /67%/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
+  const strokeVazioMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().locator('svg circle').first().getAttribute('stroke');
+  check('fatia "Vazio" da pizza usa var(--red), não mais cinza', strokeVazioMRV === 'var(--red)', strokeVazioMRV);
 
   // .last() (não .first()) — a barra-funil acima também menciona os nomes
   // dos 3 grupos no título ("MRV + Coordenadores de Acessibilidade +

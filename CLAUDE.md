@@ -350,7 +350,8 @@ cada um com propósito diferente:
     Acessibilidade / Auxiliares de Eleição (apoio logístico) — cada uma com
     **3 fatias mutuamente exclusivas que somam o Total daquele grupo**:
     Confirmado (verde) / Convocado — designado mas ainda não confirmado
-    (azul) / Vazio — ninguém designado (cinza). Antes eram 2 pizzas por
+    (azul) / Vazio — ninguém designado (vermelho, ver revisão de cor
+    abaixo). Antes eram 2 pizzas por
     grupo (nomeado×vazio separada de confirmado×total); agora é uma pizza
     só, mais completa. "Total" tem semântica diferente pros dois tipos de
     grupo: MRV é por **cargo de mesa** (4 por seção — `rsCalcular()` já
@@ -368,6 +369,25 @@ cada um com propósito diferente:
     Total de vagas (faixa de fundo, cinza) → Convocados (barra mais curta
     por cima, azul) → Confirmados (a mais curta de todas, verde) —
     `rsBarraFunil()`.
+
+  **Cor de "Vazio" trocada de cinza pra vermelho + percentual em toda
+  fatia/barra (02/09/2026), pedido agendado do cartório: "achou um pouco
+  confuso" e faltava percentual em algumas partes.** No tema claro
+  (`sime_theme_cream.css`), `--border2` (usado antes pra "Vazio") é um
+  bege quase da cor do próprio card — a fatia de quem falta preencher
+  "sumia" visualmente em vez de chamar atenção, o oposto do que uma fatia
+  de alerta deveria fazer. `RS_COR_VAZIO` virou `var(--red)` — mesmo sinal
+  de "falta preencher" que `rsBarraCor()` já usa no gradiente por local
+  (0%→vermelho), consistente com o resto do Dashboard, não uma cor nova
+  inventada só pra isto. Confirmado/Convocado continuam verde/azul (a
+  dupla mais segura pra daltonismo vermelho-verde, o tipo mais comum — não
+  havia motivo pra trocar essas duas). Percentual: antes só a fatia
+  Confirmado tinha (dentro do SVG, centro do donut); as legendas de
+  Convocado/Vazio (`rsPizzaCard3`) e as de Convocados/Confirmados da
+  barra-funil (`rsBarraFunil`) ganharam "(N%)" ao lado da contagem — nova
+  função `rsPct(valor, total)`, mesmo arredondamento de sempre
+  (`Math.round`). O percentual do centro do donut (só Confirmado) não
+  mudou de lugar nem de cálculo, só ganhou companhia nas legendas.
   - **Tabela "🏘️ Progresso por município e função" (21/08/2026)** — pedido
     direto do cartório: "saber por cidade e por função se já está com todas
     as funções preenchidas e se já foi confirmado". A barra-funil e as
