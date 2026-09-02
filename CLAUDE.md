@@ -2170,6 +2170,56 @@ cada um com propósito diferente:
   que já existe lá; transformar um voluntário em designação oficial
   continua manual, mesma linha de sempre.
 
+- **🎓 Treinamento** (`sime_turmas.js`, `sql/SIME_turmas_treinamento.sql`,
+  02/09/2026, pedido direto: o cartório colou o conteúdo da tela de turma de
+  treinamento do ELO — identificação + instrutores + mesários alunos — e
+  avisou "irei enviar 16 turmas") — até aqui o SIME não tinha onde guardar
+  isso: o roster sabia quem foi convocado e como contactar, mas nada sobre
+  treinamento (quem tem turma, quando, onde, quem faltou). O ELO continua
+  sendo o sistema oficial (é lá que a turma existe e de onde saem carta e
+  Título Net); esta aba é a visão OPERACIONAL do cartório.
+
+  **A entrada principal é COLAR o texto do ELO, não um formulário campo a
+  campo** — 16 turmas seriam ~16 formulários e ~600 nomes digitados à mão.
+  `tuParse()` lê o formato real da tela (rótulo numa linha, valor na
+  seguinte; `Início:`/`Fim:`/`Mostrar instruções…` com valor na MESMA linha)
+  e as duas listas de pessoas como pares inscrição→nome, ignorando o
+  cabeçalho da tabela. Aceita várias turmas de uma colagem só (cada uma
+  começa em "1 - Identificação da turma"). Nunca adivinha: turma sem
+  "Número da turma" é recusada com aviso, inscrição sem nome vira aviso pra
+  conferência manual, `Função "-"` vira `null`. Toda inscrição é
+  normalizada pra 12 dígitos (`normalizarTituloEleitor`) — o mesmo bug de
+  zero à esquerda já documentado pro roster não pode se repetir aqui.
+
+  `sime_turmas` (upsert por `zona_id,numero`) + `sime_turma_pessoas`
+  (`papel` instrutor/aluno, upsert por `turma_id,papel,inscricao`) —
+  **recolar a mesma turma atualiza e preserva a presença já marcada**, o
+  upsert de pessoa nunca escreve `presenca`. `ator_id` é resolvido por
+  título de eleitor contra o roster ativo; quem não bate fica `null` e
+  aparece marcado ("🔍 não encontrado no roster ativo"), nunca casado por
+  nome. Drilldown por turma marca presença (pendente/presente/faltou/
+  justificada), copia convite de WhatsApp com data/hora/local (mesmo padrão
+  "copiar, não abrir" de Contatar mesários) e imprime lista de presença
+  pelo `#print-area` (mesmo mecanismo sem popup de Correspondência).
+
+  Card de aviso no topo mostra quem do roster ativo **não é aluno de
+  nenhuma turma** — instrutor não conta (ele treina, não é treinado).
+
+  **Armadilha real, achada ao carregar as 16 turmas da 7ª Zona:** resolver
+  `ator_id` com um `left join sime_atores ... on inscricao_eleitoral` dentro
+  do próprio INSERT quebra com "ON CONFLICT DO UPDATE command cannot affect
+  row a second time" — há gente com DUAS designações ativas (mesário +
+  coordenador de acessibilidade, conflito já documentado acima), e o join
+  duplicava a linha. O caminho do navegador (`tuImportar`) não tem esse
+  problema (casa por um Map, uma pessoa = um ator), mas qualquer carga por
+  SQL precisa escolher UM ator (ex.: preferir `funcao='mesario'`).
+
+  **Carga inicial (02/09/2026)**: as 16 turmas da 7ª Zona (583 alunos,
+  14/09 a 24/09, em Jatobá, Campo Maior e Sigefredo Pacheco) foram gravadas
+  em produção a partir do texto colado pelo cartório. 4 alunos não bateram
+  com o roster ativo (turmas 002, 003, 004 e 013) — ficam marcados na tela
+  pra conferência, sem casamento por nome.
+
 - **⚖️ Oficial de Justiça** (`sime_oficial_justica.js`, 31/08/2026, pedido
   direto: "ELABORE MAIS UMA ABA PARA O OFICIAL DE JUSTIÇA CONTROLE A
   CONVOCAÇÃO DOS MESÁRIOS") — `sime_atores.meio_contato='oficial_justica'`

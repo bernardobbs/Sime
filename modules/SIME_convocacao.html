@@ -239,6 +239,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
     <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
+    <div class="tab" id="tab-turmas-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('turmas',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🎓 Treinamento</div>
     <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
   </div>
 
@@ -260,6 +261,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_relatorio_elo.js"></script>
 <script src="./sime_correspondencia.js"></script>
 <script src="./sime_voluntarios.js"></script>
+<script src="./sime_turmas.js"></script>
 <script src="./sime_oficial_justica.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
@@ -367,6 +369,7 @@ function goTab(tab, btn) {
   if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
   if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
   if (tab === 'oficial-justica' && typeof ojDados !== 'undefined') ojDados = null;
+  if (tab === 'turmas' && typeof tuDados !== 'undefined') tuDados = null;
   render();
 }
 function render() {
@@ -378,6 +381,7 @@ function render() {
   if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
   if (curTab === 'voluntarios') { renderVoluntarios(); return; }
   if (curTab === 'oficial-justica') { renderOficialJustica(); return; }
+  if (curTab === 'turmas') { renderTurmas(); return; }
 }
 window.render = render;
 </script>
