@@ -110,7 +110,7 @@ const CM_FUNCAO_FILTRO = [
   { valor: 'coord_acessibilidade', label: 'Coordenador(a) de Acessibilidade' },
   { valor: 'auxiliar_eleicao', label: 'Auxiliar de Eleição (apoio logístico)' },
 ];
-const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
+const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça', zeo: 'Convocação oficial (ZEO/TRE)' };
 // Dois vocabulários de status diferentes pro mesmo campo (status_contato_alternativo)
 // — "enviado/entregue" não faz sentido pra uma ligação, e "atendeu/não atendeu"
 // não faz sentido pra uma carta. cmStatusLabelSet() escolhe qual mostrar.
@@ -1556,7 +1556,7 @@ const CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO = 3;
 function cmPrecisaEscalonamento(p) {
   return ['pendente', 'convocado'].includes(p.confirmacao || 'pendente')
     && p.tentativas >= CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO
-    && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica';
+    && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica' && p.meio_contato !== 'zeo';
 }
 
 function cmFiltrar() {

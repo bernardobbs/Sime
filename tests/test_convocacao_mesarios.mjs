@@ -567,6 +567,8 @@ async function login(p) {
     // Seção 51: mesmo meio (carta_registrada), mas JÁ confirmado — prova que
     // o ícone de status confirmado (✅) tem prioridade, não muda pra carta.
     cargo('icConfirmadoCarta','secIconeConfirmado','Presidente','confirmado','carta_registrada'),
+    // ZEO/TRE (02/09/2026) — quinto meio de contato, vira "prédio" 🏛️.
+    cargo('icZeo','secIconeConfirmado','2º Mesário','pendente','zeo'),
   ];
 
   const { p, erros } = await abrir(ctx, m);
@@ -586,6 +588,7 @@ async function login(p) {
 
   const cardSecao51 = await p.locator('.import-card:has-text("Seção 51")').first().textContent();
   check('confirmado com meio Carta Registrada: continua ✅, NÃO vira carta (status confirmado tem prioridade)', cardSecao51.includes('✅') && !cardSecao51.includes('✉️'), cardSecao51.replace(/\s+/g, ' '));
+  check('meio ZEO/TRE, ainda pendente: ícone vira 🏛️', cardSecao51.includes('🏛️'), cardSecao51.replace(/\s+/g, ' '));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -1040,6 +1043,16 @@ async function login(p) {
   const updMeio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.meio_contato === 'ligacao'));
   check('trocar o meio dentro do modal grava igual ao card', !!updMeio, JSON.stringify(updMeio));
   check('modal continua aberto e mostra o seletor de resultado da ligação', /Resultado da ligação/.test(await p.locator('#modal-body').textContent()));
+
+  // ZEO/TRE (02/09/2026, quinto meio de contato) — mesmo vocabulário de
+  // status de Carta/Ofício ("Status do envio"), não o de Ligação.
+  const opcoesMeio = await p.locator('#modal-body select >> nth=0 >> option').allTextContents();
+  check('seletor de meio de contato tem a opção ZEO/TRE', opcoesMeio.includes('Convocação oficial (ZEO/TRE)'), opcoesMeio.join(', '));
+  await p.selectOption('#modal-body select >> nth=0', 'zeo');
+  await p.waitForTimeout(150);
+  const updMeioZeo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.meio_contato === 'zeo'));
+  check('trocar o meio pra ZEO grava igual aos demais', !!updMeioZeo, JSON.stringify(updMeioZeo));
+  check('modal mostra "Status do envio" pro ZEO (mesmo vocabulário de Carta/Ofício, não o de ligação)', /Status do envio/.test(await p.locator('#modal-body').textContent()) && !/Resultado da ligação/.test(await p.locator('#modal-body').textContent()));
 
   // Registrar uma tentativa manual — vira parte da timeline de "Tentativas de contato".
   await p.fill('#mm-tent-nota', 'Liguei às 14h, não atendeu');

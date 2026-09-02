@@ -1105,6 +1105,42 @@ cada um com propósito diferente:
   vocabulário muda de fato (Carta↔Ofício continuam compartilhando os
   mesmos 4 valores de sempre, então não zeram entre si).
 
+  **Convocação oficial (ZEO/TRE) como meio de contato (02/09/2026,
+  `sql/SIME_atores_meio_contato_zeo.sql`).** Quinto valor de
+  `meio_contato`, pedido direto: "acrescente a status zeo para os contatos
+  que tiveram tentativa de contato Convocação oficial (ZEO/TRE) —
+  Convocação formal enviada pelo sistema próprio do TRE (ZEO)". Mesmo tipo
+  de coisa que Carta Registrada/Oficial de Justiça (convocação formal, com
+  necessidade de confirmar recebimento) — reaproveita o MESMO vocabulário
+  de status (`a_enviar`/`enviado`/`entregue`/`devolvido`, via
+  `cmStatusLabelSet()`, que só troca de vocabulário pra `ligacao`), nenhum
+  valor novo de status precisou ser criado. `CM_MEIO_LABEL` (label "Convocação
+  oficial (ZEO/TRE)"), `cmPrecisaEscalonamento()` (nunca sugere escalonar
+  quem já está em ZEO, mesmo critério de Carta/Ofício) e os ícones do
+  Dashboard (`RS_ICONE_POR_MEIO`/`RS_MEIO_SUFIXO` em `sime_resumo_secoes.js`,
+  🏛️) atualizados juntos. `SIME_correspondencia.js`/`SIME_oficial_justica.js`
+  continuam filtrando só `carta_registrada`/`oficial_justica` respectivamente
+  — ZEO não tem etiqueta/AR nem relação de oficial de justiça própria ainda,
+  é só o valor do meio de contato por enquanto.
+
+  **Campanha conversacional pra quem tem convocação ZEO pendente — pedido em
+  aberto (02/09/2026).** O cartório pediu, na sequência do meio de contato
+  acima, uma campanha automatizada no estilo de uma conversa real anexada
+  (Bom dia, esse contato é de FULANO? → Sim/Não → Sim: manda a carta de
+  convocação (PDF nominal, um por pessoa) → Não: encerra e avisa o
+  cartório). Isto **não foi implementado ainda** — falta (1) a lista de
+  quem de fato teve tentativa de convocação por ZEO (mencionada como já
+  entregue ao cartório em 31/08/2026, mas nunca chegou a este repositório
+  nem à base — conferido: nenhum `sime_atores`/`sime_logs` menciona "zeo")
+  e (2) uma forma de anexar um PDF DIFERENTE por pessoa — hoje
+  `sime_campanha_etapas.imagem_url` é uma imagem só, compartilhada por
+  TODOS os destinatários da etapa (ver "Suporte de imagem por etapa no
+  script conversacional", 22/08/2026); anexar a carta de convocação
+  nominal de cada mesário exigiria um campo de anexo por PESSOA (ex.: nova
+  coluna em `sime_atores` ou `sime_campanhas_confirmacao` com a URL do PDF
+  daquela pessoa), que ainda não existe. Perguntado ao cartório antes de
+  construir — ver pedido de esclarecimento no chat.
+
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem
   `inscricao_eleitoral`; a busca por nome em `SIME_atores.html` e em

@@ -249,8 +249,8 @@ function rsStatusCargo(ator) {
   // telefonico mude o [ícone] para um telefone") — só essa faixa muda; as
   // demais (✅/📋/⚠️/🔍/🔁 acima) continuam com o ícone de sempre, mesmo se
   // o meio de contato também estiver marcado.
-  const RS_ICONE_POR_MEIO = { carta_registrada: '✉️', oficial_justica: '👮', ligacao: '📞' };
-  const RS_MEIO_SUFIXO = { carta_registrada: ' (Carta Registrada)', oficial_justica: ' (Oficial de Justiça)', ligacao: ' (Ligação telefônica)' };
+  const RS_ICONE_POR_MEIO = { carta_registrada: '✉️', oficial_justica: '👮', ligacao: '📞', zeo: '🏛️' };
+  const RS_MEIO_SUFIXO = { carta_registrada: ' (Carta Registrada)', oficial_justica: ' (Oficial de Justiça)', ligacao: ' (Ligação telefônica)', zeo: ' (ZEO/TRE)' };
   const icone = RS_ICONE_POR_MEIO[ator.meio_contato] || '🔶';
   const sufixo = RS_MEIO_SUFIXO[ator.meio_contato] || '';
   return { icone, label: `Aguardando confirmação${sufixo} — ${nome}`, cls: 'rs-aguardando', nome, id };
