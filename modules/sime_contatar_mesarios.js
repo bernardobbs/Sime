@@ -100,6 +100,7 @@ const CM_BUCKETS = [
   { valor: 'substituido',       label: '🔁 Já substituído' },
   { valor: 'relato_terceiro_pendente', label: '⚠️ Relato de terceiro — precisa confirmar' },
   { valor: 'sem_whatsapp', label: '📵 Sem WhatsApp (confirmado ou formato de fixo)' },
+  { valor: 'meio_zeo', label: '🏛️ Convocação oficial (ZEO/TRE)' },
 ];
 // Filtro por função (21/08/2026) — desde que apoio logístico entrou na
 // mesma fila de mesário, dá pra querer ver só um tipo de cada vez.
@@ -1566,6 +1567,7 @@ function cmFiltrar() {
     else if (cmFiltroStatus === 'relato_terceiro_pendente') { if (!p.tem_relato_terceiro_pendente) return false; }
     else if (cmFiltroStatus === 'aguardando_resposta') { if (!cmEhAguardandoResposta(p)) return false; }
     else if (cmFiltroStatus === 'sem_whatsapp') { if (!cmSemWhatsapp(p)) return false; }
+    else if (cmFiltroStatus === 'meio_zeo') { if (p.meio_contato !== 'zeo') return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
     if (cmFiltroMunicipio) {
@@ -1630,6 +1632,7 @@ function renderContatarMesarios() {
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
   contagem.relato_terceiro_pendente = cmDados.pessoas.filter(p => p.tem_relato_terceiro_pendente).length;
   contagem.sem_whatsapp = cmDados.pessoas.filter(cmSemWhatsapp).length;
+  contagem.meio_zeo = cmDados.pessoas.filter(p => p.meio_contato === 'zeo').length;
   const pessoasAguardando = cmDados.pessoas.filter(cmEhAguardandoResposta);
   contagem.aguardando_resposta = pessoasAguardando.length;
   const contagemFuncao = {};

@@ -1700,6 +1700,23 @@ async function login(p) {
   const todosMunicipiosDeVolta = await p.locator('.content').textContent();
   check('voltando pra "Todos os municípios" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosMunicipiosDeVolta) && /FABIO APOIO/.test(todosMunicipiosDeVolta));
 
+  // Bucket "🏛️ Convocação oficial (ZEO/TRE)" (02/09/2026) — filtra por
+  // meio_contato, não por confirmacao (mesmo padrão de "sem_whatsapp").
+  // Ninguém na fixture nasce com meio 'zeo'; marca BRUNO na hora, pelo
+  // mesmo <select> que o cartório usaria, e confirma que ele passa a
+  // aparecer no filtro (e some quando volta pra "Todos").
+  await p.selectOption('.import-card:has-text("BRUNO MESARIO") select', 'zeo');
+  await p.waitForTimeout(150);
+  await p.selectOption('#cm-filtro', 'meio_zeo');
+  await p.waitForTimeout(150);
+  const soZeo = await p.locator('.content').textContent();
+  check('filtro "Convocação oficial (ZEO/TRE)" mostra só quem tem esse meio marcado', /BRUNO MESARIO/.test(soZeo) && !/ANA PRESIDENTE/.test(soZeo) && !/FABIO APOIO/.test(soZeo), soZeo.replace(/\s+/g, ' ').slice(0, 200));
+
+  await p.selectOption('#cm-filtro', '');
+  await p.waitForTimeout(150);
+  const todosZeoDeVolta = await p.locator('.content').textContent();
+  check('voltando pra "Todos" mostra todo mundo de novo (BRUNO continua com o meio ZEO)', /BRUNO MESARIO/.test(todosZeoDeVolta) && /ANA PRESIDENTE/.test(todosZeoDeVolta) && /FABIO APOIO/.test(todosZeoDeVolta));
+
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

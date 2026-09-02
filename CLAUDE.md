@@ -1123,23 +1123,51 @@ cada um com propósito diferente:
   — ZEO não tem etiqueta/AR nem relação de oficial de justiça própria ainda,
   é só o valor do meio de contato por enquanto.
 
-  **Campanha conversacional pra quem tem convocação ZEO pendente — pedido em
-  aberto (02/09/2026).** O cartório pediu, na sequência do meio de contato
-  acima, uma campanha automatizada no estilo de uma conversa real anexada
-  (Bom dia, esse contato é de FULANO? → Sim/Não → Sim: manda a carta de
-  convocação (PDF nominal, um por pessoa) → Não: encerra e avisa o
-  cartório). Isto **não foi implementado ainda** — falta (1) a lista de
-  quem de fato teve tentativa de convocação por ZEO (mencionada como já
-  entregue ao cartório em 31/08/2026, mas nunca chegou a este repositório
-  nem à base — conferido: nenhum `sime_atores`/`sime_logs` menciona "zeo")
-  e (2) uma forma de anexar um PDF DIFERENTE por pessoa — hoje
-  `sime_campanha_etapas.imagem_url` é uma imagem só, compartilhada por
-  TODOS os destinatários da etapa (ver "Suporte de imagem por etapa no
-  script conversacional", 22/08/2026); anexar a carta de convocação
-  nominal de cada mesário exigiria um campo de anexo por PESSOA (ex.: nova
-  coluna em `sime_atores` ou `sime_campanhas_confirmacao` com a URL do PDF
-  daquela pessoa), que ainda não existe. Perguntado ao cartório antes de
-  construir — ver pedido de esclarecimento no chat.
+  **Filtro "🏛️ Convocação oficial (ZEO/TRE)" em Contatar mesários
+  (02/09/2026).** Sexto bucket virtual em `CM_BUCKETS` (`meio_zeo`), mesmo
+  padrão de `sem_whatsapp`/`aguardando_resposta` — filtra por
+  `p.meio_contato==='zeo'`, não por `confirmacao`. É como o cartório marca
+  alguém como ZEO (pelo `<select>` de Meio de contato, já com a opção nova)
+  e depois reúne esse grupo pra usar "📢 Criar campanha com estes" —
+  respondendo ao pedido original ("em status quero que acrescente a status
+  zeo") sem precisar de um import de lista nenhum: a marcação é manual,
+  pessoa por pessoa, pelo mesmo fluxo que já existe pra Carta/Ofício.
+
+  **Campanha conversacional "Confirmação de identidade — Convocação
+  ZEO/TRE" (02/09/2026).** Pedido direto, no estilo de uma conversa real
+  anexada (Bom dia, esse contato é de FULANO? → Sim/Não → Sim: avisa que a
+  carta já saiu pelo ZEO → Não: encerra e avisa o cartório). Criada como
+  `sime_campanhas` própria (status `rascunho` — nasce parada, mesmo padrão
+  do script de 27/08/2026, cartório revisa e ativa em 🧩 Campanhas antes de
+  qualquer envio saltar): etapa 1 pergunta a identidade (ramo "sim" → etapa
+  2; ramo "não" → `status_final: 'telefone_incorreto'`, terminal, mesmo
+  comportamento de sempre — sai da fila e fica visível pro cartório, é o
+  "informa o SIME" do pedido); etapa 2 confirma a convocação e informa que
+  a carta oficial já foi enviada pelo próprio sistema do TRE — **sem anexar
+  PDF** (decisão explícita do cartório ao ser perguntado: "por enquanto, só
+  o texto"). Rodar essa campanha é manual como qualquer outra: filtrar por
+  "🏛️ Convocação oficial (ZEO/TRE)" acima, "📢 Criar campanha com estes",
+  escolher o script salvo no Disparo em massa.
+
+  **Por que não veio pré-carregada com uma lista de pessoas.** Perguntado
+  onde estava "a lista ZEO fornecida pelo cartório em 31/08/2026" — não
+  achei nada com "zeo" em `sime_atores`/`sime_logs` nem no repositório antes
+  de construir isto — a resposta foi "está no sime", ou seja: não é uma
+  lista externa pra importar, é o próprio filtro acima que o cartório vai
+  usar pra reunir quem for marcando como ZEO daqui em diante. Por isso o
+  meio de contato + o filtro têm que existir ANTES da campanha ser
+  disparada de fato — sem gente marcada como `zeo` ainda, o filtro
+  simplesmente mostra zero pessoas, o que é esperado nesta v1.
+
+  **Anexo de PDF por pessoa continua sem existir.** `sime_campanha_etapas.imagem_url`
+  ainda é uma imagem só, compartilhada por TODOS os destinatários da etapa
+  (ver "Suporte de imagem por etapa no script conversacional", 22/08/2026)
+  — anexar a carta de convocação nominal de cada mesário (como no print
+  anexado, um PDF por título de eleitor) exigiria um campo de anexo por
+  PESSOA que ainda não existe. Fora do escopo desta v1 por decisão
+  explícita do cartório, não por esquecimento — se um dia for pedido,
+  precisa de uma coluna nova (`sime_atores` ou
+  `sime_campanhas_confirmacao`) com a URL do PDF de cada pessoa.
 
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem
