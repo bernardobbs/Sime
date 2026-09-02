@@ -769,6 +769,19 @@ cada um com propósito diferente:
   logístico entrou na mesma lista — sem isso não dava pra separar os dois
   grupos pra trabalhar um de cada vez.
 
+  **Filtro por município (02/09/2026)** — terceiro `<select>` na mesma fila
+  (`cm-filtro-municipio`), pedido direto: "quero que acrescente o filtro de
+  municipio alem de status, função mantendo a busca por nome ou titulo".
+  Opções calculadas na hora a partir de `cmDados.secoesPorId` (distintos,
+  ordenados) — não é uma lista fixa, então cresce sozinho se a zona ganhar
+  município novo. Resolve o município de cada pessoa por `p.secao_id`; quem
+  não tem seção (`secao_id` nulo — mesmo caso de Auxiliar de Eleição sem
+  local, documentado acima) nunca casa com nenhuma opção específica e some
+  da lista sempre que um município é selecionado, só reaparecendo em "Todos
+  os municípios". Os três filtros (status, função, município) se combinam
+  entre si, e com a busca por nome/título, que continua exatamente como
+  era — nenhum dos dois foi tocado.
+
   **Bug real, grave, corrigido em 21/08/2026 — "Registrar tentativa" (e toda
   ação registrada por esta página) gravava com sucesso mas ficava invisível
   pra sempre na releitura.** Sintoma reportado pelo cartório: clicar

@@ -1660,6 +1660,33 @@ async function login(p) {
   const todosDeVolta = await p.locator('.content').textContent();
   check('voltando pra "Todas as funções" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosDeVolta) && /ELIS APOIO/.test(todosDeVolta) && /FABIO APOIO/.test(todosDeVolta));
 
+  // Filtro por município (02/09/2026) — terceiro filtro, independente dos
+  // outros dois, resolvido via secao_id -> secoesPorId[...].municipio. Todas
+  // as seções da fixture são de Campo Maior; FABIO (a6) não tem secao_id
+  // nenhum (apoio logístico sem local, ver comentário da fixture acima), então
+  // ele é o caso "some ao filtrar por município, mesmo sem trocar de cidade".
+  const opcoesMunicipio = await p.locator('#cm-filtro-municipio option').allTextContents();
+  check('opções do filtro de município: Todos os municípios + Campo Maior', opcoesMunicipio.includes('Todos os municípios') && opcoesMunicipio.includes('Campo Maior') && opcoesMunicipio.length === 2, opcoesMunicipio.join(', '));
+
+  await p.selectOption('#cm-filtro-municipio', 'Campo Maior');
+  await p.waitForTimeout(150);
+  const soCampoMaior = await p.locator('.content').textContent();
+  check('filtro "Campo Maior" mantém quem tem seção na cidade e esconde FABIO (sem secao_id)', /BRUNO MESARIO/.test(soCampoMaior) && /ANA PRESIDENTE/.test(soCampoMaior) && !/FABIO APOIO/.test(soCampoMaior), soCampoMaior.replace(/\s+/g, ' ').slice(0, 200));
+
+  // Busca por nome continua funcionando junto do filtro de município (o
+  // pedido foi "mantendo a busca por nome ou titulo").
+  await p.fill('#cm-busca', 'bruno');
+  await p.waitForTimeout(450);
+  const municipioMaisBusca = await p.locator('.content').textContent();
+  check('filtro de município + busca por nome se combinam', /BRUNO MESARIO/.test(municipioMaisBusca) && !/ANA PRESIDENTE/.test(municipioMaisBusca), municipioMaisBusca.replace(/\s+/g, ' ').slice(0, 200));
+  await p.fill('#cm-busca', '');
+  await p.waitForTimeout(450);
+
+  await p.selectOption('#cm-filtro-municipio', '');
+  await p.waitForTimeout(150);
+  const todosMunicipiosDeVolta = await p.locator('.content').textContent();
+  check('voltando pra "Todos os municípios" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosMunicipiosDeVolta) && /FABIO APOIO/.test(todosMunicipiosDeVolta));
+
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

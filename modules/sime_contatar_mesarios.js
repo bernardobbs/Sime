@@ -122,6 +122,7 @@ function cmStatusLabelSet(meio) { return meio === 'ligacao' ? CM_STATUS_LIGACAO_
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
 let cmFiltroFuncao = '';
+let cmFiltroMunicipio = '';
 let cmBusca = '';
 let cmBuscaTimer = null;
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
@@ -1567,6 +1568,10 @@ function cmFiltrar() {
     else if (cmFiltroStatus === 'sem_whatsapp') { if (!cmSemWhatsapp(p)) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
+    if (cmFiltroMunicipio) {
+      const municipio = p.secao_id ? cmDados.secoesPorId[p.secao_id]?.municipio : null;
+      if (municipio !== cmFiltroMunicipio) return false;
+    }
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
     return true;
   });
@@ -1629,6 +1634,7 @@ function renderContatarMesarios() {
   contagem.aguardando_resposta = pessoasAguardando.length;
   const contagemFuncao = {};
   for (const p of cmDados.pessoas) contagemFuncao[p.funcao] = (contagemFuncao[p.funcao] || 0) + 1;
+  const municipios = [...new Set(Object.values(cmDados.secoesPorId).map(s => s.municipio).filter(Boolean))].sort();
   const lista = cmFiltrar();
 
   c.innerHTML = `
@@ -1650,6 +1656,10 @@ function renderContatarMesarios() {
         <select id="cm-filtro-funcao" onchange="cmFiltroFuncao=this.value;render()">
           ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${cmFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
         </select>
+        <select id="cm-filtro-municipio" onchange="cmFiltroMunicipio=this.value;render()">
+          <option value="" ${cmFiltroMunicipio === '' ? 'selected' : ''}>Todos os municípios</option>
+          ${municipios.map(m => `<option value="${cmEsc(m)}" ${cmFiltroMunicipio === m ? 'selected' : ''}>${cmEsc(m)}</option>`).join('')}
+        </select>
         <input id="cm-busca" type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmOnBuscaInput(this.value)" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1658,7 +1668,7 @@ function renderContatarMesarios() {
       </div>
     </div>
     ${pessoasAguardando.length ? `
-    <div class="import-result ir-warn" style="cursor:pointer" onclick="cmFiltroStatus='aguardando_resposta';cmFiltroFuncao='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
+    <div class="import-result ir-warn" style="cursor:pointer" onclick="cmFiltroStatus='aguardando_resposta';cmFiltroFuncao='';cmFiltroMunicipio='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
       🕓 <b>${pessoasAguardando.length} pessoa(s)</b> aguardando resposta — já tentamos contato, ninguém confirmou ainda.
       <div style="font-weight:400;margin-top:3px">${pessoasAguardando.slice(0, 6).map(p => cmEsc(p.nome_completo)).join(', ')}${pessoasAguardando.length > 6 ? ` e mais ${pessoasAguardando.length - 6}` : ''}</div>
     </div>` : ''}
