@@ -8,6 +8,17 @@ const { chromium } = pw;
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
+// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
+// quando o cartório quiser — então aqui a configuração é fixada, em vez de
+// deixar a suíte seguir um flag de produção que muda debaixo dela.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 const STUB_SUPABASE_JS = `
 function rowsFor(table) { return (window.__mockConfig[table] || []); }
 function matchFilters(row, filters) { return Object.entries(filters).every(([k, v]) => row[k] === v); }
@@ -50,6 +61,7 @@ async function newPage(ctx, mockConfig, tokens) {
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
+  await p.route('**/sime_config.js**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   return p;
 }
 
@@ -139,6 +151,9 @@ async function fazerLoginPIN(p) {
   });
   const p = await newPage(ctx, cfg, TOKENS);
   await p.goto('http://localhost:8917/modules/SIME_conferente.html');
+  // PIN usava type=number (achado "baixo") — troca pro mesmo padrão do Mesário.
+  check('PIN usa type=tel (não number)', await p.getAttribute('#pin-0', 'type') === 'tel');
+  check('PIN mantém teclado numérico via inputmode', await p.getAttribute('#pin-0', 'inputmode') === 'numeric');
   await fazerLoginPIN(p);
   await p.waitForFunction(() => document.getElementById('view-rotas').classList.contains('active'));
   await p.waitForTimeout(300);
@@ -153,12 +168,19 @@ async function fazerLoginPIN(p) {
     await p.waitForTimeout(50);
   }
 
+  // Confirmar "pronta" era um modal em cima de uma ação que já tem desfazer
+  // de um toque (achado "baixo") — agora é toque único, sem sheet nenhuma.
+  check('nenhuma folha aberta antes do toque em "pronta"', await p.locator('.overlay.show').count() === 0);
   await p.click('#btn-pronta');
-  await p.click('#sh-ok');
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_status === 'pronta'));
+  check('toque único já confirma "pronta" (sem abrir folha)', await p.locator('.overlay.show').count() === 0);
   const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
   const prontaCall = calls.reverse().find(c => c.params?.p_status === 'pronta');
   check('confirmar pronta propaga p_ts_pronta=true', prontaCall?.params?.p_ts_pronta === true);
+
+  // Desfazer: alvo de toque ≥44px, não mais colado ao botão crítico ao lado.
+  const desfazerBox = await p.locator('.btn-desfazer').evaluate(el => el.getBoundingClientRect());
+  check('botão "Desfazer" tem alvo de toque ≥44px', desfazerBox.height >= 44, String(desfazerBox.height));
   await ctx.close();
 }
 

@@ -36,7 +36,7 @@ export function createClient(url, key) {
     },
     from(t) {
       const qb = {
-        select(){ return qb; }, eq(){ return qb; }, order(){ return qb; }, not(){ return qb; }, limit(){ return qb; },
+        select(){ return qb; }, eq(){ return qb; }, order(){ return qb; }, not(){ return qb; }, limit(){ return qb; }, in(){ return qb; },
         maybeSingle(){
           if (t === 'sime_usuarios') return Promise.resolve({ data: ${JSON.stringify(meuUsuario) ?? 'null'}, error: null });
           return Promise.resolve({ data: null, error: null });
@@ -50,6 +50,8 @@ export function createClient(url, key) {
       };
       return qb;
     },
+    channel(){ return { on(){ return this; }, subscribe(){ return this; } }; },
+    removeChannel(){},
   };
 }
 `;
@@ -69,7 +71,7 @@ async function fazerLogin(p) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Maria S.', perfil: 'coordenador' } }) });
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Maria S.', perfil: 'coordenador', zona_id: 'zona-7' } }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
@@ -81,6 +83,16 @@ async function fazerLogin(p) {
   check('admin comum: nome vem do sime_usuarios real', nameTxt.trim() === 'Maria S.', 'got=' + nameTxt);
   const logoutVisivel = await p.evaluate(() => getComputedStyle(document.getElementById('btn-logout')).display !== 'none');
   check('admin comum: botão de logout aparece', logoutVisivel);
+
+  // 27/08/2026 — pedido direto: "como adicionamos usuários a zona 94?". Um
+  // admin comum (não super_admin) nunca deve ver o seletor de zona ao criar
+  // membro novo — a Edge Function ignoraria mesmo (usa sempre a zona de quem
+  // chama), mas oferecer o campo na tela seria enganoso.
+  await p.click('button:has-text("Equipe")');
+  await p.waitForTimeout(150);
+  await p.click('button:has-text("Novo membro")');
+  await p.waitForTimeout(150);
+  check('admin comum: seletor de zona NÃO aparece ao criar membro', await p.locator('#m-zona').count() === 0);
   await ctx.close();
 }
 
@@ -91,7 +103,7 @@ async function fazerLogin(p) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Rafael Super', perfil: 'super_admin' } }) });
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({ meuUsuario: { nome: 'Rafael Super', perfil: 'super_admin', zona_id: 'zona-7' } }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
@@ -114,6 +126,37 @@ async function fazerLogin(p) {
   const zona96Txt = await p.locator('.zona-card').nth(1).textContent();
   check('super_admin: zona sem município mostra fallback', zona96Txt.includes('sem município definido'), zona96Txt.replace(/\s+/g, ' '));
 
+  // 27/08/2026 — pedido direto: "como adicionamos usuários a zona 94?". Antes
+  // desta mudança, a Edge Function sime-admin-user já aceitava zona_id no
+  // corpo pra super_admin escolher outra zona, mas a tela nunca mandava esse
+  // campo — todo login novo caía sempre na zona de quem estava logado, sem
+  // como um super_admin da 7ª criar o primeiro usuário de uma zona vazia
+  // (como a 96ª aqui, sem nenhum admin próprio ainda pra logar e criar os
+  // próximos). Agora o seletor aparece só pra super_admin, ao criar.
+  await p.click('button:has-text("Equipe")');
+  await p.waitForTimeout(150);
+  await p.click('button:has-text("Novo membro")');
+  await p.waitForTimeout(150);
+  const opcoesZona = await p.locator('#m-zona option').allTextContents();
+  check('super_admin: seletor de zona lista as 2 zonas', opcoesZona.length === 2 && /7ª Zona/.test(opcoesZona[0]) && /96ª Zona/.test(opcoesZona[1]), JSON.stringify(opcoesZona));
+  const zonaDefault = await p.locator('#m-zona').inputValue();
+  check('super_admin: zona vem pré-selecionada com a própria (7ª)', zonaDefault === 'zona-7', zonaDefault);
+
+  await p.fill('#m-nome', 'Primeiro Admin 96');
+  await p.fill('#m-email', 'admin96@tre-pi.jus.br');
+  await p.selectOption('#m-perfil', 'coordenador');
+  await p.selectOption('#m-zona', 'zona-96');
+  let corpoEnviado = null;
+  await p.route('**/functions/v1/sime-admin-user', async (route) => {
+    corpoEnviado = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, usuario_id: 'novo-1', auth_user_id: 'auth-novo-1', email: 'admin96@tre-pi.jus.br', senha_temporaria: 'abc1234!', zona_id: 'zona-96' }) });
+  });
+  await p.click('.modal-footer button:has-text("Salvar")');
+  await p.waitForTimeout(300);
+  check('super_admin: escolher outra zona manda zona_id certo pra Edge Function', corpoEnviado?.zona_id === 'zona-96', JSON.stringify(corpoEnviado));
+  check('super_admin: continua mandando nome/email/perfil normalmente', corpoEnviado?.nome === 'Primeiro Admin 96' && corpoEnviado?.email === 'admin96@tre-pi.jus.br' && corpoEnviado?.perfil === 'coordenador', JSON.stringify(corpoEnviado));
+
+  check('super_admin: zero erros JS depois de criar o usuário', erros.length === 0, erros.join('; '));
   await ctx.close();
 }
 

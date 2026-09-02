@@ -45,5 +45,15 @@ dependencies {
 
     // GeckoView: motor próprio, independente do System WebView do box.
     // Ver docs/APP_TV_BOX.md §2 — é a decisão central do projeto.
-    implementation("org.mozilla.geckoview:geckoview:127.0.20240613141014")
+    //
+    // A versão de release atual (153.0.20260727124451) exige minSdk 26 —
+    // acima do Android 7.1 (API 25) do MXQ Pro 4K real. Isso não é um ajuste
+    // de configuração: se o motor exige API 26+, o box físico não roda essa
+    // versão, ponto. 143.0.20251003115653 é a última release ainda compatível
+    // com API 25. Ainda falta confirmar num build real (fora deste sandbox,
+    // que não alcança maven.mozilla.org) que o Manifest Merger aceita
+    // minSdk 21 sem reclamar — mas a existência da coordenada e a assinatura
+    // de API (onLoadRequest, ver PainelActivity.kt) já foram verificadas
+    // contra o código-fonte do GeckoView.
+    implementation("org.mozilla.geckoview:geckoview:143.0.20251003115653")
 }

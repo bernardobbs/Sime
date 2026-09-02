@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME · Atores</title>
 <link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
@@ -22,6 +22,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* BUSCA */
 .search-row{display:flex;gap:8px;flex-wrap:wrap;}
 .search-row input,.search-row select{padding:9px 12px;border-radius:9px;border:1px solid var(--border2);background:var(--card);font-size:.85rem;color:var(--text);outline:none;}
+/* outline:none acima remove o foco nativo — devolvido só no :focus-visible,
+   pra não aparecer em clique de mouse mas continuar visível via teclado. */
+.search-row input:focus-visible,.search-row select:focus-visible,
+.form-group input:focus-visible,.form-group select:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .search-row input{flex:1;min-width:180px;}
 .search-row select{min-width:140px;}
 
@@ -31,7 +35,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ac-info{flex:1;}
 .ac-name{font-weight:800;font-size:.9rem;}
 .ac-detail{font-size:.72rem;color:var(--text2);margin-top:2px;}
-.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;}
+.ac-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;margin-top:4px;display:inline-block;color:#fff;}
 .ac-btn{padding:10px 14px;border-radius:9px;font-size:.78rem;font-weight:800;cursor:pointer;border:none;background:#25d366;color:#fff;display:flex;align-items:center;gap:5px;flex-shrink:0;text-decoration:none;}
 
 /* FUNCAO COLORS */
@@ -79,7 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
 .form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
 .form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
-.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
 
 /* TOAST */
 /* .toast.show vem de sime_components.css */
@@ -97,10 +101,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="btn btn-dark" style="font-size:.72rem;padding:6px 10px;" onclick="abrirModal(null)">+ Novo</button>
 </div>
 
-<div class="tabs">
-  <div class="tab active" id="tab-lista-btn" onclick="goTab('lista',this)">📋 Lista</div>
-  <div class="tab"        id="tab-guerra-btn" onclick="goTab('guerra',this)">⚡ Modo Guerra</div>
-  <div class="tab"        id="tab-import-btn" onclick="goTab('import',this)">📥 Importar CSV</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" id="tab-lista-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('lista',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📋 Lista</div>
+  <div class="tab"        id="tab-guerra-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('guerra',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚡ Modo Guerra</div>
+  <div class="tab"        id="tab-import-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('import',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📥 Importar CSV</div>
+  <div class="tab"        id="tab-externos-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('externos',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">☎️ Contatos externos</div>
+  <div class="tab"        id="tab-disparo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('disparo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📢 Disparo em massa</div>
+  <div class="tab"        id="tab-scripts-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('scripts',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🧩 Campanhas</div>
+</div>
+<!-- Sincronizar mesários + Resumo por Seção viraram SIME_convocacao.html (página
+     própria, 20/08/2026) — não são mais abas daqui. -->
+<div style="padding:10px 14px 0">
+  <a href="./SIME_convocacao.html" class="btn btn-out" style="text-decoration:none;display:inline-block">🗳️ Ir para Convocação de Mesários →</a>
 </div>
 
 <div class="content" id="content"></div>
@@ -113,6 +125,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_campanha_script_editor.js"></script>
 <script type="module">
 // Carrega os atores do Supabase. Este módulo era 100% localStorage: a zona
 // tinha centenas de pessoas cadastradas no banco e a tela abria vazia em
@@ -121,7 +134,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 // Sem sessão (aberto direto, sem login) nada acontece e o módulo segue no
 // localStorage — o cadastro/edição local continua funcionando como antes.
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getAtores } from './sime_dados.js';
+import { initSimeDados, getAtores, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { SIME_CONFIG } from './sime_config.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
@@ -130,10 +143,36 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return;
   initSimeDados(supabase);
+  window.supabaseAtores = supabase;
+
+  // Pra log() (Modo Guerra) resolver numero -> secao_id ao gravar em sime_logs.
+  const secoesReais = await getSecoes({ fallback: null });
+  if (secoesReais) window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
+  // Pro disparo em massa (modelo "Convocação") personalizar {local}/{municipio} por pessoa.
+  if (secoesReais) window.SECAO_INFO_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), { local_nome: s.local_nome, municipio: s.municipio }]));
+
+  // Contatos externos (Equatorial e afins). Vivem numa tabela própria e não em
+  // sime_atores porque não são pessoas de uma seção: são organizações com
+  // abrangência por MUNICÍPIO, e entrariam contando como "ator" nos números da
+  // zona e nas campanhas de confirmação de mesário. O cadastro, porém, é aqui
+  // — é onde a equipe procura telefone.
+  window.recarregarExternos = async () => {
+    const { data } = await supabase.from('sime_contatos_externos')
+      .select('id,tipo,nome,municipio,telefone,whatsapp,observacao,ativo')
+      .eq('ativo', true).order('tipo');
+    window.EXTERNOS_REAIS = data || [];
+    if (window.render) window.render();
+  };
+  await window.recarregarExternos();
+
   const atores = await getAtores({ fallback: null });
   if (!atores) return;
   window.ATORES_REAIS = atores;
   if (window.render) window.render();
+
+  // Pra resolver a eleição ativa da zona na hora de criar um ator novo
+  // (salvarAtor(), script normal, sem acesso a import).
+  window.getEleicaoAtivaDaZona = (zonaId) => getEleicaoAtiva({ fallback: null, zonaId });
 })();
 </script>
 <script>
@@ -178,21 +217,57 @@ function telLocal(t)   { const d=String(t||'').replace(/\D/g,''); return d.start
 function fmtTel(t)     { const d=telLocal(t); return d.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')||t; }
 function waLink(t)     { return 'https://wa.me/55'+telLocal(t); }
 function serverTs()    { return Date.now(); }
-function log(acao,secao,payload) {
+// sime_logs (Supabase) é a fonte real, lida por SIME_relatorios.html — antes
+// isto gravava só em sime_logs_v1, um log que nunca saía do navegador de
+// quem clicou "CONTATAR" no Modo Guerra, e a auditoria do cartório nunca via
+// esses acionamentos. Mantém o espelho local como fallback se a rede falhar.
+// Bug real corrigido em 21/08/2026 (achado investigando "tentativas de
+// contato não aparecem" em SIME_convocacao.html, mesmo defeito aqui): o
+// insert nunca preenchia eleicao_id, e a policy de SELECT de sime_logs é
+// `eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona visível)` — NULL
+// nunca casa com IN, então todo log gravado por esta página ficava invisível
+// pra sempre na releitura (ex.: SIME_relatorios.html). Ver
+// sql/SIME_logs_eleicao_id_fix.sql pro backfill do que já foi gravado assim.
+let _logEleicaoIdCache = null;
+async function _logEleicaoIdAtual() {
+  if (_logEleicaoIdCache) return _logEleicaoIdCache;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId || !window.getEleicaoAtivaDaZona) return null;
+  const eleicao = await window.getEleicaoAtivaDaZona(zonaId);
+  _logEleicaoIdCache = eleicao?.id || null;
+  return _logEleicaoIdCache;
+}
+async function log(acao,secao,payload) {
   const logs=JSON.parse(localStorage.getItem(LOG_KEY)||'[]');
   logs.unshift({acao,modulo:'atores',secao,payload,ts:serverTs()});
   if(logs.length>500) logs.splice(400);
   localStorage.setItem(LOG_KEY,JSON.stringify(logs));
+
+  const sb = window.supabaseAtores;
+  if (!sb) return; // sem sessão — fica só o local, como antes
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[secao] || null;
+  try {
+    const eleicaoId = await _logEleicaoIdAtual();
+    await sb.from('sime_logs').insert({ acao, modulo: 'atores', secao_id: secaoId, eleicao_id: eleicaoId, payload });
+  } catch (e) { /* já ficou no espelho local acima */ }
 }
 
-let curTab='lista';
+// Abre direto na aba de Disparo quando chega link de "Criar campanha com
+// estes" (SIME_convocacao.html, aba Contatar mesários) — ver preseleção em
+// renderDisparo() abaixo.
+let curTab = new URLSearchParams(location.search).get('tab') === 'disparo' ? 'disparo' : 'lista';
+if (curTab !== 'lista') {
+  document.getElementById('tab-lista-btn')?.classList.remove('active');
+  const btn = document.getElementById('tab-' + curTab + '-btn');
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); }
+}
 let searchQ='', filterFuncao='', filterSecao='';
 let csvParsed=[];
 
 function goTab(tab,btn){
   curTab=tab;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.tab').forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  if(btn){ btn.classList.add('active'); btn.setAttribute('aria-selected','true'); }
   render();
 }
 
@@ -201,8 +276,11 @@ function render(){
   const atores=loadAtores();
   document.getElementById('h-sub').textContent=`${atores.length} ator${atores.length!==1?'es':''} cadastrado${atores.length!==1?'s':''}`;
 
+  if(curTab==='externos'){ renderExternos(); return; }
   if(curTab==='import'){ renderImport(); return; }
   if(curTab==='guerra'){ renderGuerra(atores); return; }
+  if(curTab==='disparo'){ renderDisparo(atores); return; }
+  if(curTab==='scripts'){ renderScripts(); return; }
   renderLista(atores);
 }
 
@@ -212,7 +290,7 @@ function filterAtores(atores){
     if(filterSecao  && a.secao!==filterSecao)   return false;
     if(searchQ){
       const q=searchQ.toLowerCase();
-      if(!a.nome.toLowerCase().includes(q) && !a.telefone.includes(q) && !a.secao.includes(q)) return false;
+      if(!a.nome.toLowerCase().includes(q) && !a.telefone.includes(q) && !a.secao.includes(q) && !(a.inscricao||'').includes(q)) return false;
     }
     return a.ativo!==false;
   });
@@ -224,7 +302,7 @@ function renderLista(atores){
   const c=document.getElementById('content');
   c.innerHTML=`
     <div class="search-row">
-      <input type="text" placeholder="Buscar nome, telefone, seção..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar atores" placeholder="Buscar nome, telefone, seção, título de eleitor..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -242,11 +320,12 @@ function renderLista(atores){
         <div class="ac-name">${a.nome}</div>
         <div class="ac-detail">${a.secao?'Seção '+parseInt(a.secao):''} ${a.local||''}</div>
         <div class="ac-detail">${fmtTel(a.telefone)}</div>
+        ${a.inscricao?`<div class="ac-detail">Título ${a.inscricao}</div>`:''}
         <span class="ac-badge f-${a.funcao}">${FUNC_EMOJI[a.funcao]} ${FUNC_LABEL[a.funcao]}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" title="Abrir WhatsApp">💬 WA</a>
-        <button class="btn btn-out" style="font-size:.65rem;padding:5px 8px" onclick="abrirModal('${a.id}')">✏️</button>
+        <button class="btn btn-out" aria-label="Editar" style="font-size:.65rem;padding:5px 8px;min-width:44px;min-height:44px;justify-content:center" onclick="abrirModal('${a.id}')">✏️</button>
       </div>`;
     c.appendChild(av);
   });
@@ -260,7 +339,7 @@ function renderGuerra(atores){
       ⚡ MODO GUERRA — Contato direto. Use apenas em emergências. Todo acionamento é registrado.
     </div>
     <div class="search-row">
-      <input type="text" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
+      <input type="text" aria-label="Buscar seção ou nome" placeholder="Buscar seção ou nome..." value="${searchQ}" oninput="searchQ=this.value;render()">
       <select onchange="filterFuncao=this.value;render()">
         <option value="">Todas funções</option>
         ${FUNCOES.map(f=>`<option value="${f}" ${filterFuncao===f?'selected':''}>${FUNC_EMOJI[f]} ${FUNC_LABEL[f]}</option>`).join('')}
@@ -284,7 +363,7 @@ function renderGuerra(atores){
           <div class="ac-name">${a.nome}</div>
           <div class="ac-detail">${FUNC_LABEL[a.funcao]} · ${fmtTel(a.telefone)}</div>
         </div>
-        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — '+String.fromCharCode(${a.nome.charCodeAt(0)})+'...')">
+        <a class="ac-btn" href="${waLink(a.telefone)}" target="_blank" onclick="log('contato_guerra','${sec}',{nome:'${a.nome.replace(/'/g,"\\'")}',funcao:'${a.funcao}'});showToast('📲 Abrindo WhatsApp — ${a.nome.replace(/'/g,"\\'")}...')">
           📲 CONTATAR
         </a>`;
       grp.appendChild(row);
@@ -387,6 +466,571 @@ function downloadTemplate(){
   a.download='sime_atores_modelo.csv'; a.click();
 }
 
+// ══════════════════════════════════════════════════
+// CONTATOS EXTERNOS — Equatorial e afins
+// ══════════════════════════════════════════════════
+// Quem o painel de problemas aciona quando o problema não é de gente da
+// eleição: faltou luz é a concessionária, não o mesário. Ficam aqui porque é
+// nesta tela que a equipe procura telefone, mas em tabela própria: são
+// organizações com abrangência por MUNICÍPIO, e entrariam contando como ator
+// nos números da zona e nas campanhas de confirmação de mesário.
+const EXT_TIPOS = ['energia','telefonia','pm','bombeiros','prefeitura','tre','outro'];
+const EXT_LABEL = { energia:'Energia (Equatorial)', telefonia:'Telefonia', pm:'Polícia Militar',
+  bombeiros:'Bombeiros', prefeitura:'Prefeitura', tre:'TRE', outro:'Outro' };
+const EXT_EMOJI = { energia:'⚡', telefonia:'📡', pm:'🚓', bombeiros:'🚒', prefeitura:'🏢', tre:'⚖️', outro:'☎️' };
+
+function loadExternos(){ return window.EXTERNOS_REAIS || []; }
+
+function renderExternos(){
+  const lista = loadExternos();
+  const c = document.getElementById('content');
+  const semSessao = !window.supabaseAtores;
+
+  c.innerHTML = `
+    <div class="import-card">
+      <div class="ic-title">☎️ Contatos externos</div>
+      <div class="ic-sub">Quem o <b>Painel de Problemas</b> aciona quando o problema não é de gente da eleição.
+        Faltou luz, o botão oferece a <b>Equatorial</b> do município da seção.<br>
+        Deixe o município em branco para valer na zona inteira.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para cadastrar contatos externos.</div>'
+                  : '<button class="btn btn-dark" onclick="abrirModalExterno(null)">+ Novo contato</button>'}
+    </div>
+    ${lista.length ? lista.map(c2=>`
+      <div class="ator-card">
+        <div class="ac-av" style="background:#8a5c20">${EXT_EMOJI[c2.tipo]||'☎️'}</div>
+        <div class="ac-info">
+          <div class="ac-name">${c2.nome}</div>
+          <div class="ac-detail">${EXT_LABEL[c2.tipo]||c2.tipo} · ${c2.municipio || 'toda a zona'} · ${fmtTel(c2.telefone)}</div>
+          ${c2.whatsapp===false ? '<span class="ac-badge" style="background:#556070;color:#fff">só telefone</span>' : ''}
+        </div>
+        <button class="btn btn-out" style="flex-shrink:0" onclick="abrirModalExterno('${c2.id}')">Editar</button>
+      </div>`).join('')
+      : `<div class="import-card" style="text-align:center;color:var(--text2);font-size:.82rem">
+           Nenhum contato externo cadastrado.<br>
+           <b>Sem a Equatorial aqui, o botão de energia não aparece no painel de problemas.</b>
+         </div>`}`;
+}
+
+function abrirModalExterno(id){
+  const c = id ? loadExternos().find(x=>x.id===id) : null;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">${c?'Editar contato externo':'Novo contato externo'}</div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body">
+      <div class="form-group"><label>Tipo</label>
+        <select id="x-tipo">
+          ${EXT_TIPOS.map(t=>`<option value="${t}" ${c?.tipo===t?'selected':''}>${EXT_EMOJI[t]} ${EXT_LABEL[t]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Nome / identificação</label>
+        <input type="text" id="x-nome" value="${c?.nome||''}" placeholder="Equatorial — plantão Campo Maior"></div>
+      <div class="form-group"><label>Município <span style="font-weight:400">(vazio = toda a zona)</span></label>
+        <input type="text" id="x-mun" value="${c?.municipio||''}" placeholder="Campo Maior"></div>
+      <div class="form-group"><label>Telefone (com DDD)</label>
+        <input type="tel" id="x-tel" value="${c?.telefone||''}" placeholder="86999998888"></div>
+      <div class="form-group"><label>
+        <input type="checkbox" id="x-wa" style="width:auto;margin-right:6px" ${c?.whatsapp===false?'':'checked'}>
+        Atende no WhatsApp</label>
+        <div style="font-size:.68rem;color:var(--text3)">Desmarcado, o botão vira ligação em vez de conversa.</div>
+      </div>
+      <div class="form-group"><label>Observação</label>
+        <input type="text" id="x-obs" value="${c?.observacao||''}" placeholder="Plantão 24h"></div>
+    </div>
+    <div class="m-foot">
+      ${c?`<button class="btn btn-red" onclick="removerExterno('${id}')">🗑 Remover</button>`:''}
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="salvarExterno('${id||''}')">💾 Salvar</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
+async function salvarExterno(id){
+  const sb = window.supabaseAtores;
+  if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
+  const nome = document.getElementById('x-nome').value.trim();
+  const tel  = (document.getElementById('x-tel').value||'').replace(/\D/g,'');
+  if(!nome){ showToast('⚠ Informe o nome'); return; }
+  // 8 dígitos aceita 0800 e telefone fixo antigo — não é celular, mas é
+  // exatamente o tipo de número que a concessionária publica.
+  if(tel.length < 8){ showToast('⚠ Telefone inválido'); return; }
+
+  const zonaId = await zonaDoUsuario();
+  if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
+
+  const payload = {
+    zona_id: zonaId,
+    tipo: document.getElementById('x-tipo').value,
+    nome,
+    municipio: document.getElementById('x-mun').value.trim() || null,
+    telefone: tel,
+    whatsapp: document.getElementById('x-wa').checked,
+    observacao: document.getElementById('x-obs').value.trim() || null,
+  };
+
+  const { error } = id
+    ? await sb.from('sime_contatos_externos').update(payload).eq('id', id)
+    : await sb.from('sime_contatos_externos').insert(payload);
+  if(error){ showToast('⚠ ' + (error.message||'Falhou ao salvar')); return; }
+
+  closeModal(); showToast('✓ Contato salvo');
+  await window.recarregarExternos();
+}
+
+function removerExterno(id){
+  pedirConfirmacao('Remover este contato?', async () => {
+    const sb = window.supabaseAtores;
+    const { error } = await sb.from('sime_contatos_externos').update({ ativo:false }).eq('id', id);
+    if(error){ showToast('⚠ ' + error.message); return; }
+    closeModal(); showToast('✓ Removido');
+    await window.recarregarExternos();
+  }, { titulo:'Remover contato', labelOk:'🗑 Remover', classeOk:'btn-red' });
+}
+
+// A zona vem do usuário logado, nunca de um campo na tela: cadastrar contato
+// na zona errada seria oferecer o telefone de outra comarca no dia D.
+let _zonaCache = null;
+async function zonaDoUsuario(){
+  if(_zonaCache) return _zonaCache;
+  const sb = window.supabaseAtores;
+  const { data:{ user } } = await sb.auth.getUser();
+  const { data } = await sb.from('sime_usuarios').select('zona_id').eq('auth_user_id', user?.id).maybeSingle();
+  _zonaCache = data?.zona_id || null;
+  return _zonaCache;
+}
+
+// ══════════════════════════════════════
+// DISPARO EM MASSA — enfileira em sime_campanhas_confirmacao
+// ══════════════════════════════════════
+// Quem envia de fato é o Hermes Agent (bot WhatsApp, roda fora deste repo,
+// num Raspberry Pi): ele já lê essa fila e envia respeitando 5 msgs/min —
+// mas só se DISPATCH_ATIVO=true no .env dele. Aqui só populamos a fila,
+// nunca garantimos o envio.
+const TEMPLATE_GOLPE = `🚨 *AVISO IMPORTANTE — SIME* 🚨
+
+Golpistas têm se passado por integrantes do cartório eleitoral pedindo dados pessoais, PIX ou "confirmação de cadastro" por WhatsApp.
+
+O cartório NUNCA pede dinheiro, senha ou dado bancário por aqui. Em caso de dúvida, ligue direto pro cartório pelo número oficial.
+
+Por favor, repasse este aviso.`;
+
+// Placeholders {nome}/{funcao}/{secao}/{local}/{municipio} são substituídos
+// por pessoa em confirmarDisparo() — cada destinatário recebe o texto com
+// os próprios dados, não uma mensagem igual pra todo mundo (diferente dos
+// outros dois modelos, que são literais).
+//
+// Modelo "Convocação com confirmação" manda DUAS mensagens, não uma: esta
+// primeira só confirma que o número ainda é da pessoa (o Hermes espera a
+// resposta SIM/NÃO antes de seguir) — a convocação de verdade só sai depois,
+// em TEMPLATE_CONVOCACAO_TEXTO. Ver SIME_hermes_skill_campanha.md no
+// repositório bernardobbs/hermes.
+const TEMPLATE_VERIFICACAO = `Olá! 👋
+
+Meu nome é Bernardo e trabalho no Cartório Eleitoral da 7ª Zona Eleitoral de Campo Maior/PI.
+
+Estamos atualizando nossos cadastros para as Eleições 2026.
+
+Este telefone ainda pertence a *{nome}*?
+
+Por gentileza, responda apenas com:
+
+1️⃣ SIM
+
+2️⃣ NÃO`;
+
+// Só é enviada depois que a pessoa confirmar (SIM) na mensagem de
+// verificação acima — nunca antes disso.
+const TEMPLATE_CONVOCACAO_TEXTO = `Olá, {nome}.
+
+A Justiça Eleitoral informa que você foi convocado(a) para atuar nas Eleições 2026, como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Na próxima mensagem encaminharemos a imagem oficial com o passo a passo. Pedimos que leia atentamente e confirme sua participação também no site do TRE, conforme indicado na imagem.`;
+
+// Dois modelos de reforço perto do Dia D — disparo manual só (pedido
+// explícito do cartório: "somente por demanda", nunca agendamento
+// automático). Reaproveitam a mesma fila/motor dos modelos acima — só o
+// texto muda.
+const TEMPLATE_LEMBRETE_VESPERA = `Olá, {nome}! 👋
+
+Lembrete do cartório eleitoral: amanhã é o Dia D das Eleições 2026.
+
+Você atua como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Chegue com antecedência e leve um documento oficial com foto. Qualquer imprevisto, avise o cartório o quanto antes.`;
+
+const TEMPLATE_CONFIRMACAO_DIAD = `Bom dia, {nome}! ☀️
+
+Hoje é o Dia D das Eleições 2026. Você está confirmado(a) como {funcao} na Seção {secao} — {local}, {municipio}.
+
+Por favor, responda confirmando que já está a caminho ou já chegou à seção.`;
+
+let dispTipo = 'golpe';
+let dispFuncao = '';
+let dispBusca = '';
+let dispImagemUrl = '';
+let dispSelecionados = null; // Set<id> — null até o primeiro filtro rodar
+// null = ainda não editado pelo usuário nesta sessão de modelo — usa o
+// template padrão. Trocar função/busca/seleção reconstrói a tela (render())
+// mas NÃO deve apagar o que o cartório já escreveu; só trocar de modelo reseta.
+let dispMsg = null;
+let dispMsgConvocacao = null;
+// 21/08/2026, pedido direto do dono do projeto ("quero controle total das
+// campanhas"): toda mensagem enfileirada aqui agora pertence a uma
+// sime_campanhas — não só o modelo "script" como antes. É o que permite
+// pausar/retomar/encerrar um disparo inteiro depois (aba 🧩 Campanhas),
+// com efeito de verdade (api/hermes-campanhas.js só entrega itens de
+// campanha com status='ativa' — ver comentário lá).
+let dispCampanhasScript = [];   // todas as campanhas da zona (qualquer modelo), carregado ao entrar na aba
+let dispCampanhasCarregadas = false;
+let dispCampanhaId = null;      // qual campanha foi escolhida no <select>
+let dispCampanhaEtapa1 = '';    // preview (só leitura) da mensagem da etapa 1 — só relevante pro modelo "script"
+let dispCampanhaEtapa1Imagem = null; // preview (só leitura) da imagem da etapa 1, se tiver
+let dispMostrarNovaCampanha = false; // true quando o select está no modo "+ Nova campanha"
+let dispNovaCampanhaNome = '';  // texto digitado nesse modo
+
+function dispMensagemPadrao(){
+  if(dispTipo==='golpe') return TEMPLATE_GOLPE;
+  if(dispTipo==='convocacao') return TEMPLATE_VERIFICACAO;
+  if(dispTipo==='lembrete_vespera') return TEMPLATE_LEMBRETE_VESPERA;
+  if(dispTipo==='confirmacao_diad') return TEMPLATE_CONFIRMACAO_DIAD;
+  return '';
+}
+function dispMensagemConvocacaoPadrao(){
+  return dispTipo==='convocacao' ? TEMPLATE_CONVOCACAO_TEXTO : '';
+}
+function dispMensagemAtual(){ return dispMsg !== null ? dispMsg : dispMensagemPadrao(); }
+function dispMensagemConvocacaoAtual(){ return dispMsgConvocacao !== null ? dispMsgConvocacao : dispMensagemConvocacaoPadrao(); }
+
+// Pool elegível pro filtro atual (função + ativo + tem WhatsApp). É sobre
+// este conjunto que a seleção por checkbox opera.
+function atoresParaDisparo(atores){
+  return atores.filter(a => a.ativo && a.telefone && (!dispFuncao || a.funcao===dispFuncao));
+}
+
+// Só pra exibição da lista — não afeta quem está selecionado, então buscar
+// um nome pra conferir não desmarca ninguém que já estava marcado.
+function atoresExibidos(atores){
+  const pool = atoresParaDisparo(atores);
+  const q = dispBusca.trim().toLowerCase();
+  return q ? pool.filter(a => a.nome.toLowerCase().includes(q)) : pool;
+}
+
+const DISP_MAX_LISTA = 300;
+
+function rotuloFuncaoDisp(a){
+  if(a.funcao==='mesario') return a.funcao_mesa || 'Mesário(a)';
+  return FUNC_LABEL[a.funcao] || a.funcao;
+}
+
+function renderDisparo(atores){
+  const c = document.getElementById('content');
+  const semSessao = !window.supabaseAtores;
+  // Carrega a lista de campanhas ao entrar na aba, não só ao trocar pro
+  // modelo "script" como antes (21/08/2026) — toda mensagem enfileirada
+  // agora precisa de uma campanha selecionada. Aqui (não em goTab) porque
+  // cobre os dois jeitos de chegar nesta aba: clique na aba E o link direto
+  // ?tab=disparo vindo de "Criar campanha com estes" (que pula goTab).
+  if(!semSessao && !dispCampanhasCarregadas){ carregarCampanhasParaDisparo(); }
+  // Preseleção vinda de "Criar campanha com estes" (SIME_convocacao.html,
+  // aba Contatar mesários) — sessionStorage porque são páginas separadas,
+  // sem estado JS compartilhado. Lido e apagado uma única vez: sem isso, uma
+  // segunda visita à aba (sem vir de lá) reaplicaria a mesma seleção velha.
+  if(dispSelecionados===null){
+    const preselecao = sessionStorage.getItem('sime_disparo_preselecao');
+    if(preselecao){
+      sessionStorage.removeItem('sime_disparo_preselecao');
+      try {
+        const ids = JSON.parse(preselecao);
+        dispSelecionados = new Set(ids);
+        showToast(`✓ ${ids.length} destinatário(s) trazido(s) de Convocação`);
+      } catch(e) { /* ignora preseleção corrompida, cai no comportamento padrão abaixo */ }
+    }
+  }
+  // Ao entrar na aba (ou trocar função), a seleção começa com todo mundo do
+  // filtro marcado — preserva o comportamento antigo (filtro = quem recebe)
+  // por padrão; desmarcar é que é a exceção, não o contrário.
+  if(dispSelecionados===null) dispSelecionados = new Set(atoresParaDisparo(atores).map(a=>a.id));
+  const selecionaveis = atoresParaDisparo(atores);
+  const exibidos = atoresExibidos(atores);
+  const n = selecionaveis.filter(a=>dispSelecionados.has(a.id)).length;
+  const truncado = exibidos.length > DISP_MAX_LISTA;
+  c.innerHTML = `
+    <div class="import-card">
+      <div class="ic-title">📢 Disparo em massa</div>
+      <div class="ic-sub">Enfileira em <code>sime_campanhas_confirmacao</code> — quem envia de fato é o
+        <b>Hermes Agent</b> (respeitando 5 msgs/min). O envio só sai do papel se o disparo estiver ligado
+        no Hermes; aqui só garantimos que a mensagem entrou na fila.</div>
+      ${semSessao ? '<div class="import-result ir-warn">Entre com a conta da equipe para disparar mensagens.</div>' : ''}
+      <div class="form-group"><label>Modelo</label>
+        <select id="dp-tipo" onchange="mudarTipoDisparo(this.value)">
+          <option value="golpe" ${dispTipo==='golpe'?'selected':''}>🚨 Alerta anti-golpe</option>
+          <option value="convocacao" ${dispTipo==='convocacao'?'selected':''}>📋 Convocação com confirmação</option>
+          <option value="lembrete_vespera" ${dispTipo==='lembrete_vespera'?'selected':''}>📅 Lembrete de véspera (D-1)</option>
+          <option value="confirmacao_diad" ${dispTipo==='confirmacao_diad'?'selected':''}>✅ Confirmação de presença — Dia D</option>
+          <option value="script" ${dispTipo==='script'?'selected':''}>🧩 Usar script salvo</option>
+          <option value="livre" ${dispTipo==='livre'?'selected':''}>✍️ Mensagem livre</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Campanha${dispTipo==='script' ? ' (script)' : ''}</label>
+        <select id="dp-campanha" onchange="selecionarCampanhaDisparoSelect(this.value)">
+          <option value="">${dispTipo==='script' ? '— escolha um script salvo —' : '— escolha uma campanha —'}</option>
+          ${dispCampanhasScript.filter(c => c.status!=='encerrada').map(c=>`<option value="${c.id}" ${dispCampanhaId===c.id?'selected':''}>${c.nome} (${c.status})</option>`).join('')}
+          <option value="__nova__">➕ Nova campanha...</option>
+        </select>
+        ${dispMostrarNovaCampanha ? `
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input type="text" value="${dispNovaCampanhaNome}" placeholder="Nome da nova campanha" oninput="dispNovaCampanhaNome=this.value" style="flex:1">
+          <button class="btn btn-dark" style="font-size:.78rem;padding:6px 12px" onclick="criarNovaCampanhaDisparo()">Criar</button>
+        </div>` : ''}
+        <div class="ic-sub" style="margin-top:4px">Toda mensagem enfileirada pertence a uma campanha — dá pra pausar/retomar/encerrar o envio dela inteira depois, na aba 🧩 Campanhas.</div>
+        ${dispTipo==='script' && !dispCampanhasScript.filter(c=>c.status!=='encerrada').length ? '<div class="ic-sub" style="margin-top:4px">Nenhuma campanha com script salvo ainda nesta zona — crie um na aba 🧩 Campanhas primeiro.</div>' : ''}
+      </div>
+      ${dispTipo==='script' ? `
+      <div class="form-group">
+        ${dispCampanhaEtapa1 ? `<div class="ic-sub"><b>Prévia da 1ª mensagem (etapa 1):</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${dispCampanhaEtapa1}</pre>${dispCampanhaEtapa1Imagem ? `<img src="${dispCampanhaEtapa1Imagem}" alt="Prévia da imagem da etapa 1" style="max-width:200px;max-height:200px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : '<div class="ic-sub">Escolha uma campanha com script salvo acima pra ver a prévia da 1ª mensagem.</div>'}
+        <div class="ic-sub" style="margin-top:4px">As etapas seguintes (mensagem, imagem e o que acontece a cada resposta) já estão definidas no script — não são editadas aqui, só na aba 🧩 Campanhas.</div>
+      </div>` : `
+      <div class="form-group"><label>${dispTipo==='convocacao' ? '1ª mensagem — confirmação de identidade' : 'Mensagem'}</label>
+        <textarea id="dp-msg" rows="7" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsg=this.value">${dispMensagemAtual()}</textarea>
+        ${dispTipo==='convocacao' ? '<div class="ic-sub" style="margin-top:4px">Enviada primeiro, sozinha. Só depois que a pessoa responder SIM é que a 2ª mensagem (abaixo) sai — quem responder NÃO não recebe mais nada desta campanha.</div>' : ''}
+      </div>
+      ${dispTipo==='convocacao' ? `
+      <div class="form-group"><label>2ª mensagem — convocação (só após confirmar)</label>
+        <textarea id="dp-msg-convocacao" rows="6" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical" oninput="dispMsgConvocacao=this.value">${dispMensagemConvocacaoAtual()}</textarea>
+        <div class="ic-sub" style="margin-top:4px">Os textos entre chaves — {nome}, {funcao}, {secao}, {local}, {municipio} — são trocados pelos dados de cada pessoa. A imagem abaixo vai junto desta mensagem, não da primeira.</div>
+      </div>` : ''}`}
+      ${dispTipo!=='script' ? `
+      <div class="form-group"><label>Imagem${dispTipo==='convocacao' ? ' (vai com a 2ª mensagem)' : ' (opcional)'}</label>
+        <input type="url" id="dp-imagem" value="${dispImagemUrl}" placeholder="https://... (URL pública de uma imagem, ex.: passo a passo de confirmação no site do TRE)" oninput="dispImagemUrl=this.value">
+        <div class="ic-sub" style="margin-top:4px">O Hermes manda essa imagem junto com a mensagem. Precisa ser um link público (não é upload aqui — hospede em algum lugar e cole a URL).</div>
+      </div>` : ''}
+      <div class="form-group"><label>Filtrar por função</label>
+        <select id="dp-funcao" onchange="mudarFuncaoDisparo(this.value)">
+          <option value="">Todos os ativos com WhatsApp cadastrado</option>
+          ${FUNCOES.map(f=>`<option value="${f}" ${dispFuncao===f?'selected':''}>${FUNC_EMOJI[f]||''} ${FUNC_LABEL[f]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Selecionar destinatários</label>
+        <input type="text" id="dp-busca" aria-label="Buscar por nome" value="${dispBusca}" placeholder="Buscar por nome…" oninput="buscarDisparo(this.value)">
+        <div style="display:flex;gap:8px;margin:6px 0">
+          <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(true)">☑ Marcar exibidos</button>
+          <button class="btn btn-out" style="font-size:.78rem;padding:4px 10px" onclick="marcarExibidosDisparo(false)">☐ Desmarcar exibidos</button>
+        </div>
+        <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border2);border-radius:7px;padding:4px">
+          ${exibidos.slice(0,DISP_MAX_LISTA).map(a=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:.85rem;cursor:pointer;border-radius:5px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+              <input type="checkbox" ${dispSelecionados.has(a.id)?'checked':''} onchange="toggleSelecaoDisparo('${a.id}',this.checked)">
+              <span>${a.nome} <span style="opacity:.6">— ${rotuloFuncaoDisp(a)}${a.secao?' · Seção '+a.secao:''}</span></span>
+            </label>`).join('') || '<div class="ic-sub" style="padding:8px">Ninguém encontrado com esse filtro/busca.</div>'}
+        </div>
+        ${truncado ? `<div class="ic-sub" style="margin-top:4px">Mostrando ${DISP_MAX_LISTA} de ${exibidos.length} — refine a busca pra ver o resto (a seleção de quem não aparece continua valendo).</div>` : ''}
+      </div>
+      <div class="ic-sub" id="dp-contagem"><b>${n}</b> pessoa${n!==1?'s':''} selecionada${n!==1?'s':''} vão receber esta mensagem.</div>
+      ${!semSessao ? `<button class="btn btn-dark" id="dp-btn-enviar" onclick="confirmarDisparo()" ${n?'':'disabled'}>📢 Enviar para ${n} pessoa${n!==1?'s':''}</button>` : ''}
+    </div>`;
+}
+
+function atualizarContagemDisparo(){
+  const n = atoresParaDisparo(loadAtores()).filter(a=>dispSelecionados.has(a.id)).length;
+  const contagem = document.getElementById('dp-contagem');
+  if(contagem) contagem.innerHTML = `<b>${n}</b> pessoa${n!==1?'s':''} selecionada${n!==1?'s':''} vão receber esta mensagem.`;
+  const btn = document.getElementById('dp-btn-enviar');
+  if(btn){ btn.textContent = `📢 Enviar para ${n} pessoa${n!==1?'s':''}`; btn.disabled = !n; }
+}
+
+// Trocar de função reseta a seleção pro novo filtro inteiro (mesmo
+// comportamento de antes) — recarrega a tela pra reconstruir a lista, mas
+// preserva o que já foi digitado nas mensagens: render() reconstrói os
+// textareas com dispMensagemPadrao()/dispMensagemConvocacaoPadrao(), que
+// não sabem nada sobre edição manual — sem isso, trocar o filtro apagava
+// a mensagem customizada (regressão real, coberta por teste).
+function mudarFuncaoDisparo(v){
+  const msgAtual = document.getElementById('dp-msg')?.value;
+  const msgConvAtual = document.getElementById('dp-msg-convocacao')?.value;
+  dispFuncao = v;
+  dispSelecionados = null;
+  render();
+  if(msgAtual !== undefined){ const el = document.getElementById('dp-msg'); if(el) el.value = msgAtual; }
+  if(msgConvAtual !== undefined){ const el = document.getElementById('dp-msg-convocacao'); if(el) el.value = msgConvAtual; }
+}
+
+// Buscar só muda o que é EXIBIDO na lista, não desmarca ninguém — por isso
+// não recarrega a tela inteira, só a lista + contagem.
+function buscarDisparo(v){
+  dispBusca = v;
+  const atores = loadAtores();
+  const exibidos = atoresExibidos(atores);
+  const lista = document.querySelector('#dp-busca')?.closest('.form-group')?.querySelector('div[style*="overflow-y"]');
+  if(lista){
+    lista.innerHTML = exibidos.slice(0,DISP_MAX_LISTA).map(a=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:.85rem;cursor:pointer;border-radius:5px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+        <input type="checkbox" ${dispSelecionados.has(a.id)?'checked':''} onchange="toggleSelecaoDisparo('${a.id}',this.checked)">
+        <span>${a.nome} <span style="opacity:.6">— ${rotuloFuncaoDisp(a)}${a.secao?' · Seção '+a.secao:''}</span></span>
+      </label>`).join('') || '<div class="ic-sub" style="padding:8px">Ninguém encontrado com esse filtro/busca.</div>';
+  }
+}
+
+function toggleSelecaoDisparo(id, marcado){
+  if(marcado) dispSelecionados.add(id); else dispSelecionados.delete(id);
+  atualizarContagemDisparo();
+}
+
+function marcarExibidosDisparo(marcar){
+  const exibidos = atoresExibidos(loadAtores());
+  for(const a of exibidos){ if(marcar) dispSelecionados.add(a.id); else dispSelecionados.delete(a.id); }
+  // Mesmo cuidado de mudarFuncaoDisparo: render() reconstrói os textareas
+  // com o texto padrão, então preserva o que já foi editado.
+  const msgAtual = document.getElementById('dp-msg')?.value;
+  const msgConvAtual = document.getElementById('dp-msg-convocacao')?.value;
+  render();
+  if(msgAtual !== undefined){ const el = document.getElementById('dp-msg'); if(el) el.value = msgAtual; }
+  if(msgConvAtual !== undefined){ const el = document.getElementById('dp-msg-convocacao'); if(el) el.value = msgConvAtual; }
+}
+
+// Trocar de modelo troca a mensagem — aí sim justifica recarregar a tela e
+// voltar ao template do novo modelo (edição do modelo anterior não se aplica).
+function mudarTipoDisparo(v){
+  dispTipo = v; dispMsg = null; dispMsgConvocacao = null;
+  dispCampanhaEtapa1 = ''; dispCampanhaEtapa1Imagem = null;
+  // A campanha escolhida NÃO reseta ao trocar de modelo (21/08/2026) — só a
+  // etapa 1 (preview, específico do modelo "script"). Trocar de "convocação"
+  // pra "mensagem livre" sem querer não deve fazer perder a campanha já
+  // selecionada.
+  render();
+}
+
+// Lista TODA campanha da zona do usuário, qualquer modelo — mesma fonte que
+// scCarregarCampanhas() do editor de scripts, mas sem depender daquele
+// módulo estar carregado na mesma aba. Chamado uma vez ao entrar na aba
+// (goTab) e de novo depois de criar uma campanha nova (criarNovaCampanhaDisparo).
+async function carregarCampanhasParaDisparo(){
+  const sb = window.supabaseAtores;
+  if(!sb) return;
+  const zonaId = await zonaDoUsuario();
+  const { data, error } = await sb.from('sime_campanhas')
+    .select('id, nome, status').eq('zona_id', zonaId).order('created_at', { ascending:false });
+  if(error){ showToast('⚠ ' + error.message); return; }
+  dispCampanhasScript = data || [];
+  dispCampanhasCarregadas = true;
+  render();
+}
+
+// "+ Nova campanha" no select do disparo (21/08/2026) — diferente de
+// scAbrirNovaCampanha() (aba Scripts): aqui a campanha nasce 'ativa' direto,
+// não 'rascunho' — quem está nesta tela já está prestes a selecionar
+// destinatários e mandar AGORA (igual o comportamento de sempre, antes desta
+// mudança), então criar como rascunho pausaria o envio de surpresa. Uma
+// campanha de script (que precisa de etapas configuradas antes de ir ao ar)
+// continua nascendo rascunho pela aba própria.
+async function criarNovaCampanhaDisparo(){
+  const nome = dispNovaCampanhaNome.trim();
+  if(!nome){ showToast('⚠ Dê um nome pra campanha'); return; }
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  const { data, error } = await sb.from('sime_campanhas').insert({ nome, zona_id: zonaId, status: 'ativa' }).select('id').single();
+  if(error){ showToast('⚠ ' + error.message); return; }
+  await log('campanha_criada_disparo', data.id, { nome, modelo: dispTipo });
+  dispNovaCampanhaNome = '';
+  dispMostrarNovaCampanha = false;
+  dispCampanhaId = data.id;
+  await carregarCampanhasParaDisparo();
+  showToast('✓ Campanha "' + nome + '" criada');
+}
+
+function selecionarCampanhaDisparoSelect(v){
+  if(v === '__nova__'){ dispMostrarNovaCampanha = true; render(); return; }
+  dispMostrarNovaCampanha = false;
+  selecionarCampanhaDisparo(v);
+}
+
+// Ao escolher uma campanha no <select>, busca a mensagem da etapa 1 só pra
+// mostrar em preview (o texto de verdade, já personalizado por pessoa, é
+// resolvido de novo em confirmarDisparo() — igual personalizarMensagem() faz
+// hoje pros outros modelos).
+async function selecionarCampanhaDisparo(id){
+  dispCampanhaId = id || null;
+  dispCampanhaEtapa1 = ''; dispCampanhaEtapa1Imagem = null;
+  if(dispCampanhaId){
+    const sb = window.supabaseAtores;
+    const { data, error } = await sb.from('sime_campanha_etapas')
+      .select('mensagem, imagem_url').eq('campanha_id', dispCampanhaId).eq('etapa_numero', 1).maybeSingle();
+    if(!error && data) { dispCampanhaEtapa1 = data.mensagem; dispCampanhaEtapa1Imagem = data.imagem_url || null; }
+  }
+  render();
+}
+
+// Troca {nome}/{funcao}/{secao}/{local}/{municipio} pelos dados da pessoa.
+// Inofensivo pros outros modelos (golpe/livre) — se o texto não tiver esses
+// tokens, não muda nada.
+function personalizarMensagem(msg, a){
+  const info = window.SECAO_INFO_POR_NUMERO?.[a.secao] || {};
+  return msg
+    .replaceAll('{nome}', a.nome || '')
+    .replaceAll('{funcao}', rotuloFuncaoDisp(a))
+    .replaceAll('{secao}', a.secao || '')
+    .replaceAll('{local}', info.local_nome || 'local a confirmar')
+    .replaceAll('{municipio}', info.municipio || '');
+}
+
+function confirmarDisparo(){
+  const sb = window.supabaseAtores;
+  if(!sb){ showToast('⚠ Entre com a conta da equipe'); return; }
+  const ehConvocacao = dispTipo==='convocacao';
+  const ehScript = dispTipo==='script';
+
+  // Campanha obrigatória pra QUALQUER modelo agora (21/08/2026) — é o que
+  // permite pausar/retomar/encerrar o envio inteiro depois.
+  if(!dispCampanhaId){ showToast(ehScript ? '⚠ Escolha um script salvo' : '⚠ Escolha (ou crie) uma campanha'); return; }
+  if(ehScript && !dispCampanhaEtapa1){ showToast('⚠ Este script não tem etapa 1 — abra-o na aba 🧩 Campanhas e confira'); return; }
+
+  const campanhaEscolhida = dispCampanhasScript.find(c => c.id === dispCampanhaId);
+
+  const msg = ehScript ? dispCampanhaEtapa1 : (document.getElementById('dp-msg')?.value||'').trim();
+  if(!ehScript && !msg){ showToast('⚠ Escreva a mensagem'); return; }
+  const msgConvocacao = ehConvocacao ? (document.getElementById('dp-msg-convocacao')?.value||'').trim() : '';
+  if(ehConvocacao && !msgConvocacao){ showToast('⚠ Escreva a 2ª mensagem (convocação)'); return; }
+
+  const destinatarios = atoresParaDisparo(loadAtores()).filter(a=>dispSelecionados.has(a.id));
+  if(!destinatarios.length){ showToast('⚠ Nenhum destinatário selecionado'); return; }
+
+  const avisoPausada = campanhaEscolhida && campanhaEscolhida.status !== 'ativa'
+    ? `\n\n⚠ A campanha "${campanhaEscolhida.nome}" está com status "${campanhaEscolhida.status}", não "ativa" — os itens entram na fila mas NÃO saem até a campanha ser iniciada/retomada na aba 🧩 Campanhas.`
+    : '';
+  const aviso = (ehScript
+    ? `Enfileirar a etapa 1 do script para ${destinatarios.length} pessoa(s)?\n\nAs próximas etapas seguem automaticamente conforme as respostas, de acordo com o script. O envio de fato depende do Hermes estar com o disparo ligado.`
+    : ehConvocacao
+    ? `Enfileirar a confirmação de identidade para ${destinatarios.length} pessoa(s)?\n\nA convocação (2ª mensagem + imagem) só sai pra quem responder SIM à primeira. O envio de fato depende do Hermes estar com o disparo ligado.`
+    : `Enfileirar esta mensagem para ${destinatarios.length} pessoa(s)?\n\nO envio de fato depende do Hermes estar com o disparo ligado — aqui só populamos a fila.`) + avisoPausada;
+
+  pedirConfirmacao(aviso, async () => {
+    closeModal();
+    const zonaId = await zonaDoUsuario();
+    if(!zonaId){ showToast('⚠ Não foi possível resolver sua zona'); return; }
+
+    // Script não usa mais este campo de imagem — imagem de script pertence à
+    // ETAPA (sime_campanha_etapas.imagem_url, editada na aba 🧩 Campanhas),
+    // não à linha de fila. Ver sql/SIME_campanha_etapas_imagem.sql.
+    const imagemUrl = ehScript ? null : ((dispImagemUrl||'').trim() || null);
+    const linhas = destinatarios.map(a => ({
+      ator_id: a.id,
+      telefone_whatsapp: a.telefone,
+      zona_id: zonaId,
+      mensagem_enviada: personalizarMensagem(msg, a),
+      mensagem_convocacao: ehConvocacao ? personalizarMensagem(msgConvocacao, a) : null,
+      imagem_url: imagemUrl,
+      status: 'pendente',
+      campanha_id: dispCampanhaId,
+      ...(ehScript ? { etapa_atual: 1 } : {}),
+    }));
+    const { error } = await sb.from('sime_campanhas_confirmacao').insert(linhas);
+    if(error){ showToast('⚠ ' + (error.message||'Falhou ao enfileirar')); return; }
+
+    await log('disparo_massa', '', { quantidade: linhas.length, funcao: dispFuncao || 'todos', modelo: dispTipo, com_imagem: !!imagemUrl || !!dispCampanhaEtapa1Imagem, com_confirmacao: ehConvocacao || ehScript, campanha_id: dispCampanhaId });
+    showToast(`✓ ${linhas.length} mensagens enfileiradas — saem pelo Hermes`);
+  }, { titulo:'Confirmar disparo', labelOk:'📢 Enfileirar' });
+}
+
 // MODAL CRUD
 function abrirModal(id){
   const atores=loadAtores();
@@ -394,10 +1038,11 @@ function abrirModal(id){
   document.getElementById('modal-body').innerHTML=`
     <div class="m-hdr">
       <div class="m-title">${a?'Editar ator':'Novo ator'}</div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="m-body">
       <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${a?.nome||''}"></div>
+      ${a?.inscricao?`<div class="form-group"><label>Título de eleitor</label><input type="text" value="${a.inscricao}" disabled style="opacity:.7"></div>`:''}
       <div class="form-group"><label>Telefone / WhatsApp (com DDD)</label><input type="tel" id="m-tel" value="${a?.telefone||''}" placeholder="86900000000"></div>
       <div class="form-group"><label>Número da seção</label><input type="number" id="m-sec" value="${a?parseInt(a.secao):''}" placeholder="63"></div>
       <div class="form-group"><label>Função</label>
@@ -415,7 +1060,7 @@ function abrirModal(id){
   document.getElementById('overlay').classList.add('open');
 }
 
-function salvarAtor(id){
+async function salvarAtor(id){
   const nome=document.getElementById('m-nome').value.trim();
   const tel=(document.getElementById('m-tel').value||'').replace(/\D/g,'');
   const sec=(document.getElementById('m-sec').value||'').toString().padStart(4,'0');
@@ -423,6 +1068,38 @@ function salvarAtor(id){
   const obs=document.getElementById('m-obs').value;
   if(!nome){ showToast('⚠ Nome obrigatório'); return; }
   if(tel.length<10||tel.length>11){ showToast('⚠ Telefone inválido'); return; }
+
+  // Com sessão: grava direto em sime_atores (banco é a fonte real). Sem
+  // sessão: mantém o comportamento antigo (só localStorage).
+  const sb = window.supabaseAtores;
+  if (sb) {
+    const secaoId = window.SECAO_ID_POR_NUMERO?.[sec] || null;
+    try {
+      if (id) {
+        const { error } = await sb.from('sime_atores')
+          .update({ nome_completo: nome, telefone_whatsapp: tel, secao_id: secaoId, funcao: func, observacao: obs })
+          .eq('id', id);
+        if (error) throw error;
+        // getAtores() fica cacheado pela sessão (sime_dados.js) — buscar de
+        // novo devolveria a lista antiga. Aplica a mudança direto na cópia
+        // local, que é o que o render() lê.
+        const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
+        if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],nome,telefone:tel,secao:secaoId?sec:'',funcao:func};
+      } else {
+        const zonaId = await zonaDoUsuario();
+        if (!zonaId) throw new Error('não foi possível resolver sua zona');
+        const eleicao = await window.getEleicaoAtivaDaZona(zonaId);
+        const { data, error } = await sb.from('sime_atores').insert({
+          zona_id: zonaId, eleicao_id: eleicao?.id || null, nome_completo: nome,
+          telefone_whatsapp: tel, secao_id: secaoId, funcao: func, observacao: obs, ativo: true,
+        }).select('id').single();
+        if (error) throw error;
+        window.ATORES_REAIS=[...(window.ATORES_REAIS||[]),{id:data.id,nome,telefone:tel,funcao:func,funcao_mesa:'',secao:secaoId?sec:'',confirmacao:'pendente',ativo:true}];
+      }
+    } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao salvar')); return; }
+    closeModal(); showToast('✓ Ator salvo'); render(); return;
+  }
+
   const atores=loadAtores();
   if(id){
     const idx=atores.findIndex(a=>a.id===id);
@@ -434,15 +1111,47 @@ function salvarAtor(id){
 }
 
 function removerAtor(id){
-  if(!confirm('Remover este ator?')) return;
-  const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
-  saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
+  pedirConfirmacao('Remover este ator?', async () => {
+    const sb = window.supabaseAtores;
+    if (sb) {
+      try {
+        const { error } = await sb.from('sime_atores').update({ ativo: false }).eq('id', id);
+        if (error) throw error;
+        const idx=(window.ATORES_REAIS||[]).findIndex(a=>a.id===id);
+        if(idx>-1) window.ATORES_REAIS[idx]={...window.ATORES_REAIS[idx],ativo:false};
+      } catch(e) { showToast('⚠ ' + (e.message||'Falhou ao remover')); return; }
+      closeModal(); showToast('✓ Removido'); render(); return;
+    }
+
+    const atores=loadAtores().map(a=>a.id===id?{...a,ativo:false}:a);
+    saveAtores(atores); closeModal(); showToast('✓ Removido'); render();
+  }, { titulo:'Remover ator', labelOk:'🗑 Remover', classeOk:'btn-red' });
 }
 
 function closeModal(e){
   if(!e||e.target===document.getElementById('overlay'))
     document.getElementById('overlay').classList.remove('open');
 }
+
+// Modal customizado pra confirmações destrutivas/de envio — antes 3 ações
+// usavam confirm() nativo, quebrando o padrão visual do resto do sistema
+// (achado "alto" da auditoria). Reaproveita o mesmo overlay/modal-body já
+// usado pelos formulários de edição.
+function pedirConfirmacao(mensagem, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="m-hdr">
+      <div class="m-title">${opts.titulo||'Confirmar'}</div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="m-body"><div style="font-size:.85rem;color:var(--text2);white-space:pre-line;line-height:1.5">${mensagem}</div></div>
+    <div class="m-foot">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn ${opts.classeOk||'btn-dark'}" id="confirmacao-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('confirmacao-ok-btn').onclick = aoConfirmar;
+}
+window.pedirConfirmacao = pedirConfirmacao;
 
 // showToast() vem de sime_ui_utils.js
 

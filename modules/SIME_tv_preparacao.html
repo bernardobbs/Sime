@@ -21,18 +21,39 @@ body { display:flex; flex-direction:column; }
 .bar-pct.carga { color:#bbb; }
 .bar-pct.prep  { color:#888; }
 .bar-pct.lacre { color:#333; }
+/* Estado final ("todas lacradas") ganha destaque de verde — antes a paleta
+   inteira ficava em cinza claríssimo, sem nenhum acento mesmo completa
+   (achado "alto" da auditoria). Escopado em body.tudo-lacrado pra cobrir as
+   barras E os contadores do rodapé com um único toggle. */
+body.tudo-lacrado .bar-fill.carga,
+body.tudo-lacrado .bar-fill.prep,
+body.tudo-lacrado .bar-fill.lacre { background:#0a7a3d; }
+body.tudo-lacrado .bar-pct.carga,
+body.tudo-lacrado .bar-pct.prep,
+body.tudo-lacrado .bar-pct.lacre { color:#0a7a3d; }
+body.tudo-lacrado .fc.lacre .fc-val,
+body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
 
 .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 40px 16px; }
-.data { font-size:clamp(2rem,7.5vw,5.5rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
+.data { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
 .hora { display:flex; align-items:baseline; line-height:1; }
-.hora-hm { font-size:clamp(7rem,28vw,22rem); font-weight:900; color:#000; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
-.hora-sep { font-size:clamp(7rem,28vw,22rem); font-weight:900; color:#000; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
+.hora-hm { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
+.hora-sep { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.07} }
-.hora-s { font-size:clamp(3.5rem,12vw,9rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(8px,1.8vw,28px); margin-left:clamp(4px,0.5vw,12px); }
+.hora-s { font-size:clamp(1.8rem,6vw,4.5rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(6px,1vw,16px); margin-left:clamp(4px,0.5vw,12px); }
+
+/* Dado que mais importa (status de carga/preparação/lacre) — antes minúsculo
+   e cinza claro no rodapé, atrás de um relógio gigante que domina a tela. */
+.status-hero { font-size:clamp(1.6rem,5.5vw,3.6rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
+.status-hero.done { color:#0a7a3d; }
 
 .footer { padding:10px 52px 14px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #efefef; flex-shrink:0; }
 .f-brand { font-size:0.58rem; letter-spacing:0.2em; text-transform:uppercase; color:#ccc; font-weight:700; }
-.f-status { font-size:clamp(0.6rem,1vw,0.82rem); color:#ccc; letter-spacing:0.1em; text-transform:uppercase; font-weight:500; }
+/* Nenhuma indicação de última atualização/status de conexão em toda a tela
+   (achado "médio") — mesmo padrão já usado no TV Dia e TV Véspera. */
+.rt-status{font-size:.58rem;font-weight:700;padding:2px 8px;border-radius:99px;background:#f0f0f0;color:#999;margin-top:6px;}
+.rt-status.warn{background:#fff3e0;color:#c2410c;}
+.rt-status.stale{background:#fde8e6;color:#dc2626;}
 .f-counts { display:flex; gap:22px; }
 .fc { text-align:center; }
 .fc-val { font-size:clamp(1rem,1.8vw,1.4rem); font-weight:800; line-height:1; }
@@ -58,10 +79,11 @@ body { display:flex; flex-direction:column; }
     <span class="hora-sep">:</span>
     <span class="hora-s"  id="c-s">00</span>
   </div>
+  <div class="status-hero" id="f-status">—</div>
+  <div class="rt-status" id="rt-status">— sem sessão</div>
 </div>
 <div class="footer">
   <div class="f-brand">SIME TV Preparação · 7ª Zona/PI</div>
-  <div class="f-status" id="f-status">—</div>
   <div class="f-counts">
     <div class="fc carga"><div class="fc-val" id="fc-carga">—</div><div class="fc-lbl">Carga</div></div>
     <div class="fc prep"> <div class="fc-val" id="fc-prep">—</div><div class="fc-lbl">Prep.</div></div>
@@ -71,25 +93,48 @@ body { display:flex; flex-direction:column; }
 </div>
 <script type="module">
 import { bootstrapTvSession } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getZonaInfo } from './sime_dados.js';
+import { initSimeDados, getSecoes, getZonaInfo, getEleicaoAtiva } from './sime_dados.js';
+import { subscribeCargaLacre } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV (mesmos valores públicos do
 // projeto Supabase — anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
 
 window.SIME_TOTAL_REAL = null; // preenchido via Supabase quando a sessão da TV existir
+// Contagem real de carga/preparação/lacre — antes esta TV só lia
+// localStorage['sime_lacre_v3'], que só existe no navegador de quem
+// preencheu; numa TV real (outro aparelho) ficava sempre em 0%, sem
+// Realtime nenhum (achado crítico da auditoria de UI/UX).
+window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
 
 (async () => {
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
   initSimeDados(client);
-  const [secoes, zona] = await Promise.all([
+  const [secoes, zona, eleicao] = await Promise.all([
     getSecoes({ fallback: null }),
     getZonaInfo({ fallback: null }),
+    getEleicaoAtiva({ fallback: null }),
   ]);
   if (secoes) window.SIME_TOTAL_REAL = secoes.length;
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
-  if (window.updateBars) window.updateBars(); // não espera o próximo tick de 3s
+  if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
+
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
+  async function refetch() {
+    const { data } = await client.from('sime_carga_lacre').select('carga,preparacao,lacre').eq('eleicao_id', eleicao.id);
+    let c = 0, p = 0, l = 0;
+    for (const r of data || []) { if (r.carga) c++; if (r.preparacao) p++; if (r.lacre) l++; }
+    window.SIME_CARGA_LACRE_REAL = { c, p, l };
+    marcarAtualizado();
+    if (window.updateBars) window.updateBars();
+  }
+  await refetch();
+  // Coordenador de Preparação grava; esta TV só lê — sem interação, então
+  // um refetch completo a cada mudança é simples e barato (no máximo uma
+  // linha por seção da zona) em vez de reconciliar incrementalmente.
+  subscribeCargaLacre(client, () => refetch());
+  setInterval(refetch, 60000); // rede de segurança se o canal Realtime cair
 })();
 </script>
 <script>
@@ -113,7 +158,11 @@ function updateBars(){
   const TOTAL=calcTotal();
   document.getElementById('fc-total').textContent=TOTAL;
   let c=0,p=0,l=0;
-  try{const raw=localStorage.getItem('sime_lacre_v3');if(raw){Object.values(JSON.parse(raw)).forEach(v=>{if(v.carga)c++;if(v.prep)p++;if(v.lacre)l++;});}}catch(e){}
+  if (window.SIME_CARGA_LACRE_REAL) {
+    ({ c, p, l } = window.SIME_CARGA_LACRE_REAL);
+  } else {
+    try{const raw=localStorage.getItem('sime_lacre_v3');if(raw){Object.values(JSON.parse(raw)).forEach(v=>{if(v.carga)c++;if(v.prep)p++;if(v.lacre)l++;});}}catch(e){}
+  }
   const pct=v=>Math.round(v/TOTAL*100);
   document.getElementById('b-carga').style.width=pct(c)+'%'; document.getElementById('p-carga').textContent=pct(c)+'%';
   document.getElementById('b-prep').style.width=pct(p)+'%';  document.getElementById('p-prep').textContent=pct(p)+'%';
@@ -122,9 +171,29 @@ function updateBars(){
   document.getElementById('fc-prep').textContent=p;
   document.getElementById('fc-lacre').textContent=l;
   const f=TOTAL-l;
-  document.getElementById('f-status').textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  const statusEl=document.getElementById('f-status');
+  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  const tudoLacrado = l===TOTAL && TOTAL>0;
+  statusEl.classList.toggle('done', tudoLacrado);
+  document.body.classList.toggle('tudo-lacrado', tudoLacrado);
 }
 updateBars(); setInterval(updateBars,3000);
+
+// Indicador de saúde do Realtime — window.__ultimaAtualizacaoTs vem do
+// <script type="module"> (marcarAtualizado(), a cada evento recebido + no
+// refetch de segurança a cada 60s). Mesmo padrão do TV Dia/TV Véspera.
+function updateRtStatus(){
+  const el=document.getElementById('rt-status');
+  if(!el) return;
+  const ts=window.__ultimaAtualizacaoTs;
+  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  const s=Math.floor((Date.now()-ts)/1000);
+  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
+  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
+  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
+  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+}
+setInterval(updateRtStatus,1000); updateRtStatus();
 </script>
 </body>
 </html>

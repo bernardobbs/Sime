@@ -7,6 +7,17 @@ const { chromium } = pw;
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
+// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
+// quando o cartório quiser — então aqui a configuração é fixada, em vez de
+// deixar a suíte seguir um flag de produção que muda debaixo dela.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 const STUB_SUPABASE_JS = `
 function rowsFor(table) { return (window.__mockConfig[table] || []); }
 function matchFilters(row, filters) { return Object.entries(filters).every(([k, v]) => row[k] === v); }
@@ -21,6 +32,11 @@ class QB {
 }
 export function createClient(url, key, opts) {
   return {
+    // A acessibilidade assina as seções do local pra saber quando a equipe
+    // resolve um pânico pelo Admin (caso 8.7). Sem estes dois o módulo quebra
+    // logo depois do login.
+    channel(nome) { const c = { on() { return c; }, subscribe() { return c; } }; return c; },
+    removeChannel() {},
     __authHeader: opts?.global?.headers?.Authorization || null,
     from(table) { return new QB(table); },
     rpc(name, params) {
@@ -39,6 +55,7 @@ async function newPage(ctx, mockConfig, tokens) {
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
+  await p.route('**/sime_config.js**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   return p;
 }
 
@@ -73,11 +90,25 @@ async function loginPIN(p) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.goto('http://localhost:8917/modules/SIME_acessibilidade.html');
+  // type=number permitia caracteres estranhos (-, e) num PIN de 4 dígitos (achado "baixo")
+  check('campo de PIN usa type=text (não number)', await p.getAttribute('#pin-0', 'type') === 'text');
+  check('campo de PIN mantém teclado numérico via inputmode', await p.getAttribute('#pin-0', 'inputmode') === 'numeric');
   await loginPIN(p);
   await p.waitForFunction(() => document.getElementById('view-app').classList.contains('active'));
   check('login local continua funcionando (entra no app)', true);
   await p.waitForTimeout(300);
   check('sime-login foi chamado com token+pin do token local', loginBody?.token === 'ACES001' && loginBody?.pin === '9876');
+
+  // Botão de sair (achado "baixo": não havia caminho de volta se entrasse no local errado)
+  check('botão "Sair" existe no cabeçalho', await p.locator('button[aria-label="Sair"]').count() === 1);
+  await p.click('button[aria-label="Sair"]');
+  await p.waitForFunction(() => document.getElementById('view-login')?.classList.contains('active'));
+  check('sair volta pra tela de PIN', await p.evaluate(() => document.getElementById('view-login').classList.contains('active')));
+  check('sair NÃO deixa o app visível por baixo', await p.evaluate(() => !document.getElementById('view-app').classList.contains('active')));
+
+  // reloga pra continuar o resto do teste
+  await loginPIN(p);
+  await p.waitForFunction(() => document.getElementById('view-app').classList.contains('active'));
 
   await p.click('.fbtn.plus'); // +1 na fila da 1ª seção (0063)
   await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_fila === 1));
@@ -147,6 +178,8 @@ async function loginPIN(p) {
     req.onerror = () => resolve(-1);
   }));
   check('rpc falhando enfileira no IndexedDB', pendentes >= 1, 'pendentes=' + pendentes);
+  const badgeTxt = await p.locator('#sync-badge').textContent();
+  check('badge NÃO mostra 🟢 quando a gravação real falhou (só localStorage salvou)', badgeTxt !== '🟢', badgeTxt);
   check('zero erros JS não tratados com rpc falhando', erros.length === 0, erros.join(';'));
   await ctx.close();
 }

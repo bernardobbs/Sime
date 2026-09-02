@@ -4,37 +4,51 @@ const { chromium } = pw;
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
-const STUB_SUPABASE_JS = `
+function stubSupabaseJs({ eleicao, cargaLacreExistente } = {}) {
+  return `
 export function createClient(url, key) {
   let session = null;
+  window.__ops = [];
+  let CARGA_LACRE = ${JSON.stringify(cargaLacreExistente || [])};
   return {
     auth: {
       getSession: async () => ({ data: { session } }),
       signInWithPassword: async ({ email, password }) => { session = { user: { email } }; return { data: { session }, error: null }; },
     },
     from(t) {
-      const qb = {
-        select(){ return qb; }, eq(){ return qb; }, order(){ return qb; }, not(){ return qb; }, limit(){ return qb; },
-        maybeSingle(){
-          if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Cidade X', estado: 'CE' }, error: null });
-          return Promise.resolve({ data: null, error: null });
-        },
-        then(resolve){
-          if (t === 'sime_secoes') {
-            return resolve({ data: [
-              { numero: 1, local_nome: 'Escola A', municipio: 'Cidade X', eleitores: 100, parada: null, sime_rotas: { codigo: '001' } },
-              { numero: 2, local_nome: 'Escola A', municipio: 'Cidade X', eleitores: 80,  parada: null, sime_rotas: { codigo: '001' } },
-              { numero: 3, local_nome: 'Escola B', municipio: 'Cidade Y', eleitores: 50,  parada: null, sime_rotas: null },
-            ], error: null });
-          }
-          return resolve({ data: [], error: null });
-        },
+      const qb = { _filters: {} };
+      qb.select = function(){ return qb; };
+      qb.eq = function(c, v){ qb._filters[c] = v; return qb; };
+      qb.order = function(){ return qb; }; qb.not = function(){ return qb; }; qb.limit = function(){ return qb; };
+      qb.upsert = function(payload){
+        window.__ops.push({ t, op: 'upsert', payload });
+        const i = CARGA_LACRE.findIndex(r => r.secao_id === payload.secao_id && r.eleicao_id === payload.eleicao_id);
+        if (i > -1) CARGA_LACRE[i] = { ...CARGA_LACRE[i], ...payload }; else CARGA_LACRE.push(payload);
+        return Promise.resolve({ error: null });
+      };
+      qb.maybeSingle = function(){
+        if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Cidade X', estado: 'CE' }, error: null });
+        if (t === 'sime_eleicoes') return Promise.resolve({ data: ${JSON.stringify(eleicao || null)}, error: null });
+        return Promise.resolve({ data: null, error: null });
+      };
+      qb.then = function(resolve){
+        if (t === 'sime_secoes') {
+          return resolve({ data: [
+            { id: 'sec-uuid-1', numero: 1, local_nome: 'Escola A', municipio: 'Cidade X', eleitores: 100, parada: null, sime_rotas: { codigo: '001' } },
+            { id: 'sec-uuid-2', numero: 2, local_nome: 'Escola A', municipio: 'Cidade X', eleitores: 80,  parada: null, sime_rotas: { codigo: '001' } },
+            { id: 'sec-uuid-3', numero: 3, local_nome: 'Escola B', municipio: 'Cidade Y', eleitores: 50,  parada: null, sime_rotas: null },
+          ], error: null });
+        }
+        if (t === 'sime_carga_lacre') return resolve({ data: CARGA_LACRE.filter(r => !qb._filters.eleicao_id || r.eleicao_id === qb._filters.eleicao_id), error: null });
+        return resolve({ data: [], error: null });
       };
       return qb;
     },
   };
 }
 `;
+}
+const STUB_SUPABASE_JS = stubSupabaseJs();
 
 // ── Caso 1: offline → mantém os 175 do fallback (com a seção órfã 0146 já conhecida) ──
 {
@@ -95,6 +109,138 @@ export function createClient(url, key) {
   const footTotal = await p.locator('.f-count.total .f-val').textContent();
   check('login: rodapé vira dinâmico (3, não mais 174)', footTotal.trim() === '3');
 
+  await ctx.close();
+}
+
+// ── Caso 3: com eleição ativa — toggle grava em sime_carga_lacre (não só
+// localStorage) e o badge de sincronização aparece. Achado crítico da
+// auditoria: toggle()/save() gravavam só em localStorage, sem Supabase, sem
+// fila offline, sem badge — regra 5 do CLAUDE.md. ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({ eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04' } });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  check('badge de sync aparece depois do login (estava escondido antes)', await p.evaluate(() => document.getElementById('sync-badge').style.display !== 'none'));
+
+  await p.click('.sec-card[data-sec="0001"] .ck.carga');
+  await p.waitForTimeout(300);
+
+  const ops = await p.evaluate(() => window.__ops.filter(o => o.t === 'sime_carga_lacre'));
+  check('toggle "carga" grava em sime_carga_lacre (não só localStorage)', ops.length === 1, JSON.stringify(ops));
+  check('upsert usa o UUID real da seção e da eleição', ops[0]?.payload?.secao_id === 'sec-uuid-1' && ops[0]?.payload?.eleicao_id === 'ele-uuid-1', JSON.stringify(ops[0]));
+  check('upsert grava carga=true, preparação/lacre em falso', ops[0]?.payload?.carga === true && ops[0]?.payload?.preparacao === false && ops[0]?.payload?.lacre === false, JSON.stringify(ops[0]));
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
+// ── Caso 4: progresso já gravado por outro coordenador/aparelho aparece ao
+// entrar — antes ficava sempre zerado, mesmo já marcado no banco. ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({
+    eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04' },
+    cargaLacreExistente: [{ eleicao_id: 'ele-uuid-1', secao_id: 'sec-uuid-2', carga: true, preparacao: true, lacre: false }],
+  });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  const stateSec2 = await p.evaluate(() => state['0002']);
+  check('progresso de outro aparelho (secão 0002) aparece ao entrar', stateSec2?.carga === true && stateSec2?.prep === true && stateSec2?.lacre === false, JSON.stringify(stateSec2));
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
+// ── Caso 5: marcar fora de ordem (lacre sem carga/preparação antes) — mesmo
+// padrão do Instalador, tela idêntica (achado "médio": inconsistência entre
+// os dois módulos). ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({ eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04' } });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  await p.click('.sec-card[data-sec="0001"] .ck.lacre'); // pula carga e preparação
+  await p.waitForTimeout(200);
+  const stateSec1 = await p.evaluate(() => state['0001']);
+  check('marcar "lacre" direto, sem carga/preparação antes, não é bloqueado', stateSec1?.lacre === true, JSON.stringify(stateSec1));
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  await ctx.close();
+}
+
+// ── Caso 6: checkbox é navegável por teclado + aria-pressed; resetar usa modal, não confirm() nativo ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  // Nenhum handler de 'dialog' registrado de propósito — se resetAll() ainda
+  // usasse confirm() nativo, o clique travaria esperando resposta.
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.click('#login-offline');
+  await p.waitForTimeout(200);
+
+  const ck = p.locator('.sec-card').first().locator('.ck.carga');
+  check('checkbox tem role=checkbox', await ck.getAttribute('role') === 'checkbox');
+  check('checkbox tem aria-label (não só ícone)', (await ck.getAttribute('aria-label') || '').length > 0);
+  check('checkbox começa com aria-pressed=false', await ck.getAttribute('aria-pressed') === 'false');
+  await ck.focus();
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(150);
+  check('Enter no teclado marca o checkbox (navegável, não só clique)', await ck.getAttribute('aria-pressed') === 'true');
+
+  // Resetar: modal customizado, não confirm() nativo
+  check('modal de reset começa fechado', await p.locator('#reset-overlay.show').count() === 0);
+  await p.click('.btn-reset');
+  await p.waitForTimeout(150);
+  check('clicar "Resetar" abre o modal (sem travar em confirm nativo)', await p.locator('#reset-overlay.show').count() === 1);
+  await p.click('#reset-overlay button:has-text("Cancelar")');
+  await p.waitForTimeout(150);
+  check('Cancelar fecha o modal sem apagar nada', await p.evaluate(() => state['0001']?.carga === true));
+
+  await p.click('.btn-reset');
+  await p.waitForTimeout(150);
+  await p.click('#reset-overlay button:has-text("↺ Resetar")');
+  await p.waitForTimeout(150);
+  check('confirmar reset zera o progresso', await p.evaluate(() => state['0001']?.carga === false && state['0001']?.prep === false && state['0001']?.lacre === false));
+  check('modal fecha depois de confirmar', await p.locator('#reset-overlay.show').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join('; '));
   await ctx.close();
 }
 

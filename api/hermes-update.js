@@ -12,7 +12,8 @@ const supabase = createClient(
 
 const HERMES_URL = process.env.HERMES_URL; // http://SEU_ORACLE_IP:3000
 
-// Cada zona roda sua própria instância Hermes/Oracle (ver hermes/setup.sh),
+// Cada zona roda sua própria instância Hermes/Oracle (ver setup.sh no
+// repositório bernardobbs/hermes),
 // cada uma com seu próprio secret: HERMES_SECRET_ZONA_7, HERMES_SECRET_ZONA_96, ...
 // Onboarding de zona nova = só adicionar a env var, sem mudar código.
 function secretsPorZona() {

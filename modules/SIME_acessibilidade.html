@@ -2,14 +2,14 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Acessibilidade</title>
 <link rel="stylesheet" href="./sime_theme_dark.css">
 <link rel="stylesheet" href="./sime_components.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
+html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overscroll-behavior:none;}
 
 .remote{
   width:100%;max-width:390px;
@@ -21,7 +21,7 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 /* ── DISPLAY / CABEÇALHO ── */
 .display{background:var(--display-bg);border-radius:14px;padding:12px 14px;border:1px solid #22223a;box-shadow:inset 0 3px 10px rgba(0,0,0,.6);}
-.d-brand{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
+.d-brand{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text2);font-weight:700;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
 .d-sync{font-size:.6rem;letter-spacing:normal;text-transform:none;}
 .d-local{font-size:1.15rem;font-weight:900;color:var(--text);line-height:1.15;}
 .d-sub{font-size:.72rem;color:var(--text2);margin-top:3px;}
@@ -33,7 +33,7 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 .dc.off {background:rgba(255,255,255,.04);color:var(--text3);border:1px solid rgba(255,255,255,.07);}
 
 /* ── SEPARADOR ── */
-.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);text-align:center;display:flex;align-items:center;gap:8px;margin-top:2px;}
+.sec-label{font-size:.58rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--text2);text-align:center;display:flex;align-items:center;gap:8px;margin-top:2px;}
 .sec-label::before,.sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(to right,transparent,#2a2a40,transparent);}
 
 /* ── CARD DE SEÇÃO ── */
@@ -136,10 +136,10 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
     <div class="login-title">SIME · Acessibilidade</div>
     <div class="login-sub">Digite o PIN de 4 dígitos recebido do cartório ou escaneie o QR Code com a câmera do celular.</div>
     <div class="pin-input-wrap">
-      <input class="pin-inp" id="pin-0" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,0)">
-      <input class="pin-inp" id="pin-1" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,1)">
-      <input class="pin-inp" id="pin-2" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,2)">
-      <input class="pin-inp" id="pin-3" type="number" inputmode="numeric" min="0" max="9" oninput="pinInput(this,3)">
+      <input class="pin-inp" id="pin-0" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,0)">
+      <input class="pin-inp" id="pin-1" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,1)">
+      <input class="pin-inp" id="pin-2" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,2)">
+      <input class="pin-inp" id="pin-3" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" oninput="pinInput(this,3)">
     </div>
     <button class="btn-login" onclick="loginWithPIN()">Entrar →</button>
     <div class="login-hint">Não tem PIN? Peça ao coordenador do cartório.</div>
@@ -150,7 +150,10 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
     <div class="display">
       <div class="d-brand">
         <span>SIME · Coord. Acessibilidade</span>
-        <span class="d-sync" id="sync-badge" title="Salvo localmente">🟢</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button type="button" onclick="sairAcessibilidade()" aria-label="Sair" style="background:none;border:none;color:inherit;font:inherit;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:4px;min-height:44px;">⎋ Sair</button>
+          <span class="d-sync" id="sync-badge" title="Salvo localmente">🟢</span>
+        </span>
       </div>
       <div class="d-local" id="d-local">—</div>
       <div class="d-sub" id="d-sub">—</div>
@@ -168,7 +171,8 @@ html,body{min-height:100%;background:var(--body-bg);display:flex;justify-content
 
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, aplicarSupressaoPin } from './sime_campo_auth.js';
+import { subscribeMesaEstadoSecoes } from './sime_realtime.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -176,22 +180,73 @@ import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 // — a anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
 
+// PIN suprimido pela operação: esconde o teclado de 4 dígitos. Quem valida é
+// o servidor — o flag do cliente só controla o que aparece na tela.
+window.PIN_SUPRIMIDO = aplicarSupressaoPin(SIME_CONFIG);
+
 let campoClient = null;
 let eleicaoId = null;
 const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+const numeroPorSecaoId = {}; // UUID -> '0063', para traduzir o que vem do canal
+window.numeroPorSecaoId = numeroPorSecaoId;
 
 async function resolverEscopo() {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
-  if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
+  if (secoes) for (const s of secoes) {
+    secaoIdPorNumero[s.numero] = s.id;
+    numeroPorSecaoId[s.id] = String(s.numero).padStart(4, '0');
+  }
 }
 
 async function syncQueueFn(acao, dados) {
   if (!campoClient) throw new Error('sem sessão de campo');
   const { error } = await campoClient.rpc('sime_acao_acessibilidade', dados);
   if (error) throw error;
+}
+
+// Escritas em voo. Enquanto houver uma, ignoramos o que chega pelo canal: um
+// evento disparado ANTES do toque, chegando depois dele, pisaria no estado que
+// o coordenador acabou de definir.
+let escritasEmVoo = 0;
+
+// Sem isto, o pânico levantado aqui e resolvido pela equipe no Admin deixava
+// ESTE aparelho vermelho para sempre — era o caso 8.7 do roteiro, e o motivo
+// da instrução operacional de resolver no próprio aparelho.
+function assinarPanicoRemoto() {
+  if (!campoClient || !window.secoesDoLocalIds) return;
+  const ids = window.secoesDoLocalIds();
+  if (!ids.length) return;
+  subscribeMesaEstadoSecoes(campoClient, ids, (row) => {
+    if (!row || escritasEmVoo > 0) return;
+    if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(row);
+  });
+  lerPanicoAtual();
+
+  // O canal só entrega o que acontece enquanto está de pé. O celular do
+  // coordenador passa boa parte do dia bloqueado no bolso — sem reler ao
+  // voltar, ele acorda com o estado de quando saiu.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lerPanicoAtual();
+  });
+}
+
+async function lerPanicoAtual() {
+  if (!campoClient || escritasEmVoo > 0 || !window.secoesDoLocalIds) return;
+  const ids = window.secoesDoLocalIds();
+  if (!ids.length) return;
+  try {
+    const { data, error } = await campoClient
+      .from('sime_mesa_estado')
+      .select('secao_id, panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido')
+      .in('secao_id', ids);
+    if (error || !data) return;
+    for (const row of data) {
+      if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(row);
+    }
+  } catch (e) { /* offline — o estado local segue valendo */ }
 }
 
 // Exposto pro <script> clássico (adjFila/togglePanico). secaoNumero é a
@@ -203,7 +258,19 @@ window.simeCampo = {
     const secaoId = secaoIdPorNumero[parseInt(secaoNumero, 10)];
     if (!secaoId) return;
     const dados = { p_secao_id: secaoId, p_eleicao_id: eleicaoId, ...partial };
-    syncQueueFn('acessibilidade', dados).catch(() => enqueue('acessibilidade', dados));
+    escritasEmVoo++;
+    // syncOK() (definido no <script> clássico) reflete o resultado da
+    // gravação REAL — antes, saveSecao() só chamava syncOK(true) pelo
+    // sucesso do localStorage, que quase nunca falha; o 🟢 aparecia mesmo
+    // quando esta escrita caía silenciosamente na fila offline (achado
+    // "alto" da auditoria).
+    syncQueueFn('acessibilidade', dados)
+      .then(() => { if (window.syncOK) window.syncOK(true); })
+      .catch(() => {
+        enqueue('acessibilidade', dados);
+        if (window.syncOK) window.syncOK(false);
+      })
+      .finally(() => { escritasEmVoo--; });
   },
 };
 
@@ -225,6 +292,9 @@ window.tentarLoginCampo = async function(token, pin) {
   campoClient = client;
   await resolverEscopo();
   iniciarRetryPeriodico(syncQueueFn);
+  // Depois do escopo: o local só é conhecido aqui, e é ele que define quais
+  // seções assinar.
+  setTimeout(assinarPanicoRemoto, 0);
   return { ok: true, localNome: localNome || null };
 };
 </script>
@@ -300,6 +370,54 @@ function secoesVisiveis(){
   const alvo = localFiltro.toLowerCase();
   return SECOES.filter(s => s.local.toLowerCase() === alvo);
 }
+
+// ══════════════════════════════════════════════════════════════
+// ESTADO VINDO DO SERVIDOR
+// ══════════════════════════════════════════════════════════════
+// UUIDs das seções deste local — é o que o canal Realtime filtra. Fica aqui
+// porque só o script clássico sabe qual é o local do coordenador (localFiltro).
+window.secoesDoLocalIds = function(){
+  const mapa = window.numeroPorSecaoId || {};
+  const visiveis = new Set(secoesVisiveis().map(s => s.n));
+  return Object.keys(mapa).filter(id => visiveis.has(mapa[id]));
+};
+
+// Aplica o pânico que veio do servidor. Só o pânico: fila é contagem local do
+// coordenador, e sobrescrevê-la com um número de outro aparelho seria pior que
+// não sincronizar.
+//
+// O sime_mesa_estado usa `panico_urna`; aqui o campo se chama `urna` (o mesário
+// chama de `urnaprob`). A tradução acontece neste ponto, de propósito: é o
+// único lugar do módulo que fala com o shape do banco.
+window.aplicarPanicoRemoto = function(row){
+  const mapa = window.numeroPorSecaoId || {};
+  const n = mapa[row.secao_id];
+  if(!n) return;
+  const s = ensureSecao(n);
+  if(!s) return;
+
+  const remoto = {
+    panico:    { energia: !!row.panico_energia,            urna: !!row.panico_urna },
+    resolvido: { energia: !!row.panico_energia_resolvido,  urna: !!row.panico_urna_resolvido },
+  };
+
+  let mudou = false, resolvidoDeFora = false;
+  for(const tipo of ['energia','urna']){
+    if(s.panico[tipo] === remoto.panico[tipo] && s.panico_resolved[tipo] === remoto.resolvido[tipo]) continue;
+    if(s.panico[tipo] && !remoto.panico[tipo] && remoto.resolvido[tipo]) resolvidoDeFora = true;
+    s.panico[tipo] = remoto.panico[tipo];
+    s.panico_resolved[tipo] = remoto.resolvido[tipo];
+    mudou = true;
+  }
+  if(!mudou) return;
+
+  // saveSecao (só localStorage), e NÃO o caminho que chama simeCampo: o
+  // servidor é a ORIGEM desta mudança; reenviar devolveria o que acabou de
+  // chegar.
+  saveSecao(n);
+  renderAll();
+  if(resolvidoDeFora){ showToast('✓ Problema resolvido pela equipe'); }
+};
 
 // ══════════════════════════════════════════════════════════════
 // AÇÕES
@@ -507,6 +625,12 @@ function enterApp(){
   renderAll();
 }
 
+// Sem isso não havia caminho de volta se o coordenador entrasse no local
+// errado — só fechando a aba. Recarrega a página: volta pra tela de PIN,
+// pronta pra outro coordenador (ou o mesmo, corrigindo o PIN) entrar.
+function sairAcessibilidade(){ location.reload(); }
+window.sairAcessibilidade = sairAcessibilidade;
+
 function showView(id){
   document.querySelectorAll('.view, .login-view').forEach(v=>v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -529,8 +653,14 @@ function erroPin(msg){
 }
 
 async function loginWithPIN(){
-  const pin = [0,1,2,3].map(i=>document.getElementById('pin-'+i).value).join('');
-  if(pin.length < 4){ showToast('⚠ Digite os 4 dígitos do PIN'); document.getElementById('pin-0').focus(); return; }
+  const pin = [0,1,2,3].map(i=>document.getElementById('pin-'+i)?.value || '').join('');
+  // Com o PIN suprimido, quem identifica o operador é só o token do QR Code —
+  // sem ele não há o que enviar ao servidor, e entrar seria entrar como ninguém.
+  if(window.PIN_SUPRIMIDO){
+    if(!TOKEN_URL){ showToast('⚠ Abra pelo QR Code do seu cartão'); return; }
+  } else if(pin.length < 4){
+    showToast('⚠ Digite os 4 dígitos do PIN'); document.getElementById('pin-0')?.focus(); return;
+  }
 
   // 1. Token local (computador do cartório) — mantém o login 100% offline.
   const t = findTokenByPIN(pin);

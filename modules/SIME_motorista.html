@@ -2,13 +2,14 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Motorista</title>
 <link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
 
 /* HEADER */
@@ -23,6 +24,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .h-right{display:flex;align-items:center;gap:6px;}
 .h-clock{font-size:.76rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
 .fase-pill{font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — a fila offline já
+   existia (enqueue), mas sem isto o motorista não tinha como saber se uma
+   entrega/recolhimento chegou de fato ao cartório ou só ficou no aparelho. */
+.sync-badge{display:none;align-items:center;gap:4px;font-size:.6rem;font-weight:700;padding:3px 8px;border-radius:99px;}
+.sync-badge.sync-ok  {background:var(--green-bg);color:var(--green);}
+.sync-badge.sync-pend{background:var(--yellow-bg);color:var(--yellow);}
 
 /* SELEÇÃO DE ROTA (quando não tem ?rota=) */
 .rota-sel{padding:16px 14px 80px;display:flex;flex-direction:column;gap:8px;}
@@ -53,7 +60,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .parada-nome{font-size:.78rem;font-weight:700;}
 .parada-done{font-size:.62rem;font-weight:700;margin-left:auto;padding:2px 8px;border-radius:99px;}
 .parada-done.ok{background:var(--green-bg);color:var(--green);}
-.parada-done.pend{background:var(--bg2);color:var(--text3);}
+.parada-done.pend{background:var(--bg2);color:var(--text2);}
 
 /* SEÇÃO ITEM */
 .sec-item{
@@ -88,7 +95,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .si-status.off  {color:var(--text3);}
 
 .si-btn{
-  padding:9px 13px;border-radius:9px;font-size:.72rem;font-weight:800;
+  min-height:44px;padding:9px 13px;border-radius:9px;font-size:.72rem;font-weight:800;
   cursor:pointer;border:none;flex-shrink:0;
   transition:all .12s;
 }
@@ -97,6 +104,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-recolher {background:var(--blue);color:#fff;}
 .btn-cartorio {background:#16a34a;color:#fff;}
 .btn-aguardar {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);cursor:not-allowed;}
+/* Desfazer inline — confirmar entrega/recolhimento virou toque único (dezenas
+   de seções por rota tornavam um modal por seção fricção demais); em troca,
+   cada item concluído ganha um desfazer sempre visível, sem prazo de expirar. */
+.btn-desfazer-mini{width:34px;height:34px;padding:0;border-radius:9px;font-size:.95rem;background:var(--bg2);color:var(--text2);border:1px solid var(--border2);}
 
 /* FOOTER */
 .footer{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:10px 14px;box-shadow:0 -4px 20px rgba(0,0,0,.07);}
@@ -137,7 +148,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <form id="login-form" style="background:#faf9f6;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
     <div style="font-weight:800;font-size:1rem;">SIME · Motorista</div>
     <div style="font-size:.72rem;color:#6a6560;">Digite o token e o PIN da sua rota (ou escaneie o QR Code).</div>
+    <label for="login-token" class="sr-only">Token</label>
     <input id="login-token" type="text" placeholder="Token" autocapitalize="characters" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <label for="login-pin" class="sr-only">PIN</label>
     <input id="login-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="PIN" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;letter-spacing:.3em;text-align:center;">
     <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
@@ -152,6 +165,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-sub"   id="h-sub">Carregando rota...</div>
   </div>
   <div class="h-right">
+    <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
     <div class="fase-pill" id="fase-pill" style="background:var(--bg2);color:var(--text2);border-color:var(--border)">—</div>
     <div class="h-clock"  id="clock">--:--</div>
   </div>
@@ -219,7 +233,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
-import { bootstrapCampoSession, preencherTokenDaUrl } from './sime_campo_auth.js';
+import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva, getRotas } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
@@ -237,6 +251,8 @@ async function resolverEscopo(rotasToken) {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  window.ELEICAO_ATIVA = eleicao || null;
+  if (window.recalcularFase) window.recalcularFase();
   const secoes = await getSecoes({ fallback: null });
   if (secoes) for (const s of secoes) secaoIdPorNumero[s.numero] = s.id;
   // Itinerário oficial + total de urnas por rota (planilha de distribuição) —
@@ -281,6 +297,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   const pin = document.getElementById('login-pin').value.trim();
   const erroEl = document.getElementById('login-erro');
   erroEl.textContent = '';
+  // Sem token não há o que autenticar — com o PIN suprimido, ele é a única
+  // identificação do operador. Barrar aqui evita um erro de rede confuso.
+  if (!token) { erroEl.textContent = 'Escaneie o QR Code do seu cartão.'; return; }
   const { client, rotas } = await bootstrapCampoSession({
     supabaseUrl: SIME_CONFIG.supabaseUrl, supabaseAnonKey: SIME_CONFIG.supabaseAnonKey, token, pin,
   });
@@ -288,12 +307,28 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   campoClient = client;
   await resolverEscopo(rotas);
   esconderLogin();
-  iniciarRetryPeriodico(syncQueueFn);
+  iniciarRetryPeriodico(syncQueueFn, (pendentes) => updateSyncBadge(pendentes));
+  document.getElementById('sync-badge').style.display = 'flex';
 });
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  el.style.display = 'flex';
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
 
 // QR Code do cartão abre este módulo com ?token= — preenche o campo e põe o
 // cursor no PIN, para o operador não redigitar os 8 caracteres.
 preencherTokenDaUrl();
+// PIN suprimido pela operação: esconde o campo. Quem valida é o servidor.
+aplicarSupressaoPin(SIME_CONFIG);
 
 // Contingência (CLAUDE.md — "Vercel indisponível: HTMLs do pendrive
 // pré-configurado"): login nunca é um bloqueio absoluto. O acesso por
@@ -418,6 +453,16 @@ function patchRotaState(rota,patch){
 // FASE — entrega (D-1) ou recolhimento (Dia D)
 // ══════════════════════════════════════════════
 function getFase(){
+  // sime_eleicoes (Supabase) primeiro — window.ELEICAO_ATIVA só existe depois
+  // do login (resolverEscopo, no <script type="module">), então na primeira
+  // chamada (antes de logar) ainda cai no fallback local/horário; ver
+  // window.recalcularFase() logo abaixo, chamado assim que o dado real chega.
+  const real = window.ELEICAO_ATIVA;
+  if(real){
+    const hoje=new Date().toISOString().slice(0,10);
+    if(real.data_d  && hoje>=real.data_d)  return 'recolhimento';
+    if(real.data_d1 && hoje>=real.data_d1) return 'entrega';
+  }
   try{
     const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');
     const t=el['turno'+(el.turno_ativo||1)]||{};
@@ -430,6 +475,14 @@ function getFase(){
   // Fallback: detectar pelo horário — antes das 12h = entrega, depois = recolhimento
   return new Date().getHours() < 12 ? 'entrega' : 'recolhimento';
 }
+// Chamado pelo <script type="module"> assim que window.ELEICAO_ATIVA chega
+// (login já resolvido) — a fase inicial (calculada no init(), antes do login)
+// pode ter usado o fallback; isto corrige e re-renderiza se já houver rota
+// selecionada em tela.
+window.recalcularFase = function(){
+  fase = getFase();
+  if (curRota) showMain();
+};
 
 // ══════════════════════════════════════════════
 // ESTADO ATUAL DA ROTA
@@ -537,7 +590,7 @@ function renderRota(){
           cls = 'done-entrega';
           statusTxt = `✓ Entregue às ${fmtTs(rst.entregue[sec])}`;
           statusCls = 'ok';
-          btnHtml = `<div style="font-size:.65rem;color:var(--green);font-weight:700">✓</div>`;
+          btnHtml = `<button class="si-btn btn-desfazer-mini" onclick="desfazerEntrega('${sec}')" title="Desfazer entrega">↩</button>`;
         } else {
           statusTxt = 'Aguardando entrega';
           btnHtml = `<button class="si-btn btn-entregar" onclick="confirmarEntrega('${sec}','${parada.n}','${parada.loc}')">📦 Entregar</button>`;
@@ -550,7 +603,8 @@ function renderRota(){
             ? `📦 No cartório`
             : `✓ Recolhida às ${fmtTs(rst.recolhido[sec])}`;
           statusCls = recolhido ? 'blue' : 'ok';
-          btnHtml = `<div style="font-size:.65rem;color:var(--blue);font-weight:700">✓</div>`;
+          btnHtml = rst.cartorio_ts ? `<div style="font-size:.65rem;color:var(--blue);font-weight:700">✓</div>`
+            : `<button class="si-btn btn-desfazer-mini" onclick="desfazerRecolhimento('${sec}')" title="Desfazer recolhimento">↩</button>`;
         } else if(!mesaEnc){
           cls = 'aguard-mes';
           statusTxt = 'Aguardando encerramento';
@@ -583,47 +637,56 @@ function renderRota(){
 // ══════════════════════════════════════════════
 // AÇÕES — confirmações
 // ══════════════════════════════════════════════
+// Toque único (sem modal) — a confirmação por seção, repetida dezenas de
+// vezes numa rota inteira, era a fricção mais alta apontada na auditoria de
+// UI/UX. Em troca, cada item concluído ganha um "↩ desfazer" sempre visível
+// (mesmo padrão já usado no Conferente), sem prazo pra expirar.
 function confirmarEntrega(sec, paradaN, paradaLoc){
-  openSheet({
-    icon:'📦',
-    title:`Seção ${parseInt(sec)}`,
-    sub:`Confirmar entrega da urna na\n${paradaLoc}\nParada ${paradaN}`,
-    okLabel:'✓ Confirmar entrega',
-    okCls:'ok',
-    action:()=>{
-      const rst = getRotaState(curRota);
-      rst.entregue[sec] = Date.now();
-      patchRotaState(curRota, {entregue:rst.entregue});
-      if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_entregue: true });
-      vib([30,10,30]);
-      showToast(`✓ Seção ${parseInt(sec)} entregue`);
-      renderRota();
-    }
-  });
+  const rst = getRotaState(curRota);
+  rst.entregue[sec] = Date.now();
+  patchRotaState(curRota, {entregue:rst.entregue});
+  if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_entregue: true });
+  vib([30,10,30]);
+  showToast(`✓ Seção ${parseInt(sec)} entregue`);
+  renderRota();
+}
+
+function desfazerEntrega(sec){
+  const rst = getRotaState(curRota);
+  delete rst.entregue[sec];
+  patchRotaState(curRota, {entregue:rst.entregue});
+  if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_entregue: false });
+  vib(30);
+  showToast(`↩ Seção ${parseInt(sec)} voltou para pendente`);
+  renderRota();
 }
 
 function confirmarRecolhimento(sec, paradaN, paradaLoc){
-  openSheet({
-    icon:'🚗',
-    title:`Seção ${parseInt(sec)}`,
-    sub:`Confirmar recolhimento da urna em\n${paradaLoc}\nParada ${paradaN}`,
-    okLabel:'✓ Confirmar recolhimento',
-    okCls:'ok',
-    action:()=>{
-      const rst = getRotaState(curRota);
-      rst.recolhido[sec] = Date.now();
-      patchRotaState(curRota, {recolhido:rst.recolhido});
-      // Atualiza sime_mesa_v1 também (resilient — qualquer um pode confirmar)
-      const mesa = loadMesa();
-      if(!mesa[sec]) mesa[sec]={};
-      mesa[sec].urna = true;
-      saveMesa(mesa);
-      if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_recolhida: true });
-      vib([30,10,30]);
-      showToast(`✓ Seção ${parseInt(sec)} recolhida`);
-      renderRota();
-    }
-  });
+  const rst = getRotaState(curRota);
+  rst.recolhido[sec] = Date.now();
+  patchRotaState(curRota, {recolhido:rst.recolhido});
+  // Atualiza sime_mesa_v1 também (resilient — qualquer um pode confirmar)
+  const mesa = loadMesa();
+  if(!mesa[sec]) mesa[sec]={};
+  mesa[sec].urna = true;
+  saveMesa(mesa);
+  if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_recolhida: true });
+  vib([30,10,30]);
+  showToast(`✓ Seção ${parseInt(sec)} recolhida`);
+  renderRota();
+}
+
+function desfazerRecolhimento(sec){
+  const rst = getRotaState(curRota);
+  delete rst.recolhido[sec];
+  patchRotaState(curRota, {recolhido:rst.recolhido});
+  const mesa = loadMesa();
+  if(mesa[sec]) mesa[sec].urna = false;
+  saveMesa(mesa);
+  if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_recolhida: false });
+  vib(30);
+  showToast(`↩ Seção ${parseInt(sec)} voltou para pendente`);
+  renderRota();
 }
 
 function confirmarChegadaCartorio(){

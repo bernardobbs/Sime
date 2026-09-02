@@ -13,6 +13,7 @@
   --indigo:#3730a3;--indigo-bg:#e0e7ff;--indigo-bd:#a5b4fc;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;min-height:100vh;}
 .topbar{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;}
 .logo{width:38px;height:38px;border-radius:9px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;color:#fff;flex-shrink:0;}
@@ -28,21 +29,33 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .nav-tab.active{color:var(--text);border-bottom-color:var(--text);}
 .nav-tab:hover:not(.active){color:var(--text);background:var(--bg2);}
 .page{max-width:1160px;margin:0 auto;padding:24px 24px 60px;}
-.sec-title{font-size:.67rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.sec-title{font-size:.67rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text2);margin-bottom:12px;display:flex;align-items:center;gap:10px;}
 .sec-title::after{content:"";flex:1;height:1px;background:var(--border);}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
 .grid4{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
 @media(max-width:720px){.grid2,.grid4{grid-template-columns:1fr;}}
-.btn{padding:7px 14px;border-radius:8px;font-size:.76rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:5px;transition:all .15s;}
+.btn{padding:7px 14px;min-height:44px;border-radius:8px;font-size:.76rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:5px;transition:all .15s;}
 .btn-dark{background:#2a2a2a;color:#fff;}.btn-dark:hover{background:#444;}
 .btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);}.btn-out:hover{background:var(--bg3);}
 .btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
 .btn-sm{padding:5px 10px;font-size:.72rem;}
 .form-group{margin-bottom:13px;}
+/* Avisa ANTES do preenchimento que o formulário não persiste nada — antes só
+   havia um toast depois de fechar o modal, fácil de não notar (achado
+   "alto" da auditoria). */
+.aviso-nao-impl{font-size:.78rem;color:var(--yellow);background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:8px;padding:9px 12px;margin-bottom:14px;line-height:1.5;}
+/* "Drop zone" sem handler nenhum por trás — a aparência clicável (borda
+   tracejada, cursor de ponteiro) enganava sem nenhuma função real existir
+   ainda (achado "alto"). */
+.dropzone-desativada{border:1.5px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;color:var(--text3);font-size:.78rem;}
 .form-group label{font-size:.74rem;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;}
 .form-group input,.form-group select{width:100%;padding:8px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.83rem;outline:none;}
 .form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+/* Campo com erro tinha só o toast pra avisar — se a pessoa não lesse a tempo
+   (ou o toast já tivesse sumido), nada na tela indicava qual campo corrigir
+   (achado "médio" da auditoria). */
+.form-group input.campo-invalido{border-color:var(--red,#c0392b);background:var(--red-bg);}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 /* FASE BANNER */
 .fase-banner{border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border:1px solid;}
@@ -67,7 +80,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .tl-badge.future{background:var(--bg2);color:var(--text3);}
 .tl-label{font-size:.76rem;font-weight:700;}
 .tl-date{font-size:.68rem;color:var(--text2);margin-top:2px;}
-.tl-mod{font-size:.62rem;color:var(--text3);margin-top:4px;line-height:1.5;}
+.tl-mod{font-size:.62rem;color:var(--text2);margin-top:4px;line-height:1.5;}
 /* TURNOS */
 .turno-tabs{display:flex;gap:8px;margin-bottom:16px;}
 .turno-btn{padding:8px 20px;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;border:2px solid var(--border2);background:var(--bg2);color:var(--text2);}
@@ -96,7 +109,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .zbadge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;}
 .zbadge.ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .zbadge.warn{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
-.zbadge.off{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.zbadge.off{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
 .zbadge.new{background:var(--indigo-bg);color:var(--indigo);border:1px solid var(--indigo-bd);}
 .zona-body{padding:14px 18px;}
 .zona-stats{display:flex;gap:14px;margin-bottom:12px;}
@@ -150,7 +163,9 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
   <form id="login-form" style="background:#f9f7f4;border:1px solid #d8d3c8;border-radius:14px;padding:26px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;color:#2a2a2a;">
     <div style="font-weight:800;font-size:1rem;">SIME — Painel Principal</div>
     <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de administrador.</div>
+    <label for="login-email" class="sr-only">E-mail</label>
     <input id="login-email" type="email" placeholder="E-mail" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
+    <label for="login-pass" class="sr-only">Senha</label>
     <input id="login-pass" type="password" placeholder="Senha" style="padding:10px;border:1px solid #cac5b8;border-radius:8px;background:#ebe8e0;color:#2a2a2a;">
     <button type="submit" style="padding:11px;border:none;border-radius:8px;background:#3a5fa0;color:#fff;font-weight:700;">Entrar</button>
     <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
@@ -165,8 +180,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
     <div class="phase-pill" id="phase-pill" style="background:var(--bg2);color:var(--text2);border-color:var(--border)">Carregando...</div>
     <div class="clock-pill" id="clock">--:--</div>
     <div class="user-pill">
-      <div class="user-avatar">RA</div>
-      <div><div class="user-name">Rafael A.</div><div class="user-role">Super Admin</div></div>
+      <div class="user-avatar" id="topbar-avatar">--</div>
+      <div><div class="user-name" id="topbar-nome">Offline</div><div class="user-role" id="topbar-perfil">—</div></div>
     </div>
   </div>
 </div>
@@ -174,7 +189,7 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('eleicao',this)">🗓️ Eleição</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
-  <button class="nav-tab"        onclick="goTab('modulos',this)">🔗 Módulos</button>
+  <button class="nav-tab" id="tab-modulos-btn" onclick="goTab('modulos',this)">🔗 Módulos</button>
   <button class="nav-tab"        onclick="goTab('usuarios',this)">👥 Usuários</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
 </div>
@@ -331,22 +346,25 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
   <div class="sec-title">Dia D · Eleição</div>
   <div class="mod-grid" style="margin-bottom:20px;" id="mods-d"></div>
   <div class="sec-title">Painéis de TV</div>
-  <div class="mod-grid" id="mods-tv"></div>
+  <div class="mod-grid" style="margin-bottom:20px;" id="mods-tv"></div>
+  <div class="sec-title">Ferramentas do cartório</div>
+  <div class="mod-grid" id="mods-adm"></div>
 </div>
 
 <!-- ABA USUÁRIOS -->
 <div id="tab-usuarios" class="tab-panel" style="display:none;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
     <div><div style="font-size:1rem;font-weight:800;">Usuários e permissões</div></div>
-    <div style="display:flex;gap:8px;">
-      <select id="zona-filter" style="padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.78rem;" onchange="filterUsers()">
-        <option value="all">Todas as zonas</option><option value="7">7ª Zona</option><option value="94">94ª Zona</option>
-      </select>
-      <button class="btn btn-dark" onclick="openModal('novo-usuario')">+ Novo usuário</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="usuarios-escopo" style="font-size:.76rem;color:var(--text3);"></span>
+      <!-- Criar acesso acontece no Admin, onde a Edge Function sime-admin-user
+           cria a conta de verdade e mostra a senha temporária. Aqui era um
+           formulário que anunciava sucesso e não criava nada. -->
+      <a class="btn btn-dark" href="SIME_admin.html" style="text-decoration:none;">👥 Gerenciar no Admin</a>
     </div>
   </div>
   <div class="card" style="padding:0;overflow:hidden;">
-    <table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Zona</th><th>Último acesso</th><th></th></tr></thead>
+    <table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Zona</th></tr></thead>
     <tbody id="user-tbody"></tbody></table>
   </div>
 </div>
@@ -362,7 +380,11 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
       <div class="form-group"><label>Fuso horário</label>
         <select><option>America/Fortaleza (UTC-3)</option><option>America/Sao_Paulo (UTC-3)</option></select>
       </div>
-      <button class="btn btn-dark" onclick="showToast("✓ Salvo")">💾 Salvar</button>
+      <!-- Este cartão nunca gravou nada: o "Nome da eleição" real está na aba
+           Eleição (que persiste em sime_eleicoes); nome do sistema e fuso são
+           fixos. Dizer "✓ Salvo" aqui fazia o operador acreditar num ajuste
+           que não existe. -->
+      <button class="btn btn-out" onclick="showToast('Ajuste o nome da eleição na aba Eleição')">💾 Salvar</button>
     </div>
     <div class="card">
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Zona de perigo</div>
@@ -384,8 +406,8 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 
 </div><!-- /page -->
 
-<div class="overlay" id="overlay"><div class="modal" id="modal-body"></div></div>
-<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay" role="dialog" aria-modal="true"><div class="modal" id="modal-body"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script type="module">
 // Escopo por zona do portal. Antes este arquivo não falava com o Supabase:
@@ -410,6 +432,15 @@ async function carregarZonas(){
   window.SIME_PERFIL = meu.perfil;
   window.MINHA_ZONA_ID = meu.zona_id || null;
 
+  // Topbar mostrava "Rafael A." fixo no HTML — sobrevivência de antes do login
+  // real existir. Agora reflete quem de fato autenticou.
+  const nomeEl = document.getElementById('topbar-nome');
+  const perfilEl = document.getElementById('topbar-perfil');
+  const avatarEl = document.getElementById('topbar-avatar');
+  if (nomeEl) nomeEl.textContent = meu.nome || user.email || 'Sem nome';
+  if (perfilEl) perfilEl.textContent = (window.PERFIL_LABEL && window.PERFIL_LABEL[meu.perfil]) || meu.perfil;
+  if (avatarEl && window.iniciais) avatarEl.textContent = window.iniciais(meu.nome);
+
   // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
   // só opera a sua. Mesma regra já usada em SIME_admin.html.
   const btn = document.getElementById('tab-zonas-btn');
@@ -420,8 +451,9 @@ async function carregarZonas(){
     supabase.from('sime_zonas').select('id, numero, municipio, estado').order('numero'),
     supabase.from('sime_secoes').select('zona_id, eleitores'),
     supabase.from('sime_rotas').select('zona_id'),
-    supabase.from('sime_usuarios').select('zona_id').eq('ativo', true),
+    supabase.from('sime_usuarios').select('id, nome, perfil, zona_id').eq('ativo', true),
   ]);
+  window.USUARIOS_REAIS = usuarios || [];
 
   const soma = (rows, key, campo) => (rows || []).reduce((m, r) => {
     m[r[key]] = (m[r[key]] || 0) + (campo ? (r[campo] || 0) : 1); return m;
@@ -434,6 +466,7 @@ async function carregarZonas(){
     admins: soma(usuarios, 'zona_id')[z.id] || 0,
   }));
   if (window.renderZonas) window.renderZonas();
+  if (window.buildUsers) window.buildUsers();
   await carregarEleicaoDoBanco();
 }
 
@@ -443,20 +476,23 @@ async function carregarZonas(){
 // a expiração dos tokens — que sai daí — ia junto. Agora o banco manda, e o
 // localStorage segue existindo para o painel continuar de pé sem sessão.
 //
-// O banco guarda um subconjunto: data_dx_ini, data_d1, data_d, horario_ab,
-// horario_enc e ativa. Nome da eleição, início da distribuição e intervalo
-// entre saídas não têm coluna e continuam só locais.
+// O banco guarda: data_dx_ini, data_d1, data_d, horario_ab, horario_enc,
+// ativa, nome, dist_inicio e intervalo_saidas_min — nome é o mesmo campo nas
+// duas linhas (1º/2º turno) da mesma zona, já que o formulário só tem um
+// input pra ele; dist_inicio/intervalo_saidas_min são por turno, como no
+// localStorage.
 const TURNOS = [1, 2];
 
 function idsDoTurno(t) {
-  return { dx: `t${t}-dx`, d1: `t${t}-d1`, d: `t${t}-d`, ab: `t${t}-ab`, enc: `t${t}-enc` };
+  return { dx: `t${t}-dx`, d1: `t${t}-d1`, d: `t${t}-d`, ab: `t${t}-ab`, enc: `t${t}-enc`,
+           dist: `t${t}-dist`, intervalo: `t${t}-intervalo` };
 }
 
 async function carregarEleicaoDoBanco() {
   if (!window.MINHA_ZONA_ID) return;   // super_admin sem zona: mantém o local
   const { data: linhas } = await supabase
     .from('sime_eleicoes')
-    .select('turno, data_dx_ini, data_d1, data_d, horario_ab, horario_enc, ativa')
+    .select('turno, data_dx_ini, data_d1, data_d, horario_ab, horario_enc, ativa, nome, dist_inicio, intervalo_saidas_min')
     .eq('zona_id', window.MINHA_ZONA_ID);
   if (!linhas?.length) return;
 
@@ -464,7 +500,8 @@ async function carregarEleicaoDoBanco() {
   for (const linha of linhas) {
     const ids = idsDoTurno(linha.turno);
     const por = { [ids.dx]: linha.data_dx_ini, [ids.d1]: linha.data_d1, [ids.d]: linha.data_d,
-                  [ids.ab]: hhmm(linha.horario_ab), [ids.enc]: hhmm(linha.horario_enc) };
+                  [ids.ab]: hhmm(linha.horario_ab), [ids.enc]: hhmm(linha.horario_enc),
+                  [ids.dist]: hhmm(linha.dist_inicio), [ids.intervalo]: linha.intervalo_saidas_min };
     for (const [id, valor] of Object.entries(por)) {
       const el = document.getElementById(id);
       if (el && valor) el.value = valor;
@@ -472,6 +509,10 @@ async function carregarEleicaoDoBanco() {
     if (linha.ativa) {
       const radio = document.getElementById('ta-' + linha.turno);
       if (radio) radio.checked = true;
+    }
+    if (linha.nome) {
+      const nomeEl = document.getElementById('cfg-nome-eleicao');
+      if (nomeEl) nomeEl.value = linha.nome;
     }
   }
   // Reflete no localStorage e na UI derivada (fase, linha do tempo, módulos).
@@ -484,14 +525,18 @@ window.salvarEleicaoNoBanco = async function () {
   if (!window.MINHA_ZONA_ID) return { ok: false, motivo: 'sem zona' };
   const ativo = +(document.querySelector('input[name="turno-ativo"]:checked')?.value || 1);
   const valor = (id) => document.getElementById(id)?.value || null;
+  const nome = document.getElementById('cfg-nome-eleicao')?.value?.trim() || null;
 
   const linhas = TURNOS.map((t) => {
     const ids = idsDoTurno(t);
+    const intervalo = valor(ids.intervalo);
     return {
       zona_id: window.MINHA_ZONA_ID, turno: t,
       data_dx_ini: valor(ids.dx), data_d1: valor(ids.d1), data_d: valor(ids.d),
       horario_ab: valor(ids.ab), horario_enc: valor(ids.enc),
       ativa: t === ativo,
+      nome, dist_inicio: valor(ids.dist),
+      intervalo_saidas_min: intervalo ? parseInt(intervalo, 10) : null,
     };
   // Turno sem Dia D não é gravado: data_d é o que identifica a eleição, e uma
   // linha vazia de 2º turno viraria "eleição ativa" fantasma nas consultas.
@@ -515,15 +560,27 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   if (error) { erroEl.textContent = 'E-mail ou senha inválidos.'; return; }
   await carregarZonas();
   esconderLogin();
+  abrirAbaDaUrl();
 });
 
 // Contingência: a configuração da eleição vive em localStorage, então o painel
 // continua utilizável sem sessão — só não resolve a zona nem lista zonas.
-document.getElementById('login-offline').addEventListener('click', esconderLogin);
+document.getElementById('login-offline').addEventListener('click', () => { esconderLogin(); abrirAbaDaUrl(); });
+
+// Landing padrão do site (vercel.json redireciona "/" pra cá com
+// ?tab=modulos) — sem o parâmetro, mantém "Eleição" como sempre foi. goTab()
+// exige o <button> clicado (usa .this pra marcar active), então resolve o
+// botão por id em vez de reusar um clique de verdade.
+function abrirAbaDaUrl() {
+  const tab = new URLSearchParams(location.search).get('tab');
+  if (!tab || tab === 'eleicao') return;
+  const btn = document.getElementById('tab-' + tab + '-btn');
+  if (btn && btn.style.display !== 'none') goTab(tab, btn);
+}
 
 (async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) { await carregarZonas(); esconderLogin(); }
+  if (session) { await carregarZonas(); esconderLogin(); abrirAbaDaUrl(); }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -559,6 +616,17 @@ function espelharFormNoLocalStorage(){
 }
 window.espelharFormNoLocalStorage = espelharFormNoLocalStorage;
 
+// Marca um campo como inválido (borda/fundo vermelhos) e leva o usuário até
+// ele — o toast sozinho some rápido e não diz QUAL campo corrigir.
+function destacarCampoInvalido(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.add('campo-invalido');
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  el.focus();
+  el.addEventListener('input', () => el.classList.remove('campo-invalido'), { once:true });
+}
+
 async function saveEleicao(){
   espelharFormNoLocalStorage();
 
@@ -567,7 +635,11 @@ async function saveEleicao(){
   const r = await window.salvarEleicaoNoBanco();
   if(r.ok)                       showToast('✓ Eleição salva no cartório');
   else if(r.motivo === 'sem zona') showToast('✓ Salvo neste navegador (sem zona)');
-  else if(r.motivo === 'sem data') showToast('⚠ Informe o Dia D antes de salvar');
+  else if(r.motivo === 'sem data'){
+    showToast('⚠ Informe o Dia D antes de salvar');
+    const ta = document.querySelector('input[name="turno-ativo"]:checked')?.value||'1';
+    destacarCampoInvalido('t'+ta+'-d');
+  }
   else                           showToast('🟡 Salvo aqui — falhou no servidor');
 }
 
@@ -776,13 +848,23 @@ const MODS = {
     {icon:'🚐',title:'Motorista',sub:'Entrega e recolhimento de urnas',href:'SIME_motorista.html',fase:'d'},
     {icon:'📊',title:'Dashboard Operacional',sub:'Visão consolidada de todas as seções',href:'SIME_admin.html',fase:'d'},
   ],
+  // Só o que é televisão/telão de verdade — os demais TV_* (Preparação,
+  // Véspera, Distribuição) já vivem nos grupos de fase acima (dx/d1), perto
+  // do módulo de campo que alimentam.
   tv:[
     {icon:'📺',title:'Gerenciador de Painéis',sub:'Configure painéis personalizados para TVs',href:'SIME_paineis.html',fase:null},
     {icon:'🌅',title:'TV Dia da Eleição',sub:'Painel de acompanhamento do Dia D',href:'SIME_tv_dia.html',fase:'d'},
+  ],
+  // Achado real (21/08/2026): estes 7 moravam dentro de "Painéis de TV" só
+  // por não terem fase fixa — nenhum deles é televisão. Separados num grupo
+  // próprio de ferramentas do cartório (admin, cadastro, convocação, etc.).
+  adm:[
     {icon:'🔧',title:'Administração',sub:'Gestão de seções, equipe e ocorrências',href:'SIME_admin.html',fase:null},
     {icon:'📦',title:'Recolhimento de Mídias',sub:'Controle do fluxo de mídias eleitorais',href:'SIME_midias.html',fase:'d'},
     {icon:'👥',title:'Cadastro de Atores',sub:'Contatos e Modo Guerra por seção',href:'SIME_atores.html',fase:null},
+    {icon:'🗳️',title:'Convocação de Mesários',sub:'Sincronizar planilha, dashboard e contato com mesários',href:'SIME_convocacao.html',fase:null},
     {icon:'🔖',title:'Tokens & QR Codes',sub:'Gera e imprime QR + PIN dos operadores de campo',href:'SIME_tokens.html',fase:null},
+    {icon:'🚨',title:'Problemas',sub:'Assumir, contatar quem resolve e encerrar',href:'SIME_problemas.html',fase:null},
     {icon:'📄',title:'Relatórios',sub:'Seções, distribuição de urnas e ocorrências',href:'SIME_relatorios.html',fase:null},
   ],
 };
@@ -816,43 +898,79 @@ function showTurno(n){
   });
 }
 
-// USUÁRIOS
-const USERS=[
-  {name:'Rafael A.',ini:'RA',color:'#2a2a2a',role:'super',rl:'Super Admin',zona:'Todas',last:'Agora'},
-  {name:'Maria S.',ini:'MS',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'hoje 07:12'},
-  {name:'João P.',ini:'JP',color:'#3a5fa0',role:'admin',rl:'Admin de Zona',zona:'7ª',last:'ontem'},
-  {name:'Ana C.',ini:'AC',color:'#6040a0',role:'admin',rl:'Admin de Zona',zona:'94ª',last:'—'},
-  {name:'Carlos M.',ini:'CM',color:'#1a7a6e',role:'coord',rl:'Coordenador',zona:'7ª',last:'hoje 06:58'},
-  {name:'Paulo T.',ini:'PT',color:'#1a7a6e',role:'inst',rl:'Técnico',zona:'7ª',last:'—'},
-  {name:'José R.',ini:'JR',color:'#8a5c20',role:'motor',rl:'Motorista',zona:'7ª',last:'—'},
-];
-const RCLS={super:'role-super',admin:'role-admin',coord:'role-coord',inst:'role-inst',motor:'role-motor'};
-function buildUsers(f='all'){
-  document.getElementById('user-tbody').innerHTML=USERS
-    .filter(u=>f==='all'||u.zona==='Todas'||(f==='7'&&u.zona==='7ª')||(f==='94'&&u.zona==='94ª'))
-    .map(u=>'<tr><td><div class="td-row"><div class="avatar-sm" style="background:'+u.color+'">'+u.ini+'</div><strong>'+u.name+'</strong></div></td>'
-      +'<td><span class="role-badge '+RCLS[u.role]+'">'+u.rl+'</span></td>'
-      +'<td>'+u.zona+'</td><td style="font-size:.76rem">'+u.last+'</td>'
-      +'<td><div class="td-actions"><button class="td-btn edit" onclick="openModal(\'editar-usuario\',\'' + u.name + '\')">✏️</button><button class="td-btn del">🗑</button></div></td></tr>').join('');
+// USUÁRIOS — dado real, escopado pela RLS
+//
+// Esta aba listava SETE pessoas inventadas ('Maria S.', 'João P.', …) com um
+// filtro de zona escrito no HTML, e o botão "+ Novo usuário" abria um modal
+// que anunciava sucesso sem criar nada. Alguém podia cadastrar a equipe
+// aqui, ver o visto verde, e descobrir no dia 4 que ninguém consegue entrar.
+//
+// Agora vem de sime_usuarios. Não há filtro de zona porque não é preciso: a
+// RLS já devolve só a zona do usuário logado (e todas, para o super_admin) —
+// filtrar de novo no cliente seria fingir um controle que o banco já faz.
+const PERFIL_LABEL = {
+  super_admin:'Super Admin', coordenador:'Coordenador Geral', monitor:'Monitor de Campo',
+  gestor_prob:'Gestor de Problemas', gestor_dist:'Gestor de Distribuição',
+  coord_motoristas:'Coord. de Motoristas', coord_acessibilidade:'Coord. de Acessibilidade',
+  coletor_midias:'Coletor de Mídias', observador:'Observador',
+};
+// const não vira propriedade de window sozinho — a topbar (script type="module",
+// carregarZonas()) precisa ler este mapa para mostrar o perfil de quem logou.
+window.PERFIL_LABEL = PERFIL_LABEL;
+const RCLS={super_admin:'role-super',coordenador:'role-admin',monitor:'role-coord',
+  gestor_prob:'role-coord',gestor_dist:'role-inst',observador:'role-motor'};
+
+function iniciais(nome){
+  return String(nome||'?').split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 }
-buildUsers();
-function filterUsers(){ buildUsers(document.getElementById('zona-filter').value); }
+
+function buildUsers(){
+  const tb = document.getElementById('user-tbody');
+  if(!tb) return;
+  const zonas = window.ZONAS_REAIS || [];
+  const porZona = Object.fromEntries(zonas.map(z=>[z.id, z.numero+'ª']));
+  // Tokens de TV entram em sime_usuarios como 'observador' criado pela
+  // sime-login. Não são gente da equipe e poluiriam a lista.
+  const users = (window.USUARIOS_REAIS || []).filter(u => !/^Token /.test(u.nome||''));
+
+  const escopo = document.getElementById('usuarios-escopo');
+  if(escopo) escopo.textContent = users.length
+    ? `${users.length} pessoa${users.length>1?'s':''}` + (zonas.length===1 ? ` · ${zonas[0].numero}ª Zona` : '')
+    : '';
+
+  if(!users.length){
+    tb.innerHTML = '<tr><td colspan="3" style="padding:18px;color:var(--text3);font-size:.82rem">'
+      + (window.SIME_PERFIL ? 'Nenhum usuário cadastrado nesta zona.' : 'Entre com seu login para ver a equipe.')
+      + '</td></tr>';
+    return;
+  }
+  tb.innerHTML = users.map(u =>
+    '<tr><td><div class="td-row"><div class="avatar-sm" style="background:#3a5fa0">'+iniciais(u.nome)+'</div>'
+    + '<strong>'+(u.nome||'—')+'</strong></div></td>'
+    + '<td><span class="role-badge '+(RCLS[u.perfil]||'role-motor')+'">'+(PERFIL_LABEL[u.perfil]||u.perfil)+'</span></td>'
+    + '<td>'+(porZona[u.zona_id]||'—')+'</td></tr>').join('');
+}
+window.buildUsers = buildUsers;
 
 // MODAIS
 const MODALS={
-  'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Zona criada")">Criar</button></div>',
-  'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div style="border:2px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer">📄 Selecionar arquivo</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
+  'nova-zona':()=>'<div class="modal-header"><div class="modal-title">🗺️ Nova zona eleitoral</div></div><div class="modal-body"><div class="aviso-nao-impl">⚠️ Este cadastro ainda não está conectado ao banco — nada digitado aqui é salvo.</div><div class="form-row"><div class="form-group"><label>Número</label><input type="text" placeholder="ex: 96"></div><div class="form-group"><label>UF</label><input type="text" placeholder="PI" maxlength="2"></div></div><div class="form-group"><label>Município sede</label><input type="text"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast(\'Cadastro de zona ainda não implementado\')">Entendi</button></div>',
+  'config-zona':(z)=>'<div class="modal-header"><div class="modal-title">⚙️ Configurar '+z+'ª Zona</div></div><div class="modal-body"><div class="aviso-nao-impl">⚠️ Esta configuração ainda não está conectada ao banco — nada digitado aqui é salvo.</div><div class="form-group"><label>Município sede</label><input type="text" value="'+(z==='7'?'Campo Maior':'')+'"></div><div class="form-group"><label>UF</label><input type="text" value="PI"></div><div class="form-group"><label>Importar seções (PDF ELO ou XLS)</label><div class="dropzone-desativada">📄 Seleção de arquivo ainda não disponível aqui</div></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast(\'Configuração de zona ainda não implementada\')">Entendi</button></div>',
   'admins-zona':(z)=>'<div class="modal-header"><div class="modal-title">👥 Admins da '+z+'ª Zona</div></div><div class="modal-body">'+(z==='7'?'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#3a5fa0">MS</div><div style="flex:1"><strong>Maria S.</strong></div><button class="td-btn del">🗑</button></div>':'<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--bg2);border-radius:8px"><div class="avatar-sm" style="background:#6040a0">AC</div><div style="flex:1"><strong>Ana C.</strong></div><button class="td-btn del">🗑</button></div>')+'</div><div class="modal-footer"><button class="btn btn-dark" onclick="closeModal()">Fechar</button></div>',
-  'novo-usuario':()=>'<div class="modal-header"><div class="modal-title">👤 Novo usuário</div><div class="modal-sub">O usuário verá apenas a zona atribuída.</div></div><div class="modal-body"><div class="form-row"><div class="form-group"><label>Nome</label><input type="text"></div><div class="form-group"><label>E-mail</label><input type="email"></div></div><div class="form-group"><label>Perfil</label><select><option>Admin de Zona</option><option>Coordenador</option><option>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona — Campo Maior</option><option>94ª Zona — Oeiras</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Criado")">Criar</button></div>',
-  'editar-usuario':(n)=>'<div class="modal-header"><div class="modal-title">✏️ Editar — '+n+'</div></div><div class="modal-body"><div class="form-group"><label>Perfil</label><select><option>Admin</option><option>Coordenador</option><option selected>Técnico</option><option>Motorista</option></select></div><div class="form-group"><label>Zona</label><select><option>7ª Zona</option><option>94ª Zona</option></select></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Salvo")">Salvar</button></div>',
-  'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Turno arquivado")">Arquivar</button></div>',
+  'arquivar':()=>'<div class="modal-header"><div class="modal-title">📦 Arquivar turno</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);line-height:1.6">Os dados operacionais serão movidos para o histórico. Seções e rotas são mantidas para o próximo turno.</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast(\'Arquivamento de turno ainda não implementado\')">Entendi</button></div>',
   'resetar':()=>`<div class="modal-header"><div class="modal-title" style="color:var(--red)">⚠️ Resetar dados</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--red);background:var(--red-bg);border:1px solid var(--red-bd);border-radius:8px;padding:12px;margin-bottom:14px">Apaga permanentemente todos os dados de campo.</div><div class="form-group"><label>Digite RESETAR para confirmar</label><input type="text" id="rc"></div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-red" onclick="doResetar()">Resetar</button></div>`,
-  'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div style="border:2px dashed var(--border2);border-radius:8px;padding:18px;text-align:center;cursor:pointer;margin-bottom:12px">📅 Selecionar arquivo do TRE (.ics / .csv)</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast("✓ Calendário importado")">Importar</button></div>',
+  'importar-cal':()=>'<div class="modal-header"><div class="modal-title">📥 Importar calendário TRE</div></div><div class="modal-body"><div class="aviso-nao-impl">⚠️ Esta importação ainda não está implementada.</div><div style="font-size:.82rem;color:var(--text2);margin-bottom:14px;line-height:1.5">Importe o calendário eleitoral do TRE. O sistema preencherá D-X, D-1 e Dia D automaticamente.</div><div class="dropzone-desativada" style="margin-bottom:12px">📅 Seleção de arquivo ainda não disponível aqui</div></div><div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Cancelar</button><button class="btn btn-dark" onclick="closeModal();showToast(\'Importação de calendário ainda não implementada\')">Entendi</button></div>',
 };
 
 function doResetar(){ const v=document.getElementById('rc'); if(v&&v.value==='RESETAR'){closeModal();showToast('✓ Resetado');}else showToast('Digite RESETAR para confirmar'); }
 function openModal(k,p){ const fn=MODALS[k]; if(!fn) return; document.getElementById('modal-body').innerHTML=fn(p); document.getElementById('overlay').classList.add('show'); }
 function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+// Esc fechava só clicando fora — nenhum handler de teclado existia
+// (achado "baixo" da auditoria: role="dialog" sem os outros comportamentos
+// esperados de um dialog acessível).
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('overlay').classList.contains('show')) closeModal();
+});
 document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===document.getElementById('overlay')) closeModal(); });
 
 // TOAST
@@ -869,7 +987,7 @@ document.getElementById('overlay').addEventListener('click',e=>{ if(e.target===d
   // Depois de carregar o que já estava salvo: sugere as datas legais só nos
   // campos ainda vazios e deriva a véspera de cada turno.
   aplicarPadroesDeData();
-  updateFase(); renderTimeline(); renderModulos(); renderZonas();
+  updateFase(); renderTimeline(); renderModulos(); renderZonas(); buildUsers();
 })();
 </script>
 </body>

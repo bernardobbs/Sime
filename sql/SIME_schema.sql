@@ -232,6 +232,14 @@ ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS urna_instalada_ts TIMESTAM
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao BOOLEAN DEFAULT false;
 ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS problema_instalacao_resolvido BOOLEAN DEFAULT false;
 
+-- SOS: pânico genérico do mesário, para qualquer problema que não seja
+-- energia nem urna (conflito de fiscais, conflito entre eleitores, fila
+-- descontrolada etc.) — o toque não carrega motivo, só o alerta; quem
+-- recebe liga pra seção pra entender o que é. Mesmo mecanismo de
+-- panico_energia/panico_urna.
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS panico_sos BOOLEAN DEFAULT false;
+ALTER TABLE sime_mesa_estado ADD COLUMN IF NOT EXISTS panico_sos_resolvido BOOLEAN DEFAULT false;
+
 -- ------------------------------------------------------------
 -- 2. ESTADO DE EMBARQUE DE ROTA (Conferente, D-1)
 -- ------------------------------------------------------------
@@ -356,13 +364,14 @@ ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_acessibilidade';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coord_motoristas';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'coletor_midias';
 ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'preposto';
+ALTER TYPE sime_ator_funcao ADD VALUE IF NOT EXISTS 'junta_eleitoral';
 
 CREATE TABLE IF NOT EXISTS sime_atores (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   zona_id           UUID REFERENCES sime_zonas(id),
   eleicao_id        UUID REFERENCES sime_eleicoes(id),
   nome_completo     TEXT NOT NULL,
-  telefone_whatsapp VARCHAR(20) NOT NULL,
+  telefone_whatsapp VARCHAR(20), -- pode faltar no cadastro oficial (TRE); nunca bloquear por isso
   secao_id          UUID REFERENCES sime_secoes(id),
   local_id          UUID,
   funcao            sime_ator_funcao NOT NULL,
@@ -375,6 +384,10 @@ CREATE TABLE IF NOT EXISTS sime_atores (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by        UUID REFERENCES sime_usuarios(id)
 );
+
+-- Idempotente para instalações que já criaram sime_atores com telefone_whatsapp NOT NULL:
+-- o cadastro oficial do TRE às vezes não tem telefone algum (pessoal nem comercial).
+ALTER TABLE sime_atores ALTER COLUMN telefone_whatsapp DROP NOT NULL;
 
 -- Idempotente para instalações que já criaram sime_atores antes desta coluna.
 ALTER TABLE sime_atores
@@ -395,6 +408,15 @@ CREATE INDEX IF NOT EXISTS idx_atores_nome_trgm ON sime_atores USING gin(nome_co
 CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_unique
   ON sime_atores(eleicao_id, secao_id, telefone_whatsapp, funcao)
   WHERE ativo = true;
+
+-- Chave estável por pessoa+função: permite UPSERT em vez de delete+reinsert a
+-- cada nova exportação do TRE. Uma mesma pessoa pode legitimamente ter duas
+-- linhas (ex.: mesário E apoio logístico na mesma eleição) — por isso a chave
+-- é (inscricao_eleitoral, funcao), não só inscricao_eleitoral. Parcial porque
+-- atores fora do fluxo TRE (motorista, técnico, cartório) não têm inscrição.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_atores_inscricao_funcao
+  ON sime_atores(inscricao_eleitoral, funcao)
+  WHERE inscricao_eleitoral IS NOT NULL;
 
 -- sime_midias.responsavel_coleta referencia sime_atores (não sime_usuarios):
 -- quem coleta mídia em campo é sempre um ator externo (motorista/técnico
@@ -524,6 +546,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Transmissão de resultados (JE-Connect): distinto da entrega FÍSICA da mídia
+-- (status = 'entregue_transmissao' acima). Aqui rastreamos quem é o técnico
+-- responsável por transmitir cada seção (matriz nominal, definida antes do
+-- dia D) e se a transmissão DIGITAL em si deu certo — a lacuna real de 2024
+-- foi não saber quem tinha essa seção e não perceber uma falha de conexão
+-- até alguém mandar mensagem avulsa no grupo.
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS tecnico_responsavel_id UUID REFERENCES sime_atores(id);
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_status TEXT NOT NULL DEFAULT 'pendente';
+DO $$ BEGIN
+  ALTER TABLE sime_midias ADD CONSTRAINT sime_midias_transmissao_status_chk
+    CHECK (transmissao_status IN ('pendente','em_andamento','transmitido','falhou'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_ts  TIMESTAMPTZ;
+ALTER TABLE sime_midias ADD COLUMN IF NOT EXISTS transmissao_obs TEXT;
+CREATE INDEX IF NOT EXISTS idx_midias_transmissao_status ON sime_midias(transmissao_status);
+CREATE INDEX IF NOT EXISTS idx_midias_tecnico ON sime_midias(tecnico_responsavel_id);
+
+-- RPC: atribuir técnico e/ou atualizar status de transmissão. Separada de
+-- sime_acao_midia de propósito — não altera a assinatura da RPC de coleta
+-- física, que já está em produção.
+CREATE OR REPLACE FUNCTION sime_midia_transmissao_upsert(
+  p_secao_id    UUID,
+  p_eleicao_id  UUID,
+  p_tecnico_id         UUID DEFAULT NULL,
+  p_transmissao_status TEXT DEFAULT NULL,
+  p_transmissao_obs    TEXT DEFAULT NULL
+) RETURNS sime_midias AS $$
+DECLARE
+  v_row sime_midias;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  INSERT INTO sime_midias(eleicao_id, secao_id, tecnico_responsavel_id, transmissao_status,
+    transmissao_obs, transmissao_ts, updated_at)
+  VALUES (p_eleicao_id, p_secao_id, p_tecnico_id, COALESCE(p_transmissao_status,'pendente'),
+    p_transmissao_obs, CASE WHEN p_transmissao_status IS NOT NULL THEN v_now END, v_now)
+  ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
+    tecnico_responsavel_id = COALESCE(p_tecnico_id, sime_midias.tecnico_responsavel_id),
+    transmissao_status = COALESCE(p_transmissao_status, sime_midias.transmissao_status),
+    transmissao_obs = COALESCE(p_transmissao_obs, sime_midias.transmissao_obs),
+    -- reflete a ÚLTIMA mudança de status (o status oscila falhou→em_andamento
+    -- →transmitido; diferente do padrão "primeira vez" usado em urna_*_ts).
+    transmissao_ts = CASE WHEN p_transmissao_status IS NOT NULL THEN v_now ELSE sime_midias.transmissao_ts END,
+    updated_at = v_now
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$ LANGUAGE plpgsql;
+
 -- RPC: ação do Coord. de Acessibilidade (fila/pânico de energia/urna) — Fase 4.
 -- Sem RPC dedicada até agora (SIME_acessibilidade.html só gravava em
 -- localStorage); parâmetros opcionais (NULL = não mexe) porque a UI sempre
@@ -582,6 +652,8 @@ CREATE OR REPLACE FUNCTION sime_acao_mesa(
   p_panico_urna     BOOLEAN DEFAULT NULL,
   p_panico_energia_resolvido BOOLEAN DEFAULT NULL,
   p_panico_urna_resolvido    BOOLEAN DEFAULT NULL,
+  p_panico_sos      BOOLEAN DEFAULT NULL,
+  p_panico_sos_resolvido     BOOLEAN DEFAULT NULL,
   p_urna_entregue    BOOLEAN DEFAULT NULL,
   p_urna_recolhida   BOOLEAN DEFAULT NULL,
   p_urna_cartorio    BOOLEAN DEFAULT NULL,
@@ -590,6 +662,7 @@ CREATE OR REPLACE FUNCTION sime_acao_mesa(
   p_urna_instalada   BOOLEAN DEFAULT NULL,
   p_problema_instalacao           BOOLEAN DEFAULT NULL,
   p_problema_instalacao_resolvido BOOLEAN DEFAULT NULL,
+  p_observacao  TEXT DEFAULT NULL,
   p_origem      TEXT DEFAULT NULL
 ) RETURNS sime_mesa_estado AS $$
 DECLARE
@@ -600,10 +673,11 @@ BEGIN
     eleicao_id, secao_id, mesa_pres, mesa_m1, mesa_m2, mesa_sec,
     zeresima, votacao, encerrada, bu_impresso, material_recolhido, fila,
     panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido,
+    panico_sos, panico_sos_resolvido,
     urna_entregue, urna_entregue_ts, urna_recolhida, urna_recolhida_ts,
     urna_cartorio, urna_cartorio_ts, urna_chegou, urna_chegou_ts,
     urna_posicionada, urna_posicionada_ts, urna_instalada, urna_instalada_ts,
-    problema_instalacao, problema_instalacao_resolvido,
+    problema_instalacao, problema_instalacao_resolvido, observacao,
     updated_at, updated_by_origem
   ) VALUES (
     p_eleicao_id, p_secao_id,
@@ -612,13 +686,14 @@ BEGIN
     COALESCE(p_material_recolhido,false), COALESCE(p_fila,0),
     COALESCE(p_panico_energia,false), COALESCE(p_panico_urna,false),
     COALESCE(p_panico_energia_resolvido,false), COALESCE(p_panico_urna_resolvido,false),
+    COALESCE(p_panico_sos,false), COALESCE(p_panico_sos_resolvido,false),
     COALESCE(p_urna_entregue,false),    CASE WHEN p_urna_entregue    THEN v_now END,
     COALESCE(p_urna_recolhida,false),   CASE WHEN p_urna_recolhida   THEN v_now END,
     COALESCE(p_urna_cartorio,false),    CASE WHEN p_urna_cartorio    THEN v_now END,
     COALESCE(p_urna_chegou,false),      CASE WHEN p_urna_chegou      THEN v_now END,
     COALESCE(p_urna_posicionada,false), CASE WHEN p_urna_posicionada THEN v_now END,
     COALESCE(p_urna_instalada,false),   CASE WHEN p_urna_instalada   THEN v_now END,
-    COALESCE(p_problema_instalacao,false), COALESCE(p_problema_instalacao_resolvido,false),
+    COALESCE(p_problema_instalacao,false), COALESCE(p_problema_instalacao_resolvido,false), p_observacao,
     v_now, p_origem
   )
   ON CONFLICT (eleicao_id, secao_id) DO UPDATE SET
@@ -636,6 +711,8 @@ BEGIN
     panico_urna    = COALESCE(p_panico_urna, sime_mesa_estado.panico_urna),
     panico_energia_resolvido = COALESCE(p_panico_energia_resolvido, sime_mesa_estado.panico_energia_resolvido),
     panico_urna_resolvido    = COALESCE(p_panico_urna_resolvido, sime_mesa_estado.panico_urna_resolvido),
+    panico_sos = COALESCE(p_panico_sos, sime_mesa_estado.panico_sos),
+    panico_sos_resolvido = COALESCE(p_panico_sos_resolvido, sime_mesa_estado.panico_sos_resolvido),
     urna_entregue    = COALESCE(p_urna_entregue, sime_mesa_estado.urna_entregue),
     urna_entregue_ts = CASE WHEN p_urna_entregue AND sime_mesa_estado.urna_entregue_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_entregue_ts END,
     urna_recolhida    = COALESCE(p_urna_recolhida, sime_mesa_estado.urna_recolhida),
@@ -650,6 +727,7 @@ BEGIN
     urna_instalada_ts = CASE WHEN p_urna_instalada AND sime_mesa_estado.urna_instalada_ts IS NULL THEN v_now ELSE sime_mesa_estado.urna_instalada_ts END,
     problema_instalacao = COALESCE(p_problema_instalacao, sime_mesa_estado.problema_instalacao),
     problema_instalacao_resolvido = COALESCE(p_problema_instalacao_resolvido, sime_mesa_estado.problema_instalacao_resolvido),
+    observacao = COALESCE(p_observacao, sime_mesa_estado.observacao),
     updated_at = v_now,
     updated_by_origem = COALESCE(p_origem, sime_mesa_estado.updated_by_origem)
   RETURNING * INTO v_row;
@@ -756,6 +834,167 @@ BEGIN
   RETURN v_row;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Sincroniza sime_atores a partir de sime_mesarios_raw (staging, recarregável
+-- a qualquer momento) via UPSERT por inscricao_eleitoral+funcao — substitui o
+-- padrão anterior de "DELETE da zona + INSERT do zero", que recriava UUIDs a
+-- cada carga e quebraria referências (sime_campanhas_confirmacao.ator_id,
+-- sime_notificacoes) assim que existissem. Preserva sempre confirmacao/
+-- status_convocacao/whatsapp_* — não fazem parte do SET do upsert. Quem sai
+-- da nova exportação (substituído de verdade) vira ativo=false, não é
+-- apagado — mantém histórico e não quebra FK.
+-- Normaliza QUALQUER telefone pro padrão "55"+DDD+8/9 dígitos que
+-- sime_atores.telefone_whatsapp assume em todo o resto do sistema — mesma
+-- heurística da normalização em massa aplicada em produção em 21/08/2026
+-- (ver sql/SIME_telefones_normalizacao.sql) e da gêmea em JS
+-- (normalizarTelefoneWhatsapp, sime_ui_utils.js). Usada aqui pro roster de
+-- 81 colunas (pedido do cartório: "sempre que importar, normalizar pro
+-- formato WhatsApp" — antes o COALESCE abaixo gravava os dígitos crus do
+-- TRE, sem "55" e sem o dígito 9 de celular antigo).
+CREATE OR REPLACE FUNCTION sime_normalizar_telefone_whatsapp(p_telefone TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  d TEXT := regexp_replace(coalesce(p_telefone, ''), '\D', '', 'g');
+  len INT := length(d);
+BEGIN
+  IF d = '' THEN RETURN NULL; END IF;
+  IF d = '000000000000' THEN RETURN p_telefone; END IF;
+  IF len = 13 AND left(d, 2) = '55' THEN RETURN d; END IF;
+  IF len = 11 THEN RETURN '55' || d; END IF;
+  IF len = 10 THEN
+    IF substring(d from 3 for 1) IN ('6','7','8','9') THEN
+      RETURN '55' || substring(d from 1 for 2) || '9' || substring(d from 3 for 8);
+    ELSE
+      RETURN '55' || d;
+    END IF;
+  END IF;
+  IF len = 9 AND left(d, 1) = '9' THEN RETURN '5586' || d; END IF;
+  IF len = 8 THEN
+    IF left(d, 1) IN ('6','7','8','9') THEN RETURN '55869' || d; ELSE RETURN '5586' || d; END IF;
+  END IF;
+  IF len = 12 AND left(d, 1) = '0' THEN RETURN '55' || substring(d from 2); END IF;
+  IF len = 12 AND left(d, 2) = '55' THEN
+    IF substring(d from 5 for 1) IN ('6','7','8','9') THEN
+      RETURN substring(d from 1 for 4) || '9' || substring(d from 5 for 8);
+    ELSE
+      RETURN d;
+    END IF;
+  END IF;
+  RETURN d; -- 14 dígitos ou outro caso não previsto: melhor esforço, mantém os dígitos crus
+END;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
+
+CREATE OR REPLACE FUNCTION sime_sync_atores_from_raw(p_zona_numero INT, p_uf TEXT DEFAULT 'PI')
+RETURNS TABLE(atualizados INT, inativados INT) AS $$
+DECLARE
+  v_zona_id UUID;
+  v_eleicao_id UUID;
+  v_atualizados INT;
+  v_inativados INT;
+BEGIN
+  SELECT id INTO v_zona_id FROM sime_zonas WHERE numero = p_zona_numero AND estado = p_uf;
+  IF v_zona_id IS NULL THEN
+    RAISE EXCEPTION 'Zona % / % não encontrada em sime_zonas', p_zona_numero, p_uf;
+  END IF;
+  SELECT id INTO v_eleicao_id FROM sime_eleicoes WHERE zona_id = v_zona_id AND turno = 1 LIMIT 1;
+
+  WITH fonte AS (
+    -- dedup defensivo: se a exportação do TRE algum dia trouxer a mesma
+    -- pessoa+função duas vezes no mesmo arquivo, o upsert não pode processar
+    -- o mesmo conflito 2x numa única instrução (erro do Postgres) — fica só
+    -- a primeira ocorrência.
+    SELECT r.*,
+      CASE
+        WHEN r.tipo_registro = 'MRV' THEN 'mesario'::sime_ator_funcao
+        WHEN r.tipo_registro = 'AL' AND r.descricao_funcao_eleitoral = 'Coordenador de Acessibilidade' THEN 'coord_acessibilidade'::sime_ator_funcao
+        ELSE 'auxiliar_eleicao'::sime_ator_funcao
+      END AS funcao_calc,
+      ROW_NUMBER() OVER (
+        PARTITION BY r.inscricao,
+          CASE
+            WHEN r.tipo_registro = 'MRV' THEN 'mesario'
+            WHEN r.tipo_registro = 'AL' AND r.descricao_funcao_eleitoral = 'Coordenador de Acessibilidade' THEN 'coord_acessibilidade'
+            ELSE 'auxiliar_eleicao'
+          END
+        ORDER BY r.id
+      ) AS rn
+    FROM sime_mesarios_raw r
+    WHERE r.zona_eleitoral_trabalho = p_zona_numero::text
+      AND r.uf_trabalho = p_uf
+      AND r.tipo_registro IN ('MRV', 'AL')
+  ),
+  upsert AS (
+    INSERT INTO sime_atores (
+      zona_id, eleicao_id, nome_completo, telefone_whatsapp, secao_id,
+      funcao, funcao_mesa, inscricao_eleitoral, fonte_contato, ativo
+    )
+    SELECT
+      v_zona_id, v_eleicao_id, f.nome_civil,
+      sime_normalizar_telefone_whatsapp(
+        COALESCE(
+          NULLIF(regexp_replace(f.telefone_pessoal_mesario, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_1_eleitor, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_2_eleitor, '\D', '', 'g'), ''),
+          NULLIF(regexp_replace(f.telefone_contato_eleitor, '\D', '', 'g'), '')
+        )
+      ),
+      s.id,
+      f.funcao_calc,
+      CASE WHEN f.tipo_registro = 'MRV' THEN f.descricao_funcao_eleitoral ELSE NULL END,
+      f.inscricao,
+      'sistema_2026',
+      true
+    FROM fonte f
+    LEFT JOIN sime_secoes s
+      ON s.zona_id = v_zona_id
+      AND s.numero = NULLIF(f.secao_local_trabalho, '')::int
+      -- lower(), não initcap(): initcap('JATOBÁ DO PIAUÍ') vira 'Jatobá Do
+      -- Piauí' (capitaliza o conectivo "Do"), mas sime_secoes.municipio
+      -- grava 'Jatobá do Piauí' (minúsculo) — o join nunca casava pra esse
+      -- município, e o mesário entrava em sime_atores sem secao_id (função
+      -- ficava certa, só a seção que sumia). lower() em ambos os lados não
+      -- tem esse problema com conectivos em português.
+      AND lower(s.municipio) = lower(f.nome_municipio_local_trabalho)
+    WHERE f.rn = 1
+    ON CONFLICT (inscricao_eleitoral, funcao) WHERE inscricao_eleitoral IS NOT NULL
+    DO UPDATE SET
+      nome_completo     = EXCLUDED.nome_completo,
+      -- NUNCA sobrescreve um telefone já preenchido: só entra o valor do TRE
+      -- se sime_atores.telefone_whatsapp ainda estiver vazio. Achado real em
+      -- 21/08/2026 — o COALESCE do TRE (acima) não sabe de correção manual
+      -- nem da normalização em massa aplicada em produção (formato "55"+DDD+
+      -- 9 dígitos); sobrescrever sempre desfazia esse trabalho a cada resync.
+      telefone_whatsapp = COALESCE(NULLIF(sime_atores.telefone_whatsapp, ''), EXCLUDED.telefone_whatsapp),
+      secao_id          = EXCLUDED.secao_id,
+      funcao_mesa       = EXCLUDED.funcao_mesa,
+      zona_id           = EXCLUDED.zona_id,
+      eleicao_id        = EXCLUDED.eleicao_id,
+      ativo             = true
+    RETURNING sime_atores.id
+  )
+  SELECT count(*) INTO v_atualizados FROM upsert;
+
+  WITH inativados AS (
+    UPDATE sime_atores a
+    SET ativo = false
+    WHERE a.zona_id = v_zona_id
+      AND a.funcao IN ('mesario', 'coord_acessibilidade', 'auxiliar_eleicao')
+      AND a.inscricao_eleitoral IS NOT NULL
+      AND a.ativo = true
+      AND NOT EXISTS (
+        SELECT 1 FROM sime_mesarios_raw r
+        WHERE r.inscricao = a.inscricao_eleitoral
+          AND r.zona_eleitoral_trabalho = p_zona_numero::text
+          AND r.uf_trabalho = p_uf
+          AND r.tipo_registro IN ('MRV', 'AL')
+      )
+    RETURNING a.id
+  )
+  SELECT count(*) INTO v_inativados FROM inativados;
+
+  RETURN QUERY SELECT v_atualizados, v_inativados;
+END;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 -- ------------------------------------------------------------
 -- 8. RLS (Row Level Security) — produção

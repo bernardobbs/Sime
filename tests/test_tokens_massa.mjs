@@ -132,6 +132,13 @@ async function login(p) {
   check('token de motorista grava rotas=["001"]', JSON.stringify(call.payload.rotas) === JSON.stringify(['001']));
   const url = await p.locator('.tc-url').first().textContent();
   check('QR aponta pra SIME_motorista.html', url.includes('SIME_motorista.html?token='));
+
+  // Checkboxes de rota não somem mais do teclado/leitor de tela (display:none
+  // → posicionamento visualmente oculto) — achado "alto" da auditoria.
+  const chkVisibility = await p.locator('label.rota-ck >> nth=0 >> input').evaluate((el) => getComputedStyle(el).display);
+  check('checkbox de rota continua no fluxo do teclado (display != none)', chkVisibility !== 'none', chkVisibility);
+  const todasEhBotao = await p.evaluate(() => document.querySelector('.todas-rotas')?.tagName);
+  check('"Selecionar todas as rotas" é um <button> real, não uma div', todasEhBotao === 'BUTTON', todasEhBotao);
   await ctx.close();
 }
 

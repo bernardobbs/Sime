@@ -14,19 +14,25 @@ body{display:flex;flex-direction:column;}
 .t-sep{width:1px;height:16px;background:var(--border);}
 .t-title{font-size:.76rem;font-weight:700;color:var(--text2);}
 .t-stats{display:flex;gap:10px;flex:1;flex-wrap:wrap;}
-.ts{font-size:.63rem;font-weight:700;display:flex;align-items:center;gap:3px;}
+.ts{font-size:.82rem;font-weight:700;display:flex;align-items:center;gap:3px;}
 .tsd{width:5px;height:5px;border-radius:50%;}
 .t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .t-clock{font-size:.8rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Sem isto, se o canal Realtime cair (já aconteceu em produção, ver
+   CLAUDE.md), a tela trava com dado velho sem nenhum aviso visível —
+   ninguém percebe até checar de perto (achado "alto" da auditoria). */
+.rt-status{font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;}
+.rt-status.warn{background:#fff7ed;color:#c2410c;}
+.rt-status.stale{background:#fef2f2;color:#dc2626;}
 .fase-bar{height:34px;flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px;}
 .fase-btn{padding:4px 12px;border-radius:99px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .2s;}
 .fase-btn.active.ab{background:#2d50a0;color:#fff;border-color:#2d50a0;}
 .fase-btn.active.enc{background:#1d4ed8;color:#fff;border-color:#1d4ed8;}
 .fase-btn.active.prob{background:#dc2626;color:#fff;border-color:#dc2626;}
 .fase-info{font-size:.6rem;color:var(--text3);}
-.switch-wrap{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.62rem;color:var(--text2);}
-.switch-wrap input{font-size:.65rem;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);}
-.auto-label{font-size:.6rem;padding:2px 8px;border-radius:99px;font-weight:700;}
+.switch-wrap{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text2);}
+.switch-wrap input{font-size:.82rem;padding:6px 8px;min-height:36px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);}
+.auto-label{font-size:.72rem;padding:4px 10px;border-radius:99px;font-weight:700;}
 .auto-on{background:var(--arc-done);color:#fff;}
 .auto-off{background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
 .content{flex:1;overflow:hidden;position:relative;min-height:0;}
@@ -45,11 +51,11 @@ body{display:flex;flex-direction:column;}
 .loc.has-prob{background:#fef2f2;border-color:#fca5a5;}
 .loc.has-delay{background:#fffbf0;border-color:#fcd34d;}
 .loc.all-gone{display:none;}
-.loc-name{font-size:.63rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.loc-name{font-size:.8rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .loc.done-cartorio .loc-name{color:#15803d;}
 .loc.done-motorista .loc-name{color:#1d4ed8;}
 .loc.done-enc .loc-name{color:#2563eb;}
-.loc-status{min-height:13px;font-size:.58rem;font-weight:700;}
+.loc-status{min-height:16px;font-size:.72rem;font-weight:700;}
 
 /* Barra de progresso dupla (fase encerramento) */
 .urna-bar-wrap{display:flex;flex-direction:column;gap:2px;margin-top:2px;}
@@ -141,16 +147,22 @@ body{display:flex;flex-direction:column;}
 .prob-badge{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:99px;}
 .pb-energia{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;}
 .pb-urna-prob{background:#fff7ed;color:#c2410c;border:1px solid #fdba74;}
+.pb-sos{background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;}
 .pb-mesa{background:#fffbf0;color:#92400e;border:1px solid #fcd34d;}
 .pb-atraso{background:#fff7ed;color:#b45309;border:1px solid #fcd34d;}
 .prob-ts{font-size:.62rem;color:var(--text3);}
 .prob-empty{text-align:center;padding:48px 20px;color:var(--text3);}
+/* Contato direto na própria linha da lista — antes só existia dentro do
+   modal de detalhe, inacessível numa tela que só se olha de longe sem
+   abrir mais um clique (achado "alto" da auditoria). */
+.prob-contact{flex-shrink:0;}
+.prob-contact .sm-btn.wa{padding:6px 11px;font-size:.66rem;white-space:nowrap;flex:none;}
 .ticker{height:28px;flex-shrink:0;background:#1e1b2e;display:flex;align-items:center;overflow:hidden;border-top:1px solid #2a2840;}
 .ticker-label{background:#2d50a0;color:#fff;font-size:.65rem;font-weight:800;padding:0 12px;height:100%;display:flex;align-items:center;white-space:nowrap;flex-shrink:0;letter-spacing:.06em;}
 .ticker-wrap{flex:1;overflow:hidden;position:relative;}
 .ticker-inner{display:flex;gap:0;white-space:nowrap;animation:ticker-scroll 40s linear infinite;}
 .ticker-inner:hover{animation-play-state:paused;}
-.ticker-item{display:inline-flex;align-items:center;gap:6px;padding:0 24px 0 0;font-size:.68rem;font-weight:600;color:#a0a0c0;}
+.ticker-item{display:inline-flex;align-items:center;gap:6px;padding:0 24px 0 0;font-size:.85rem;font-weight:600;color:#a0a0c0;}
 .ticker-item.ti-prob{color:#f87171;}
 .ticker-item.ti-fila{color:#fbbf24;}
 .ticker-item.ti-enc{color:#60a5fa;}
@@ -160,7 +172,7 @@ body{display:flex;flex-direction:column;}
 @keyframes ticker-scroll{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
 
 /* ── PAINEL DE SONS ── */
-.gear-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.82rem;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;}
+.gear-btn{width:44px;height:44px;border-radius:7px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:1.05rem;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;}
 .gear-btn:hover{background:var(--border);}
 .sound-overlay{position:fixed;inset:0;background:rgba(30,27,46,.55);z-index:50;display:flex;align-items:flex-end;justify-content:flex-end;padding:12px;opacity:0;pointer-events:none;transition:opacity .2s;}
 .sound-overlay.open{opacity:1;pointer-events:all;}
@@ -204,8 +216,9 @@ body{display:flex;flex-direction:column;}
 .d-inp-wrap{display:flex;align-items:center;gap:4px;font-size:.65rem;color:var(--text2);}
 .d-inp-wrap input{width:38px;padding:2px 5px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);font-size:.65rem;text-align:center;}
 .v-leg{display:flex;gap:9px;}
-.vli{display:flex;align-items:center;gap:3px;font-size:.58rem;color:var(--text3);}
-.vlid{width:6px;height:6px;border-radius:50%;}
+.vli{display:flex;align-items:center;gap:5px;font-size:.85rem;color:var(--text3);}
+.vlid{width:9px;height:9px;border-radius:50%;}
+.faixa-sd{background:#fff4e5;border-bottom:2px solid #fdba74;color:#9a3412;padding:8px 16px;font-size:.8rem;font-weight:800;text-align:center;}
 
 </style>
 </head>
@@ -215,6 +228,7 @@ body{display:flex;flex-direction:column;}
   <div class="t-title">TV Dia da Eleição</div><div class="t-sep"></div>
   <div class="t-stats" id="t-stats"></div>
   <div class="t-right">
+    <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
     <div class="t-clock" id="clock">--:--:--</div>
     <button class="gear-btn" onclick="toggleSoundPanel()" title="Configurar sons de alerta">⚙️</button>
   </div>
@@ -287,6 +301,7 @@ body{display:flex;flex-direction:column;}
   </div>
 </div>
 
+<div id="faixa-sem-dados"></div>
 <div class="content" id="content"></div>
 <div class="ticker">
   <div class="ticker-label">📡 AO VIVO</div>
@@ -306,8 +321,8 @@ body{display:flex;flex-direction:column;}
 </div>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getMesaEstadoMap, mapMesaEstadoRow, getAtores } from './sime_dados.js';
-import { subscribeMesaEstado } from './sime_realtime.js';
+import { initSimeDados, getSecoes, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow } from './sime_dados.js';
+import { subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
@@ -338,8 +353,13 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     clearTimeout(rerenderTimer);
     rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); }, 300);
   }
+  // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
+  // atualizado a cada segundo pelo <script> clássico) — sem ele a tela não
+  // tinha como avisar que o canal Realtime caiu (achado "alto" da auditoria).
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   if (mesaInicial) {
     window.__mesaRemota = mesaInicial;
+    marcarAtualizado();
     agendarRerender();
   }
   subscribeMesaEstado(client, (row) => {
@@ -347,6 +367,44 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     if (numero == null) return;
     if (!window.__mesaRemota) window.__mesaRemota = {};
     window.__mesaRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    marcarAtualizado();
+    agendarRerender();
+  });
+
+  // Refetch completo periódico — rede de segurança pro caso do canal
+  // Realtime cair silenciosamente (já aconteceu em produção, ver CLAUDE.md).
+  // Consulta o Supabase direto (não getMesaEstadoMap(), que fica cacheado
+  // pela sessão em sime_dados.js e nunca traria dado novo).
+  async function refetchMesaSeguranca() {
+    try {
+      const { data, error } = await client.from('sime_mesa_estado').select('*');
+      if (error || !data) return;
+      const map = {};
+      for (const row of data) {
+        const numero = numeroPorSecaoId.get(row.secao_id);
+        if (numero == null) continue;
+        map[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+      }
+      window.__mesaRemota = map;
+      marcarAtualizado();
+      agendarRerender();
+    } catch (e) { /* mantém o snapshot atual até a próxima tentativa */ }
+  }
+  setInterval(refetchMesaSeguranca, 60000);
+
+  // Transmissão digital (JE-Connect) — só a contagem agregada do cabeçalho
+  // (ver contarTransmissaoPendente() no <script> clássico); não redesenha o
+  // grid por seção.
+  const midiasInicial = await getMidiasMap({ fallback: null });
+  if (midiasInicial) {
+    window.__midiasRemota = midiasInicial;
+    agendarRerender();
+  }
+  subscribeMidias(client, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    if (!window.__midiasRemota) window.__midiasRemota = {};
+    window.__midiasRemota[String(numero).padStart(4, '0')] = mapMidiaRow(row);
     agendarRerender();
   });
 
@@ -383,13 +441,30 @@ function loadMesa(){if(window.__mesaRemota) return window.__mesaRemota; try{retu
 function loadAcess(){try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}}}
 let _acess={}; // recarregado a cada buildPages
 function demoSt(n){const v=((parseInt(n)*2654435761)>>>0)/4294967296;const chegou=v<0.94,comp=v<0.88,zero=v<0.83,vot=v<0.78,enc=v<0.32,urna=v<0.18,cartorio=v<0.10,panic_e=v>0.97,panic_u=v>0.975,mesaProb=v>0.91&&v<0.94;const fila=(enc&&!urna)?(v<0.22?Math.floor(v*100)%25+1:0):null;return{mesa:{pres:chegou?(mesaProb?2:1):0,m1:chegou?1:0,m2:comp?1:0,sec:comp?1:0},zero,vot,enc,urna,urna_cartorio:cartorio,fila,panico:{energia:panic_e,urnaprob:panic_u},panico_resolved:{energia:false,urnaprob:false},real:false};}
+// Massa de demonstração SÓ com ?demo=1 na URL.
+//
+// Antes, seção sem dado caía direto no demoSt() — e com o banco vazio o telão
+// exibia 174 seções inventadas: 136 "votando", 60 "encerradas" e até pânico
+// ativo, com o rodapé somando tudo como se fosse a eleição real. Num telão de
+// parede no dia 4, isso é pior que tela vazia: alguém do cartório age em cima
+// de um número que não existe. Sem dado, agora, a seção fica explicitamente
+// SEM INFORMAÇÃO.
+const MODO_DEMO = new URLSearchParams(location.search).has('demo');
+function semDadosSt(){
+  return {mesa:{pres:0,m1:0,m2:0,sec:0},zero:false,vot:false,enc:false,bu:false,
+          urna:false,urna_cartorio:false,fila:null,
+          panico:{energia:false,urnaprob:false},panico_resolved:{energia:false,urnaprob:false},
+          real:false,semDados:true};
+}
+
 function getSt(n,mesa){
   const d=mesa[n]; const ac=_acess[n];
-  // base: dados reais da mesa; se só houver acessibilidade, base neutra; senão demo
+  // base: dados reais da mesa; se só houver acessibilidade, base neutra; senão
+  // demo (apenas em ?demo=1) ou "sem informação"
   let st;
   if(d) st={...d,real:true};
   else if(ac) st={mesa:{pres:0,m1:0,m2:0,sec:0},zero:false,vot:false,enc:false,urna:false,urna_cartorio:false,fila:null,panico:{energia:false,urnaprob:false},panico_resolved:{energia:false,urnaprob:false},real:true};
-  else return demoSt(n);
+  else return MODO_DEMO ? demoSt(n) : semDadosSt();
   // Mescla pânico/fila da acessibilidade (sime_acess_v1). Normaliza urna→urnaprob.
   if(ac){
     st.panico=st.panico||{}; st.panico_resolved=st.panico_resolved||{};
@@ -413,7 +488,7 @@ const CX=26,CY=26,R=22,RC=13,SW=4.5;
 function pol(deg){const r=deg*Math.PI/180;return[CX+R*Math.cos(r),CY+R*Math.sin(r)];}
 function arcPath(a1,a2){const[x1,y1]=pol(a1),[x2,y2]=pol(a2);const lg=((a2-a1+360)%360)>180?1:0;return`M${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R} 0 ${lg} 1 ${x2.toFixed(2)},${y2.toFixed(2)}`;}
 function buildArcs(n){const gap=7,total=360-n*gap,each=total/n;const arcs=[];let a=-90;for(let i=0;i<n;i++){arcs.push([a,a+each]);a+=each+gap;}return arcs;}
-function mkSVG(n,st,fase){const panic=(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob);const mv=Object.values(st.mesa||{});const chegouQtd=mv.filter(v=>v>=1).length;const mesaComp=chegouQtd===4;let cc,arcDone,narcs;if(fase==='ab'){narcs=4;arcDone=[chegouQtd>0,mesaComp,!!st.zero,!!st.vot];if(panic)cc='#ef4444';else if(st.vot)cc='#16a34a';else if(st.zero)cc='#84cc16';else if(mesaComp)cc='#f59e0b';else if(chegouQtd>0)cc='#d97706';else cc='#dc2626';}else{narcs=3;if(st.urna_cartorio){arcDone=[true,true,true];cc='#16a34a';}else if(st.urna){arcDone=[true,true,false];cc='#2563eb';}else if(st.enc){arcDone=[true,true,false];cc='#3b82f6';}else if(st.fila>0){arcDone=[true,false,false];cc='#f59e0b';}else if(st.vot){arcDone=[false,false,false];cc='#94a3b8';}else{arcDone=[false,false,false];cc='#cbd5e1';}if(panic)cc='#ef4444';}const arcs=buildArcs(narcs);const paths=arcs.map((a,i)=>`<path d="${arcPath(a[0],a[1])}" stroke="${arcDone[i]?'var(--arc-done)':'var(--arc-off)'}" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`).join('');const lbl=parseInt(n).toString();const fs=lbl.length<=2?12:lbl.length<=3?10:8;return`<svg width="52" height="52" viewBox="0 0 52 52">${paths}<circle cx="${CX}" cy="${CY}" r="${RC}" fill="${cc}"/><text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="900" fill="rgba(255,255,255,.95)" font-family="'Segoe UI',system-ui,sans-serif">${lbl}</text></svg>`;}
+function mkSVG(n,st,fase){if(st.semDados){const arcs=buildArcs(fase==='ab'?4:3);const paths=arcs.map(a=>`<path d="${arcPath(a[0],a[1])}" stroke="var(--arc-off)" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`).join('');const lbl=parseInt(n).toString();const fs=lbl.length<=2?12:lbl.length<=3?10:8;return`<svg width="52" height="52" viewBox="0 0 52 52">${paths}<circle cx="${CX}" cy="${CY}" r="${RC}" fill="#b9b9c6"/><text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="900" fill="rgba(255,255,255,.9)" font-family="'Segoe UI',system-ui,sans-serif">${lbl}</text></svg>`;}const panic=(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob);const mv=Object.values(st.mesa||{});const chegouQtd=mv.filter(v=>v>=1).length;const mesaComp=chegouQtd===4;let cc,arcDone,narcs;if(fase==='ab'){narcs=4;arcDone=[chegouQtd>0,mesaComp,!!st.zero,!!st.vot];if(panic)cc='#ef4444';else if(st.vot)cc='#16a34a';else if(st.zero)cc='#84cc16';else if(mesaComp)cc='#f59e0b';else if(chegouQtd>0)cc='#d97706';else cc='#dc2626';}else{narcs=3;if(st.urna_cartorio){arcDone=[true,true,true];cc='#16a34a';}else if(st.urna){arcDone=[true,true,false];cc='#2563eb';}else if(st.enc){arcDone=[true,true,false];cc='#3b82f6';}else if(st.fila>0){arcDone=[true,false,false];cc='#f59e0b';}else if(st.vot){arcDone=[false,false,false];cc='#94a3b8';}else{arcDone=[false,false,false];cc='#cbd5e1';}if(panic)cc='#ef4444';}const arcs=buildArcs(narcs);const paths=arcs.map((a,i)=>`<path d="${arcPath(a[0],a[1])}" stroke="${arcDone[i]?'var(--arc-done)':'var(--arc-off)'}" stroke-width="${SW}" fill="none" stroke-linecap="butt"/>`).join('');const lbl=parseInt(n).toString();const fs=lbl.length<=2?12:lbl.length<=3?10:8;return`<svg width="52" height="52" viewBox="0 0 52 52">${paths}<circle cx="${CX}" cy="${CY}" r="${RC}" fill="${cc}"/><text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="900" fill="rgba(255,255,255,.95)" font-family="'Segoe UI',system-ui,sans-serif">${lbl}</text></svg>`;}
 const tickerEvents=[];const tickerSeen=new Set();
 function addEvent(tipo,text){const key=tipo+':'+text;if(tickerSeen.has(key))return;tickerSeen.add(key);tickerEvents.unshift({tipo,text,ts:fmtNow()});if(tickerEvents.length>60)tickerEvents.pop();renderTicker();}
 function clearEvKey(key){tickerSeen.delete(key);}
@@ -535,6 +610,14 @@ PRESETS.bip=(ctx,vol)=>beepRaw(ctx,660,440,vol*.28,.2);
 function tocarSom(cat){
   if(sonsCfg.muted) return;
   initAudio();
+  // Sem gesto do usuário (esta TV é só pra olhar, ninguém toca), o
+  // AudioContext nasce 'suspended' e o som simplesmente não sai — sem
+  // erro nenhum, o o.start() roda mas não produz áudio. resume() aqui é o
+  // melhor esforço: funciona em boa parte dos navegadores/TV boxes de
+  // sinalização digital, mas não é garantia contra a política de autoplay
+  // mais estrita — o alerta visual (badge/aba de problemas) continua sendo
+  // a via principal, o som é reforço.
+  if(audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
   const cfg=sonsCfg[cat];
   const vol=(cfg.vol||70)/100;
   if(cfg.custom){
@@ -777,6 +860,13 @@ function closeSecModal(e){
 }
 const NUMPAGES=CITIES.length;
 let faseAtual='ab',curPage=0,rotDelay=10,vCd=10,vPaused=false,vTicker=null,autoSwitchDone=false;
+// Troca automática pra visão de Problemas quando um pânico aparece — numa TV
+// que ninguém toca, a aba dedicada só era vista se alguém clicasse nela
+// manualmente (achado "alto" da auditoria). "Armado" volta a true assim que
+// os problemas zeram, pra disparar de novo na próxima vez que surgir um —
+// sem isso, sair manualmente da aba de Problemas puxaria a tela de volta a
+// cada 5s enquanto o mesmo problema continuasse ativo.
+let probAutoArmado=true;
 function setFase(f){faseAtual=f;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Alertas ativos — clique num item para ver o detalhe e contatar a mesa'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
 function checkAutoSwitch(){const val=document.getElementById('auto-switch').value;if(!val)return;const[h,m]=val.split(':').map(Number);const isTime=nowMin()>=h*60+m;document.getElementById('auto-lbl').className='auto-label '+(isTime?'auto-on':'auto-off');document.getElementById('auto-lbl').textContent=isTime?'Ativo':'Auto';if(isTime&&faseAtual==='ab'&&!autoSwitchDone){autoSwitchDone=true;setFase('enc');}}
 // ── BARRA DE PROGRESSO DE URNAS (fase encerramento) ───────
@@ -803,7 +893,7 @@ function mkUrnaBar(states){
   </div>`;
 }
 
-function buildPages(){const mesa=loadMesa();_acess=loadAcess();const nm=nowMin();const hor=getHor();const minAb=toMin(hor.ab);const limMesa=minAb+60,limVot=minAb+120;const content=document.getElementById('content');content.innerHTML='';if(faseAtual==='prob'){buildProbView(mesa,nm,limMesa,limVot);return;}let totVot=0,totEnc=0,totUrna=0,totCar=0,totProb=0,totAtrV=0,totAtrM=0,total=0;CITIES.forEach((city,ci)=>{const div=document.createElement('div');div.className='v-page';div.id='vp-'+ci;let cityDone=0,cityTotal=0;city.locs.forEach(l=>{cityTotal+=l.s.length;if(l.s.every(n=>{const st=getSt(n,mesa);return faseAtual==='ab'?st.vot:(st.urna_cartorio||st.urna);}))cityDone+=l.s.length;});div.innerHTML=`<div class="city-hdr"><div class="city-stripe" style="background:${city.color}"></div><div><div class="city-nome" style="color:${city.color}">${city.city}</div><div class="city-meta">${city.locs.length} locais</div></div><div class="city-prog" style="color:${city.color}">${cityDone}/${cityTotal}</div></div>`;const grid=document.createElement('div');grid.className='loc-grid';city.locs.forEach(loc=>{const states=loc.s.map(n=>getSt(n,mesa));const allCar=states.every(st=>st.urna_cartorio);const allUrna=states.every(st=>st.urna||st.urna_cartorio);const allEnc=states.every(st=>st.enc||st.urna||st.urna_cartorio);const hasProb=states.some(st=>(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob));const hasAtrV=faseAtual==='ab'&&nm>=limVot&&states.some(st=>!st.vot&&!st.enc);const hasAtrM=faseAtual==='ab'&&nm>=limMesa&&states.some(st=>Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot);if(allCar&&faseAtual==='enc'){const b=document.createElement('div');b.className='loc all-gone';grid.appendChild(b);return;}const box=document.createElement('div');box.className='loc'+(allCar?' done-cartorio':'')+((!allCar&&allUrna)?' done-motorista':'')+((!allUrna&&allEnc)?' done-enc':'')+((!allEnc&&hasProb)?' has-prob':'')+((!allEnc&&!hasProb&&(hasAtrV||hasAtrM))?' has-delay':'');let stTxt='',stCls='';if(hasProb){const pDesc=[...new Set(states.flatMap(st=>[st.panico?.energia&&!st.panico_resolved?.energia?'⚡ Energia':null,st.panico?.urnaprob&&!st.panico_resolved?.urnaprob?'🖥️ Urna':null].filter(Boolean)))].join(' · ');stTxt='⚠ '+(pDesc||'Problema ativo');stCls='ls-late';}else if(allCar){stTxt='✓ No cartório';stCls='ls-ok';}else if(allUrna){stTxt='🚗 Urna saiu';stCls='ls-enc';}else if(allEnc){stTxt='✓ Encerrada';stCls='ls-enc';}else if(hasAtrV){stTxt='⏱ Votação atrasada';stCls='ls-late';}else if(hasAtrM){stTxt='👥 Mesa incompleta';stCls='ls-warn';}else if(faseAtual==='enc'){const cf=states.filter(st=>st.fila>0).length;if(cf){stTxt=cf+' com fila';stCls='ls-warn';}}let circs='';loc.s.forEach(n=>{const st=getSt(n,mesa);total++;if(st.vot)totVot++;if(st.enc||st.urna||st.urna_cartorio)totEnc++;if(st.urna||st.urna_cartorio)totUrna++;if(st.urna_cartorio)totCar++;const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const panic=panic_e||panic_u;if(panic){totProb++;emitAlerta('panico:'+n,beepPanico);addEvent('prob','Seção '+parseInt(n)+' — '+(st.panico?.energia?'⚡ Falta de energia':'🖥️ Problema na urna'));}else{clearAlerta('panico:'+n);}if(faseAtual==='ab'&&nm>=limVot&&!st.vot&&!st.enc){totAtrV++;emitAlerta('atr-vot:'+n,beepAtraso);addEvent('atraso','Seção '+parseInt(n)+' — votação não iniciada');}else{clearAlerta('atr-vot:'+n);}if(faseAtual==='ab'&&nm>=limMesa){const v=Object.values(st.mesa||{});if(v.filter(x=>x>=1).length<4&&!st.vot){totAtrM++;emitAlerta('atr-mesa:'+n,beepMesa);}else{clearAlerta('atr-mesa:'+n);}}if(st.enc)addEvent('enc','Seção '+parseInt(n)+' encerrada');if(st.urna_cartorio)addEvent('urna','Seção '+parseInt(n)+' — urna no cartório');else if(st.urna)addEvent('urna','Seção '+parseInt(n)+' — urna saiu com motorista');if(st.fila>0)addEvent('fila','Seção '+parseInt(n)+' — '+st.fila+' pessoa'+(st.fila>1?'s':'')+' na fila');// Registrar timestamps
+function buildPages(){const mesa=loadMesa();_acess=loadAcess();atualizarFaixaSemDados(mesa);const nm=nowMin();const hor=getHor();const minAb=toMin(hor.ab);const limMesa=minAb+60,limVot=minAb+120;const content=document.getElementById('content');content.innerHTML='';if(faseAtual==='prob'){buildProbView(mesa,nm,limMesa,limVot);return;}let totVot=0,totEnc=0,totUrna=0,totCar=0,totProb=0,totAtrV=0,totAtrM=0,total=0;CITIES.forEach((city,ci)=>{const div=document.createElement('div');div.className='v-page';div.id='vp-'+ci;let cityDone=0,cityTotal=0;city.locs.forEach(l=>{cityTotal+=l.s.length;if(l.s.every(n=>{const st=getSt(n,mesa);return faseAtual==='ab'?st.vot:(st.urna_cartorio||st.urna);}))cityDone+=l.s.length;});div.innerHTML=`<div class="city-hdr"><div class="city-stripe" style="background:${city.color}"></div><div><div class="city-nome" style="color:${city.color}">${city.city}</div><div class="city-meta">${city.locs.length} locais</div></div><div class="city-prog" style="color:${city.color}">${cityDone}/${cityTotal}</div></div>`;const grid=document.createElement('div');grid.className='loc-grid';city.locs.forEach(loc=>{const states=loc.s.map(n=>getSt(n,mesa));const allCar=states.every(st=>st.urna_cartorio);const allUrna=states.every(st=>st.urna||st.urna_cartorio);const allEnc=states.every(st=>st.enc||st.urna||st.urna_cartorio);const hasProb=states.some(st=>(st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)||(st.panico?.sos&&!st.panico_resolved?.sos));const hasAtrV=faseAtual==='ab'&&nm>=limVot&&states.some(st=>!st.vot&&!st.enc);const hasAtrM=faseAtual==='ab'&&nm>=limMesa&&states.some(st=>Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot);if(allCar&&faseAtual==='enc'){const b=document.createElement('div');b.className='loc all-gone';grid.appendChild(b);return;}const box=document.createElement('div');box.className='loc'+(allCar?' done-cartorio':'')+((!allCar&&allUrna)?' done-motorista':'')+((!allUrna&&allEnc)?' done-enc':'')+((!allEnc&&hasProb)?' has-prob':'')+((!allEnc&&!hasProb&&(hasAtrV||hasAtrM))?' has-delay':'');let stTxt='',stCls='';if(hasProb){const pDesc=[...new Set(states.flatMap(st=>[st.panico?.energia&&!st.panico_resolved?.energia?'⚡ Energia':null,st.panico?.urnaprob&&!st.panico_resolved?.urnaprob?'🖥️ Urna':null,st.panico?.sos&&!st.panico_resolved?.sos?'🆘 SOS':null].filter(Boolean)))].join(' · ');stTxt='⚠ '+(pDesc||'Problema ativo');stCls='ls-late';}else if(allCar){stTxt='✓ No cartório';stCls='ls-ok';}else if(allUrna){stTxt='🚗 Urna saiu';stCls='ls-enc';}else if(allEnc){stTxt='✓ Encerrada';stCls='ls-enc';}else if(hasAtrV){stTxt='⏱ Votação atrasada';stCls='ls-late';}else if(hasAtrM){stTxt='👥 Mesa incompleta';stCls='ls-warn';}else if(faseAtual==='enc'){const cf=states.filter(st=>st.fila>0).length;if(cf){stTxt=cf+' com fila';stCls='ls-warn';}}let circs='';loc.s.forEach(n=>{const st=getSt(n,mesa);total++;if(st.vot)totVot++;if(st.enc||st.urna||st.urna_cartorio)totEnc++;if(st.urna||st.urna_cartorio)totUrna++;if(st.urna_cartorio)totCar++;const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const panic_s=st.panico?.sos&&!st.panico_resolved?.sos;const panic=panic_e||panic_u||panic_s;if(panic){totProb++;emitAlerta('panico:'+n,beepPanico);addEvent('prob','Seção '+parseInt(n)+' — '+(st.panico?.energia?'⚡ Falta de energia':st.panico?.urnaprob?'🖥️ Problema na urna':'🆘 SOS'));}else{clearAlerta('panico:'+n);}if(faseAtual==='ab'&&nm>=limVot&&!st.vot&&!st.enc){totAtrV++;emitAlerta('atr-vot:'+n,beepAtraso);addEvent('atraso','Seção '+parseInt(n)+' — votação não iniciada');}else{clearAlerta('atr-vot:'+n);}if(faseAtual==='ab'&&nm>=limMesa){const v=Object.values(st.mesa||{});if(v.filter(x=>x>=1).length<4&&!st.vot){totAtrM++;emitAlerta('atr-mesa:'+n,beepMesa);}else{clearAlerta('atr-mesa:'+n);}}if(st.enc)addEvent('enc','Seção '+parseInt(n)+' encerrada');if(st.urna_cartorio)addEvent('urna','Seção '+parseInt(n)+' — urna no cartório');else if(st.urna)addEvent('urna','Seção '+parseInt(n)+' — urna saiu com motorista');if(st.fila>0)addEvent('fila','Seção '+parseInt(n)+' — '+st.fila+' pessoa'+(st.fila>1?'s':'')+' na fila');// Registrar timestamps
         if(panic_e){ registerProb('panico:e:'+n); } else { clearProbTs('panico:e:'+n); }
         if(panic_u){ registerProb('panico:u:'+n); } else { clearProbTs('panico:u:'+n); }
 
@@ -823,9 +913,18 @@ function buildPages(){const mesa=loadMesa();_acess=loadAcess();const nm=nowMin()
         const filaBadge=(faseAtual==='enc'&&st.fila>0)?`<div class="fila-tag">${st.fila}</div>`:'';
         const gone=(st.urna_cartorio&&faseAtual==='enc')?' gone':'';
         const stJson=JSON.stringify(st).replace(/"/g,'&quot;');
-        circs+=`<div class="sw${gone}${panic||st.fila>0?' has-issue':''}" onclick="openSecModal('${n}',JSON.parse(this.dataset.st))" data-st="${stJson}">${mkSVG(n,st,faseAtual)}${badge}${filaBadge}${tipHtml}</div>`;});box.innerHTML=`<div class="loc-name">${loc.n}</div><div class="loc-status ${stCls}">${stTxt}</div>${faseAtual==='enc'?mkUrnaBar(states):''}${faseAtual==='enc'?`<div class="loc-circles" style="margin-top:4px">${circs}</div>`:`<div class="loc-circles">${circs}</div>`}`;grid.appendChild(box);});div.appendChild(grid);content.appendChild(div);});updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total);}
-function buildProbView(mesa,nm,limMesa,limVot){_acess=loadAcess();const content=document.getElementById('content');const div=document.createElement('div');div.className='v-page active';const list=document.createElement('div');list.className='prob-list';const items=[];CITIES.forEach(city=>city.locs.forEach(loc=>loc.s.forEach(n=>{const st=getSt(n,mesa);const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const atrV=nm>=limVot&&!st.vot&&!st.enc;const atrM=nm>=limMesa&&Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot;if(panic_e)items.push({tipo:'⚡',badge:'pb-energia',label:'Falta de energia',n,loc:loc.n,ts:getProbTs('panico:e:'+n)});if(panic_u)items.push({tipo:'🖥️',badge:'pb-urna-prob',label:'Problema na urna',n,loc:loc.n,ts:getProbTs('panico:u:'+n)});if(atrV){registerProb('atr:v:'+n);items.push({tipo:'⏱',badge:'pb-atraso',label:'Votação não iniciada',n,loc:loc.n,ts:getProbTs('atr:v:'+n)});}else clearProbTs('atr:v:'+n);if(atrM){registerProb('atr:m:'+n);items.push({tipo:'👥',badge:'pb-mesa',label:'Mesa incompleta',n,loc:loc.n,ts:getProbTs('atr:m:'+n)});}else clearProbTs('atr:m:'+n);})));if(!items.length){list.innerHTML='<div class="prob-empty"><div style="font-size:2.5rem;margin-bottom:10px">✅</div><div style="font-size:.85rem;font-weight:700;color:var(--text2)">Nenhum problema ativo</div></div>';}else{items.forEach(p=>{const row=document.createElement('div');row.className='prob-item';row.tabIndex=0;row.title='Ver detalhe e contato da seção';row.innerHTML=`<div class="prob-tipo">${p.tipo}</div><div class="prob-info"><div class="prob-sec">Seção ${parseInt(p.n)}</div><div class="prob-loc">${p.loc}</div></div><span class="prob-badge ${p.badge}">${p.label}</span><div class="prob-ts" title="Detectado às ${p.ts}">desde ${p.ts}</div>`;row.onclick=()=>openSecModal(p.n,getSt(p.n,loadMesa()));row.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();row.click();}};list.appendChild(row);});}div.appendChild(list);content.appendChild(div);document.getElementById('t-stats').innerHTML=items.length?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${items.length} problema${items.length>1?'s':''}</span>`:`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>Sem problemas</span>`;}
-function updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total){const el=document.getElementById('t-stats');if(faseAtual==='ab'){el.innerHTML=[totVot?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totVot} votando</span>`:'',totAtrV?`<span class="ts" style="color:#f59e0b"><div class="tsd" style="background:#f59e0b"></div>${totAtrV} atraso vot.</span>`:'',totAtrM?`<span class="ts" style="color:#d97706"><div class="tsd" style="background:#d97706"></div>${totAtrM} mesa inc.</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}else{el.innerHTML=[totCar?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totCar} no cartório</span>`:'',totUrna-totCar>0?`<span class="ts" style="color:#2563eb"><div class="tsd" style="background:#2563eb"></div>${totUrna-totCar} a caminho</span>`:'',totEnc?`<span class="ts" style="color:#3b82f6"><div class="tsd" style="background:#3b82f6"></div>${totEnc} encerradas</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}}
+        circs+=`<div class="sw${gone}${panic||st.fila>0?' has-issue':''}" onclick="openSecModal('${n}',JSON.parse(this.dataset.st))" data-st="${stJson}">${mkSVG(n,st,faseAtual)}${badge}${filaBadge}${tipHtml}</div>`;});box.innerHTML=`<div class="loc-name">${loc.n}</div><div class="loc-status ${stCls}">${stTxt}</div>${faseAtual==='enc'?mkUrnaBar(states):''}${faseAtual==='enc'?`<div class="loc-circles" style="margin-top:4px">${circs}</div>`:`<div class="loc-circles">${circs}</div>`}`;grid.appendChild(box);});div.appendChild(grid);content.appendChild(div);});if(totProb>0){if(probAutoArmado){probAutoArmado=false;setFase('prob');return;}}else{probAutoArmado=true;}updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total);}
+function buildProbView(mesa,nm,limMesa,limVot){_acess=loadAcess();const content=document.getElementById('content');const div=document.createElement('div');div.className='v-page active';const list=document.createElement('div');list.className='prob-list';const items=[];CITIES.forEach(city=>city.locs.forEach(loc=>loc.s.forEach(n=>{const st=getSt(n,mesa);const panic_e=st.panico?.energia&&!st.panico_resolved?.energia;const panic_u=st.panico?.urnaprob&&!st.panico_resolved?.urnaprob;const panic_s=st.panico?.sos&&!st.panico_resolved?.sos;const atrV=nm>=limVot&&!st.vot&&!st.enc;const atrM=nm>=limMesa&&Object.values(st.mesa||{}).filter(v=>v>=1).length<4&&!st.vot;if(panic_e)items.push({tipo:'⚡',badge:'pb-energia',label:'Falta de energia',n,loc:loc.n,ts:getProbTs('panico:e:'+n)});if(panic_u)items.push({tipo:'🖥️',badge:'pb-urna-prob',label:'Problema na urna',n,loc:loc.n,ts:getProbTs('panico:u:'+n)});if(panic_s)items.push({tipo:'🆘',badge:'pb-sos',label:'SOS',n,loc:loc.n,ts:getProbTs('panico:s:'+n)});if(atrV){registerProb('atr:v:'+n);items.push({tipo:'⏱',badge:'pb-atraso',label:'Votação não iniciada',n,loc:loc.n,ts:getProbTs('atr:v:'+n)});}else clearProbTs('atr:v:'+n);if(atrM){registerProb('atr:m:'+n);items.push({tipo:'👥',badge:'pb-mesa',label:'Mesa incompleta',n,loc:loc.n,ts:getProbTs('atr:m:'+n)});}else clearProbTs('atr:m:'+n);})));if(!items.length){list.innerHTML='<div class="prob-empty"><div style="font-size:2.5rem;margin-bottom:10px">✅</div><div style="font-size:.85rem;font-weight:700;color:var(--text2)">Nenhum problema ativo</div></div>';}else{items.forEach(p=>{const row=document.createElement('div');row.className='prob-item';row.tabIndex=0;row.title='Ver detalhe e contato da seção';row.innerHTML=`<div class="prob-tipo">${p.tipo}</div><div class="prob-info"><div class="prob-sec">Seção ${parseInt(p.n)}</div><div class="prob-loc">${p.loc}</div></div><span class="prob-badge ${p.badge}">${p.label}</span><div class="prob-ts" title="Detectado às ${p.ts}">desde ${p.ts}</div><div class="prob-contact" onclick="event.stopPropagation()">${botaoContatoHtml(p.n,p.label)}</div>`;row.onclick=()=>openSecModal(p.n,getSt(p.n,loadMesa()));row.onkeydown=(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();row.click();}};list.appendChild(row);});}div.appendChild(list);content.appendChild(div);document.getElementById('t-stats').innerHTML=items.length?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${items.length} problema${items.length>1?'s':''}</span>`:`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>Sem problemas</span>`;}
+// Transmissão digital (JE-Connect) pendente — window.__midiasRemota vem de
+// sime_midias (Realtime), plugado logo abaixo no <script type="module">.
+// Só conta seções que já têm registro de mídia (as demais ainda nem
+// encerraram, não faz sentido cobrar transmissão delas).
+function contarTransmissaoPendente(){
+  const m = window.__midiasRemota || {};
+  return Object.values(m).filter(x => (x.transmissao_status||'pendente') !== 'transmitido').length;
+}
+
+function updateStats(totVot,totEnc,totUrna,totCar,totProb,totAtrV,totAtrM,total){const el=document.getElementById('t-stats');if(faseAtual==='ab'){el.innerHTML=[totVot?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totVot} votando</span>`:'',totAtrV?`<span class="ts" style="color:#f59e0b"><div class="tsd" style="background:#f59e0b"></div>${totAtrV} atraso vot.</span>`:'',totAtrM?`<span class="ts" style="color:#d97706"><div class="tsd" style="background:#d97706"></div>${totAtrM} mesa inc.</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}else{const txPend=contarTransmissaoPendente();el.innerHTML=[totCar?`<span class="ts" style="color:#16a34a"><div class="tsd" style="background:#16a34a"></div>${totCar} no cartório</span>`:'',totUrna-totCar>0?`<span class="ts" style="color:#2563eb"><div class="tsd" style="background:#2563eb"></div>${totUrna-totCar} a caminho</span>`:'',totEnc?`<span class="ts" style="color:#3b82f6"><div class="tsd" style="background:#3b82f6"></div>${totEnc} encerradas</span>`:'',totProb?`<span class="ts" style="color:#ef4444"><div class="tsd" style="background:#ef4444"></div>${totProb} problemas</span>`:'',txPend?`<span class="ts" style="color:#f59e0b"><div class="tsd" style="background:#f59e0b"></div>${txPend} sem transmitir</span>`:'',`<span class="ts" style="color:var(--text3)">${total} total</span>`].join('');}}
 function renderCurrent(){document.querySelectorAll('.v-page').forEach((p,i)=>p.classList.toggle('active',i===curPage));}
 function goPage(idx){curPage=((idx%NUMPAGES)+NUMPAGES)%NUMPAGES;vCd=rotDelay;updateCountdown();renderCurrent();updateNav();}
 function updateNav(){const dots=document.getElementById('v-dots');dots.innerHTML='';CITIES.forEach((c,i)=>{const d=document.createElement('div');d.className='pdot'+(i===curPage?' act':'');d.style.borderColor=i===curPage?c.color:'';d.style.background=i===curPage?c.color:'';d.onclick=()=>goPage(i);d.title=c.city;dots.appendChild(d);});document.getElementById('v-pg-label').textContent=faseAtual==='prob'?'Todos os problemas':`${CITIES[curPage]?.city}  ·  ${curPage+1}/${NUMPAGES}`;document.getElementById('v-pg-label').style.color=faseAtual==='prob'?'#dc2626':CITIES[curPage]?.color||'var(--text2)';}
@@ -833,8 +932,47 @@ function updateCountdown(){const pct=(vCd/rotDelay)*100;const f=document.getElem
 function vSetDelay(v){rotDelay=Math.max(3,Math.min(60,v));vCd=rotDelay;startTicker();}
 function vTogglePause(){vPaused=!vPaused;document.getElementById('v-pause').textContent=vPaused?'▶':'⏸';}
 function startTicker(){clearInterval(vTicker);vTicker=setInterval(()=>{if(vPaused||faseAtual==='prob')return;vCd--;updateCountdown();if(vCd<=0){goPage(curPage+1);vCd=rotDelay;}},1000);}
+// Sem NENHUMA seção com dado, o telão precisa dizer isso na cara — senão a
+// tela cinza passa por "eleição parada" em vez de "não estou recebendo nada".
+function atualizarFaixaSemDados(mesa){
+  const el=document.getElementById('faixa-sem-dados');
+  if(!el) return;
+  let comDado=0;
+  CITIES.forEach(c=>c.locs.forEach(l=>l.s.forEach(n=>{ if(mesa[n]||_acess[n]) comDado++; })));
+  if(MODO_DEMO){
+    el.innerHTML='<div class="faixa-sd">🧪 MODO DEMONSTRAÇÃO — os dados desta tela são fictícios</div>';
+  } else if(comDado===0){
+    el.innerHTML='<div class="faixa-sd">⚠ Sem dados do servidor — nenhuma seção reportou ainda</div>';
+  } else {
+    el.innerHTML='';
+  }
+}
+
 function updateLeg(){const leg=document.getElementById('v-leg');if(faseAtual==='ab'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#dc2626"></div>Ninguém</div><div class="vli"><div class="vlid" style="background:#d97706"></div>Incompleta</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Completa</div><div class="vli"><div class="vlid" style="background:#84cc16"></div>Zerésima</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>Votando</div><div class="vli"><div class="vlid" style="background:#ef4444"></div>Problema</div>';}else if(faseAtual==='enc'){leg.innerHTML='<div class="vli"><div class="vlid" style="background:#94a3b8"></div>Votando</div><div class="vli"><div class="vlid" style="background:#f59e0b"></div>Fila (badge=qtd)</div><div class="vli"><div class="vlid" style="background:#3b82f6"></div>Encerrada</div><div class="vli"><div class="vlid" style="background:#2563eb"></div>Urna saiu</div><div class="vli"><div class="vlid" style="background:#16a34a"></div>No cartório</div>';}else{leg.innerHTML='<div class="vli">⚡ <span>Falta de energia</span></div><div class="vli">🖥️ <span>Problema na urna</span></div><div class="vli">⏱ <span>Votação não iniciada</span></div><div class="vli">👥 <span>Mesa incompleta</span></div><div class="vli" style="color:var(--text3)">· clique para ver e contatar</div>';}}
 iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
+
+// Indicador de saúde do Realtime — window.__ultimaAtualizacaoTs vem do
+// <script type="module"> (marcarAtualizado(), a cada evento recebido + no
+// refetch de segurança a cada 60s). Sem isto, um canal caído deixava a tela
+// travada num dado velho, sem nenhum aviso (achado "alto" da auditoria).
+function updateRtStatus(){
+  const el=document.getElementById('rt-status');
+  if(!el) return;
+  const ts=window.__ultimaAtualizacaoTs;
+  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  const s=Math.floor((Date.now()-ts)/1000);
+  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
+  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
+  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
+  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+}
+setInterval(updateRtStatus,1000); updateRtStatus();
+
+// Pré-preenche com o horário real de encerramento da zona — o "17:00" fixo
+// no HTML dessincronizava do horário configurado de fato (achado "médio").
+// Ainda editável: só define o valor inicial, não trava o campo.
+document.getElementById('auto-switch').value = getHor().enc;
+
 updateLeg();buildPages();renderCurrent();updateNav();startTicker();
 setInterval(()=>{buildPages();renderCurrent();checkAutoSwitch();},5000);
 document.addEventListener('click',()=>initAudio(),{once:true});

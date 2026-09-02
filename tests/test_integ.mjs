@@ -33,9 +33,11 @@ check('mesário gravou votação', mesa.vot === true);
 check('mesário gravou fila=5', mesa.fila === 5, 'fila='+mesa.fila);
 check('mesário gravou pânico energia', mesa.panico?.energia === true);
 
-// ADMIN lê a mesma chave
+// ADMIN lê a mesma chave (fallback local — sem sessão neste teste, o
+// dado real de sime_mesa_estado nunca chega; o badge de #prob-count-badge
+// agora vem de sime_ocorrencias via sessão real, então não reflete mais
+// pânico local sem login — a linha da tabela é a checagem que sobra aqui).
 await page.goto(DIR+'SIME_admin.html'); await page.waitForTimeout(300);
-check('admin: badge de problemas ≥1 (pânico da 63)', /[1-9]/.test(await page.textContent('#prob-count-badge')), 'badge='+await page.textContent('#prob-count-badge'));
 const adminRow = await page.evaluate(()=>{
   const st=JSON.parse(localStorage.getItem('sime_mesa_v1'))['0063'];
   // localiza a linha da seção 63 na tabela renderizada

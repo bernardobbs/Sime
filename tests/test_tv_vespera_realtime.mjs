@@ -9,21 +9,27 @@ const b = await chromium.launch();
 
 const STUB_SUPABASE_JS = `
 function rowsFor(table) { return (window.__mockConfig[table] || []); }
+function matchFilters(row, filters) { return Object.entries(filters).every(([k, v]) => row[k] === v); }
 class QB {
-  constructor(table) { this.table = table; }
+  constructor(table) { this.table = table; this.filters = {}; }
   select() { return this; }
-  eq() { return this; }
+  eq(col, val) { this.filters[col] = val; return this; }
   order() { return this; }
   limit() { return this; }
-  maybeSingle() { return Promise.resolve({ data: null, error: null }); }
-  then(resolve) { return resolve({ data: rowsFor(this.table), error: null }); }
+  maybeSingle() { const rows = rowsFor(this.table).filter((r) => matchFilters(r, this.filters)); return Promise.resolve({ data: rows[0] ?? null, error: null }); }
+  then(resolve) { const rows = rowsFor(this.table).filter((r) => matchFilters(r, this.filters)); return resolve({ data: rows, error: null }); }
 }
 export function createClient(url, key, opts) {
   return {
     from(table) { return new QB(table); },
     channel(name) {
       const chan = {
-        on(event, filter, cb) { window.__mockConfig.realtimeCallback = cb; return chan; },
+        on(event, filter, cb) {
+          window.__mockConfig.realtimeCallbacks = window.__mockConfig.realtimeCallbacks || {};
+          window.__mockConfig.realtimeCallbacks[filter.table] = cb;
+          if (filter.table === 'sime_mesa_estado') window.__mockConfig.realtimeCallback = cb;
+          return chan;
+        },
         subscribe() { return chan; },
       };
       return chan;
@@ -115,7 +121,40 @@ function baseMockConfig() {
   await ctx.close();
 }
 
-// ── 3. Sem tv_token: fallback local intacto ──
+// ── 3. Lacre vem de sime_carga_lacre (Supabase), não mais só localStorage ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_eleicoes = [{ id: 'ele-uuid-1', turno: 1, zona_id: 'zona-x', ativa: true, created_at: '2026-01-01' }];
+  cfg.sime_carga_lacre = [{ eleicao_id: 'ele-uuid-1', secao_id: 'sec-uuid-63', carga: true, preparacao: true, lacre: true }];
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  // localStorage teria dado outra coisa — prova que quem manda é o Supabase.
+  await p.addInitScript(() => { localStorage.setItem('sime_lacre_v3', JSON.stringify({ '0063': { lacre: false } })); });
+  await p.goto('http://localhost:8917/modules/SIME_tv_vespera.html?tv_token=TVTOKENX');
+  await p.waitForTimeout(1800);
+
+  const lacreRemota = await p.evaluate(() => window.__lacreRemota);
+  check('window.__lacreRemota populado a partir de sime_carga_lacre', lacreRemota?.['0063']?.lacre === true, JSON.stringify(lacreRemota));
+  const stSec63 = await p.evaluate(() => getSt('0063', loadLacre(), loadInst()));
+  check('getSt() reflete saiu=true vindo do Supabase (não do localStorage desatualizado)', stSec63?.saiu === true, JSON.stringify(stSec63));
+
+  const rtTxt = await p.locator('#rt-status').textContent();
+  check('indicador de saúde do Realtime sai de "sem sessão"', !rtTxt.includes('sem sessão'), rtTxt);
+
+  // Realtime: coordenador lacra em outro aparelho — o mock simula o UPDATE.
+  check('callback de sime_carga_lacre registrado', await p.evaluate(() => typeof window.__mockConfig.realtimeCallbacks?.sime_carga_lacre === 'function'));
+  await p.evaluate(() => { window.__mockConfig.sime_carga_lacre[0].lacre = false; });
+  await p.evaluate(() => window.__mockConfig.realtimeCallbacks.sime_carga_lacre({ new: window.__mockConfig.sime_carga_lacre[0], eventType: 'UPDATE' }));
+  await p.waitForTimeout(700);
+  const lacreDepois = await p.evaluate(() => window.__lacreRemota);
+  check('evento Realtime de sime_carga_lacre atualiza a tela sozinha', lacreDepois?.['0063']?.lacre === false, JSON.stringify(lacreDepois));
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 4. Sem tv_token: fallback local intacto ──
 {
   const ctx = await b.newContext();
   const cfg = baseMockConfig();

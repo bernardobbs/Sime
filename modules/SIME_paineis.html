@@ -36,6 +36,13 @@ body{display:flex;flex-direction:column;}
 .btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .btn-sm{padding:5px 10px;font-size:.72rem;}
 
+.conf-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px;}
+.conf-overlay.show{display:flex;}
+.conf-card{background:var(--card);border-radius:14px;padding:20px;width:100%;max-width:340px;}
+.conf-title{font-weight:800;font-size:.95rem;margin-bottom:6px;}
+.conf-sub{font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:16px;}
+.conf-btns{display:flex;gap:8px;justify-content:flex-end;}
+
 .mgr-body{padding:20px 24px 40px;}
 .mgr-title{font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:10px;}
 .mgr-title::after{content:'';flex:1;height:1px;background:var(--border);}
@@ -228,6 +235,30 @@ body{display:flex;flex-direction:column;}
     </div>
   </div>
   <div class="mgr-body">
+    <!-- Este gerenciador só cobre painéis de TV — não é o índice geral do
+         SIME. Sem isso, quem chega aqui procurando o próprio módulo (mesário,
+         motorista, admin...) não achava nenhum link pra sair daqui. -->
+    <div class="mgr-title">Outros módulos do SIME</div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:26px;">
+      <a href="SIME_admin.html" class="btn btn-out btn-sm">🏛️ Admin</a>
+      <a href="SIME_principal.html" class="btn btn-out btn-sm">⚙️ Principal</a>
+      <a href="SIME_problemas.html" class="btn btn-out btn-sm">🚨 Problemas</a>
+      <a href="SIME_atores.html" class="btn btn-out btn-sm">👥 Atores</a>
+      <a href="SIME_tokens.html" class="btn btn-out btn-sm">🎫 Tokens</a>
+      <a href="SIME_relatorios.html" class="btn btn-out btn-sm">📊 Relatórios</a>
+      <a href="SIME_coordenador_preparacao.html" class="btn btn-out btn-sm">📋 Coord. Preparação</a>
+      <a href="SIME_conferente.html" class="btn btn-out btn-sm">🚚 Conferente</a>
+      <a href="SIME_instalador.html" class="btn btn-out btn-sm">🔧 Instalador</a>
+      <a href="SIME_motorista.html" class="btn btn-out btn-sm">🚐 Motorista</a>
+      <a href="SIME_mesario.html" class="btn btn-out btn-sm">🗳️ Mesário</a>
+      <a href="SIME_acessibilidade.html" class="btn btn-out btn-sm">♿ Acessibilidade</a>
+      <a href="SIME_midias.html" class="btn btn-out btn-sm">📦 Mídias</a>
+      <a href="SIME_tv_preparacao.html" class="btn btn-out btn-sm">📺 TV Preparação</a>
+      <a href="SIME_tv_vespera.html" class="btn btn-out btn-sm">📺 TV Véspera</a>
+      <a href="SIME_tv_distribuicao.html" class="btn btn-out btn-sm">📺 TV Distribuição</a>
+      <a href="SIME_tv_dia.html" class="btn btn-out btn-sm">📺 TV Dia</a>
+    </div>
+
     <div class="mgr-title">Painéis configurados</div>
     <div class="panels-grid" id="panels-grid"></div>
   </div>
@@ -249,15 +280,15 @@ body{display:flex;flex-direction:column;}
   </div>
   <div class="v-content" id="v-content"></div>
   <div class="v-nav" id="v-nav">
-    <button class="nav-btn" onclick="vGoPage(vCurPage-1)">‹</button>
+    <button class="nav-btn" onclick="vGoPage(vCurPage-1)" aria-label="Página anterior">‹</button>
     <div class="pdots" id="v-dots"></div>
     <div class="pg-label" id="v-pg-label">—</div>
     <div class="cd-wrap">
       <div class="cd-track"><div class="cd-fill" id="v-cdfill" style="width:100%"></div></div>
       <div class="cd-num" id="v-cdnum">—</div>
     </div>
-    <button class="pause-btn" id="v-pause" onclick="vTogglePause()">⏸</button>
-    <button class="nav-btn" onclick="vGoPage(vCurPage+1)">›</button>
+    <button class="pause-btn" id="v-pause" onclick="vTogglePause()" aria-label="Pausar rotação">⏸</button>
+    <button class="nav-btn" onclick="vGoPage(vCurPage+1)" aria-label="Próxima página">›</button>
     <div class="v-sep"></div>
     <div class="d-inp-wrap">⏱ <input type="number" id="v-delay-inp" value="10" min="3" max="60" onchange="vSetDelay(+this.value)">s</div>
     <div class="v-sep"></div>
@@ -295,9 +326,9 @@ body{display:flex;flex-direction:column;}
       <div class="pages-list" id="ed-pages"></div>
       <div style="border-bottom:1px solid var(--border);margin:14px 0;"></div>
       <div class="form-group">
-        <label>Rotação automática</label>
+        <label id="rot-toggle-caption">Rotação automática</label>
         <div class="toggle-row">
-          <button class="toggle" id="rot-toggle" onclick="toggleRot()"></button>
+          <button class="toggle" id="rot-toggle" type="button" role="switch" aria-pressed="false" aria-labelledby="rot-toggle-caption rot-label" onclick="toggleRot()"></button>
           <span class="toggle-label" id="rot-label">Estático — exibe tudo sem rotação</span>
         </div>
       </div>
@@ -317,15 +348,30 @@ body{display:flex;flex-direction:column;}
 
 <div class="toast" id="toast"></div>
 
+<!-- confirm() nativo quebrava o padrão visual do resto do sistema (achado
+     "baixo" da auditoria) — modal mínimo para a exclusão de painel. -->
+<div class="conf-overlay" id="conf-overlay">
+  <div class="conf-card">
+    <div class="conf-title" id="conf-title">Confirmar?</div>
+    <div class="conf-sub" id="conf-sub"></div>
+    <div class="conf-btns">
+      <button class="btn btn-out" onclick="fecharConfirmacaoPainel()">Cancelar</button>
+      <button class="btn btn-red" id="conf-ok-btn">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapTvSession, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes } from './sime_dados.js';
+import { initSimeDados, getSecoes, getInstMap, mapMesaEstadoRowToInst } from './sime_dados.js';
+import { subscribeMesaEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
 
-// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES` — basta
-// reatribuir a variável (sem reload) que o próximo tick já usa o dado real.
+// vBuildPages() já reconstrói o DOM a cada 3s lendo `CITIES`/loadInst() —
+// basta reatribuir as variáveis (sem reload) que o próximo tick já usa o
+// dado real.
 (async () => {
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
@@ -335,6 +381,20 @@ import { SIME_CONFIG } from './sime_config.js';
     window.CITIES = agruparSecoesPorCidade(secoes);
     if (window.recalcularDerivadosDeCities) window.recalcularDerivadosDeCities();
   }
+
+  // Instalador (chegou/posicionada/instalada) — antes só localStorage
+  // (sime_inst_v1), que nunca via o que o instalador grava de verdade no
+  // próprio celular dele. "Lacre" (Coordenador de Preparação) continua só
+  // local — não existe tabela real pra isso ainda.
+  const numeroPorSecaoId = new Map((secoes || []).map((s) => [s.id, s.numero]));
+  const instInicial = await getInstMap({ fallback: null });
+  if (instInicial) window.__instRemota = instInicial;
+  subscribeMesaEstado(client, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    if (!window.__instRemota) window.__instRemota = {};
+    window.__instRemota[String(numero).padStart(4, '0')] = mapMesaEstadoRowToInst(row);
+  });
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -443,7 +503,7 @@ function genId(){ return 'p' + Date.now().toString(36); }
 //   sime_inst_v1    → instalador (chegou=s1, posicionada=s2, instalada=s3, prob)
 // ══════════════════════════════════════════════════════
 function loadLacre(){ try{ return JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}'); }catch(e){ return {}; } }
-function loadInst() { try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
+function loadInst() { if(window.__instRemota) return window.__instRemota; try{ return JSON.parse(localStorage.getItem('sime_inst_v1') ||'{}'); }catch(e){ return {}; } }
 
 // Conta quantas seções têm dados reais
 function countRealData(lacre, inst){
@@ -451,6 +511,10 @@ function countRealData(lacre, inst){
 }
 
 // Demo determinístico (fallback quando não há dados reais)
+// Massa de demonstração SÓ com ?demo=1 na URL. Sem isso, seção sem dado
+// exibia estado inventado — num telão de parede no dia 4, dado fictício é
+// pior que tela vazia: alguém age em cima de um número que não existe.
+const MODO_DEMO = new URLSearchParams(location.search).has('demo');
 function demoSt(n){ const v=((parseInt(n)*2654435761)>>>0)/4294967296; if(v<.50)return{saiu:true,chegou:true,inst:true,prob:false}; if(v<.65)return{saiu:true,chegou:true,inst:false,prob:false}; if(v<.74)return{saiu:true,chegou:false,inst:false,prob:false}; if(v<.88)return{saiu:false,chegou:false,inst:false,prob:false}; if(v<.92)return{saiu:false,chegou:false,inst:true,prob:false}; return{saiu:true,chegou:true,inst:false,prob:true}; }
 
 // Mapeamento dos dados reais:
@@ -469,7 +533,7 @@ function getSt(n, lacre, inst){
       real:   true,
     };
   }
-  return {...demoSt(n), real:false};
+  return MODO_DEMO ? {...demoSt(n), real:false} : {saiu:false,chegou:false,inst:false,prob:false,real:false,semDados:true};
 }
 
 // ══════════════════════════════════════════════════════
@@ -531,12 +595,23 @@ function copyUrl(url){
   showToast('📋 URL copiada!');
 }
 
+function pedirConfirmacaoPainel(titulo, sub, aoConfirmar){
+  document.getElementById('conf-title').textContent = titulo;
+  document.getElementById('conf-sub').textContent = sub;
+  document.getElementById('conf-overlay').classList.add('show');
+  document.getElementById('conf-ok-btn').onclick = () => { fecharConfirmacaoPainel(); aoConfirmar(); };
+}
+function fecharConfirmacaoPainel(){
+  document.getElementById('conf-overlay').classList.remove('show');
+}
+
 function delPanel(idx){
-  if(!confirm('Excluir este painel?')) return;
-  const panels = loadPanels();
-  panels.splice(idx,1);
-  savePanels(panels);
-  renderManager();
+  pedirConfirmacaoPainel('Excluir painel?', 'Esta ação não pode ser desfeita.', () => {
+    const panels = loadPanels();
+    panels.splice(idx,1);
+    savePanels(panels);
+    renderManager();
+  });
 }
 
 // ══════════════════════════════════════════════════════
@@ -576,6 +651,7 @@ function toggleRot(){ edRotation=!edRotation; updateRotToggle(); }
 function updateRotToggle(){
   const t=document.getElementById('rot-toggle');
   t.className='toggle'+(edRotation?' on':'');
+  t.setAttribute('aria-pressed', String(!!edRotation));
   document.getElementById('rot-label').textContent=edRotation?'Automática — rotaciona entre páginas':'Estático — exibe tudo sem rotação';
   document.getElementById('rot-delay-row').style.display=edRotation?'block':'none';
 }
@@ -597,7 +673,7 @@ function renderEdPages(){
       <div class="page-item-header">
         <div class="page-num">${i+1}</div>
         <input class="page-name-inp" value="${pg.label}" oninput="edPages[${i}].label=this.value" placeholder="Nome da página">
-        ${edPages.length>1?`<button class="page-del" onclick="delPage(${i})">✕</button>`:''}
+        ${edPages.length>1?`<button class="page-del" onclick="delPage(${i})" aria-label="Excluir página">✕</button>`:''}
       </div>
       <div class="sec-selector">
         <div class="sel-tabs">
@@ -896,7 +972,12 @@ function vStartTicker(){
   },1000);
 }
 function vSetDelay(v){ vDelay=Math.max(3,Math.min(120,v)); vStartTicker(); }
-function vTogglePause(){ vPaused=!vPaused; document.getElementById('v-pause').textContent=vPaused?'▶':'⏸'; }
+function vTogglePause(){
+  vPaused=!vPaused;
+  const btn=document.getElementById('v-pause');
+  btn.textContent=vPaused?'▶':'⏸';
+  btn.setAttribute('aria-label', vPaused?'Retomar rotação':'Pausar rotação');
+}
 function vUpdateCountdown(){
   const pct=(vCd/vDelay)*100;
   const f=document.getElementById('v-cdfill');

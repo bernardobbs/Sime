@@ -8,6 +8,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -70,8 +72,8 @@ class PainelActivity : AppCompatActivity() {
                 override fun onLoadRequest(
                     session: GeckoSession,
                     request: GeckoSession.NavigationDelegate.LoadRequest,
-                ) = org.mozilla.geckoview.GeckoResult.fromValue(
-                    request.uri.startsWith(config.servidor).not()
+                ): GeckoResult<AllowOrDeny> = GeckoResult.fromValue(
+                    if (request.uri.startsWith(config.servidor)) AllowOrDeny.ALLOW else AllowOrDeny.DENY
                 )
             }
             open(runtime())

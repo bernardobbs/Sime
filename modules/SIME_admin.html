@@ -25,6 +25,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .user-name{font-size:.72rem;font-weight:700;}
 .user-role{font-size:.6rem;color:var(--text2);}
 .clock{font-size:.75rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Saúde de sincronização (regra 5, CLAUDE.md) — o Admin grava direto no
+   Supabase, sem fila offline (diferente dos módulos de campo): não faz
+   sentido fingir "vai tentar de novo sozinho" aqui. O badge reflete a
+   verdade — se a última gravação foi bem-sucedida ou falhou — em vez de
+   simular uma fila que não existe. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;}
+.sync-badge.sync-ok  {background:var(--green-bg,#d4f0e0);color:var(--green,#2e7d52);}
+.sync-badge.sync-fail{background:var(--red-bg,#f8d7da);color:var(--red,#c0392b);}
 
 /* NAV TABS */
 .nav-tabs{background:var(--card);border-bottom:1px solid var(--border);padding:0 20px;display:flex;overflow-x:auto;flex-shrink:0;}
@@ -61,20 +69,30 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .sec-title::after{content:'';flex:1;height:1px;background:var(--border);}
 
 /* BUTTONS */
-.btn{padding:6px 13px;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
+.btn{padding:6px 13px;min-height:44px;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
 .btn-dark{background:#2a2a2a;color:#fff;} .btn-dark:hover{background:#444;}
 .btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border2);} .btn-out:hover{background:var(--bg3);}
 .btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
 .btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .btn-blue{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
-.btn-sm{padding:4px 9px;font-size:.7rem;}
-.btn-xs{padding:3px 7px;font-size:.66rem;}
+/* .btn-sm/.btn-xs ficam abaixo do alvo de toque de 44px do .btn base
+   (achado "baixo" da auditoria) — mas são usados lado a lado em linhas de
+   tabela densas (Seções, Equipe, Mesários), onde 44px cheios quebrariam o
+   layout. Meio-termo: melhoram sem virar do tamanho do botão primário. */
+.btn-sm{padding:4px 9px;font-size:.7rem;min-height:36px;}
+.btn-xs{padding:3px 7px;font-size:.66rem;min-height:32px;}
 
 /* FORM */
+/* Rótulo presente pro leitor de tela sem alterar o layout visual — usado nos
+   campos que só tinham placeholder (achado "alto" da auditoria). */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 .form-group{margin-bottom:11px;}
 .form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
 .form-group input,.form-group select,.form-group textarea{width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.8rem;outline:none;}
 .form-group input:focus,.form-group select:focus{border-color:var(--blue);background:#fff;}
+/* outline:none acima sem nenhum :focus-visible compensatório deixava a
+   navegação por teclado sem indicação nenhuma de foco (achado "alto"). */
+.form-group input:focus-visible,.form-group select:focus-visible,.form-group textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
 /* BADGES */
@@ -82,7 +100,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .b-ok    {background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
 .b-warn  {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
 .b-err   {background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
-.b-off   {background:var(--bg2);color:var(--text3);border:1px solid var(--border);}
+.b-off   {background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
 .b-blue  {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
 .b-purple{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-bd);}
 
@@ -107,6 +125,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* TABELA DE SEÇÕES */
 .filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
 .filter-bar input,.filter-bar select{padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);font-size:.78rem;color:var(--text);outline:none;}
+.filter-bar input:focus-visible,.filter-bar select:focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
 .filter-bar input{flex:1;min-width:180px;}
 .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);}
 .data-table{width:100%;border-collapse:collapse;font-size:.78rem;}
@@ -114,9 +133,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .data-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
 .data-table td strong{color:var(--text);}
 .data-table tr:last-child td{border-bottom:none;}
-.data-table tr:hover td{background:var(--bg2);cursor:pointer;}
+/* Hover "clicável" restrito às linhas que de fato respondem ao clique (só a
+   tabela de Seções) — Atores e as tabelas dos modais tinham o mesmo cursor de
+   ponteiro sem nenhuma ação ao clicar (achado "alto" da auditoria). */
+.data-table tr.clicavel:hover td{background:var(--bg2);cursor:pointer;}
 .data-table tr.has-prob td{background:var(--red-bg);}
-.data-table tr.has-prob:hover td{background:#fde8e6;}
+.data-table tr.clicavel.has-prob:hover td{background:#fde8e6;}
 
 /* PROBLEMAS */
 .prob-card{background:var(--card);border:1.5px solid var(--red-bd);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;margin-bottom:8px;}
@@ -130,7 +152,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .pt-urna   {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
 .pt-mesa   {background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);}
 .pt-atraso {background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd);}
-.pc-ts{font-size:.68rem;color:var(--text3);margin-top:4px;}
+.pc-ts{font-size:.68rem;color:var(--text2);margin-top:4px;}
 .pc-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
 
 /* EQUIPE */
@@ -155,7 +177,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .modal-sub{font-size:.72rem;color:var(--text2);margin-top:2px;}
 .modal-body{padding:16px 18px;}
 .modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
-.close-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
 
 /* TOGGLE SWITCH */
 .toggle-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
@@ -169,6 +191,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;}
 .toggle input:checked+.toggle-slider{background:var(--green);}
 .toggle input:checked+.toggle-slider::before{transform:translateX(16px);}
+/* O input fica visualmente escondido (opacity:0) — sem isto, tabular até o
+   checkbox não dava nenhuma indicação visual de foco (achado "alto"). */
+.toggle input:focus-visible+.toggle-slider{box-shadow:0 0 0 2px var(--blue);}
 
 /* TOAST */
 /* .toast.show vem de sime_components.css */
@@ -180,16 +205,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <!-- LOGIN — bloqueia o acesso até validar sessão do Supabase, mas nunca sem
      saída: se o Supabase estiver fora do ar (plano de contingência), o botão
      "continuar offline" segue liberando a UI com os dados locais/fallback. -->
-<div id="login-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:500;">
-  <form id="login-form" style="background:#f9f7f4;border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
-    <div style="font-weight:800;font-size:1rem;">SIME — Administração</div>
-    <div style="font-size:.72rem;color:#6a6560;">Entre com seu e-mail e senha de coordenador.</div>
-    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
-    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid #d8d3c8;border-radius:8px;">
-    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:#2a2a2a;color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
-    <div id="login-erro" style="font-size:.72rem;color:#c0392b;min-height:1em;"></div>
-    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:#3a5fa0;font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
-    <button type="button" id="login-offline" style="padding:8px;border:1px solid #d8d3c8;border-radius:8px;background:transparent;color:#6a6560;font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
+<div id="login-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:500;">
+  <form id="login-form" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;width:min(320px,90vw);display:flex;flex-direction:column;gap:12px;">
+    <div style="font-weight:800;font-size:1rem;color:var(--text);">SIME — Administração</div>
+    <div style="font-size:.72rem;color:var(--text2);">Entre com seu e-mail e senha de coordenador.</div>
+    <label for="login-email" class="sr-only">E-mail</label>
+    <input id="login-email" type="email" placeholder="E-mail" required style="padding:9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text);">
+    <label for="login-pass" class="sr-only">Senha</label>
+    <input id="login-pass" type="password" placeholder="Senha" required style="padding:9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text);">
+    <button type="submit" style="padding:10px;border:none;border-radius:8px;background:var(--text);color:#fff;font-weight:700;cursor:pointer;">Entrar</button>
+    <div id="login-erro" role="alert" aria-live="polite" style="font-size:.72rem;color:var(--red);min-height:1em;"></div>
+    <button type="button" id="login-esqueci" style="padding:2px;border:none;background:transparent;color:var(--blue);font-size:.74rem;cursor:pointer;text-decoration:underline;">Esqueci minha senha</button>
+    <button type="button" id="login-offline" style="padding:8px;border:1px solid var(--border2);border-radius:8px;background:transparent;color:var(--text2);font-size:.76rem;cursor:pointer;">Continuar offline (sem sincronizar)</button>
   </form>
 </div>
 
@@ -201,6 +228,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="brand-sub" id="cur-fase">Dia da Eleição</div>
   </div>
   <div class="t-right">
+    <a href="SIME_principal.html" title="Voltar ao Painel Principal"
+      style="padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">⚙️ Principal</a>
     <div class="user-chip">
       <div class="user-av" id="u-av">RA</div>
       <div>
@@ -208,6 +237,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="user-role" id="u-role">Coordenador Geral</div>
       </div>
     </div>
+    <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
     <div class="clock" id="clock">--:--</div>
     <button id="btn-logout" onclick="window.simeLogout && window.simeLogout()" title="Sair do sistema"
       style="display:none;padding:6px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
@@ -218,11 +248,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="nav-tabs">
   <button class="nav-tab active" onclick="goTab('dash',this)">📊 Dashboard</button>
   <button class="nav-tab"        onclick="goTab('secoes',this)">📋 Seções</button>
-  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="goTab('problemas',this)">🚨 Problemas <span id="prob-count-badge"></span></button>
+  <button class="nav-tab alert-tab" id="tab-prob-btn" onclick="window.open('SIME_problemas.html','sime_problemas')">🚨 Problemas <span id="prob-count-badge"></span></button>
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
   <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
+  <button class="nav-tab"        onclick="goTab('hermes',this)">🤖 Hermes</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
 </div>
 
@@ -267,36 +298,27 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     </select>
     <button class="btn btn-dark" onclick="openNewEvent()">+ Lançar ocorrência</button>
     <button class="btn btn-out" onclick="openSecoesManager()">⚙️ Gerenciar seções</button>
-    <button class="btn btn-out" onclick="openMesariosManager()">🧑‍⚖️ Confirmação de mesários</button>
+    <a class="btn btn-out" href="./SIME_convocacao.html" style="text-decoration:none;display:inline-flex;align-items:center">🧑‍⚖️ Confirmação de mesários</a>
   </div>
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr>
         <th>Seção</th><th>Local</th><th>Cidade</th>
-        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th></th>
+        <th>Mesa</th><th>Votação</th><th>Fila</th><th>Status</th><th>Urna</th><th>Transmissão</th><th></th>
       </tr></thead>
       <tbody id="sec-tbody"></tbody>
     </table>
   </div>
 </div>
 
-<!-- ══════ PROBLEMAS ══════ -->
-<div id="tab-problemas" class="tab-panel">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
-    <div>
-      <div style="font-weight:800;font-size:.95rem;">Alertas ativos</div>
-      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="prob-subtitle">Carregando...</div>
-    </div>
-    <button class="btn btn-out" onclick="renderProblemas()">↺ Atualizar</button>
-  </div>
-  <div id="prob-list"></div>
-</div>
-
 <!-- ══════ EQUIPE ══════ -->
 <div id="tab-equipe" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
     <div style="font-weight:800;font-size:.95rem;">Membros da equipe</div>
-    <button class="btn btn-dark" onclick="openNewMember()">+ Novo membro</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-out" onclick="abrirRemovidos()">👤 Removidos</button>
+      <button class="btn btn-dark" onclick="openNewMember()">+ Novo membro</button>
+    </div>
   </div>
   <div class="team-grid" id="team-grid"></div>
 </div>
@@ -306,7 +328,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="grid2" style="gap:16px;">
     <div class="card">
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Sessão atual</div>
-      <div class="form-group"><label>Usuário atual</label>
+      <div class="form-group"><label for="cfg-user">Usuário atual</label>
         <select id="cfg-user" onchange="switchUser(this.value)">
           <option value="">— selecionar —</option>
         </select>
@@ -337,7 +359,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:700;font-size:.88rem;margin-bottom:12px;">Dados operacionais</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn btn-out" onclick="exportarDados()">📥 Exportar snapshot (JSON)</button>
-        <button class="btn btn-red" onclick="if(confirm('Resetar dados de teste?')){resetarDados();}">🗑 Resetar dados de teste</button>
+        <button class="btn btn-red" onclick="resetarProblemas()">🗑 Resetar dados de teste (Problemas + Dia D)</button>
       </div>
     </div>
   </div>
@@ -354,6 +376,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
   <div class="grid4" style="margin-bottom:16px;" id="midias-stats"></div>
   <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">📡 Atribuir transmissão</div>
+    <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;">Matriz nominal técnico↔seção — defina antes do dia D quem transmite cada seção via JE-Connect.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <select id="tx-mun" onchange="renderAtribuicaoTransmissao()"><option value="">Todos os municípios</option></select>
+      <select id="tx-tecnico"><option value="">— selecionar técnico —</option></select>
+      <button class="btn btn-dark btn-sm" id="tx-atribuir-btn" disabled onclick="atribuirTransmissao()">Atribuir às seções selecionadas</button>
+      <span id="tx-count" style="font-size:.72rem;color:var(--text3);align-self:center">Nenhuma seção selecionada</span>
+    </div>
+    <div id="tx-secoes" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
+    <div id="tx-por-tecnico" style="margin-top:14px;"></div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
     <div class="sec-title">Coletores de mídia</div>
     <div id="midias-coletores"></div>
   </div>
@@ -367,7 +401,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div style="font-weight:800;font-size:.95rem;">Atores operacionais</div>
       <div style="font-size:.74rem;color:var(--text2);margin-top:2px;" id="atores-sub">Carregando...</div>
     </div>
+    <a href="SIME_atores.html" target="_blank" class="btn btn-out" style="text-decoration:none;font-size:.74rem;padding:6px 12px;">✏️ Editar no módulo Atores</a>
   </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">Esta lista é só consulta — para editar nome, telefone ou remover, use o módulo Atores.</div>
   <div class="filter-bar">
     <input type="text" id="atores-search" placeholder="Buscar nome, seção ou telefone..." oninput="renderAtores()">
     <select id="atores-funcao" onchange="renderAtores()">
@@ -392,6 +428,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 </div>
 
+<!-- ══════ HERMES (status + atualização remota) ══════ -->
+<div id="tab-hermes" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">Hermes Agent</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Heartbeat e versão do bot de WhatsApp/Telegram (Raspberry Pi).</div>
+    </div>
+    <button class="btn btn-out" onclick="renderHermes()">↺ Atualizar</button>
+  </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">
+    "Solicitar atualização" só marca o pedido — o Hermes decide se atende no
+    próprio ciclo de heartbeat. Sem confirmação, não sabemos se ele viu.
+  </div>
+  <div class="grid2" style="gap:16px;" id="hermes-grid"><div class="hint">Carregando…</div></div>
+</div>
+
 <!-- ══════ ZONAS (só super_admin) ══════ -->
 <div id="tab-zonas" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -408,14 +460,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <!-- MODAL EDITAR/LANÇAR SEÇÃO -->
 <div class="overlay" id="overlay" onclick="closeModal(event)">
-  <div class="modal" id="modal-body"></div>
+  <div class="modal" id="modal-body" role="dialog" aria-modal="true"></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
+import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias, subscribeHeartbeat } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -436,8 +489,10 @@ async function carregarDadosReais(){
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
     window.SECTIONS = secoesReais.map(s => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome, city: s.municipio }));
+    window.SECAO_ID_POR_NUMERO = Object.fromEntries(secoesReais.map(s => [String(s.numero).padStart(4, '0'), s.id]));
     const municipios = await getMunicipios({ fallback: null });
     if (municipios) window.cities = municipios.map(m => m.nome);
+    await iniciarMesaEstadoReal(secoesReais);
   }
   // Coord. de Motoristas: escopo real via sime_empresas.rotas, em vez da
   // lista de seções digitada à mão (dívida técnica da Fase 3). Sem sessão ou
@@ -457,7 +512,69 @@ async function carregarDadosReais(){
     const emp = (window.EMPRESAS || []).find(e => e.id === empresaId);
     return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
   };
+
+  // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
+  // o login real via sime-admin-user, mas o roster exibido nunca lia
+  // sime_usuarios de volta. Cada navegador via uma lista diferente (a demo
+  // ou o que foi digitado ali). "Token <tipo> (...)" são usuários fantasma
+  // criados pela sime-login pra QR de campo — não são gente da equipe.
+  const { data: equipeReal } = await supabase.from('sime_usuarios')
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp');
+  window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
+  if (window.renderTeam) window.renderTeam();
+
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
+}
+
+// A aba Seções (dashboard/tabela/modal) e a aba Mídias liam SÓ localStorage
+// (sime_mesa_v1/sime_acess_v1/sime_midias_v1) — nunca o que mesário/coletor
+// de mídias gravam de verdade no Supabase (cada um no PRÓPRIO aparelho, nunca
+// visto pelo navegador do Admin). Mesmo padrão já usado pela TV Dia:
+// snapshot inicial + Realtime, sem polling.
+let canalMesaAberto = false;
+let rerenderMesaTimer = null;
+function agendarRerenderMesaEstado(){
+  clearTimeout(rerenderMesaTimer);
+  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); }, 250);
+}
+let rerenderMidiasTimer = null;
+function agendarRerenderMidias(){
+  clearTimeout(rerenderMidiasTimer);
+  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); }, 250);
+}
+async function iniciarMesaEstadoReal(secoesReais){
+  if (canalMesaAberto) return; // evita canal duplicado se carregarDadosReais() rodar de novo
+  canalMesaAberto = true;
+
+  const numeroPorSecaoId = new Map(secoesReais.map(s => [s.id, s.numero]));
+
+  const elecAtiva = await getEleicaoAtiva({ fallback: null });
+  window.ELEICAO_ID = elecAtiva?.id || null;
+  window.ELEICAO_ATIVA = elecAtiva || null;
+  if (window.renderConfig) window.renderConfig();
+
+  const mesaInicial = await getMesaEstadoMap({ fallback: null });
+  window.MESA_ESTADO_MAP = mesaInicial || {};
+  const midiasInicial = await getMidiasMap({ fallback: null });
+  window.MIDIAS_MAP = midiasInicial || {};
+  // Só pro botão "Exportar dados" (snapshot pontual) — não precisa de
+  // Realtime, ninguém fica olhando pra essa tela esperando ela mudar.
+  window.ROTAS_ESTADO_MAP = await getRotasEstadoMap({ fallback: {} });
+  agendarRerenderMesaEstado();
+  agendarRerenderMidias();
+
+  subscribeMesaEstado(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MESA_ESTADO_MAP[String(numero).padStart(4, '0')] = mapMesaEstadoRow(row);
+    agendarRerenderMesaEstado();
+  });
+  subscribeMidias(supabase, (row) => {
+    const numero = numeroPorSecaoId.get(row.secao_id);
+    if (numero == null) return;
+    window.MIDIAS_MAP[String(numero).padStart(4, '0')] = mapMidiaRow(row);
+    agendarRerenderMidias();
+  });
 }
 
 // Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
@@ -467,10 +584,11 @@ async function carregarDadosReais(){
 async function carregarIdentidade(){
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
+  const { data: meuUsuario } = await supabase.from('sime_usuarios').select('id,nome,perfil,zona_id').eq('auth_user_id', user.id).maybeSingle();
   if (!meuUsuario) return;
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
+  window.MEU_USUARIO_ID = meuUsuario.id || null;
   if (meuUsuario.perfil === 'super_admin') {
     const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
       supabase.from('sime_zonas').select('*').order('numero'),
@@ -485,6 +603,48 @@ async function carregarIdentidade(){
     }
   }
   if (window.aplicarIdentidade) window.aplicarIdentidade();
+  await atualizarBadgeProblemas();
+  iniciarRealtimeProblemas();
+  iniciarRealtimeHermes();
+}
+
+// Contagem real de ocorrências em aberto (aberta|assumida) — RLS já restringe
+// à zona de quem logou. Substitui o badge antigo, que contava pânico direto
+// do localStorage e nunca batia com o que o mesário de fato registrava.
+// É só indicativo — uma falha aqui não pode travar o resto do login.
+async function atualizarBadgeProblemas(){
+  try {
+    const { count } = await supabase
+      .from('sime_ocorrencias')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['aberta', 'assumida']);
+    const badge = document.getElementById('prob-count-badge');
+    if (badge) badge.textContent = count ? `(${count})` : '';
+  } catch (e) {}
+}
+// Exposta pro <script> clássico — resetarProblemas() precisa refazer a
+// contagem do badge depois de apagar.
+window.atualizarBadgeProblemas = atualizarBadgeProblemas;
+
+// Realtime em vez de polling: qualquer INSERT/UPDATE em sime_ocorrencias
+// (nova ocorrência, assumida, resolvida...) refaz a contagem na hora. Um
+// canal só por sessão de Admin.
+let canalProblemasAberto = false;
+function iniciarRealtimeProblemas(){
+  if (canalProblemasAberto) return;
+  canalProblemasAberto = true;
+  try { subscribeOcorrencias(supabase, () => atualizarBadgeProblemas()); } catch (e) {}
+}
+
+// Heartbeat do Hermes muda a cada ciclo dele (minutos) — Realtime evita que o
+// admin fique olhando pra um card parado achando que travou. Só redesenha se
+// a aba estiver de fato aberta (renderHermes escreve no próprio elemento;
+// chamar com a aba fechada é barato e inofensivo, então não checamos antes).
+let canalHermesAberto = false;
+function iniciarRealtimeHermes(){
+  if (canalHermesAberto) return;
+  canalHermesAberto = true;
+  try { subscribeHeartbeat(supabase, () => { if (window.renderHermes) window.renderHermes(); }); } catch (e) {}
 }
 
 // Logout: encerra a sessão do Supabase e recarrega (volta pro overlay de login).
@@ -533,7 +693,10 @@ document.getElementById('login-esqueci').addEventListener('click', async () => {
   try {
     await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.href });
     erroEl.style.color = '#176c2c';
-    erroEl.textContent = 'Se este e-mail tiver acesso, um link de redefinição foi enviado.';
+    // A chamada não falha mesmo sem SMTP configurado no projeto — não há como
+    // o cliente saber se o e-mail de fato saiu, então o aviso já vem com o
+    // caminho alternativo, sem esperar o e-mail nunca chegar (achado "baixo").
+    erroEl.textContent = 'Se este e-mail tiver acesso, o link chega em instantes. Não chegou? Peça ao coordenador para redefinir pela aba Equipe.';
   } catch (e) {
     erroEl.style.color = '#c0392b';
     erroEl.textContent = 'Não foi possível enviar agora. Peça ao coordenador para redefinir.';
@@ -560,6 +723,52 @@ const SECTIONS_FALLBACK = [
   {n:'0001',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0002',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0003',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0004',loc:'EMATER',city:'Campo Maior'},{n:'0005',loc:'SAAE',city:'Campo Maior'},{n:'0006',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0012',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0014',loc:'EMATER',city:'Campo Maior'},{n:'0015',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0016',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0017',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0018',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0019',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0020',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0029',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0030',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0031',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0033',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0034',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0035',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0036',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0037',loc:'EMATER',city:'Campo Maior'},{n:'0038',loc:'EMATER',city:'Campo Maior'},{n:'0044',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0045',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0046',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0047',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0049',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0050',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0062',loc:'FSESP',city:'Campo Maior'},{n:'0063',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0064',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0065',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0066',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0071',loc:'CAIC',city:'Campo Maior'},{n:'0074',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0079',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0080',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0081',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0085',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0086',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0087',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0088',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0089',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0090',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0101',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0102',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0103',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0112',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0115',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0116',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0117',loc:'Prefeitura Municipal',city:'Campo Maior'},{n:'0122',loc:'FSESP',city:'Campo Maior'},{n:'0123',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0124',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0125',loc:'Clube dos Comerciários',city:'Campo Maior'},{n:'0126',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0128',loc:'G.E. Valdivino Tito',city:'Campo Maior'},{n:'0132',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0133',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0135',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0136',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0137',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0138',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0139',loc:'Grupo Escolar',city:'Jatobá do Piauí'},{n:'0140',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0141',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0144',loc:'G.E. Profª Maroquinha',city:'Campo Maior'},{n:'0145',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0147',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0148',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0149',loc:'Sec. Mun. de Educação',city:'Campo Maior'},{n:'0151',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0152',loc:'G.E. Manoel Francisco',city:'Sigefredo Pacheco'},{n:'0155',loc:'CAIC',city:'Campo Maior'},{n:'0156',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0157',loc:'Col. Est. Profª Raimundinho',city:'Campo Maior'},{n:'0158',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0159',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0160',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0162',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0163',loc:"Salão Com. 'Mario Cazuza'",city:'Campo Maior'},{n:'0164',loc:'Salão Com. Santo Antônio',city:'Campo Maior'},{n:'0165',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0166',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0167',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0168',loc:'G.E. Prof. Francisco Luis',city:'Jatobá do Piauí'},{n:'0171',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0172',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0173',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0174',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0175',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0176',loc:'U.E. Tertuliano Pereira',city:'Jatobá do Piauí'},{n:'0177',loc:'G.E. Monsenhor Mateus',city:'Sigefredo Pacheco'},{n:'0178',loc:'U.E. José Cândido Gaioso',city:'Jatobá do Piauí'},{n:'0179',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0180',loc:'U.E. José Gomes de Oliveira',city:'Campo Maior'},{n:'0181',loc:'G.E. Treze de Março',city:'Campo Maior'},{n:'0185',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0186',loc:'Esc. Reassentamento Corredores',city:'Campo Maior'},{n:'0187',loc:'Esc. Mun. R.A. Maximino',city:'Campo Maior'},{n:'0188',loc:'Escola Mun. da Montanha',city:'Jatobá do Piauí'},{n:'0189',loc:'G.E. Manoel Pereira dos Reis',city:'Sigefredo Pacheco'},{n:'0191',loc:'Sec. Est. de Fazenda',city:'Campo Maior'},{n:'0192',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0193',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0194',loc:'G.E. de Tanques',city:'Jatobá do Piauí'},{n:'0195',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0196',loc:'U.E. José Gonçalves Oliveira',city:'Campo Maior'},{n:'0197',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0198',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0199',loc:'U.E. Rafael Nogueira Passos',city:'Jatobá do Piauí'},{n:'0200',loc:'Salão Comunitário',city:'Jatobá do Piauí'},{n:'0201',loc:'U.E. Antônio Pereira Santos',city:'Sigefredo Pacheco'},{n:'0202',loc:'CAIC',city:'Campo Maior'},{n:'0203',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0204',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0205',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0206',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0207',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0208',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0209',loc:'Assoc. Moradores Tangará',city:'Campo Maior'},{n:'0210',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0211',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0212',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0213',loc:'U.E. Manoel Rodrigues Melo',city:'Sigefredo Pacheco'},{n:'0214',loc:'Esc. Rural Sto. Antônio C.V.',city:'Sigefredo Pacheco'},{n:'0215',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0216',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0217',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0218',loc:'Posto Saúde da Varjota',city:'Campo Maior'},{n:'0219',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0220',loc:'G.E. Povoado Tapera',city:'Campo Maior'},{n:'0221',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0222',loc:'U.E. José Ribeiro da Luz',city:'Sigefredo Pacheco'},{n:'0223',loc:'CAIC',city:'Campo Maior'},{n:'0224',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0225',loc:'Esc. Mun. A.F. Ribeiro Paz',city:'Jatobá do Piauí'},{n:'0226',loc:'Esc. Mun. Mano Castelo Branco',city:'Campo Maior'},{n:'0227',loc:'U.E. Francisco F.P. Oliveira',city:'Jatobá do Piauí'},{n:'0228',loc:'U.E. Antonio Cícero Oliveira',city:'Sigefredo Pacheco'},{n:'0229',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0230',loc:'U.E. Antonio Carmelo Barbosa',city:'Sigefredo Pacheco'},{n:'0231',loc:'U.E. Jovino Josino Oliveira',city:'Sigefredo Pacheco'},{n:'0232',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0233',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0234',loc:'Salão Com. Corredores',city:'Campo Maior'},{n:'0235',loc:'G.E. Aguida M. Conceição',city:'Campo Maior'},{n:'0236',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0237',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0238',loc:'G.E. Anita Gaioso',city:'Jatobá do Piauí'},{n:'0239',loc:'U.E. João Félix de Andrade',city:'Jatobá do Piauí'},{n:'0240',loc:'IFPI',city:'Campo Maior'},{n:'0241',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0242',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0243',loc:'Igreja da Morada Nova',city:'Jatobá do Piauí'},{n:'0244',loc:'U.E. Linoca Gayoso',city:'Campo Maior'},{n:'0245',loc:'Esc. Mun. A.M. Castelo Branco',city:'Jatobá do Piauí'},{n:'0246',loc:'U.E. Miguel Rocha',city:'Sigefredo Pacheco'},{n:'0247',loc:'U.E. Ivon Pacheco',city:'Sigefredo Pacheco'},{n:'0248',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0249',loc:'Centro Ed. JA Mulata Lima',city:'Campo Maior'},{n:'0250',loc:'U.E. Dr. Jerônimo S. Silva',city:'Sigefredo Pacheco'},{n:'0251',loc:'IFPI',city:'Campo Maior'},{n:'0252',loc:'U.E. da Paz Sousa',city:'Sigefredo Pacheco'},{n:'0253',loc:'U.E. Oscar Gil C. Branco',city:'Jatobá do Piauí'},{n:'0254',loc:'Creche Vovô José',city:'Campo Maior'},{n:'0255',loc:'U.E. Vida Verde',city:'Campo Maior'},{n:'0256',loc:'Esc. Mun. N.S. de Fátima',city:'Campo Maior'},{n:'0257',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0258',loc:'Posto Saúde M. Sousa Dié',city:'Jatobá do Piauí'},{n:'0259',loc:'G.E. Marion Saraiva',city:'Campo Maior'},{n:'0260',loc:'Creche Mamãe Lima M. Oliveira',city:'Jatobá do Piauí'},{n:'0261',loc:'Creche Tia Medeiros',city:'Campo Maior'},{n:'0146',loc:'U.E. Antônio Rodrigues',city:'Campo Maior'}
 ];
 var SECTIONS = SECTIONS_FALLBACK;
+
+// ══════════════════════════════════════════════
+// SAÚDE DE SINCRONIZAÇÃO — regra 5 do CLAUDE.md
+// ══════════════════════════════════════════════
+// O Admin grava direto no Supabase, sem fila offline IndexedDB (diferente
+// dos módulos de campo) — não há o que "tentar de novo sozinho" aqui. O
+// badge reflete a verdade sobre a ÚLTIMA gravação em vez de simular uma
+// fila que não existe: fica escondido até a primeira escrita, mostra 🟢
+// depois de um sucesso e 🔴 depois de uma falha (some sozinho ao suceder
+// de novo). Chamado por trackSync(true/false) em cada função de escrita.
+function trackSync(ok){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  el.style.display = 'flex';
+  if(ok){ el.className = 'sync-badge sync-ok'; el.textContent = '🟢 Sync'; }
+  else  { el.className = 'sync-badge sync-fail'; el.textContent = '🔴 Falhou salvar'; }
+}
+
+// Declarados aqui em cima (não perto de renderMidias()/filterTable(), onde
+// ficavam antes) porque essas duas funções podem rodar cedo no carregamento
+// da página — um `const` mais abaixo no arquivo cai em TDZ (ReferenceError
+// "before initialization") se for referenciado antes da própria linha
+// executar, mesmo a função em si só sendo declarada (não chamada) depois.
+const MIDIA_STATUS_LABEL = {
+  aguardando_encerramento:'⏳ Aguardando',
+  pronta_para_coleta:'📦 Pronta',
+  em_coleta_rota:'🚗 Em coleta',
+  coleta_dedicada:'⚡ Dedicada',
+  coletada:'✅ Coletada',
+  entregue_transmissao:'📡 Entregue',
+};
+const MIDIA_STATUS_COLOR = {
+  aguardando_encerramento:'var(--text3)',
+  pronta_para_coleta:'var(--yellow)',
+  em_coleta_rota:'var(--blue)',
+  coleta_dedicada:'var(--purple)',
+  coletada:'var(--green)',
+  entregue_transmissao:'#15803d',
+};
+// Transmissão DIGITAL (JE-Connect) — distinta da entrega física acima.
+const TX_STATUS_BADGE = {
+  pendente:     {label:'Pendente',     cls:'b-off'},
+  em_andamento: {label:'Em andamento', cls:'b-warn'},
+  transmitido:  {label:'Transmitido',  cls:'b-ok'},
+  falhou:       {label:'Falhou',       cls:'b-err'},
+};
 
 // ── MEMBROS DA EQUIPE ──────────────────────────────────────
 const TEAM_KEY = 'sime_equipe_v1';
@@ -604,7 +813,34 @@ function escopoLabel(){
   return null;
 }
 
-function loadTeam(){ try{return JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');}catch(e){return[];} }
+// window.EQUIPE_REAL (sime_usuarios, carregarDadosReais() no <script type=
+// "module">) é a fonte de identidade (nome/e-mail/perfil/ativo) — sem ela
+// (ainda sem sessão), cai no cache local puro, como antes. Campos sem coluna
+// no banco (cor/iniciais/seções de coleta/substituto) continuam vindo do
+// cache local, casados por id e, pros que ainda têm o id fantasma antigo
+// ('uNNN', de antes desta correção), por e-mail.
+function loadTeam(){
+  let local; try{ local=JSON.parse(localStorage.getItem(TEAM_KEY)||'[]'); }catch(e){ local=[]; }
+  const real = window.EQUIPE_REAL;
+  if(!real) return local;
+  const porId = new Map(local.map(m=>[m.id,m]));
+  const porEmail = new Map(local.filter(m=>m.email).map(m=>[m.email,m]));
+  return real.map(u=>{
+    const extra = porId.get(u.id) || porEmail.get(u.email) || {};
+    return {
+      id: u.id, nome: u.nome, email: u.email||'', perfil: u.perfil,
+      iniciais: extra.iniciais || (u.nome||'?').split(/\s+/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase(),
+      cor: extra.cor || '#2a2a2a',
+      local: extra.local || '',
+      empresa_id: u.empresa_id || extra.empresa_id || '',
+      empresa: extra.empresa || (window.EMPRESAS||[]).find(e=>e.id===u.empresa_id)?.nome || '',
+      secoes: extra.secoes || [],
+      substituto: extra.substituto || '',
+      substituto_tel: extra.substituto_tel || '',
+      telefone_whatsapp: u.telefone_whatsapp || extra.telefone_whatsapp || '',
+    };
+  });
+}
 function saveTeam(d){ localStorage.setItem(TEAM_KEY,JSON.stringify(d)); }
 
 // Equipe padrão
@@ -626,7 +862,7 @@ function hasPerm(p){ return PERFIS[curUser.perfil]?.perms.includes(p); }
 function switchUser(uid){
   const team = loadTeam();
   const u = team.find(m=>m.id===uid);
-  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); renderProblemas(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
+  if(u){ curUser=u; applyUser(); renderDash(); renderTable(); showToast('✓ Perfil: '+PERFIS[u.perfil]?.label); }
 }
 function applyUser(){
   document.getElementById('u-av').textContent   = curUser.iniciais;
@@ -653,11 +889,82 @@ window.aplicarIdentidade = function(){
   const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
   curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
   applyUser();
-  renderDash(); renderTable(); renderProblemas();
+  renderDash(); renderTable();
   const btnSair = document.getElementById('btn-logout');
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
 };
+
+// ── HERMES (heartbeat + versão) ──────────────────────────────────────────
+// Lê direto de sime_heartbeat/sime_componentes (padrão normal do SIME: o
+// frontend sempre fala com o Supabase pela anon key + RLS). Quem GRAVA é só
+// o Hermes, e só via /api/hermes-heartbeat com o Bearer da zona — nunca com
+// service key direto, ver SIME_hermes_skill_heartbeat.md no repositório
+// bernardobbs/hermes. RLS por
+// zona já garante que quem não é super_admin só vê a própria.
+async function renderHermes(){
+  const el = document.getElementById('hermes-grid');
+  if (!el) return;
+  const [{ data: zonas, error: e0 }, { data: componentes, error: e1 }, { data: heartbeats, error: e2 }, { data: agoraStr }] = await Promise.all([
+    supabase.from('sime_zonas').select('id,numero,municipio'),
+    supabase.from('sime_componentes').select('*'),
+    supabase.from('sime_heartbeat').select('*'),
+    supabase.rpc('sime_now'),
+  ]);
+  if (e0 || e1 || e2) {
+    el.innerHTML = '<div class="hint">Não foi possível carregar — tabelas do Hermes ainda não existem nesta base? (sql/SIME_hermes_gestao_schema.sql)</div>';
+    return;
+  }
+  const zonaPorId = {}; (zonas || []).forEach(z => { zonaPorId[z.id] = z; });
+  const porZona = {};
+  (heartbeats || []).forEach(h => { porZona[h.zona_id] = { ...(porZona[h.zona_id]||{}), hb: h, zona: zonaPorId[h.zona_id] }; });
+  (componentes || []).forEach(c => { porZona[c.zona_id] = { ...(porZona[c.zona_id]||{}), comp: c, zona: porZona[c.zona_id]?.zona || zonaPorId[c.zona_id] }; });
+  const zonaIds = Object.keys(porZona);
+  if (!zonaIds.length) { el.innerHTML = '<div class="hint">Nenhum heartbeat ainda — o Hermes desta zona nunca gravou status.</div>'; return; }
+  const agoraMs = agoraStr ? new Date(agoraStr).getTime() : Date.now();
+  el.innerHTML = zonaIds.map(zid => {
+    const { hb, comp, zona } = porZona[zid];
+    const online = hb ? (agoraMs - new Date(hb.ultimo_heartbeat).getTime()) < 5 * 60 * 1000 : false;
+    const idadeMin = hb ? Math.round((agoraMs - new Date(hb.ultimo_heartbeat).getTime()) / 60000) : null;
+    return `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:.88rem;">${zona ? zona.numero + 'ª Zona' : 'Zona ' + zid.slice(0,8)}</div>
+        <div style="font-size:.72rem;font-weight:700;color:${online?'#1ea672':'var(--red)'}">${online?'🟢 online':'⚪ sem sinal'}${idadeMin!==null?` · há ${idadeMin} min`:''}</div>
+      </div>
+      ${hb ? `
+      <div style="font-size:.78rem;color:var(--text2);line-height:1.9;">
+        <div>Versão: <b>${hb.versao || '—'}</b>${hb.commit_hash ? ` (${hb.commit_hash.slice(0,7)})` : ''}</div>
+        <div>Uptime: ${hb.uptime_s ? Math.round(hb.uptime_s/3600)+'h' : '—'} · CPU ${hb.cpu_pct ?? '—'}% · RAM ${hb.mem_mb ?? '—'}MB${hb.temperatura_c!=null?` · ${hb.temperatura_c}°C`:''}</div>
+        <div>WhatsApp: ${hb.whatsapp_status || '—'} · Telegram: ${hb.telegram_status || '—'}</div>
+      </div>` : '<div class="hint" style="margin:8px 0;">Sem heartbeat registrado.</div>'}
+      ${comp ? `
+      <div style="font-size:.72rem;color:var(--text3);margin-top:8px;">
+        ${comp.atualizar_agora ? '🔄 Atualização pendente' + (comp.versao_desejada?` → ${comp.versao_desejada}`:'') : (comp.ultimo_resultado==='erro' ? `⚠ Última atualização falhou: ${comp.ultimo_erro||'sem detalhe'}` : '')}
+      </div>` : ''}
+      <button class="btn btn-out" style="margin-top:10px;font-size:.74rem;" onclick="solicitarAtualizacaoHermes('${zid}','${(comp && comp.componente) || 'hermes'}')">⬆️ Solicitar atualização</button>
+    </div>`;
+  }).join('');
+}
+window.renderHermes = renderHermes;
+
+function solicitarAtualizacaoHermes(zonaId, componente){
+  pedirTexto('Versão desejada. Deixe em branco para a mais recente publicada.', '', async (versao) => {
+    closeModal();
+    const { data: ts } = await supabase.rpc('sime_now');
+    const payload = {
+      zona_id: zonaId, componente,
+      versao_desejada: versao.trim() || null,
+      atualizar_agora: true,
+      solicitado_por: window.MEU_USUARIO_ID || null,
+      solicitado_em: ts,
+    };
+    const { error } = await supabase.from('sime_componentes').upsert(payload, { onConflict: 'zona_id,componente' });
+    if (error) { showToast('⚠ Falha ao solicitar'); return; }
+    showToast('✓ Atualização solicitada — o Hermes atende no próximo heartbeat');
+    renderHermes();
+  }, { titulo:'Solicitar atualização do Hermes', placeholder:'ex: v1.2.0', labelOk:'⬆️ Solicitar' });
+}
 
 function renderZonas(){
   const el = document.getElementById('zonas-grid');
@@ -683,39 +990,35 @@ function renderZonas(){
 }
 
 // ── DADOS DA ELEIÇÃO ──────────────────────────────────────
-function loadMesa(){ try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
-function saveMesaSec(n,st){ const d=loadMesa(); d[n]={...d[n],...st}; localStorage.setItem('sime_mesa_v1',JSON.stringify(d)); }
+// window.MESA_ESTADO_MAP vem de sime_mesa_estado (Supabase) via
+// iniciarMesaEstadoReal() no <script type="module"> do topo — snapshot +
+// Realtime, mesmo padrão da TV Dia (mesmo fallback: sem remoto ainda, cai no
+// localStorage — nunca mostra menos do que o navegador já sabia).
+function loadMesa(){ if(window.MESA_ESTADO_MAP) return window.MESA_ESTADO_MAP; try{return JSON.parse(localStorage.getItem('sime_mesa_v1')||'{}')}catch(e){return{}} }
 
-// Dados reportados pelo Coordenador de Acessibilidade (SIME_acessibilidade).
-// Usa panico.urna (o Mesário usa panico.urnaprob) — normalizado aqui.
-function loadAcess(){ try{return JSON.parse(localStorage.getItem('sime_acess_v1')||'{}')}catch(e){return{}} }
+// sime_acao_acessibilidade grava na MESMA linha/colunas de sime_mesa_estado
+// que o mesário usa (não é tabela separada) — não existe mais um "loadAcess"
+// distinto; o pânico do coordenador de acessibilidade já chega unificado
+// dentro do próprio loadMesa().
 
-// Estado unificado de pânico/fila de uma seção, combinando Mesário
-// (sime_mesa_v1) e Coordenador de Acessibilidade (sime_acess_v1).
-// origem: de onde veio cada pânico ativo (para exibição no painel).
-function estadoSecao(n, st, ac){
-  st = st || loadMesa()[n]; ac = ac || loadAcess()[n];
-  const mesaEnergia = !!(st?.panico?.energia   && !st?.panico_resolved?.energia);
-  const mesaUrna    = !!(st?.panico?.urnaprob  && !st?.panico_resolved?.urnaprob);
-  const acEnergia   = !!(ac?.panico?.energia   && !ac?.panico_resolved?.energia);
-  const acUrna      = !!(ac?.panico?.urna      && !ac?.panico_resolved?.urna);
-  const origem = [];
-  if(mesaEnergia||mesaUrna) origem.push('mesário');
-  if(acEnergia||acUrna)     origem.push('acessibilidade');
-  return {
-    energia: mesaEnergia || acEnergia,
-    urna:    mesaUrna    || acUrna,
-    panico:  mesaEnergia || mesaUrna || acEnergia || acUrna,
-    fila:    Math.max(st?.fila>0?st.fila:0, ac?.fila>0?ac.fila:0) || 0,
-    origem,
-  };
+// Estado de pânico/fila de uma seção, direto de sime_mesa_estado.
+// origem: quem gravou por último (updated_by_origem) — aproximação, já que a
+// tabela não guarda "quem setou cada campo", só o último autor da linha.
+function estadoSecao(n, st){
+  st = st || loadMesa()[n];
+  const energia = !!(st?.panico?.energia  && !st?.panico_resolved?.energia);
+  const urna    = !!(st?.panico?.urnaprob && !st?.panico_resolved?.urnaprob);
+  const sos     = !!(st?.panico?.sos      && !st?.panico_resolved?.sos);
+  const panico = energia || urna || sos;
+  const origem = panico && st?.origem ? [st.origem === 'coord_acessibilidade' ? 'acessibilidade' : 'mesário'] : [];
+  return { energia, urna, sos, panico, fila: st?.fila>0?st.fila:0, origem };
 }
 
 // fmtNow() vem de sime_ui_utils.js
 
 function getStatus(st,uni){
   if(!st && !(uni&&uni.panico)) return {label:'Sem dados',cls:'b-off'};
-  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)));
+  const panic = uni ? uni.panico : (st&&((st.panico?.energia&&!st.panico_resolved?.energia)||(st.panico?.urnaprob&&!st.panico_resolved?.urnaprob)||(st.panico?.sos&&!st.panico_resolved?.sos)));
   if(panic)           return {label:'⚠ Problema',cls:'b-err'};
   if(!st)             return {label:'⚠ Problema',cls:'b-err'};
   if(st.urna_cartorio)return {label:'📦 Cartório',cls:'b-ok'};
@@ -732,13 +1035,13 @@ function getStatus(st,uni){
 // DASHBOARD
 // ══════════════════════════════════════════════
 function renderDash(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   const escopoSecs = secoesDoUsuario();
   let tot=escopoSecs.length,vot=0,enc=0,urna=0,car=0,prob=0;
   const evts=[];
   escopoSecs.forEach(s=>{
     const st=mesa[s.n];
-    const uni=estadoSecao(s.n, st, acess[s.n]);
+    const uni=estadoSecao(s.n, st);
     if(st){
       if(st.vot)  vot++;
       if(st.enc||st.urna||st.urna_cartorio)  enc++;
@@ -749,6 +1052,7 @@ function renderDash(){
       const tag = uni.origem.includes('acessibilidade') && !uni.origem.includes('mesário') ? ' (acessib.)' : '';
       if(uni.energia) evts.push({tipo:'ev-prob',icon:'⚡',msg:`Seção ${parseInt(s.n)} — Falta de energia${tag}`,ts:'—'});
       if(uni.urna)    evts.push({tipo:'ev-prob',icon:'🖥️',msg:`Seção ${parseInt(s.n)} — Problema na urna${tag}`,ts:'—'});
+      if(uni.sos)     evts.push({tipo:'ev-prob',icon:'🆘',msg:`Seção ${parseInt(s.n)} — SOS${tag}`,ts:'—'});
     }
     if(st?.enc&&!st?.urna) evts.push({tipo:'ev-enc',icon:'🔒',msg:`Seção ${parseInt(s.n)} encerrada`,ts:'—'});
     if(st?.urna_cartorio) evts.push({tipo:'ev-urna',icon:'📦',msg:`Seção ${parseInt(s.n)} — urna no cartório`,ts:'—'});
@@ -756,10 +1060,10 @@ function renderDash(){
 
   // Stat cards
   const cards = [
-    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?'174 seções cadastradas':escopoLabel()||'Escopo restrito',color:'var(--text)'},
-    {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'#16a34a'},
-    {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'#2563eb'},
-    {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'#dc2626':'var(--text3)'},
+    {val:tot,lbl:'Total de seções',sub:userEscopo()==='tudo'?`${tot} seções cadastradas`:escopoLabel()||'Escopo restrito',color:'var(--text)'},
+    {val:vot,lbl:'Em votação',sub:`${Math.round(vot/tot*100)}% do total`,color:'var(--green)'},
+    {val:enc,lbl:'Encerradas',sub:`${urna} com urna saiu`,color:'var(--blue)'},
+    {val:prob,lbl:'Com problema',sub:prob?'Atenção imediata':'Nenhum ativo',color:prob?'var(--red)':'var(--text3)'},
   ];
   document.getElementById('stat-cards').innerHTML = cards.map(c=>`
     <div class="stat-card">
@@ -801,9 +1105,9 @@ function renderDash(){
       </div>
     </div>`;
   }).join('');
-
-  // Badge tab problemas
-  document.getElementById('prob-count-badge').textContent = prob ? `(${prob})` : '';
+  // Badge da aba Problemas: não daqui — atualizarBadgeProblemas() (topo do
+  // arquivo) conta sime_ocorrencias de verdade, que cobre tipos que este
+  // dashboard nem enxerga (mesa incompleta, instalação, "outro").
 }
 
 // ══════════════════════════════════════════════
@@ -811,10 +1115,10 @@ function renderDash(){
 // ══════════════════════════════════════════════
 let allRows = [];
 function renderTable(){
-  const mesa = loadMesa(); const acess = loadAcess();
+  const mesa = loadMesa();
   allRows = secoesDoUsuario().map(s=>{
     const st = mesa[s.n]||null;
-    const uni = estadoSecao(s.n, st, acess[s.n]);
+    const uni = estadoSecao(s.n, st);
     const panic = uni.panico;
     const status = getStatus(st, uni);
     const mv = st?Object.values(st.mesa||{}):[]; const chegou=mv.filter(v=>v>=1).length;
@@ -828,7 +1132,6 @@ function filterTable(){
   const q   = document.getElementById('sec-search').value.toLowerCase();
   const sf  = document.getElementById('sec-filter-status').value;
   const cf  = document.getElementById('sec-filter-cidade').value;
-  const mesa= loadMesa();
 
   const filtered = allRows.filter(r=>{
     const {s,st,panic,status} = r;
@@ -846,8 +1149,11 @@ function filterTable(){
   });
 
   const tbody = document.getElementById('sec-tbody');
-  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>`
-    <tr class="${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
+  tbody.innerHTML = filtered.map(({s,st,panic,status,chegou,fila})=>{
+    const tx = (window.MIDIAS_MAP?.[s.n]?.transmissao_status) || 'pendente';
+    const txB = TX_STATUS_BADGE[tx] || TX_STATUS_BADGE.pendente;
+    return `
+    <tr class="clicavel ${panic?'has-prob':''}" onclick="openEditSec('${s.n}')">
       <td><strong>${parseInt(s.n)}</strong></td>
       <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.loc}</td>
       <td>${s.city.replace(' do Piauí','').replace(' Pacheco','')}</td>
@@ -856,71 +1162,15 @@ function filterTable(){
       <td>${fila!==null?`<span style="background:var(--yellow-bg);color:var(--yellow);padding:1px 7px;border-radius:99px;font-weight:700">${fila}</span>`:`<span style="color:var(--text3)">—</span>`}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>${st?.urna_cartorio?'📦':st?.urna?'🚗':'<span style="color:var(--text3)">—</span>'}</td>
-      <td><button class="btn btn-out btn-xs" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
-    </tr>`).join('');
-}
-
-// ══════════════════════════════════════════════
-// PROBLEMAS
-// ══════════════════════════════════════════════
-function renderProblemas(){
-  const mesa = loadMesa(); const acess = loadAcess(); const items=[];
-  secoesDoUsuario().forEach(s=>{
-    const uni=estadoSecao(s.n, mesa[s.n], acess[s.n]);
-    if(!uni.panico) return;
-    const origem = uni.origem.join(' + ');
-    if(uni.energia) items.push({n:s.n,loc:s.loc,city:s.city,tipo:'energia',origem});
-    if(uni.urna)    items.push({n:s.n,loc:s.loc,city:s.city,tipo:'urna',origem});
-  });
-
-  document.getElementById('prob-subtitle').textContent = items.length
-    ? `${items.length} alerta${items.length>1?'s':''} ativo${items.length>1?'s':''}` : 'Nenhum problema ativo';
-
-  const list = document.getElementById('prob-list');
-  if(!items.length){
-    list.innerHTML='<div class="card" style="text-align:center;padding:32px;color:var(--text3)"><div style="font-size:2rem;margin-bottom:8px">✅</div><div>Nenhum problema ativo</div></div>';
-    return;
-  }
-  list.innerHTML = items.map(p=>{
-    const tipos = {energia:'⚡ Falta de energia',urna:'🖥️ Problema na urna'};
-    const cls   = {energia:'pt-energia',urna:'pt-urna'};
-    const canResolve = hasPerm('resolver_panico');
-    return `<div class="prob-card">
-      <div class="pc-icon">${p.tipo==='energia'?'⚡':'🖥️'}</div>
-      <div class="pc-info">
-        <div class="pc-sec">Seção ${parseInt(p.n)}</div>
-        <div class="pc-loc">${p.loc} · ${p.city}</div>
-        <span class="pc-tipo ${cls[p.tipo]}">${tipos[p.tipo]}</span>
-        <div class="pc-ts">Reportado por: ${p.origem||'monitoramento'}</div>
-      </div>
-      <div class="pc-actions">
-        ${canResolve?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${p.n}','${p.tipo}')">✓ Resolver</button>`:''}
-        <button class="btn btn-blue btn-sm" onclick="openEditSec('${p.n}')">Detalhes</button>
-      </div>
-    </div>`;
+      <td><span class="badge ${txB.cls}">${txB.label}</span></td>
+      <td><button class="btn btn-out btn-xs" aria-label="Editar seção" onclick="event.stopPropagation();openEditSec('${s.n}')">✏️</button></td>
+    </tr>`;
   }).join('');
 }
 
-function resolverPanico(n,tipo){
-  if(!hasPerm('resolver_panico')){ showToast('⚠ Sem permissão'); return; }
-  // Resolve nas duas fontes: Mesário (sime_mesa_v1) e Acessibilidade (sime_acess_v1)
-  const mesa=loadMesa();
-  if(!mesa[n]) mesa[n]={};
-  if(!mesa[n].panico_resolved) mesa[n].panico_resolved={};
-  if(tipo==='energia') mesa[n].panico_resolved.energia=true;
-  if(tipo==='urna')    mesa[n].panico_resolved.urnaprob=true;
-  localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
-
-  const acess=loadAcess();
-  if(acess[n]){
-    if(!acess[n].panico_resolved) acess[n].panico_resolved={};
-    if(tipo==='energia') acess[n].panico_resolved.energia=true;
-    if(tipo==='urna')    acess[n].panico_resolved.urna=true;
-    localStorage.setItem('sime_acess_v1',JSON.stringify(acess));
-  }
-  showToast(`✓ Pânico resolvido — Seção ${parseInt(n)}`);
-  renderProblemas(); renderDash(); renderTable();
-}
+// Aba PROBLEMAS: removida daqui — virou SIME_problemas.html, com dado real
+// (sime_ocorrencias) em vez desta leitura de localStorage, que nunca refletia
+// o que o mesário grava no servidor. O botão da nav abre a tela nova.
 
 // ══════════════════════════════════════════════
 // MODAL EDITAR SEÇÃO
@@ -929,7 +1179,7 @@ function openEditSec(n){
   const sec = SECTIONS.find(s=>s.n===n);
   if(!sec) return;
   const mesa=loadMesa(); const st=mesa[n]||{};
-  const uni=estadoSecao(n, st, loadAcess()[n]);
+  const uni=estadoSecao(n, st);
   const mv=Object.values(st.mesa||{}); const chegou=mv.filter(v=>v>=1).length;
   const canEdit = hasPerm('editar_secoes') || hasPerm('lancar_telefone');
   const canResolve = hasPerm('resolver_panico');
@@ -941,7 +1191,7 @@ function openEditSec(n){
         <div class="modal-title">Seção ${parseInt(n)}</div>
         <div class="modal-sub">${sec.loc} · ${sec.city}</div>
       </div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       ${!canEdit?'<div style="background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:8px 12px;font-size:.74rem;color:var(--yellow);margin-bottom:12px">⚠ Seu perfil não permite edição — visualização apenas.</div>':''}
@@ -958,10 +1208,7 @@ function openEditSec(n){
           </div>
         </div>
         ${canResolve?`
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${uni.energia?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','energia');closeModal()">✓ Resolver energia</button>`:''}
-          ${uni.urna?`<button class="btn btn-green btn-sm" onclick="resolverPanico('${n}','urna');closeModal()">✓ Resolver urna</button>`:''}
-        </div>`:''}
+        <button class="btn btn-green btn-sm" onclick="window.open('SIME_problemas.html','sime_problemas')">Resolver em Problemas →</button>`:''}
       </div>`:''}
 
       <!-- Chegada de membros -->
@@ -972,7 +1219,7 @@ function openEditSec(n){
             const key=['pres','m1','m2','sec'][i];
             const val=st.mesa?.[key]||0;
             return `<div class="form-group">
-              <label>${m}</label>
+              <label for="mesa-${key}">${m}</label>
               <select id="mesa-${key}"${dis}>
                 <option value="0" ${val===0?'selected':''}>Ausente</option>
                 <option value="1" ${val===1?'selected':''}>Presente</option>
@@ -1012,7 +1259,7 @@ function openEditSec(n){
       <div>
         <div class="sec-title">Fila de votação</div>
         <div class="form-group">
-          <label>Número de pessoas na fila (0 = sem fila)</label>
+          <label for="f-fila">Número de pessoas na fila (0 = sem fila)</label>
           <input type="number" id="f-fila" value="${uni.fila||0}" min="0" max="999"${dis}>
         </div>
       </div>
@@ -1034,29 +1281,31 @@ function openEditSec(n){
   document.getElementById('overlay').classList.add('open');
 }
 
-function salvarSec(n){
+async function salvarSec(n){
   if(!hasPerm('editar_secoes')&&!hasPerm('lancar_telefone')){ showToast('⚠ Sem permissão'); return; }
-  const patch = {
-    mesa:{
-      pres:+document.getElementById('mesa-pres').value,
-      m1:  +document.getElementById('mesa-m1').value,
-      m2:  +document.getElementById('mesa-m2').value,
-      sec: +document.getElementById('mesa-sec').value,
-    },
-    zero:document.getElementById('f-zero').checked,
-    vot: document.getElementById('f-vot').checked,
-    enc: document.getElementById('f-enc').checked,
-    urna:document.getElementById('f-urna').checked,
-    urna_cartorio:document.getElementById('f-car').checked,
-    fila:+document.getElementById('f-fila').value,
-    obs: document.getElementById('f-obs').value,
-    _editado_por: curUser.nome,
-    _editado_em:  fmtNow(),
-  };
-  saveMesaSec(n,patch);
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para salvar'); return; }
+  const { error } = await supabase.rpc('sime_acao_mesa', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_mesa_pres: +document.getElementById('mesa-pres').value,
+    p_mesa_m1:   +document.getElementById('mesa-m1').value,
+    p_mesa_m2:   +document.getElementById('mesa-m2').value,
+    p_mesa_sec:  +document.getElementById('mesa-sec').value,
+    p_zeresima:  document.getElementById('f-zero').checked,
+    p_votacao:   document.getElementById('f-vot').checked,
+    p_encerrada: document.getElementById('f-enc').checked,
+    p_urna_recolhida: document.getElementById('f-urna').checked,
+    p_urna_cartorio:  document.getElementById('f-car').checked,
+    p_fila: +document.getElementById('f-fila').value,
+    p_observacao: document.getElementById('f-obs').value,
+    p_origem: 'admin',
+  });
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao salvar')); return; }
+  trackSync(true);
   closeModal();
   showToast(`✓ Seção ${parseInt(n)} atualizada`);
-  renderDash(); renderTable(); renderProblemas();
+  // Sem renderDash()/renderTable() manual: o Realtime (iniciarMesaEstadoReal,
+  // topo do arquivo) já vai receber o UPDATE e re-renderizar sozinho.
 }
 
 // ══════════════════════════════════════════════
@@ -1067,26 +1316,27 @@ function openNewEvent(){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">📞 Lançar ocorrência por telefone</div><div class="modal-sub">Registre informações recebidas verbalmente</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="form-group"><label>Número da seção</label>
+      <div class="form-group"><label for="ev-sec">Número da seção</label>
         <select id="ev-sec">
           <option value="">— selecionar seção —</option>
           ${SECTIONS.map(s=>`<option value="${s.n}">Seção ${parseInt(s.n)} — ${s.loc}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Tipo de ocorrência</label>
+      <div class="form-group"><label for="ev-tipo">Tipo de ocorrência</label>
         <select id="ev-tipo" onchange="updateEvForm()">
           <option value="status">Atualização de status</option>
           <option value="fila">Fila de votação</option>
           <option value="panico_energia">⚡ Falta de energia</option>
           <option value="panico_urna">🖥️ Problema na urna</option>
+          <option value="panico_sos">🆘 SOS (outro problema)</option>
           <option value="obs">Observação livre</option>
         </select>
       </div>
       <div id="ev-extra"></div>
-      <div class="form-group"><label>Recebido por</label>
+      <div class="form-group"><label for="ev-recv">Recebido por</label>
         <input type="text" id="ev-recv" value="${curUser.nome}" placeholder="Nome de quem recebeu a informação">
       </div>
     </div>
@@ -1102,41 +1352,46 @@ function updateEvForm(){
   const tipo = document.getElementById('ev-tipo').value;
   const extra = document.getElementById('ev-extra');
   if(tipo==='fila'){
-    extra.innerHTML='<div class="form-group"><label>Quantidade na fila</label><input type="number" id="ev-val" value="0" min="0" max="999"></div>';
+    extra.innerHTML='<div class="form-group"><label for="ev-val">Quantidade na fila</label><input type="number" id="ev-val" value="0" min="0" max="999"></div>';
   } else if(tipo==='status'){
-    extra.innerHTML=`<div class="form-group"><label>Status informado</label><select id="ev-val">
+    extra.innerHTML=`<div class="form-group"><label for="ev-val">Status informado</label><select id="ev-val">
       <option value="vot">Votação iniciada</option>
       <option value="enc">Votação encerrada</option>
       <option value="urna">Urna recolhida pelo motorista</option>
       <option value="cartorio">Urna chegou ao cartório</option>
     </select></div>`;
   } else if(tipo==='obs'){
-    extra.innerHTML='<div class="form-group"><label>Observação</label><textarea id="ev-val" rows="3" placeholder="Descreva a ocorrência..."></textarea></div>';
+    extra.innerHTML='<div class="form-group"><label for="ev-val">Observação</label><textarea id="ev-val" rows="3" placeholder="Descreva a ocorrência..."></textarea></div>';
   } else { extra.innerHTML=''; }
 }
 
-function salvarEvento(){
+async function salvarEvento(){
   const n   = document.getElementById('ev-sec').value; if(!n){ showToast('⚠ Selecione a seção'); return; }
   const tipo= document.getElementById('ev-tipo').value;
-  const mesa= loadMesa(); if(!mesa[n]) mesa[n]={};
-  const st  = mesa[n];
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
 
-  if(tipo==='panico_energia'){ if(!st.panico)st.panico={};st.panico.energia=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.energia=false; }
-  else if(tipo==='panico_urna'){if(!st.panico)st.panico={};st.panico.urnaprob=true;if(!st.panico_resolved)st.panico_resolved={};st.panico_resolved.urnaprob=false;}
-  else if(tipo==='fila'){ st.fila=+document.getElementById('ev-val').value; }
+  // sime_acao_mesa trata NULL como "não mexe" — só entra no payload o campo
+  // que este tipo de ocorrência de fato muda. O gatilho do banco cria a
+  // ocorrência em sime_ocorrencias sozinho quando é pânico (mesmo caminho do
+  // mesário), então não precisa duplicar essa lógica aqui.
+  const payload = { p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_origem: 'admin_telefone' };
+  if(tipo==='panico_energia'){ payload.p_panico_energia = true; payload.p_panico_energia_resolvido = false; }
+  else if(tipo==='panico_urna'){ payload.p_panico_urna = true; payload.p_panico_urna_resolvido = false; }
+  else if(tipo==='panico_sos'){ payload.p_panico_sos = true; payload.p_panico_sos_resolvido = false; }
+  else if(tipo==='fila'){ payload.p_fila = +document.getElementById('ev-val').value; }
   else if(tipo==='status'){
     const val=document.getElementById('ev-val').value;
-    if(val==='vot')     st.vot=true;
-    if(val==='enc')     {st.enc=true;st.vot=true;}
-    if(val==='urna')    {st.urna=true;st.enc=true;}
-    if(val==='cartorio'){st.urna_cartorio=true;st.urna=true;st.enc=true;}
-  } else if(tipo==='obs'){ st.obs=document.getElementById('ev-val').value; }
+    if(val==='vot')          payload.p_votacao = true;
+    else if(val==='enc')      { payload.p_encerrada = true; payload.p_votacao = true; }
+    else if(val==='urna')     { payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+    else if(val==='cartorio') { payload.p_urna_cartorio = true; payload.p_urna_recolhida = true; payload.p_encerrada = true; }
+  } else if(tipo==='obs'){ payload.p_observacao = document.getElementById('ev-val').value; }
 
-  st._editado_por=document.getElementById('ev-recv').value;
-  st._editado_em=fmtNow();
-  mesa[n]=st; localStorage.setItem('sime_mesa_v1',JSON.stringify(mesa));
+  const { error } = await supabase.rpc('sime_acao_mesa', payload);
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao registrar')); return; }
+  trackSync(true);
   closeModal(); showToast(`✓ Ocorrência registrada — Seção ${parseInt(n)}`);
-  renderDash();renderTable();renderProblemas();
 }
 
 // ══════════════════════════════════════════════
@@ -1160,8 +1415,8 @@ function renderTeam(){
           ${m.email?`<div class="tc-scope">✉️ ${m.email}</div>`:''}
         </div>
         <div style="margin-left:auto;display:flex;gap:4px;">
-          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
-          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" onclick="editMember('${m.id}')">✏️</button>`:''}
+          ${(hasPerm('config_equipe')&&m.email)?`<button class="btn btn-out btn-xs" title="Redefinir senha" aria-label="Redefinir senha" onclick="resetarSenhaMembro('${m.id}')">🔑</button>`:''}
+          ${hasPerm('config_equipe')?`<button class="btn btn-out btn-xs" aria-label="Editar membro" onclick="editMember('${m.id}')">✏️</button>`:''}
         </div>
       </div>
       <div class="perm-grid">
@@ -1190,27 +1445,57 @@ function showMemberModal(m){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">${isNew?'Novo membro':'Editar membro'}</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label>Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
-        <div class="form-group"><label>Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
+        <div class="form-group"><label for="m-nome">Nome completo</label><input type="text" id="m-nome" value="${m?.nome||''}" placeholder="Nome do membro"></div>
+        <div class="form-group"><label for="m-ini">Iniciais</label><input type="text" id="m-ini" value="${m?.iniciais||''}" placeholder="ex: RA" maxlength="2"></div>
       </div>
       <div class="form-group">
-        <label>E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
+        <label for="m-email">E-mail de acesso ${m?.email?'':'<span style="color:var(--text3);font-weight:400">(cria o login da equipe)</span>'}</label>
         <input type="email" id="m-email" value="${m?.email||''}" placeholder="pessoa@tre-pi.jus.br" ${m?.email?'disabled style="opacity:.6"':''}>
-        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
+        <div style="font-size:.68rem;color:var(--text2);margin-top:3px">${m?.email?'Login já criado — o e-mail não muda por aqui.':'Preencha para gerar uma conta com senha temporária. Vazio = membro sem login (só visível no painel).'}</div>
       </div>
-      <div class="form-group"><label>Perfil de acesso</label>
+      <div class="form-group"><label for="m-perfil">Perfil de acesso</label>
         <select id="m-perfil" onchange="onPerfilChange()">
           ${Object.entries(PERFIS).map(([k,v])=>`<option value="${k}" ${m?.perfil===k?'selected':''} >${v.label}</option>`).join('')}
         </select>
       </div>
 
+      <!-- Zona (só super_admin, só ao criar login novo) — sem isto, todo login
+           novo caía sempre na zona de quem está logado (a Edge Function
+           sime-admin-user aceita zona_id no corpo, mas nada na tela mandava).
+           Sem essa escolha não havia como um super_admin da 7ª criar o
+           primeiro usuário da 94ª — ninguém de lá existia ainda pra logar e
+           criar os próprios colegas. -->
+      ${(isNew && window.SIME_IDENTIDADE?.perfil==='super_admin' && window.ZONAS_REAIS?.length) ? `
+      <div class="form-group"><label for="m-zona">Zona eleitoral</label>
+        <select id="m-zona">
+          ${window.ZONAS_REAIS.map(z=>`<option value="${z.id}" ${z.id===window.MINHA_ZONA_ID?'selected':''}>${z.numero}ª Zona — ${z.municipio||''}</option>`).join('')}
+        </select>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Só super_admin escolhe a zona — os demais perfis sempre criam na própria.</div>
+      </div>` : ''}
+
+      <!-- WhatsApp de contato — dois usos, ambos opcionais e independentes:
+           (1) escalonamento de pânico (hermes-contatos.js), só relevante pra
+           Gestor de Problemas/Chefe de Cartório — Hermes avisa quando um
+           problema não é resolvido a tempo (10 min sem dono, 30 min sem
+           solução, ver CLAUDE.md); (2) enviar as credenciais de acesso por
+           WhatsApp assim que a conta é criada (28/08/2026, pedido direto:
+           "quando criar um usuário, e constar o telefone podemos enviar os
+           dados pelo whatsapp") — vale pra QUALQUER perfil, só ao criar (não
+           faz sentido reenviar credenciais numa edição). onPerfilChange()
+           decide visibilidade e o texto de ajuda conforme o caso. -->
+      <div class="form-group" id="grp-tel-escalonamento" style="display:none">
+        <label for="m-tel">WhatsApp de contato</label>
+        <input type="text" id="m-tel" value="${m?.telefone_whatsapp ? fmtTelefone(m.telefone_whatsapp) : ''}" placeholder="(86) 9xxxx-xxxx">
+        <div id="m-tel-helper" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
+      </div>
+
       <!-- Escopo: Local (Coord. de Acessibilidade) -->
       <div class="form-group" id="grp-local" style="display:none">
-        <label>Local de votação (escopo)</label>
+        <label for="m-local">Local de votação (escopo)</label>
         <select id="m-local">
           <option value="">— selecionar local —</option>
           ${[...new Set(SECTIONS.map(s=>s.loc))].sort().map(l=>`<option value="${l}" ${m?.local===l?'selected':''}>${l}</option>`).join('')}
@@ -1229,12 +1514,13 @@ function showMemberModal(m){
           <div id="m-empresa-secoes-preview" style="font-size:.68rem;color:var(--text3);margin-top:3px"></div>
         ` : `
           <input type="text" id="m-empresa" value="${m?.empresa||''}" placeholder="ex: Transporte Piauí Ltda">
+          <div style="font-size:.68rem;color:var(--text3);margin-top:3px">⚠ Sem lista de empresas cadastradas (ou offline) — digite o nome livremente.</div>
         `}
       </div>
 
       <!-- Escopo: Seções designadas (Motoristas / Coletor de Mídias) -->
       <div class="form-group" id="grp-secoes" style="display:none">
-        <label>Seções designadas (números separados por vírgula)</label>
+        <label for="m-secoes">Seções designadas (números separados por vírgula)</label>
         <input type="text" id="m-secoes" value="${(m?.secoes||[]).map(x=>parseInt(x)).join(', ')}" placeholder="ex: 63, 64, 65">
         <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Vazio = nenhuma seção visível.</div>
       </div>
@@ -1242,12 +1528,12 @@ function showMemberModal(m){
       <!-- Substituto temporário (Coletor de Mídias) -->
       <div id="grp-substituto" style="display:none">
         <div class="form-row">
-          <div class="form-group"><label>Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
-          <div class="form-group"><label>WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
+          <div class="form-group"><label for="m-substituto">Substituto temporário</label><input type="text" id="m-substituto" value="${m?.substituto||''}" placeholder="Nome do substituto"></div>
+          <div class="form-group"><label for="m-subtel">WhatsApp do substituto</label><input type="text" id="m-subtel" value="${m?.substituto_tel||''}" placeholder="86999998888"></div>
         </div>
       </div>
 
-      <div class="form-group"><label>Cor do avatar</label>
+      <div class="form-group"><label for="m-cor">Cor do avatar</label>
         <input type="color" id="m-cor" value="${m?.cor||'#2a2a2a'}" style="height:36px;padding:2px;">
       </div>
     </div>
@@ -1266,6 +1552,20 @@ function onPerfilChange(){
   const esc = PERFIS[p]?.escopo || 'tudo';
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   const show = (id,cond)=>{ const el=document.getElementById(id); if(el) el.style.display=cond?'':'none'; };
+  // isNew inferido do mesmo jeito que o resto da tela já faz pra e-mail
+  // (disabled = login já existe, ver template de m-email acima) — o campo
+  // de WhatsApp em si sempre existe no DOM, só a visibilidade/texto mudam.
+  const isNew = !document.getElementById('m-email')?.disabled;
+  const ehEscalonamento = p==='gestor_prob' || p==='coordenador';
+  show('grp-tel-escalonamento', isNew || ehEscalonamento);
+  const telHelper = document.getElementById('m-tel-helper');
+  if(telHelper){
+    telHelper.textContent = ehEscalonamento
+      ? (isNew
+        ? 'Recebe aviso automático do Hermes quando um problema não é resolvido a tempo, e as credenciais de acesso por WhatsApp assim que a conta for criada.'
+        : 'Recebe aviso automático do Hermes quando um problema não é resolvido a tempo.')
+      : (isNew ? 'Opcional — se preenchido, as credenciais de acesso são enviadas por WhatsApp assim que a conta for criada.' : '');
+  }
   show('grp-local',      esc==='local');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
@@ -1318,6 +1618,15 @@ async function saveMember(id){
               : ((esc==='empresa'||esc==='midias') ? parseSecoes(document.getElementById('m-secoes')?.value) : []),
     substituto: perfil==='coletor_midias' ? (document.getElementById('m-substituto')?.value.trim()||'') : '',
     substituto_tel: perfil==='coletor_midias' ? (document.getElementById('m-subtel')?.value.replace(/\D/g,'')||'') : '',
+    // 28/08/2026: campo deixou de ser exclusivo de gestor_prob/coordenador —
+    // qualquer perfil pode ter um WhatsApp de contato agora (ver
+    // showMemberModal/onPerfilChange). Gravado com "55" na frente, mesma
+    // convenção usada em sime_atores/sime_campanhas_confirmacao — antes
+    // gravava dígito cru sem "55", inconsistente com o resto do projeto (só
+    // não dava pra perceber porque nada ainda enviava mensagem de fato pra
+    // este número; ao ligar o envio de credenciais abaixo, o formato errado
+    // quebraria o envio em silêncio).
+    telefone_whatsapp: (() => { const d = telSemPais(document.getElementById('m-tel')?.value||''); return d ? '55'+d : ''; })(),
   };
   const team=loadTeam();
   const jaTinhaEmail = id ? !!team.find(m=>m.id===id)?.email : false;
@@ -1333,18 +1642,72 @@ async function saveMember(id){
       showToast('⚠ Faça login como admin para criar acessos');
       return;
     }
+    // zona_id só é enviado quando o campo existe na tela (super_admin, ver
+    // showMemberModal) — a Edge Function ignora o campo pra qualquer outro
+    // perfil e usa sempre a zona de quem está logado.
+    const zonaEl = document.getElementById('m-zona');
     try{
       const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
-        body:JSON.stringify({ nome, email, perfil }),
+        body:JSON.stringify(zonaEl ? { nome, email, perfil, zona_id: zonaEl.value } : { nome, email, perfil }),
       });
       const out=await resp.json().catch(()=>({}));
-      if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      if(!resp.ok){ trackSync(false); showToast('⚠ '+(out.error||'Falha ao criar acesso')); return; }
+      trackSync(true);
       base.auth_user_id=out.auth_user_id;
       base.usuario_id=out.usuario_id;
-      mostrarSenhaTemporaria(nome, email, out.senha_temporaria);
+      // sime-admin-user não aceita telefone — a Edge Function só cria o login
+      // (nome/email/perfil); o telefone de contato é gravado à parte, aqui,
+      // com a sessão normal do admin (mesma RLS do update abaixo).
+      let enviadoPorWhatsapp = false;
+      if(base.telefone_whatsapp){
+        const { error: telErr } = await supabase.from('sime_usuarios').update({ telefone_whatsapp: base.telefone_whatsapp }).eq('id', out.usuario_id);
+        if(telErr){ trackSync(false); showToast('⚠ WhatsApp de contato não sincronizou: '+telErr.message); }
+
+        // Enfileira as credenciais pro Hermes mandar por WhatsApp (28/08/2026,
+        // pedido direto: "quando criar um usuário, e constar o telefone
+        // podemos enviar os dados pelo whatsapp") — mesma fila de disparo já
+        // usada em todo o resto do sistema (sime_campanhas_confirmacao),
+        // fluxo "SIMPLES": campanha_id nulo, sem ator_id (não é mesário),
+        // sem gate de campanha nenhuma (ver api/hermes-campanhas.js — item
+        // sem campanha_id passa direto). Não substitui a tela abaixo, que
+        // continua mostrando a senha uma vez — é reforço pra quando não dá
+        // pra repassar por outro canal na hora, ou WhatsApp/Hermes falhar.
+        const zonaIdCriado = zonaEl ? zonaEl.value : window.MINHA_ZONA_ID;
+        const painelUrl = location.origin + location.pathname;
+        const msgCredenciais = `Olá, ${nome}! Seu acesso ao SIME (Sistema de Monitoramento Eleitoral) foi criado.\n\n`
+          + `🌐 Painel: ${painelUrl}\n`
+          + `📧 E-mail: ${email}\n`
+          + `🔑 Senha temporária: ${out.senha_temporaria}\n\n`
+          + `No primeiro login você vai precisar trocar essa senha.`;
+        const { error: msgErr } = await supabase.from('sime_campanhas_confirmacao').insert({
+          telefone_whatsapp: base.telefone_whatsapp, zona_id: zonaIdCriado,
+          mensagem_enviada: msgCredenciais, status: 'pendente',
+        });
+        if(msgErr){ showToast('⚠ Credenciais criadas, mas não deu pra enfileirar o envio por WhatsApp: '+msgErr.message); }
+        else {
+          enviadoPorWhatsapp = true;
+          // eleicao_id preenchido de propósito — sem ele o log grava (INSERT
+          // é livre) mas fica invisível pra sempre em qualquer SELECT (RLS de
+          // sime_logs exige eleicao_id numa eleição da zona visível), mesmo
+          // bug já documentado e corrigido noutras telas deste projeto.
+          // window.ELEICAO_ID (não getEleicaoAtiva importado direto — aquele
+          // import vive só no <script type="module"> do topo, invisível pro
+          // <script> clássico onde saveMember() roda; ReferenceError achado
+          // testando isto) já é resolvido no boot por iniciarMesaEstadoReal()
+          // e é o mesmo campo que o resto desta tela usa (ver p_eleicao_id
+          // nas ações de seção). Sempre a eleição da zona de QUEM ESTÁ
+          // LOGADO — se um super_admin criar alguém noutra zona, o log fica
+          // com a eleição da própria zona dele, não da zona de destino;
+          // aceitável pra uma anotação de auditoria, não vale a query extra.
+          const { data: tsLog } = await supabase.rpc('sime_now');
+          await supabase.from('sime_logs').insert({ acao: 'membro_credenciais_whatsapp_enfileiradas', modulo: 'admin', eleicao_id: window.ELEICAO_ID || null, payload: { usuario_id: out.usuario_id }, ts: tsLog });
+        }
+      }
+      mostrarSenhaTemporaria(nome, email, out.senha_temporaria, enviadoPorWhatsapp);
     }catch(e){
+      trackSync(false);
       showToast('⚠ Sem conexão — acesso não criado');
       return;
     }
@@ -1353,29 +1716,62 @@ async function saveMember(id){
   if(id){
     const idx=team.findIndex(m=>m.id===id);
     if(idx>-1) team[idx]={...team[idx],...base};
+    // Editando gente real (id vindo de sime_usuarios via loadTeam()): nome,
+    // perfil e telefone de escalonamento também precisam mudar lá, senão a
+    // edição "salva" mas some no próximo carregamento — loadTeam() sempre
+    // prioriza o banco pra esses campos.
+    if((window.EQUIPE_REAL||[]).some(u=>u.id===id)){
+      const { error } = await supabase.from('sime_usuarios').update({ nome, perfil, telefone_whatsapp: base.telefone_whatsapp||null }).eq('id', id);
+      if(error){ trackSync(false); showToast('⚠ Nome/perfil não sincronizaram: '+mensagemErroAmigavel(error, 'tente novamente')); }
+      else trackSync(true);
+      const u = window.EQUIPE_REAL.find(u=>u.id===id);
+      if(u && !error){ u.nome = nome; u.perfil = perfil; u.telefone_whatsapp = base.telefone_whatsapp||null; }
+    }
   } else {
-    team.push({id:'u'+Date.now(),...base});
+    // usuario_id: o real sime_usuarios.id, quando saveMember() acabou de criar
+    // o login (acima). Sem e-mail (perfil sem login, ex.: preposto offline),
+    // fica no id local mesmo — não tem como ligar a uma linha real ainda.
+    team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
-  saveTeam(team); closeModal(); renderTeam();
+  saveTeam(team); renderTeam();
   // Se o usuário atual foi editado, reaplica o escopo
   if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
-  if(!(email && !jaTinhaEmail)) showToast('✓ Membro salvo');
+  // Bug real corrigido em 28/08/2026, achado ao adicionar a nota de envio por
+  // WhatsApp na tela de credenciais: quando acabamos de criar um login novo,
+  // mostrarSenhaTemporaria() já abriu o modal de senha — um closeModal()
+  // incondicional aqui embaixo fechava esse modal de volta no MESMO instante
+  // (mesma execução síncrona, sem nenhuma interação do usuário no meio), então
+  // a senha temporária nunca ficava visível pra ninguém lá. Fecha só quando
+  // NÃO acabamos de criar login — mesma condição que já decidia o toast
+  // "Membro salvo" antes desta correção, agora unificada aqui.
+  if(email && !jaTinhaEmail){
+    // credenciais na tela — fica aberto até a pessoa clicar Copiar/Fechar
+  } else {
+    closeModal();
+    showToast('✓ Membro salvo');
+  }
 }
 
 // Modal que exibe a senha temporária UMA vez (não fica salva em lugar nenhum).
-function mostrarSenhaTemporaria(nome, email, senha){
+// enviadoPorWhatsapp (28/08/2026): quando a pessoa tinha telefone cadastrado,
+// as mesmas credenciais já foram enfileiradas pro Hermes mandar por WhatsApp
+// (ver saveMember) — a tela continua mostrando a senha de qualquer forma,
+// pro caso do WhatsApp falhar ou o admin preferir repassar na hora por outro
+// canal.
+function mostrarSenhaTemporaria(nome, email, senha, enviadoPorWhatsapp){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">✓ Acesso criado</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Login criado para <strong>${nome}</strong>. Passe estas credenciais à pessoa — a senha aparece só desta vez e deverá ser trocada no primeiro acesso.</p>
-      <div class="form-group"><label>E-mail</label>
-        <input type="text" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
+      ${enviadoPorWhatsapp ? `<p style="margin:0 0 10px;font-size:.8rem;color:var(--accent,#1a7f37)">💬 Essas credenciais também já foram enfileiradas pra sair por WhatsApp no número informado.</p>` : ''}
+      <div class="form-group"><label for="credenciais-email">E-mail</label>
+        <input type="text" id="credenciais-email" readonly value="${email}" onclick="this.select()" style="font-family:monospace">
       </div>
-      <div class="form-group"><label>Senha temporária</label>
-        <input type="text" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
+      <div class="form-group"><label for="credenciais-senha">Senha temporária</label>
+        <input type="text" id="credenciais-senha" readonly value="${senha}" onclick="this.select()" style="font-family:monospace;font-size:1.05rem;font-weight:700">
       </div>
     </div>
     <div class="modal-footer">
@@ -1391,23 +1787,55 @@ function copiarCredenciais(email, senha){
 
 // Redefine a senha de um membro (ação 'reset' da Edge Function): gera nova senha
 // temporária e força a troca no próximo login. Para quando a pessoa perde a senha.
-async function resetarSenhaMembro(id){
+function resetarSenhaMembro(id){
   const m=loadTeam().find(x=>x.id===id);
   if(!m?.email){ showToast('⚠ Membro sem login'); return; }
-  if(!confirm(`Gerar nova senha temporária para ${m.nome}?`)) return;
-  let sessao=null;
-  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
-  if(!sessao){ showToast('⚠ Faça login como admin'); return; }
-  try{
-    const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
-      body:JSON.stringify({ acao:'reset', email:m.email }),
-    });
-    const out=await resp.json().catch(()=>({}));
-    if(!resp.ok){ showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
-    mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria);
-  }catch(e){ showToast('⚠ Sem conexão'); }
+  pedirConfirmacao(`Gerar nova senha temporária para ${m.nome}?`, async () => {
+    let sessao=null;
+    try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
+    if(!sessao){ closeModal(); showToast('⚠ Faça login como admin'); return; }
+    try{
+      const resp=await fetch(`${SIME_CONFIG.supabaseUrl}/functions/v1/sime-admin-user`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${sessao.access_token}`},
+        body:JSON.stringify({ acao:'reset', email:m.email }),
+      });
+      const out=await resp.json().catch(()=>({}));
+      if(!resp.ok){ closeModal(); showToast('⚠ '+(out.error||'Falha ao redefinir')); return; }
+
+      // Manda a senha nova por WhatsApp também (28/08/2026, pedido direto:
+      // "e quando gerar nova senha enviar por whatsapp tb a senha
+      // temporaria") — mesmo fluxo SIMPLES de sempre (ver saveMember()),
+      // só que aqui reaproveitando o telefone JÁ salvo do membro
+      // (m.telefone_whatsapp, vindo de loadTeam()/EQUIPE_REAL — já grava com
+      // "55" na frente desde a correção em saveMember()), sem pedir de novo.
+      // zona_id: window.MINHA_ZONA_ID (não vem no objeto `m` — loadTeam()
+      // não carrega esse campo) — cobre o caso comum (quem reseta é da
+      // própria zona do membro, único caso que a Edge Function libera pra
+      // não-super_admin); um super_admin resetando alguém de outra zona é
+      // exceção rara, mesmo trade-off já aceito no log de criação acima.
+      let enviadoPorWhatsapp = false;
+      if(m.telefone_whatsapp){
+        const painelUrl = location.origin + location.pathname;
+        const msgReset = `Olá, ${m.nome}! Sua senha do SIME foi redefinida.\n\n`
+          + `🌐 Painel: ${painelUrl}\n`
+          + `📧 E-mail: ${m.email}\n`
+          + `🔑 Nova senha temporária: ${out.senha_temporaria}\n\n`
+          + `No próximo login você vai precisar trocar essa senha.`;
+        const { error: msgErr } = await supabase.from('sime_campanhas_confirmacao').insert({
+          telefone_whatsapp: m.telefone_whatsapp, zona_id: window.MINHA_ZONA_ID,
+          mensagem_enviada: msgReset, status: 'pendente',
+        });
+        if(msgErr){ showToast('⚠ Senha redefinida, mas não deu pra enfileirar o envio por WhatsApp: '+msgErr.message); }
+        else {
+          enviadoPorWhatsapp = true;
+          const { data: tsLog } = await supabase.rpc('sime_now');
+          await supabase.from('sime_logs').insert({ acao: 'membro_senha_resetada_whatsapp_enfileirada', modulo: 'admin', eleicao_id: window.ELEICAO_ID || null, payload: { usuario_id: id }, ts: tsLog });
+        }
+      }
+      mostrarSenhaTemporaria(m.nome, m.email, out.senha_temporaria, enviadoPorWhatsapp);
+    }catch(e){ closeModal(); showToast('⚠ Sem conexão'); }
+  }, { titulo:'Redefinir senha', labelOk:'🔑 Gerar nova senha' });
 }
 
 // Troca obrigatória da senha temporária no 1º login (must_change_password).
@@ -1417,11 +1845,11 @@ window.exigirTrocaSenha = function(){
     <div class="modal-hdr"><div><div class="modal-title">🔑 Defina sua senha</div></div></div>
     <div class="modal-body">
       <p style="margin:0 0 10px;font-size:.85rem">Este é seu primeiro acesso. Crie uma senha pessoal para continuar.</p>
-      <div class="form-group"><label>Nova senha (mín. 6 caracteres)</label>
+      <div class="form-group"><label for="ts-senha1">Nova senha (mín. 6 caracteres)</label>
         <input type="password" id="ts-senha1" placeholder="nova senha"></div>
-      <div class="form-group"><label>Repita a senha</label>
+      <div class="form-group"><label for="ts-senha2">Repita a senha</label>
         <input type="password" id="ts-senha2" placeholder="repita"></div>
-      <div id="ts-erro" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
+      <div id="ts-erro" role="alert" aria-live="polite" style="color:var(--red,#c0392b);font-size:.75rem;min-height:1em"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-dark" onclick="confirmarTrocaSenha()">Salvar senha</button>
@@ -1436,14 +1864,65 @@ async function confirmarTrocaSenha(){
   if(s1!==s2){ erro.textContent='As senhas não conferem.'; return; }
   try{
     const { error } = await supabase.auth.updateUser({ password:s1, data:{ must_change_password:false } });
-    if(error){ erro.textContent='Não foi possível salvar: '+error.message; return; }
+    if(error){ erro.textContent='Não foi possível salvar: '+mensagemErroAmigavel(error, 'tente novamente'); return; }
     closeModal(); showToast('✓ Senha definida');
   }catch(e){ erro.textContent='Erro de conexão. Tente novamente.'; }
 }
 function deleteMember(id){
-  if(!confirm('Remover este membro?')) return;
-  saveTeam(loadTeam().filter(m=>m.id!==id));
-  closeModal(); renderTeam(); showToast('✓ Membro removido');
+  const m = loadTeam().find(x=>x.id===id);
+  pedirConfirmacao(
+    `Remover ${m?.nome||'este membro'} da equipe?\n\nO login dele será desativado — não vai mais conseguir entrar no SIME. Dá pra reativar depois em "👤 Removidos".`,
+    async () => {
+      // Gente real (id de sime_usuarios): loadTeam() sempre reconstrói a lista a
+      // partir de window.EQUIPE_REAL, então só apagar do cache local não
+      // removeria nada de verdade — a pessoa reapareceria no próximo carregamento.
+      const eraReal = (window.EQUIPE_REAL||[]).some(u=>u.id===id);
+      if(eraReal){
+        const { error } = await supabase.from('sime_usuarios').update({ ativo: false }).eq('id', id);
+        if(error){ trackSync(false); closeModal(); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao remover')); return; }
+        trackSync(true);
+        window.EQUIPE_REAL = window.EQUIPE_REAL.filter(u=>u.id!==id);
+      }
+      saveTeam(loadTeam().filter(m=>m.id!==id));
+      closeModal(); renderTeam(); showToast('✓ Membro removido — login desativado');
+    },
+    { titulo:'Remover membro', labelOk:'🗑 Remover', classeOk:'btn-red' }
+  );
+}
+
+// Lista quem foi removido (ativo=false) com caminho de volta — sem isto, "remover"
+// era uma via de mão única: a única forma de desfazer era ir direto no banco.
+function abrirRemovidos(){
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-hdr">
+      <div><div class="modal-title">👤 Membros removidos</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div id="removidos-lista" style="font-size:.85rem;color:var(--text2)">Carregando…</div></div>
+    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+  carregarRemovidos();
+}
+async function carregarRemovidos(){
+  const { data, error } = await supabase.from('sime_usuarios')
+    .select('id,nome,perfil,email').eq('ativo', false).order('nome');
+  const el = document.getElementById('removidos-lista');
+  if(!el) return; // modal fechado antes da resposta chegar
+  if(error){ el.textContent='⚠ Falha ao carregar removidos.'; return; }
+  if(!data || !data.length){ el.textContent='Nenhum membro removido.'; return; }
+  el.innerHTML = data.map(u=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)">
+      <div><strong>${u.nome}</strong><div style="font-size:.75rem;color:var(--text3)">${u.perfil||''}</div></div>
+      <button class="btn btn-dark" style="min-height:36px;padding:6px 10px;font-size:.8rem" onclick="reativarMembro('${u.id}')">↩ Reativar</button>
+    </div>`).join('');
+}
+async function reativarMembro(id){
+  const { error } = await supabase.from('sime_usuarios').update({ ativo: true }).eq('id', id);
+  if(error){ showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao reativar')); return; }
+  const { data } = await supabase.from('sime_usuarios')
+    .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp').eq('id', id).maybeSingle();
+  if(data){ window.EQUIPE_REAL = [...(window.EQUIPE_REAL||[]).filter(u=>u.id!==id), data]; }
+  closeModal(); renderTeam(); showToast('✓ Membro reativado');
 }
 
 // ══════════════════════════════════════════════
@@ -1478,14 +1957,14 @@ function renderSecoesManager(){
       <td>${rotaCodigo(s.rota_id)||'—'}</td>
       <td>${s.ativo?'✅':'⛔'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-out btn-xs" onclick="secaoForm('${s.id}')">✏️</button>
-        <button class="btn btn-out btn-xs" onclick="excluirSecao('${s.id}')">🗑</button>
+        <button class="btn btn-out btn-xs" aria-label="Editar seção" onclick="secaoForm('${s.id}')">✏️</button>
+        <button class="btn btn-out btn-xs" aria-label="Excluir seção" onclick="excluirSecao('${s.id}')">🗑</button>
       </td>
     </tr>`).join('');
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">Gerenciar seções (${_secoesCache.length})</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:60vh;overflow:auto">
       <div style="margin-bottom:8px"><button class="btn btn-dark btn-sm" onclick="secaoForm('')">+ Nova seção</button></div>
@@ -1505,22 +1984,22 @@ function secaoForm(id){
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-hdr">
       <div><div class="modal-title">${s?'Editar seção':'Nova seção'}</div></div>
-      <button class="close-btn" onclick="renderSecoesManager()">✕</button>
+      <button class="close-btn" aria-label="Fechar" onclick="renderSecoesManager()">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label>Número da seção</label>
+        <div class="form-group"><label for="sc-numero">Número da seção</label>
           <input type="number" id="sc-numero" value="${s?s.numero:''}" ${s?'disabled style=\"opacity:.6\"':''} placeholder="ex: 63"></div>
-        <div class="form-group"><label>Eleitores aptos</label>
+        <div class="form-group"><label for="sc-eleitores">Eleitores aptos</label>
           <input type="number" id="sc-eleitores" value="${s?.eleitores??''}" placeholder="ex: 285"></div>
       </div>
-      <div class="form-group"><label>Município</label>
+      <div class="form-group"><label for="sc-municipio">Município</label>
         <input list="sc-cities" id="sc-municipio" value="${s?.municipio||''}" placeholder="Município">
         <datalist id="sc-cities">${cities.map(c=>`<option value="${c}">`).join('')}</datalist>
       </div>
-      <div class="form-group"><label>Local de votação</label>
+      <div class="form-group"><label for="sc-local">Local de votação</label>
         <input type="text" id="sc-local" value="${s?.local_nome||''}" placeholder="Nome do local"></div>
-      <div class="form-group"><label>Rota (opcional)</label>
+      <div class="form-group"><label for="sc-rota">Rota (opcional)</label>
         <select id="sc-rota">
           <option value="">— sem rota —</option>
           ${rotas.map(r=>`<option value="${r.id}" ${s?.rota_id===r.id?'selected':''}>Rota ${r.codigo}</option>`).join('')}
@@ -1563,125 +2042,51 @@ async function salvarSecao(id){
   if(window.carregarDadosReais) await carregarDadosReais(); // atualiza SECTIONS/tabela principal
 }
 
-async function excluirSecao(id){
+function excluirSecao(id){
+  // A confirmação reaproveita o mesmo overlay/modal-body do gerenciador de
+  // seções (já aberto) — por isso não fecha o overlay em nenhum dos dois
+  // caminhos, só troca o conteúdo de volta pra lista ao terminar.
   const s=_secoesCache.find(x=>x.id===id); if(!s) return;
-  if(!confirm(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`)) return;
-  const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
-  if(error){ showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); return; }
-  showToast('✓ Seção excluída');
-  await openSecoesManager();
-  if(window.carregarDadosReais) await carregarDadosReais();
-}
-
-// ══════════════════════════════════════════════
-// CONFIRMAÇÃO DE MESÁRIOS
-// Verificação pré-eleição: cada mesário confirma (ou não) que permanece na função.
-// Campo sime_atores.confirmacao: pendente | confirmado | recusou | substituido.
-// Mantém sime_atores.ativo em sincronia (recusou/substituido ⇒ ativo=false).
-// ══════════════════════════════════════════════
-let _mesariosCache = [];
-let _mesFiltroStatus = '';
-let _mesBusca = '';
-const CONF_LABEL = { pendente:'⏳ Pendente', confirmado:'✅ Confirmado', recusou:'🚫 Recusou', substituido:'🔄 Substituído' };
-
-function mesSecaoNum(obs){
-  const m = /Se[çc][ãa]o\s*vota[çc][ãa]o:\s*(\d+)/i.exec(obs||'');
-  return m ? String(m[1]).padStart(4,'0') : '—';
-}
-function mesFuncaoTxt(obs){
-  const m = /Fun[çc][ãa]o:\s*([^|]+)/i.exec(obs||'');
-  return m ? m[1].trim() : '—';
-}
-
-async function openMesariosManager(){
-  if(!hasPerm('config_equipe')){ showToast('⚠ Sem permissão'); return; }
-  let sessao=null;
-  try{ sessao=(await supabase.auth.getSession()).data.session; }catch(e){}
-  if(!sessao){ showToast('⚠ Faça login para gerenciar mesários'); return; }
-  const { data, error } = await supabase.from('sime_atores')
-    .select('id,nome_completo,telefone_whatsapp,observacao,confirmacao,ativo')
-    .eq('funcao','mesario').order('nome_completo');
-  if(error){ showToast('⚠ Falha ao carregar mesários'); return; }
-  _mesariosCache = data||[];
-  renderMesariosManager();
-}
-
-function renderMesariosManager(){
-  const total=_mesariosCache.length;
-  const cont={pendente:0,confirmado:0,recusou:0,substituido:0};
-  _mesariosCache.forEach(m=>{ cont[m.confirmacao]=(cont[m.confirmacao]||0)+1; });
-  const busca=_mesBusca.trim().toLowerCase();
-  const lista=_mesariosCache.filter(m=>{
-    if(_mesFiltroStatus && m.confirmacao!==_mesFiltroStatus) return false;
-    if(busca){
-      const alvo=(m.nome_completo+' '+mesSecaoNum(m.observacao)).toLowerCase();
-      if(!alvo.includes(busca)) return false;
-    }
-    return true;
-  });
-  const linhas=lista.map(m=>`
-    <tr>
-      <td>${mesSecaoNum(m.observacao)}</td>
-      <td>${m.nome_completo}<div style="color:var(--text3);font-size:.72rem">${mesFuncaoTxt(m.observacao)}</div></td>
-      <td style="white-space:nowrap">${CONF_LABEL[m.confirmacao]||m.confirmacao}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-out btn-xs" title="Confirmado" onclick="setConfirmacao('${m.id}','confirmado')">✅</button>
-        <button class="btn btn-out btn-xs" title="Recusou" onclick="setConfirmacao('${m.id}','recusou')">🚫</button>
-        <button class="btn btn-out btn-xs" title="Substituído" onclick="setConfirmacao('${m.id}','substituido')">🔄</button>
-        <button class="btn btn-out btn-xs" title="Voltar a pendente" onclick="setConfirmacao('${m.id}','pendente')">⏳</button>
-      </td>
-    </tr>`).join('');
-  const opt=(v,txt)=>`<option value="${v}" ${_mesFiltroStatus===v?'selected':''}>${txt}</option>`;
-  document.getElementById('modal-body').innerHTML=`
-    <div class="modal-hdr">
-      <div><div class="modal-title">Confirmação de mesários (${total})</div>
-      <div style="color:var(--text3);font-size:.78rem">
-        ⏳ ${cont.pendente} pendente · ✅ ${cont.confirmado} confirmado · 🚫 ${cont.recusou} recusou · 🔄 ${cont.substituido} substituído</div></div>
-      <button class="close-btn" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body" style="max-height:62vh;overflow:auto">
-      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <input type="text" id="mes-busca" placeholder="Buscar nome ou seção…" value="${_mesBusca.replace(/"/g,'&quot;')}"
-               oninput="_mesBusca=this.value;renderMesariosManager();document.getElementById('mes-busca').focus()"
-               style="flex:1;min-width:160px;padding:6px 8px">
-        <select id="mes-status" onchange="_mesFiltroStatus=this.value;renderMesariosManager()">
-          ${opt('','Todos os status')}${opt('pendente','⏳ Pendente')}${opt('confirmado','✅ Confirmado')}${opt('recusou','🚫 Recusou')}${opt('substituido','🔄 Substituído')}
-        </select>
-      </div>
-      <table class="data-table" style="width:100%;font-size:.8rem">
-        <thead><tr><th>Seção</th><th>Nome / função</th><th>Status</th><th>Marcar</th></tr></thead>
-        <tbody>${linhas||'<tr><td colspan=4 style="text-align:center;color:var(--text3);padding:16px">Nenhum mesário no filtro.</td></tr>'}</tbody>
-      </table>
-    </div>
-    <div class="modal-footer"><button class="btn btn-out" onclick="closeModal()">Fechar</button></div>`;
-  document.getElementById('overlay').classList.add('open');
-}
-
-async function setConfirmacao(id, status){
-  // recusou/substituido ⇒ a pessoa não vai atuar (ativo=false); demais ⇒ ativo=true.
-  const ativo = !(status==='recusou' || status==='substituido');
-  const { error } = await supabase.from('sime_atores')
-    .update({ confirmacao:status, ativo }).eq('id',id);
-  if(error){ showToast('⚠ Falha ao salvar'); return; }
-  const local=_mesariosCache.find(m=>m.id===id);
-  if(local){ local.confirmacao=status; local.ativo=ativo; }
-  showToast('✓ '+(CONF_LABEL[status]||status));
-  renderMesariosManager();
+  pedirConfirmacao(`Excluir a seção ${String(s.numero).padStart(4,'0')}? Esta ação remove o cadastro da seção.`, async () => {
+    const { error } = await supabase.from('sime_secoes').delete().eq('id',id);
+    if(error){ trackSync(false); showToast('⚠ Falha ao excluir (seção pode ter dados vinculados)'); renderSecoesManager(); return; }
+    trackSync(true);
+    showToast('✓ Seção excluída');
+    await openSecoesManager();
+    if(window.carregarDadosReais) await carregarDadosReais();
+  }, { titulo:'Excluir seção', labelOk:'🗑 Excluir', classeOk:'btn-red' });
 }
 
 // ══════════════════════════════════════════════
 // CONFIG
 // ══════════════════════════════════════════════
 function renderConfig(){
-  try{
-    const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
-    const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
-    document.getElementById('eleicao-info').innerHTML=`
-      <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
-      <strong>Turno ativo:</strong> ${ta}º turno<br>
-      <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
-      <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
-  }catch(e){ document.getElementById('eleicao-info').textContent='Não configurada'; }
+  const alvo = document.getElementById('eleicao-info');
+  if(!alvo) return; // aba ainda não montada quando iniciarMesaEstadoReal() chama isto
+  // sime_eleicoes (Supabase) é a fonte — antes esta aba só lia sime_eleicao_v1
+  // do localStorage, que só existe no navegador de quem abriu o Principal.
+  // "Nome da eleição" agora também vem do banco (getEleicaoAtiva); o local
+  // continua como fallback só pra zona que salvou antes desta coluna existir.
+  let nomeLocal = '';
+  try{ nomeLocal = JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')?.nome || ''; }catch(e){}
+  const real = window.ELEICAO_ATIVA;
+  if(real){
+    alvo.innerHTML=`
+      <strong>Eleição:</strong> ${real.nome||nomeLocal||'Não configurada'}<br>
+      <strong>Turno ativo:</strong> ${real.turno}º turno<br>
+      <strong>Dia D:</strong> ${real.data_d?new Date(real.data_d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+      <strong>Abertura:</strong> ${(real.horario_ab||'').slice(0,5)||'—'} · <strong>Encerramento:</strong> ${(real.horario_enc||'').slice(0,5)||'—'}`;
+  } else {
+    try{
+      const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}')||{};
+      const ta=el.turno_ativo||1; const t=el['turno'+ta]||{};
+      alvo.innerHTML=`
+        <strong>Eleição:</strong> ${el.nome||'Não configurada'}<br>
+        <strong>Turno ativo:</strong> ${ta}º turno<br>
+        <strong>Dia D:</strong> ${t.d?new Date(t.d+'T12:00:00').toLocaleDateString('pt-BR'):'—'}<br>
+        <strong>Abertura:</strong> ${t.abertura||'—'} · <strong>Encerramento:</strong> ${t.encerramento||'—'}`;
+    }catch(e){ alvo.textContent='Não configurada'; }
+  }
 
   const links=[
     {icon:'📺',label:'TV Dia',href:'SIME_tv_dia.html'},{icon:'🗳️',label:'Mesário',href:'SIME_mesario.html'},{icon:'🔧',label:'Instalador',href:'SIME_instalador.html'},{icon:'🚚',label:'Conferente',href:'SIME_conferente.html'},{icon:'🚐',label:'Motorista',href:'SIME_motorista.html'},{icon:'📋',label:'Coordenador',href:'SIME_coordenador_preparacao.html'},{icon:'🖥️',label:'TV Véspera',href:'SIME_tv_vespera.html'},{icon:'⚙️',label:'Principal',href:'SIME_principal.html'}
@@ -1690,14 +2095,80 @@ function renderConfig(){
 }
 
 function exportarDados(){
-  const data={mesa:loadMesa(),dist:JSON.parse(localStorage.getItem('sime_dist_v1')||'{}')||'{}',lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
+  // mesa e rotas vêm do Supabase de verdade (sime_mesa_estado/sime_rotas_estado);
+  // lacre continua só local — não existe tabela pra carga/preparação/lacre
+  // ainda (pendência conhecida, ver CLAUDE.md).
+  const data={mesa:loadMesa(),rotas:window.ROTAS_ESTADO_MAP||{},lacre:JSON.parse(localStorage.getItem('sime_lacre_v3')||'{}')||'{}'};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sime_snapshot_'+Date.now()+'.json'; a.click();
   showToast('✓ Snapshot exportado');
 }
-function resetarDados(){
-  ['sime_mesa_v1'].forEach(k=>localStorage.removeItem(k));
-  showToast('✓ Dados resetados'); renderDash(); renderTable(); renderProblemas();
+// "Resetar dados de teste" virou um no-op depois da migração pro Supabase
+// (o cache local que ele apagava já estava morto) — só que isso deixou
+// Problemas de teste E estado de Dia D de teste presos na tela pra sempre,
+// sem nenhuma forma de limpar antes da operação real.
+//
+// Cobre sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) e
+// sime_mesa_estado (chegada de mesário, votação, urna, pânico) — as duas
+// únicas tabelas que um ciclo de teste normalmente suja. Escopo continua
+// restrito à zona do usuário (sime_mesa_estado não tem zona_id direto — filtra
+// pelas seções da zona). Ação irreversível: confirmação mostra a contagem de
+// cada tabela antes de apagar.
+//
+// ⚠️ Isso é seguro só ENQUANTO sime_mesa_estado só tem dado de teste — a
+// partir do Dia D real (04/10), essa tabela vira a operação de verdade e este
+// botão não deve mais ser usado (fica registrado em sime_logs quem/quando
+// apagou, pra rastrear se alguém clicar por engano depois disso).
+async function resetarProblemas(){
+  const sb = window.supabase;
+  const zonaId = window.MINHA_ZONA_ID;
+  if(!sb || !zonaId){ showToast('⚠ Entre com a conta da equipe'); return; }
+
+  // Bloqueio automático a partir do Dia D real: o botão ficava visível pra
+  // sempre, protegido só pela confirmação — a partir de 04/10,
+  // sime_mesa_estado deixa de ser dado de teste e vira a operação de
+  // verdade. Sem window.ELEICAO_ATIVA (offline/sem sessão) não dá pra
+  // checar a data, então segue pra confirmação normal como antes.
+  const hoje = new Date().toISOString().slice(0,10);
+  if(window.ELEICAO_ATIVA?.data_d && hoje >= window.ELEICAO_ATIVA.data_d){
+    showToast('⛔ Bloqueado: o Dia D desta zona já começou — isso apagaria a operação real');
+    return;
+  }
+
+  const { data: secoes, error: e0 } = await sb.from('sime_secoes').select('id').eq('zona_id', zonaId);
+  if(e0){ showToast('⚠ Falha ao carregar seções: ' + e0.message); return; }
+  const secaoIds = (secoes || []).map(s => s.id);
+
+  const [{ count: countProb, error: e1 }, { count: countMesa, error: e2 }] = await Promise.all([
+    sb.from('sime_ocorrencias').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId),
+    secaoIds.length
+      ? sb.from('sime_mesa_estado').select('secao_id', { count: 'exact', head: true }).in('secao_id', secaoIds)
+      : Promise.resolve({ count: 0, error: null }),
+  ]);
+  if(e1){ showToast('⚠ Falha ao contar ocorrências: ' + e1.message); return; }
+  if(e2){ showToast('⚠ Falha ao contar estado de Dia D: ' + e2.message); return; }
+  const totalProb = countProb || 0, totalMesa = countMesa || 0;
+  if(!totalProb && !totalMesa){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
+
+  pedirConfirmacao(
+    `Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`,
+    async () => {
+      const ops = [];
+      if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
+      if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
+      const resultados = await Promise.all(ops);
+      const falhou = resultados.find(r => r.error);
+      if(falhou){ closeModal(); showToast('⚠ '+mensagemErroAmigavel(falhou.error, 'Falha ao apagar')); return; }
+
+      const { data: ts } = await sb.rpc('sime_now');
+      await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
+
+      closeModal();
+      showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
+      await atualizarBadgeProblemas();
+    },
+    { titulo:'Apagar dados de teste', labelOk:'🗑 Apagar permanentemente', classeOk:'btn-red' }
+  );
 }
 
 // ══════════════════════════════════════════════
@@ -1709,16 +2180,67 @@ function goTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   btn.classList.add('active');
   if(id==='secoes') renderTable();
-  if(id==='problemas') renderProblemas();
   if(id==='equipe') renderTeam();
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
   if(id==='atores') renderAtores();
+  if(id==='hermes') renderHermes();
 }
 
 function closeModal(e){
   if(!e||e.target===document.getElementById('overlay'))
     document.getElementById('overlay').classList.remove('open');
+}
+
+// Traduz erro cru do Postgres/Supabase pra algo que faz sentido pra quem não
+// é dev — sem isto o toast mostrava direto "duplicate key value violates
+// unique constraint sime_secoes_numero_key" etc. (achado "médio" da
+// auditoria: 7 pontos expunham error.message puro na tela).
+function mensagemErroAmigavel(error, fallback){
+  const msg = error?.message || '';
+  if(/duplicate key|unique constraint/i.test(msg)) return 'Já existe um registro com esse valor';
+  if(/foreign key|violates.*constraint/i.test(msg)) return 'Não é possível: há dados vinculados a isso';
+  if(/permission denied|row-level security|RLS/i.test(msg)) return 'Sem permissão para esta ação';
+  if(/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — entre novamente';
+  if(/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor';
+  return fallback || 'Falha ao salvar. Tente novamente';
+}
+
+// Modais customizados pra confirmação/entrada de texto — confirm()/prompt()
+// nativos quebravam o padrão visual do resto do sistema (achado "médio" da
+// auditoria). Reaproveitam o mesmo overlay/modal-body dos formulários.
+function pedirConfirmacao(mensagem, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-hdr">
+      <div><div class="modal-title">${opts.titulo||'Confirmar'}</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body"><div style="font-size:.85rem;color:var(--text2);white-space:pre-line;line-height:1.5">${mensagem}</div></div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn ${opts.classeOk||'btn-dark'}" id="confirmacao-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('confirmacao-ok-btn').onclick = aoConfirmar;
+}
+function pedirTexto(mensagem, valorInicial, aoConfirmar, opts={}){
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-hdr">
+      <div><div class="modal-title">${opts.titulo||'Informar'}</div></div>
+      <button class="close-btn" aria-label="Fechar" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:.85rem;color:var(--text2);margin-bottom:10px;line-height:1.5">${mensagem}</div>
+      <input type="text" id="pedir-texto-inp" value="${valorInicial||''}" placeholder="${opts.placeholder||''}" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.85rem;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-out" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-dark" id="pedir-texto-ok-btn">${opts.labelOk||'Confirmar'}</button>
+    </div>`;
+  document.getElementById('overlay').classList.add('open');
+  const inp = document.getElementById('pedir-texto-inp');
+  inp.focus();
+  document.getElementById('pedir-texto-ok-btn').onclick = () => aoConfirmar(inp.value);
 }
 
 // showToast()/iniciarRelogio() vêm de sime_ui_utils.js
@@ -1750,38 +2272,28 @@ applyUser();
 renderDash();
 renderTable();
 renderConfig();
-setInterval(()=>{ renderDash(); renderProblemas(); },10000);
+setInterval(()=>{ renderDash(); },10000);
 
 // ══════════════════════════════════════════════
 // MÍDIAS
 // ══════════════════════════════════════════════
-const MIDIA_STATUS_LABEL = {
-  aguardando_encerramento:'⏳ Aguardando',
-  pronta_para_coleta:'📦 Pronta',
-  em_coleta_rota:'🚗 Em coleta',
-  coleta_dedicada:'⚡ Dedicada',
-  coletada:'✅ Coletada',
-  entregue_transmissao:'📡 Entregue',
-};
-const MIDIA_STATUS_COLOR = {
-  aguardando_encerramento:'var(--text3)',
-  pronta_para_coleta:'var(--yellow)',
-  em_coleta_rota:'var(--blue)',
-  coleta_dedicada:'var(--purple,#6040a0)',
-  coletada:'var(--green)',
-  entregue_transmissao:'#15803d',
-};
+// MIDIA_STATUS_LABEL/MIDIA_STATUS_COLOR/TX_STATUS_BADGE: declarados perto do
+// topo do arquivo (ver comentário lá) — renderTable() já roda antes daqui.
 
 function renderMidias(){
   renderColetores();
-  const midias = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
+  renderAtribuicaoTransmissao();
+  // window.MIDIAS_MAP vem de sime_midias (Supabase) via iniciarMesaEstadoReal()
+  // no <script type="module"> — antes lia sime_midias_v1 do localStorage, que
+  // nunca via o que o coletor de campo grava no próprio aparelho dele.
+  const midias = window.MIDIAS_MAP || {};
   const counts = {};
   Object.values(midias).forEach(m=>{
     const s=m.status||'aguardando_encerramento';
     counts[s]=(counts[s]||0)+1;
   });
   const total = Object.keys(midias).length;
-  document.getElementById('midias-sub').textContent = total + ' de 174 com registro';
+  document.getElementById('midias-sub').textContent = total + ' de ' + (SECTIONS?.length||0) + ' com registro';
 
   // Stats cards
   const stats = document.getElementById('midias-stats');
@@ -1834,12 +2346,106 @@ function renderColetores(){
   }).join('');
 }
 
-function coletarMidia(n){
-  const d = JSON.parse(localStorage.getItem('sime_midias_v1')||'{}');
-  d[n]={...d[n],status:'coletada',coletada_ts:Date.now(),tipo_coleta:'dedicada',updated_at:Date.now()};
-  localStorage.setItem('sime_midias_v1',JSON.stringify(d));
+async function coletarMidia(n){
+  const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+  if(!secaoId || !window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+  const { error } = await supabase.rpc('sime_acao_midia', {
+    p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID,
+    p_status: 'coletada', p_tipo: 'dedicada',
+  });
+  if(error){ trackSync(false); showToast('⚠ '+mensagemErroAmigavel(error, 'Falha ao registrar')); return; }
+  trackSync(true);
   showToast('✓ Mídia seção '+parseInt(n)+' coletada');
-  renderMidias();
+  // Sem renderMidias() manual: subscribeMidias (topo do arquivo) recebe o
+  // UPDATE via Realtime e re-renderiza sozinho.
+}
+
+// Matriz nominal técnico↔seção (transmissão de resultados) — resolve a
+// ambiguidade de 2024: quem é responsável por transmitir cada seção, definida
+// e publicada antes do dia D, não descoberta reativamente por mensagem avulsa.
+function renderAtribuicaoTransmissao(){
+  const munSel = document.getElementById('tx-mun');
+  const tecSel = document.getElementById('tx-tecnico');
+  if(!munSel || !tecSel) return;
+
+  if(!munSel.dataset.filled){
+    munSel.innerHTML = '<option value="">Todos os municípios</option>' +
+      (window.cities||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+    munSel.dataset.filled = '1';
+  }
+  const tecnicos = (window.ATORES_REAIS||[]).filter(a=>a.funcao==='tecnico' && a.ativo);
+  tecSel.innerHTML = '<option value="">— selecionar técnico —</option>' +
+    tecnicos.map(t=>`<option value="${t.id}">${t.nome}</option>`).join('');
+
+  const mun = munSel.value;
+  const secs = (window.SECTIONS||[]).filter(s=>!mun || s.city===mun);
+  const midias = window.MIDIAS_MAP||{};
+  const box = document.getElementById('tx-secoes');
+  if(!secs.length){
+    box.innerHTML = '<div style="color:var(--text3);font-size:.78rem;padding:8px">Nenhuma seção neste filtro.</div>';
+  } else {
+    box.innerHTML = secs.map(s=>{
+      const m = midias[s.n]||{};
+      const tecAtual = (window.ATORES_REAIS||[]).find(a=>a.id===m.tecnico_responsavel_id);
+      return `<label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:.8rem;border-bottom:1px solid var(--border)">
+        <input type="checkbox" class="tx-check" value="${s.n}" onchange="updateTxCount()">
+        <span style="flex:1">Seção ${parseInt(s.n)} — ${s.loc}</span>
+        <span style="color:var(--text3)">${tecAtual?tecAtual.nome:'sem técnico'}</span>
+      </label>`;
+    }).join('');
+  }
+  updateTxCount();
+
+  // Lista "quem faz o quê" — pra consulta/impressão no dia D.
+  const porTecnico = {};
+  Object.entries(midias).forEach(([n,m])=>{
+    if(!m.tecnico_responsavel_id) return;
+    (porTecnico[m.tecnico_responsavel_id] ||= []).push(n);
+  });
+  const resumo = Object.entries(porTecnico);
+  const resumoEl = document.getElementById('tx-por-tecnico');
+  if(!resumo.length){
+    resumoEl.innerHTML = '';
+  } else {
+    resumoEl.innerHTML = '<div style="font-weight:700;font-size:.8rem;margin-bottom:6px;">Quem transmite o quê</div>' +
+      resumo.map(([tecId,ns])=>{
+        const t = (window.ATORES_REAIS||[]).find(a=>a.id===tecId);
+        const nums = ns.map(n=>parseInt(n)).sort((a,b)=>a-b).join(', ');
+        return `<div style="font-size:.78rem;padding:3px 0"><strong>${t?t.nome:'(técnico removido)'}</strong> — seções ${nums}</div>`;
+      }).join('');
+  }
+}
+
+// Sem isto, marcar 0 seções só dava erro DEPOIS de clicar "Atribuir" — o
+// contador e o próprio botão agora refletem a seleção em tempo real
+// (achado "baixo" da auditoria).
+function updateTxCount(){
+  const n = document.querySelectorAll('.tx-check:checked').length;
+  const btn = document.getElementById('tx-atribuir-btn');
+  const lbl = document.getElementById('tx-count');
+  if(btn) btn.disabled = n === 0;
+  if(lbl) lbl.textContent = n === 0 ? 'Nenhuma seção selecionada' : `${n} ${n>1?'seções':'seção'} selecionada${n>1?'s':''}`;
+}
+
+async function atribuirTransmissao(){
+  const tecId = document.getElementById('tx-tecnico').value;
+  if(!tecId){ showToast('⚠ Selecione o técnico'); return; }
+  const marcadas = [...document.querySelectorAll('.tx-check:checked')].map(c=>c.value);
+  if(!marcadas.length){ showToast('⚠ Selecione ao menos uma seção'); return; }
+  if(!window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para registrar'); return; }
+
+  let ok=0, falhas=0;
+  await Promise.all(marcadas.map(async n=>{
+    const secaoId = window.SECAO_ID_POR_NUMERO?.[n];
+    if(!secaoId) { falhas++; return; }
+    const { error } = await supabase.rpc('sime_midia_transmissao_upsert', {
+      p_secao_id: secaoId, p_eleicao_id: window.ELEICAO_ID, p_tecnico_id: tecId,
+    });
+    if(error) falhas++; else ok++;
+  }));
+  trackSync(falhas === 0);
+  showToast(falhas ? `⚠ ${ok} atribuídas, ${falhas} falharam` : `✓ ${ok} seções atribuídas`);
+  // Sem renderMidias() manual: subscribeMidias recebe o UPDATE via Realtime.
 }
 
 // ══════════════════════════════════════════════
@@ -1876,6 +2482,12 @@ function renderAtores(){
   // Renderiza no máximo 300 linhas: a zona tem centenas de mesários e montar
   // a tabela inteira de uma vez trava a aba em máquina modesta.
   const LIMITE = 300;
+  // Aviso de truncamento repetido aqui em cima — a linha no fim da tabela
+  // (achado "baixo" da auditoria) só aparecia pra quem rolasse até lá.
+  if(filtered.length > LIMITE){
+    document.getElementById('atores-sub').innerHTML =
+      `⚠ Mostrando ${LIMITE} de <strong>${filtered.length}</strong> — refine a busca ou o filtro de função pra ver o resto`;
+  }
   tbody.innerHTML = filtered.slice(0, LIMITE).map(a=>`
     <tr>
       <td><strong>${a.nome}</strong>${a.funcao_mesa?` <span style="font-size:.68rem;color:var(--text3)">${a.funcao_mesa}</span>`:''}</td>

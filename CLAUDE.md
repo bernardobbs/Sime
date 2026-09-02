@@ -49,7 +49,11 @@ Eleição: **4 de outubro de 2026** (1º turno — primeiro domingo de outubro).
 - Banco: Supabase (PostgreSQL + Realtime + Auth + Edge Functions)
 - Hospedagem: Vercel (Hobby — gratuito)
 - Fila: Upstash QStash (Free — 500 msg/dia)
-- IA + WhatsApp: Hermes Agent (PC do cartório — sem túnel, ver hermes/README.md)
+- WhatsApp: Hermes Agent — Node.js + Baileys num Raspberry Pi 3B (rede
+  doméstica, atrás de NAT, sem túnel), com fallback de IA (Gemini) só para os
+  casos que o regex não cobre. Código e documentação do agente vivem no
+  repositório separado `bernardobbs/hermes` — ver `README.md` e
+  `HERMES_RUNTIME.md` de lá.
 - Custo total: **R$ 0,00/mês**
 
 ### Variáveis de ambiente necessárias (Vercel)
@@ -63,7 +67,8 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 
 > `HERMES_URL` NÃO deve ser definida quando o Hermes roda atrás de NAT: ela só
 > serve para o SIME empurrar a notificação direto. Sem ela, o SIME enfileira e
-> o Hermes consulta — que é o modo correto. Ver `hermes/README.md`.
+> o Hermes consulta — que é o modo correto. Ver `README.md` no repositório
+> `bernardobbs/hermes`.
 
 ---
 
@@ -72,7 +77,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
 /
 ├── CLAUDE.md                          ← Este arquivo
-├── modules/                           ← 16 módulos HTML
+├── modules/                           ← 20 módulos HTML
 │   ├── SIME_coordenador_preparacao.html  D-X
 │   ├── SIME_tv_preparacao.html           D-X (TV)
 │   ├── SIME_conferente.html              D-1
@@ -86,29 +91,33 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_midias.html                  Dia D
 │   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
-│   ├── SIME_principal.html               Todos
+│   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
+│   ├── SIME_principal.html               Todos — landing padrão do site (/ redireciona pra cá)
 │   ├── SIME_tokens.html                  Pré-eleição
-│   └── SIME_paineis.html                 Todos
+│   ├── SIME_paineis.html                 Todos
+│   ├── SIME_problemas.html               Dia D
+│   ├── SIME_relatorios.html              Todos
+│   └── SIME_hermes_painel.html           Todos (métricas de campanha do Hermes)
 ├── api/
 │   ├── hermes-update.js               ← escrita de eventos de seção
-│   ├── hermes-mesarios.js             ← leitura + confirmação de mesários
-│   └── hermes-notificacoes.js         ← fila que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-mesarios.js             ← leitura + autoatendimento + confirmação de mesários
+│   ├── hermes-notificacoes.js         ← fila de notificações que o Hermes consulta (SIME → Hermes)
+│   ├── hermes-campanhas.js            ← fila de disparo em massa que o Hermes consulta (SIME → Hermes)
+│   └── hermes-contatos.js             ← telefone por papel (Gestor de Problemas/Chefe de Cartório), pro escalonamento
 ├── sql/
 │   ├── SIME_schema.sql                ← Schema principal
 │   ├── SIME_whatsapp_schema.sql       ← Notificações WhatsApp
 │   └── SIME_hermes_trigger.sql        ← Triggers para o Hermes
-├── hermes/
-│   ├── README.md                      ← Configuração (Linux e Windows)
-│   ├── SIME_hermes_skill_monitor.md   ← Skill: monitora grupos
-│   ├── SIME_hermes_skill_notificar.md ← Skill: drena a fila e envia WhatsApp
-│   ├── SIME_hermes_skill_updater.md   ← Skill: persiste no Supabase
-│   ├── SIME_hermes_skill_mesarios.md  ← Skill: confirma mesários
-│   └── setup.sh                       ← Instalação (ZONA=7 bash setup.sh)
 └── docs/
     ├── descricao_completa.md
     ├── plano_implementacao.md
     └── prompt_chatgpt.md
 ```
+
+> Código e documentação do agente Hermes (runtime, skills, patches) não
+> vivem mais neste repositório — foram unificados em `bernardobbs/hermes`,
+> pra não duplicar entre os produtos que o consomem (SIME, e futuramente o
+> Casinha Hub).
 
 ---
 
@@ -129,7 +138,6 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 
 | Papel | Módulo | Fase | Escopo |
 |---|---|---|---|
-| **Coordenador de Preparação** | SIME_coordenador_preparacao | D-X | Todas as seções |
 | **Auxiliar de Eleição** | Instalador + apoio | D-1 | Equipe do cartório |
 | **Conferente de Embarque** | SIME_conferente | D-1 | Rotas atribuídas |
 | **Instalador** | SIME_instalador | D-1 | Seções da rota (convocado externo) |
@@ -141,10 +149,15 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Coord. de Acessibilidade** | SIME_acessibilidade | Dia D | Seções do `local_id` (convocado externo) |
 | **Coletor de Mídias** | SIME_midias | Dia D | Seções designadas (papel fixo, substituto possível) |
 
+> **Coordenador de Preparação** (`SIME_coordenador_preparacao`, fase D-X, todas
+> as seções) é o único papel de campo que **não** entra por QR+PIN — decisão
+> deliberada: entra com e-mail/senha, mesmo padrão do Admin. Não é uma
+> inconsistência a corrigir.
+
 ### Autônomo
 | Papel | Tecnologia | Função |
 |---|---|---|
-| **Hermes Agent** | IA (PC do cartório ou VPS) | Monitora grupos WhatsApp + envia notificações |
+| **Hermes Agent** | Node.js + Baileys (Raspberry Pi) | Monitora grupos WhatsApp + drena filas de envio |
 
 ### Regras críticas de escalonamento de pânico
 ```
@@ -191,14 +204,2455 @@ sime_midias         -- fluxo das mídias eleitorais
 sime_atores         -- cadastro de contatos operacionais
 sime_notificacoes   -- histórico de WhatsApps enviados
 sime_logs           -- auditoria append-only
+sime_ocorrencias    -- problemas como registro (dono, relógio, escalonamento)
+sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
+sime_contatos_externos  -- Equatorial e afins, por zona/município
+sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
+sime_voluntarios    -- cadastro paralelo de mesários voluntários (não é sime_atores/roster do TRE)
 ```
+
+### Painel de Problemas (`SIME_problemas.html`)
+
+O contato oferecido é **função do tipo do problema** — é a regra que organiza
+a tela: faltou luz → Equatorial; urna com defeito → **auxiliar de eleição**
+(contratado do TRE que faz manutenção de urna); faltou mesário → a própria
+mesa; acessibilidade → coordenador do local.
+
+Quem assume cuida até o fim: `sime_ocorrencia_assumir` **recusa** ocorrência
+que já tem dono — para trocar de mãos existe `sime_ocorrencia_delegar`, que
+exige motivo. Resolver pelo cartório fecha a ocorrência **e** baixa o pânico
+na seção pelo mesmo RPC do mesário, então a resolução chega ao aparelho dele
+pelo Realtime.
+
+Escalonamento conta de `aberta_em`, não de `assumida_em` — senão a forma mais
+fácil de não ser escalado seria clicar em "Assumir" e esquecer.
 
 ### RPCs críticas
 ```sql
-sime_now()                -- server timestamp — SEMPRE usar
-sime_acao_midia()         -- atualiza mídia com server ts
-sime_importar_ator()      -- importa ator validando duplicatas
+sime_now()                    -- server timestamp — SEMPRE usar
+sime_acao_midia()             -- atualiza mídia com server ts
+sime_importar_ator()          -- importa 1 ator manual (cadastro avulso, valida telefone)
+sime_sync_atores_from_raw()   -- UPSERT em massa de mesário/apoio logístico a partir de
+                               -- sime_mesarios_raw (ver "Atualização de mesários" abaixo)
 ```
+
+### Atualização de mesários e apoio logístico (recarga do TRE)
+
+`sime_mesarios_raw` é staging descartável — pode ser recarregada a qualquer
+momento com uma nova exportação do TRE. Três formatos de origem, três
+scripts em `scripts/` (todos rodam em disco e só imprimem contagem
+agregada — nome/CPF/telefone nunca passam pelo console, muito menos por
+chat, ver docstring de cada um):
+
+| Origem | Script | Uso |
+|---|---|---|
+| Dump ELO `.md` (largura fixa, 81 colunas) | `parse_mesarios.py` | `python3 parse_mesarios.py saida.sql mesariosmrv.md mesariosal.md` |
+| CSV exportado da planilha "convocação mesários" (abas `base geral MRV`/`Base Geral Apoio especializado` — mesmo cabeçalho de 81 colunas do ELO, confirmado em 20/08/2026, inclui `Confirmou convocação`/`Origem da resposta`/`Justificativa`) | `parse_mesarios_gsheet_csv.py` | `python3 parse_mesarios_gsheet_csv.py saida.sql mrv.csv apoio.csv` |
+| CSV "MRV simples" (16 colunas, sem os campos de acompanhamento — outra exportação do TRE, mais enxuta) | `parse_mesarios_csv.py` | `python3 parse_mesarios_csv.py saida.sql arquivo.csv 7 PI` |
+
+Os três geram o mesmo INSERT pronto pra colar no SQL Editor. `tipo_registro`
+nunca é adivinhado por regra própria — vem direto da coluna "Tipo função
+eleitoral"/"Nº Função Eleitoral" do próprio arquivo (que já traz 'MRV'/'AL'),
+ou é fixo 'MRV' no formato simples (que só cobre mesa, não apoio).
+
+### Extrair seções/locais de votação da própria planilha de mesários
+
+`scripts/extrair_secoes_locais.py` (28/08/2026, pedido direto: "da planilha
+de mesários do modulo de convocação você consegue extrair as seções e
+locais de votação?") — útil principalmente pra configurar uma zona **nova**
+(ex.: 94ª), cujo `sime_secoes` ainda não existe e cujo seed original da 7ª
+foi feito à mão, fora do repositório ("Inserção das seções e rotas via
+script de seed separado", ver `sql/SIME_schema.sql`).
+
+```
+python3 scripts/extrair_secoes_locais.py saida.sql arquivo.csv <zona> <uf>
+```
+
+Aceita os dois formatos CSV já usados pelo resto do projeto (81 colunas ou
+"MRV simples" de 16, auto-detectados pelo cabeçalho — os mesmos dois que
+"🔄 Sincronizar" aceita no navegador); não aceita o dump ELO `.md` nesta v1
+(exportar como CSV primeiro, ou pedir pra estender — a leitura de largura
+fixa já existe em `parse_mesarios.py`). Gera um `INSERT ... ON CONFLICT
+(zona_id, numero) DO UPDATE` idempotente pra `sime_secoes`.
+
+**Só a aba MRV serve com confiança** — mesmo motivo já documentado no
+Dashboard (apoio logístico quase nunca traz "Seção local de trabalho"
+preenchido no arquivo do TRE): linhas de AL são filtradas antes de extrair.
+**Não traz número de eleitores** — a planilha de mesários não tem essa
+coluna; quem precisar desse campo completa depois com a lista oficial de
+seções do TRE, fora do escopo deste script. Seção duplicada com
+local/município **diferente** entre linhas nunca é resolvida por
+adivinhação — mantém o primeiro valor encontrado e lista o conflito no
+final, pro cartório decidir manualmente.
+
+**Direto pelo navegador, sem gerar SQL**: `SIME_convocacao.html` (módulo
+próprio, separado de `SIME_atores.html` desde 20/08/2026 — antes eram duas
+abas lá dentro) → aba **🔄 Sincronizar** tem TRÊS caminhos separados
+(`sime_mesarios_sync.js`), pros formatos que o cartório recebe/tem em mãos,
+cada um com propósito diferente:
+
+- **📋 roster completo (81 colunas)** — mesma lógica de
+  `parse_mesarios_gsheet_csv.py`, mas em JS, gravando direto no Supabase com
+  a sessão da equipe (RLS `mesarios_raw_write_zona`, escopada pela zona do
+  usuário — única policy de escrita em `sime_mesarios_raw`, adicionada em
+  20/08/2026; antes só existia SELECT pra `authenticated`, e só o SQL Editor
+  com service_role conseguia popular o staging). Deleta o staging antigo só
+  daquela zona/UF (não `TRUNCATE` — preserva o staging de outra zona em
+  paralelo), reinsere e chama `sime_sync_atores_from_raw` — que faz o diff
+  completo (UPSERT + `ativo=false` em quem saiu). Pressupõe que o arquivo é
+  o roster **inteiro** da zona.
+- **📞 atualizar contatos (16 colunas, com `Ciente`)** — formato mais
+  simples do TRE (`Zona/Seção/Nome/Inscrição/Situação/Localidade/Nº
+  Local/Nome Local/Cód. Objeto Local/Nº Função Eleitoral/Função
+  Eleitoral/Data Atualização/Ciente/whatsapp/celular/telefone2`), geralmente
+  um **recorte** (ex.: só quem respondeu "não sou essa pessoa"), não o
+  roster inteiro — por isso NÃO passa pelo pipeline acima: passar um
+  recorte pelo diff completo inativaria por engano todo mundo ausente do
+  arquivo. Em vez disso, é `UPDATE` direto em `sime_atores`, casando por
+  `inscricao_eleitoral`, só em quem está no arquivo.
+  `Ciente` (confirmado empiricamente em 20/08/2026 cruzando 3 arquivos reais
+  da zona — nunca documentado formalmente pelo TRE): `0`=sem contato,
+  `1`=confirmou convocação, `2`=informou não ser a pessoa procurada. Decisão
+  deliberada de 20/08/2026: diferente do roster de 81 colunas (que nunca
+  toca `confirmacao`), este arquivo é explicitamente sobre status de
+  contato, então **escreve** em `sime_atores.confirmacao`
+  (`Ciente=1`→`confirmado`, `Ciente=2`→`contato_incorreto`) e em
+  `telefone_whatsapp` — exceção deliberada à regra "só WhatsApp/Hermes muda
+  confirmacao", não descuido.
+- **📋 colar lista de telefones (texto livre, 20/08/2026)** — pra quando o
+  cartório tem só uma lista solta (WhatsApp, anotação, planilha copiada), não
+  um dos dois arquivos oficiais do TRE acima. Cola texto qualquer numa
+  textarea, uma pessoa por linha; nome e outras colunas, se tiver, são
+  ignorados — só extrai **título de eleitor** (12 dígitos, tolera espaço
+  entre blocos) e **telefone**, e faz `UPDATE` de `telefone_whatsapp`
+  casando por `inscricao_eleitoral` (nunca mexe em `confirmacao`, nunca
+  inativa ninguém — mesmo modelo do "atualizar contatos" acima, só que sem
+  precisar virar CSV primeiro). Deliberadamente conservador: só aceita
+  telefone que já bate limpo num formato válido — 10-11 dígitos (DDD+8/9),
+  12-13 com `55` na frente, ou 8-9 dígitos soltos (aí assume DDD 86, seguro
+  porque as duas zonas do SIME são no Piauí, que tem DDD único pro estado
+  inteiro — não serviria um sistema genérico multi-estado). **Não tenta
+  consertar contagem de dígito errada** — achado real numa lista real
+  colada em produção: telefones com um dígito a mais depois do `55`
+  (provável artefato de cópia/formatação de planilha de origem), outros sem
+  DDD. Linha sem título ou sem telefone reconhecível fica de fora do
+  resultado, listada pra conferência manual — adivinhar teria sido pior que
+  não gravar (arriscava telefone errado no cadastro de alguém).
+
+`SIME_convocacao.html` tem mais três abas:
+- **📊 Dashboard** (`sime_resumo_secoes.js`, redesenhado em 20/08/2026 a
+  partir de um mockup do cartório) — logo acima dos stat cards, uma
+  **barra-funil da zona inteira** e **3 gráficos de pizza** (redesenhados em
+  21/08/2026 — a pedido do cartório, substituindo o desenho de 4 pizzas de
+  2 fatias que existia desde o dia anterior; SVG puro, sem lib de gráfico,
+  projeto é sem framework):
+  - **3 pizzas, uma por grupo** — MRV (Mesários) / Coordenadores de
+    Acessibilidade / Auxiliares de Eleição (apoio logístico) — cada uma com
+    **3 fatias mutuamente exclusivas que somam o Total daquele grupo**:
+    Confirmado (verde) / Convocado — designado mas ainda não confirmado
+    (azul) / Vazio — ninguém designado (cinza). Antes eram 2 pizzas por
+    grupo (nomeado×vazio separada de confirmado×total); agora é uma pizza
+    só, mais completa. "Total" tem semântica diferente pros dois tipos de
+    grupo: MRV é por **cargo de mesa** (4 por seção — `rsCalcular()` já
+    somava isso como `designados`/`totalCargos` pros cards de local, só
+    nunca tinha virado pizza própria); Coordenador de Acessibilidade e
+    Auxiliar de Eleição não têm cargo fixo no schema, então a vaga virou
+    **1 por local de votação** (mesma premissa de "esse prédio tem alguém
+    desse tipo?" que já existia no desenho anterior combinado, agora com
+    Coordenador e Auxiliar **separados um do outro** em vez de um bucket só
+    de "apoio logístico" — a query em `rsCarregar()` passou a trazer
+    `funcao` junto pra dar pra distinguir).
+  - **Barra-funil acima das pizzas** — resume a zona inteira (MRV + Coord. +
+    Auxiliar somados) em 3 estágios sobrepostos na MESMA faixa horizontal
+    (não 3 barras separadas, já que cada estágio é subconjunto do anterior):
+    Total de vagas (faixa de fundo, cinza) → Convocados (barra mais curta
+    por cima, azul) → Confirmados (a mais curta de todas, verde) —
+    `rsBarraFunil()`.
+  - **Tabela "🏘️ Progresso por município e função" (21/08/2026)** — pedido
+    direto do cartório: "saber por cidade e por função se já está com todas
+    as funções preenchidas e se já foi confirmado". A barra-funil e as
+    pizzas são só da ZONA inteira; uma zona do SIME cobre vários municípios
+    (ex.: 7ª Zona = Campo Maior + Jatobá do Piauí + Sigefredo Pacheco), e
+    até então não tinha como ver esse recorte sem entrar local por local no
+    drilldown. `rsCalcular()` agrega os mesmos números de `porLocal` (que já
+    carrega `.municipio` em cada entrada) por município — uma linha por
+    município, sem recalcular nada do zero. Cada grupo (MRV/Coord./
+    Auxiliar) mostra DUAS contagens lado a lado, porque são perguntas
+    diferentes: "confirmados/total" (cor verde se bateu o total, vermelha
+    se ninguém) e, só quando diverge, uma nota "(N pr.)" = preenchido —
+    tem alguém designado ali, confirmado ou não (mesmo padrão de
+    `rsCardLocal`, que já separa designados de confirmados). Coluna
+    **Situação** resume os 3 grupos num só selo: ✅ tudo confirmado (as 3
+    funções bateram 100% confirmadas) / 🔶 preenchido mas falta confirmar
+    (as 3 têm gente designada, mas nem tudo confirmado) / ❌ ainda falta
+    preencher (pelo menos uma função tem vaga vazia). `rsSituacaoMunicipio()`
+    calcula os dois booleanos (preenchido/confirmado) por grupo antes de
+    decidir o selo. Tabela HTML de verdade (`<table>`), não `.import-card`
+    em grade — mesmo padrão já usado no Relatório ELO, mais legível pra
+    comparar município a município numa lista. **Fechada por padrão**
+    (mesmo dia, ajuste rápido a pedido do cartório: "ficou denso demais no
+    topo") — cabeçalho clicável tipo disclosure (▸/▾, `rsToggleMunicipios()`
+    / `rsMunicipiosAberto`), corpo da tabela só entra no HTML quando
+    expandida, não só escondido por CSS. Cogitou-se substituir por gráficos
+    de pizza (um por município), mas descartado: com várias cidades vira
+    muitos gráficos pequenos, mais difícil comparar todas de uma vez do que
+    numa tabela — o problema era densidade visual, não o formato.
+  - Nenhum dos três (funil, tabela por município, pizzas) aparece no
+    drilldown por local — série específica pra visão de conjunto, repetir
+    dentro do drilldown seria redundante.
+  Depois dos gráficos, os 4 cards de estatística no topo (locais
+  de votação, seções, **mesários MRV confirmados/total + quantos faltam**,
+  **apoio logístico AL confirmados/total + quantos faltam** — antes os dois
+  últimos cards só mostravam o total, sem quebra por `confirmacao`; o card
+  de apoio foi de um `count` só pra buscar a linha inteira, já que agora
+  precisa contar confirmados também) e, abaixo, cards por
+  **local de votação** (`sime_secoes` não tem id próprio de "local" nem
+  endereço — o agrupamento é por `local_nome`+`municipio`, sem rua/povoado)
+  com barra de progresso (cargos designados/total), busca por nome e
+  alternância grade/lista. Clicar num local abre o **drilldown por seção**:
+  um card por seção com o nº de eleitores, os 4 cargos de mesa
+  (❌ sem designação / 🔶 aguardando confirmação / ⚠️ recusou ou contato
+  incorreto / 🔁 precisa ser substituído / ✅ confirmado) **com o nome de
+  quem está designado** em cada cargo (20/08/2026 — antes só mostrava o
+  ícone, sem dizer quem é a pessoa) e a data da última confirmação. **Clicar
+  no nome** de um mesário no drilldown abre o mesmo modal de "Contatar
+  mesários" (tentativas de contato + histórico) — `cmAbrirModal` carrega
+  `cmDados` na hora se a aba Contatar mesários ainda não tiver sido visitada
+  nesta sessão, em vez de abrir um modal vazio.
+
+  **Bug real corrigido em 20/08/2026 — % do card de local era sobre
+  designados, não confirmados.** Uma seção com mesário no cargo mas nunca
+  contactado (ou contactado e sem resposta) contava como "pronta" — o
+  cartório reportou um local em 100%/verde com pelo menos 3 seções ainda
+  incompletas. A cor/barra/percentual agora são sobre `confirmados/total`;
+  "designados" (tem alguém atribuído, confirmado ou não) continua exibido,
+  só que como nota secundária, não mais controlando a cor.
+
+  **`precisa_substituir` tem prioridade visual sobre `confirmacao`.** É uma
+  flag booleana própria (`sime_atores.precisa_substituir`, default `false`),
+  deliberadamente separada de `confirmacao='substituido'`: esta última é o
+  status **já resolvido** (a pessoa confirmou que será trocada, geralmente
+  via Hermes); a flag é o item de trabalho **ainda em aberto** — o cartório
+  decidiu que alguém precisa ser trocado (não respondeu depois de várias
+  tentativas, ficou inelegível, etc.) mas ainda não achou substituto. Por
+  isso um mesário já `confirmado` pode ganhar a flag depois e o Dashboard
+  troca o ícone de ✅ pra 🔁 (e ele deixa de contar como "mesa completa
+  confirmada" nas estatísticas) — confirmado não é blindado contra precisar
+  de troca depois. Setada/desfeita em "Contatar mesários" (botão no card e
+  dentro do modal) ou no modal do mesário; nunca pelo Hermes.
+
+  **Nome do substituto (27/08/2026, `sql/SIME_atores_substituto_nome.sql`,
+  pedido direto: "ao marcar para substituir, deve ter uma forma de
+  informar o nome do substituto").** `sime_atores.substituto_nome` — texto
+  livre, sempre opcional (marcar a flag nunca exige preencher; pode ser que
+  ainda não exista substituto na hora de marcar). Não referencia outro
+  `sime_atores` por id de propósito — o substituto quase sempre é alguém
+  novo, ainda sem cadastro processado no TRE. Só editável **dentro do
+  modal** (não tem espaço no card da lista) — campo aparece condicionado a
+  `precisa_substituir=true`, `onblur` salva sozinho (`cmSalvarSubstitutoNome`),
+  e o "💾 Salvar" geral do modal também recolhe (mesma rede de segurança das
+  outras caixas de ação rápida). Aparece na "Situação" do modal e no badge
+  do card ("🔁 Precisa substituto: Fulano"). Desmarcar `precisa_substituir`
+  limpa o nome junto — o log de quando foi marcado/desmarcado/o nome que
+  passou por ali continua em `sime_logs`, só a tela some.
+
+  **Telefone do substituto (27/08/2026, `sql/SIME_atores_substituto_telefone.sql`,
+  pedido direto: "deve vir para acrescentar todos os dados do
+  substituto").** Nome sozinho não bastava pra dar pra contactar quem vai
+  substituir — `sime_atores.substituto_telefone`, exatamente o mesmo padrão
+  do nome (texto opcional, só existe enquanto `precisa_substituir=true`,
+  `onblur` salva sozinho via `cmSalvarSubstitutoTelefone`, "💾 Salvar" geral
+  também recolhe). Guardado no formato "55"+DDD+número, mesma convenção do
+  resto do sistema. Quando preenchido, ganha um link **"💬 Abrir WhatsApp do
+  substituto"** logo abaixo do campo (`linkWhatsApp`, sem mensagem
+  pré-pronta — ainda não dá pra saber o que perguntar pra alguém que nem
+  confirmou nada ainda). "Situação" do modal e badge do card (`cmSubstitutoLabel`)
+  agora mostram nome — telefone juntos quando os dois existem. Desmarcar
+  `precisa_substituir` limpa os dois campos junto, mesma regra de sempre.
+
+  **"✅ Concluir substituição" (31/08/2026, pedido direto — achado real: FRANCISCO
+  LUIZ NETO já tinha sido dispensado e substituído por Sanndra Conceição
+  Soares havia dias, nome e telefone dela já anotados nos campos de
+  substituto, mas o cartório reportou "já foi dispensando e substituído... como
+  iremos desabilitar os mesários substituídos" — em "📜 Atualizações" só
+  apareciam os registros de "Marcado para substituição" e "Nome/telefone do
+  substituto", nunca uma mudança de status de verdade.** Investigando: `confirmacao=
+  'substituido'` (que já vem com `ativo=false` — esse é o status JÁ
+  RESOLVIDO, mesma regra documentada acima em "precisa_substituir tem
+  prioridade visual sobre confirmacao") só era gravado por UMA via em todo o
+  sistema — `ACAO_CONF.substituir` em `api/hermes-mesarios.js`, ou seja, só
+  quando o PRÓPRIO mesário confirma a troca pelo WhatsApp. O botão "🔁
+  Substituir" do SIME só liga/desliga a flag `precisa_substituir` (item de
+  trabalho em aberto — "ainda precisamos achar alguém"); não existia nenhum
+  jeito do cartório fechar uma substituição que ele mesmo já resolveu por
+  fora (ligação, presencial, WhatsApp pessoal) — a pessoa ficava presa em
+  "precisa substituir" pra sempre, mesmo com o substituto já nomeado.
+  Francisco foi corrigido manualmente (`confirmacao='substituido'`,
+  `ativo=false`, `precisa_substituir=false`) e uma varredura na 7ª Zona
+  não achou mais ninguém na mesma situação (substituto já nomeado + ainda
+  ativo) — era só ele.
+
+  Corrigido com um botão novo, só dentro do modal (mesmo escopo dos outros
+  dois — "🔁 Substituir" também só existe lá, ver acima): **"✅ Concluir
+  substituição"**, ao lado dos campos de nome/telefone do substituto,
+  visível sempre que `precisa_substituir=true` (`cmConcluirSubstituicao`).
+  Grava os três campos de uma vez (`confirmacao='substituido'`,
+  `ativo=false`, `precisa_substituir=false`) — mesmo efeito final de quando
+  o Hermes confirma pela resposta do mesário, só que disparado pelo
+  cartório. **Não limpa `substituto_nome`/`substituto_telefone`** (ao
+  contrário de desmarcar a flag, que limpa os dois) — aqui os dois viram
+  registro histórico de quem assumiu a vaga, não um item em aberto sendo
+  cancelado. Como `ativo` vira `false`, a pessoa desaparece da lista de
+  "Contatar mesários" na hora (`cmCarregar()` só lista `ativo=true`) — o
+  clique já remove ela de `cmDados.pessoas` e fecha o modal, sem precisar
+  recarregar a aba. Log `mesario_substituicao_concluida` (com o nome/
+  telefone do substituto no payload) aparece em "📜 Atualizações" com
+  rótulo próprio. Coberto por teste de regressão dedicado em
+  `tests/test_convocacao_mesarios.mjs`.
+
+  **"🚫 Dispensar (ELO)" (01/09/2026, pedido direto a partir de um caso
+  real).** ANA ALICE DOS SANTOS DA SILVA tinha uma recusa formal registrada
+  no ELO (07/08/2026) e já tinha sido marcada `ativo=false` manualmente pelo
+  cartório — mas o carimbo em observação dizia "Dispensad**a**" (feminino),
+  e a varredura automática que resgatou os 52 outros casos de reativação
+  silenciosa (ver `dispensado_manual` acima) buscava só a forma masculina
+  ("Dispensad**o**"). Ela ficou de fora, voltou a aparecer ativa no resync
+  seguinte, e só foi achada de novo por revisão manual do cartório: "e ela
+  foi dispensada no elo, deve haver um botao para indicar que ela foi
+  dispensada e tirar ela do cadastro". Até este pedido, marcar isso só
+  existia via SQL Editor/MCP.
+  Botão **"🚫 Dispensar e tirar do cadastro"** (`cmDispensarManual`), seção
+  própria no fim do modal, separada visualmente (borda vermelha) por ser a
+  ação mais definitiva do modal. Grava `ativo=false` + `dispensado_manual=
+  true` de uma vez (mesmo efeito final da correção manual de sempre — nunca
+  mais reativada sozinha por um resync futuro do roster) e anexa a
+  Observações via `cmAppendObservacao()` — **nunca mais um carimbo digitado
+  à mão**: sempre o mesmo texto fixo `Dispensado(a) — <motivo>` (gênero
+  neutro de propósito, pra não repetir o problema que escondeu a ANA ALICE
+  da varredura automática) com o autor de verdade. Motivo é um campo de
+  texto opcional (`#mm-dispensar-motivo`) — nunca bloqueia a ação, mesma
+  filosofia de sempre; sem motivo, grava "sem motivo informado". Log
+  `mesario_dispensado_manual` (com o motivo no payload) aparece em "📜
+  Atualizações" com rótulo próprio.
+  Se já existir outra pessoa designada pro mesmo cargo/seção (caso comum de
+  substituição já processada pelo TRE — cada uma é um `sime_atores`
+  independente, como aconteceu com ANA ALICE/ANA KAROLINE DA SILVA, as duas
+  como `1º Secretário` da mesma seção), ela continua intocada e passa a ser
+  a única ativa ali; se não houver mais ninguém, o cargo aparece vazio no
+  Dashboard — os dois comportamentos já são automáticos (o botão só mexe na
+  pessoa dispensada), nenhuma lógica nova precisou ser escrita pra eles.
+  ANA ALICE foi corrigida diretamente no banco no mesmo dia (mesmo efeito
+  que este botão passou a fazer). Coberto por teste de regressão dedicado
+  em `tests/test_convocacao_mesarios.mjs`.
+
+  por status (falta contactar, confirmado, recusou, contato incorreto,
+  **precisa ser substituído** — filtro próprio, independente do bucket
+  "já substituído" — e substituído), mostra o recado (`observacao`) de quem
+  respondeu, e permite marcar **meio de contato** (WhatsApp/Carta
+  Registrada/Oficial de Justiça)
+  + status do envio por mesário (`sime_atores.meio_contato`/
+  `status_contato_alternativo`, `sql/SIME_atores_meio_contato.sql` — Carta/
+  Oficial de Justiça usam o endereço já no processo do TRE, o SIME só marca
+  qual meio usar e o andamento, não guarda endereço). Botão **"📢 Criar
+  campanha com estes"** pega o filtro atual (ex.: só quem falta contactar,
+  já sem quem não tem WhatsApp) e manda pra `SIME_atores.html?tab=disparo`
+  com esse grupo pré-selecionado (via `sessionStorage`, lido e apagado uma
+  única vez) — reaproveita o motor de campanha que já existe em Disparo em
+  massa, em vez de duplicar essa UI dentro de Convocação. **Clicar no nome**
+  do mesário abre um **modal** (não mais painel inline — pedido do cartório
+  em 20/08/2026) com telefone/WhatsApp e código de rastreio editáveis num
+  "Salvar" só, mais duas listas de histórico: **📞 Tentativas de contato**
+  (últimos 10 registros de `sime_campanhas_confirmacao` por `ator_id` — o
+  que o Hermes de fato tentou mandar) e **📜 Atualizações** (últimos 10
+  `sime_logs` cujo `payload->>ator_id` bate com a pessoa — telefone/rastreio
+  editados manualmente, meio de contato trocado, status de envio, marcação
+  de contato incorreto). Único ponto do sistema, além de `SIME_atores.html`,
+  que deixa editar dado de contato de um ator.
+
+  **Histórico do Hermes agora entra no modal (20/08/2026 — antes ficava de
+  fora "de propósito").** `hermes_confirmou_mesario` e `hermes_atualizou_info`
+  (gravados por `api/hermes-mesarios.js` quando o próprio mesário responde no
+  WhatsApp) passaram a guardar `id` dentro de cada item de `afetados` (antes
+  só nome/seção) — o modal casa esses logs por containment
+  (`payload->afetados` contém `[{id}]`, via `.contains()`), não por
+  `payload->>ator_id` como os logs gravados pelo próprio SIME (`afetados` é
+  lista porque uma resposta pode valer pra mais de uma convocação da mesma
+  pessoa — mesário e apoio logístico). Antes disso, casar exigiria
+  comparação fuzzy por nome; agora é exato.
+
+  **Observações e reestilo do modal (20/08/2026), a partir de referência
+  visual do cartório.** O modal ganhou seções com cabeçalho (📇 Contato, 📞
+  Tentativas de contato, 📜 Atualizações, 📝 Observações) e um bloco
+  chave-valor no topo (função/seção/título/situação) — pedido explícito do
+  cartório mostrando a tela de outro sistema como referência de estilo.
+  `sime_atores.observacao` virou algo que o cartório também escreve, não só
+  lê: `cmAdicionarObservacao()` anexa no mesmo formato que o Hermes já usa
+  (`[carimbo] Autor: texto`, append-only, nunca sobrescreve — mesma regra de
+  sempre), só trocando o autor pro nome de quem está logado
+  (`sime_usuarios.nome`, cacheado por `window.nomeDoUsuario()` em
+  `SIME_convocacao.html`, mesmo padrão de `zonaDoUsuario()`) marcado como
+  "(cartório)" pra distinguir de recado vindo do WhatsApp. `cmParseObservacoes()`
+  quebra o texto acumulado em entradas pra exibir como lista (split antes de
+  cada carimbo `[AAAA-MM-DD`, não por linha — uma mensagem de WhatsApp pode
+  ter quebra de linha própria). A observação nova NÃO entra na lista
+  "Atualizações" (que lê `sime_logs`) pra não duplicar visualmente o que já
+  aparece na seção própria — o `sime_logs` ainda é gravado, só não é
+  renderizado ali.
+
+  **Confirmar manualmente (21/08/2026, revertido no mesmo dia) — o TRE tem
+  campanha própria, mas nem sempre alcança todo mundo; é de lá (ou de
+  ligação/presencial) que o cartório sabe quem já confirmou sem ter passado
+  pelo WhatsApp do SIME.** Botão **"✅ Confirmar participação"** (card e
+  modal, some depois de confirmado) — pensado pro fluxo "ir de pessoa em
+  pessoa": marca `confirmacao='confirmado'` igual o Hermes marcaria. Só
+  isso. Primeira versão (mesmo dia) também enfileirava em
+  `sime_campanhas_confirmacao` uma mensagem de convocação automática pro
+  Hermes entregar — o cartório pediu pra tirar: confirmar participação por
+  aqui não deve criar fila de envio nenhuma. `cmConfirmarEEnviar` (que
+  fazia as duas coisas) virou `cmConfirmarParticipacao` (só a primeira);
+  `CM_TEMPLATE_CONVOCACAO`/`cmPersonalizarMensagem` (o texto que era
+  enfileirado) foram removidos por ficarem sem nenhum uso. Quem quiser
+  mandar mensagem de verdade continua tendo o motor de campanha em massa de
+  `SIME_atores.html` (disparo com verificação SIM/NÃO) — este botão nunca
+  foi pensado pra substituir aquele fluxo.
+
+  **No CARD isso continua igual (some depois de confirmado)** — o que mudou
+  em 27/08/2026 foi só dentro do MODAL, ver bloco abaixo.
+
+  **Modal: linha de 3 botões de status, sempre visível (27/08/2026, pedido
+  direto do cartório ao ver o modal — print anexado do formato desejado).**
+  O único botão "✅ Confirmar participação" (que sumia depois de confirmado)
+  virou uma linha fixa de três — **Confirmado** / **Convocado** / **Substituir**
+  — logo abaixo da linha "Situação", sempre visível (não só enquanto ainda
+  não confirmou). O botão do estado atual fica destacado (`btn-dark`), os
+  outros ficam `btn-out` — dá pra ver e trocar o status sem precisar rolar
+  nem fechar/reabrir o modal.
+  - **Confirmado** — mesmo `cmConfirmarParticipacao()` de sempre (marca
+    `confirmacao='confirmado'`, não enfileira mensagem nenhuma).
+  - **Convocado** (`cmMarcarConvocado()`) — explicado pelo cartório:
+    "convocado significa que ele recebeu a carta, mas pode ser substituído",
+    diferente de confirmado, que já disse que vai participar. Até
+    28/08/2026 não era um status novo no banco (gravava `confirmacao=
+    'pendente'`, o mesmo valor-padrão de sempre, só como ação explícita) —
+    virou valor de verdade nessa data, ver bloco "4 status" logo abaixo.
+    Limpa `data_confirmacao` junto (senão a data ficaria mentindo que a
+    pessoa confirmou numa data em que só foi convocada). Serve tanto pra
+    registrar "sabemos que foi notificado, só não confirmou" quanto pra
+    desfazer um confirmado/recusado marcado por engano.
+  - **Substituir** — mesmo `cmTogglePrecisaSubstituir()` de sempre, só
+    subiu de lugar: antes vivia sozinho dentro da seção "📇 Contato" mais
+    abaixo (com texto que trocava entre "🔁 Marcar para substituir" e "✓
+    Desmarcar substituição"); agora é um botão de texto fixo ("🔁
+    Substituir") na linha do topo, e o estado (marcado ou não) aparece pelo
+    preenchido do botão, não mais pelo texto. Os campos de nome/telefone do
+    substituto (só aparecem quando a flag está marcada) continuam na seção
+    "📇 Contato", só o botão que ativa/desativa a flag que mudou de lugar —
+    não há mais duplicata do botão em dois lugares do modal.
+  Escopado só ao modal — o card na lista (`renderContatarMesarios`) e os
+  botões de ação rápida ali continuam exatamente como eram (Confirmar
+  participação some depois de confirmado, Marcar para substituir com texto
+  que troca), porque o pedido foi especificamente sobre o formato do modal.
+
+  **4 status de verdade + gate manual pro "Convocado" (28/08/2026, pedido
+  direto: "o botão de convocado deve ser habilitado somente quando
+  informamos que o eleitor recebeu a convocação. o confirmado, quando vier
+  do elo, serve para confirmar a convocação e a confirmação do eleitor.
+  cada mesário deve ter 4 status então: não contactado, precisa substituir,
+  convocado e confirmado. os meios de convocação/contato são whatsapp,
+  carta, ligação telefônica, e oficial de justiça.").** Esclarecido em
+  conversa que isso NÃO substitui os 5 valores de `confirmacao` que já
+  existiam (pendente/confirmado/recusou/substituido/contato_incorreto
+  continuam todos ali — nenhum foi removido); o pedido foi ganhar um 6º
+  valor, `'convocado'`, e ligar `recusou` visualmente a "precisa
+  substituir". Os "meios" (WhatsApp/Carta/Ligação/Oficial de Justiça) já
+  existiam por inteiro em `meio_contato` desde 20/08/2026 — nada novo ali,
+  só confirmação de que já cobre o pedido.
+  `sql/SIME_atores_convocado_status.sql` (aplicado em produção nas duas
+  zonas em 28/08/2026):
+  - `sime_atores.convocacao_recebida` (boolean, default false) +
+    `convocacao_recebida_ts` — o FATO "o eleitor recebeu a convocação",
+    **sempre confirmação manual do cartório** (ligou e confirmou, viu o AR
+    chegar, etc.) — nunca escrito pelo Hermes, nunca detectado
+    automaticamente por meio (a resposta escolhida quando perguntado "o que
+    especificamente libera o botão" foi "confirmação manual", não
+    "automático pelo meio de contato").
+  - `sime_atores_confirmacao_chk` ganha `'convocado'`. `cmMarcarConvocado()`
+    agora grava `confirmacao='convocado'` de verdade (antes era `'pendente'`
+    — ver bullet acima).
+
+  **Checkbox + gate removidos no mesmo dia, revisado depois — virou 1 clique
+  só (pedido direto: "a função de confirmar a convocação ficou duplicado,
+  uma seleção e um botão").** A primeira versão pedia um passo extra: um
+  checkbox próprio no modal ("📬 Eleitor recebeu a convocação",
+  `cmToggleConvocacaoRecebida()`) que precisava ser marcado ANTES do botão
+  "Convocado" aceitar o clique (sem isso, toast explicando o que falta e
+  nada era gravado — nunca `disabled`, mesmo critério de sempre). Visualmente
+  isso lia como duas UIs fazendo a mesma coisa (uma caixinha "recebeu a
+  convocação" bem em cima de um botão "Convocado"), mesmo os dois campos
+  sendo tecnicamente distintos por baixo (`convocacao_recebida` = fato;
+  `confirmacao='convocado'` = status). Corrigido fundindo os dois: clicar em
+  "Convocado" agora grava `confirmacao='convocado'` **e**
+  `convocacao_recebida=true`/`convocacao_recebida_ts` no mesmo update, sem
+  pré-requisito nenhum — mesmo padrão que "Confirmado"
+  (`cmConfirmarParticipacao()`) já usava desde o início (ver bullet abaixo).
+  `cmToggleConvocacaoRecebida()` e o checkbox foram removidos do modal — o
+  campo `convocacao_recebida` continua existindo na tabela (só três pontos
+  ainda escrevem nele: Confirmado, Convocado, e o `Ciente='1'` de "Atualizar
+  contatos" — ver bullet abaixo), só não tem mais controle manual próprio na
+  UI. O rótulo `mesario_convocacao_recebida` em `CM_LOG_LABEL` foi mantido
+  (não removido) — só pra continuar renderizando corretamente o histórico de
+  quem usou o checkbox antes desta correção; nada novo grava esse `acao` daqui
+  em diante.
+  - **"Confirmado" (`cmConfirmarParticipacao()`) agora também marca
+    `convocacao_recebida=true` sozinho** — confirmar participação já
+    implica ter recebido a convocação, então este botão cobre os dois fatos
+    de uma vez, sem precisar passar pelo passo intermediário. Mesma regra
+    aplicada em mais dois lugares que também podem confirmar alguém sem
+    passar pelo modal: `ACAO_CONF.confirmar` em `api/hermes-mesarios.js`
+    (confirmação via resposta de WhatsApp) e o caminho `Ciente='1'` de
+    "📞 Atualizar contatos" (`sime_mesarios_sync.js`, `mcAtualizar()`) — os
+    três pontos que gravam `confirmacao='confirmado'` agora gravam
+    `convocacao_recebida=true` junto.
+  - **`recusou` passou a marcar `precisa_substituir=true` também**
+    (`ACAO_CONF.recusar`) — achado real investigando isto: `recusar` também
+    zerava `ativo=false`, e `cmCarregar()` só lista `ativo=true`, então uma
+    recusa fazia a pessoa **sumir silenciosamente** da fila de "Contatar
+    mesários", sem deixar rastro nenhum de que aquela vaga precisava de
+    gente nova (checado em produção: 1 registro `recusou` existia, e por
+    algum motivo já estava com `ativo=true` — não deu pra saber se o bug
+    chegou a se manifestar de fato, mas o código permitia). Corrigido:
+    `recusar` mantém `ativo=true` e liga `precisa_substituir=true` — a
+    pessoa continua visível, agora marcada como "precisa substituir" em vez
+    de desaparecer. Migração fez o backfill do único registro existente.
+    `substituir` continua zerando `ativo=false` normalmente — esse é o
+    status JÁ RESOLVIDO, faz sentido sumir da fila ativa.
+  - `cmDotStatus()`/`cmEhAguardandoResposta()`/`cmPrecisaEscalonamento()`
+    passam a tratar `'convocado'` igual a `'pendente'` (ainda em aberto,
+    não é desfecho final) — alguém convocado que não confirma depois de
+    várias tentativas ainda deve aparecer com a bolinha 🔴🟡🟢 e receber a
+    sugestão de escalonamento, mesmo já tendo o fato de recebimento
+    registrado.
+  - `sime_resumo_secoes.js`: `rsStatusCargo()` ganha ícone/rótulo próprio
+    pra `convocado` (📋, antes caía no fallback genérico "🔶 Aguardando
+    confirmação" — mesma classe CSS `rs-aguardando`, então as contagens de
+    designados/pizzas não mudam); `prioridade` (pra decidir qual status
+    mostrar quando há mais de um ativo no mesmo cargo) ganha `convocado: 2`
+    — sem isso, `convocado` ficava com prioridade 0 (undefined), mais BAIXA
+    que `recusou`/`contato_incorreto` (1), o que faria a tela preferir
+    mostrar um recusado no lugar de alguém convocado. **As pizzas do
+    Dashboard não precisaram de nenhuma mudança** — a fatia "Convocado" ali
+    já era um conceito DERIVADO (designado − confirmado − vazio), não um
+    filtro por `confirmacao==='convocado'` — um mesário com esse status
+    novo já cai automaticamente na fatia certa, e por coincidência o nome
+    bate com o conceito (mesmo termo, dois lugares diferentes do código —
+    vale não confundir um com o outro ao mexer em qualquer um dos dois).
+  real: era contado no card do Dashboard, mas não tinha como contactar/
+  confirmar um por um.** `cmCarregar()` foi de `.eq('funcao','mesario')`
+  pra `.in('funcao', ['mesario','coord_acessibilidade','auxiliar_eleicao'])`
+  — apoio logístico ganha o mesmo modal, os mesmos botões (Confirmar,
+  Marcar para substituir, meio de contato, tentativas), sem código
+  duplicado. A única diferença é o rótulo de função: mesário usa
+  `funcao_mesa` (Presidente/1º Mesário/...), apoio logístico não tem cargo
+  de mesa, então `cmRotuloFuncao()` cai pro nome da própria função
+  ("Coordenador(a) de Acessibilidade" / "Auxiliar de Serviços Eleitorais
+  (apoio logístico)") — mesmo texto que `api/hermes-mesarios.js` já usa,
+  pra não inventar um rótulo novo. O drilldown por seção do Dashboard
+  continua só de mesário — é estruturalmente sobre os 4 cargos de mesa, não
+  faz sentido encaixar apoio logístico ali; ele continua só no stat card
+  agregado do topo.
+
+  **Filtro por função (21/08/2026)** — segundo `<select>` na fila de
+  contato (`cm-filtro-funcao`), independente do filtro por status
+  (`CM_BUCKETS`): Todas as funções / Mesário (MRV) / Coordenador(a) de
+  Acessibilidade / Auxiliar de Eleição. Os dois filtros se combinam (ex.:
+  "falta contactar" + "só apoio logístico"). Pedido direto depois que apoio
+  logístico entrou na mesma lista — sem isso não dava pra separar os dois
+  grupos pra trabalhar um de cada vez.
+
+  **Bug real, grave, corrigido em 21/08/2026 — "Registrar tentativa" (e toda
+  ação registrada por esta página) gravava com sucesso mas ficava invisível
+  pra sempre na releitura.** Sintoma reportado pelo cartório: clicar
+  "Registrar tentativa" mostrava o toast de sucesso, mas a lista "Tentativas
+  de contato" continuava sempre "Nenhuma tentativa registrada ainda" — mesmo
+  depois de reabrir o modal. Causa raiz: `window.log()` (usado por toda
+  `SIME_convocacao.html` — tentativa, observação, edição de telefone,
+  confirmação manual, e o log de `sime_mesarios_sync.js` que alimenta a aba
+  Histórico) nunca preenchia `eleicao_id` no insert em `sime_logs`. A policy
+  de SELECT dessa tabela é `eleicao_id IN (SELECT id FROM sime_eleicoes
+  WHERE zona visível)` — `NULL IN (...)` nunca é verdadeiro em SQL, então
+  todo registro gravado com `eleicao_id` nulo ficava permanentemente
+  invisível pra qualquer sessão autenticada (só um `service_role`, que
+  ignora RLS, conseguia ver). A policy de INSERT é `WITH CHECK (true)`, por
+  isso a escrita nunca falhava e o toast sempre dizia sucesso — o bug era
+  inteiramente silencioso. Confirmado em produção antes do fix: 6
+  `mesario_tentativa_contato`, 8 `mesario_editar_telefone`, 2
+  `mesarios_sync_csv`, entre outros, todos com `eleicao_id` nulo. O mesmo
+  defeito existia em `log()` de `SIME_atores.html` (usada por
+  `SIME_relatorios.html`) — corrigido junto. As duas páginas agora resolvem
+  a eleição ativa da zona do usuário (`getEleicaoAtiva()` de
+  `sime_dados.js`, cacheada) e preenchem `eleicao_id` no insert;
+  `SIME_convocacao.html` precisou passar a chamar `initSimeDados(supabase)`,
+  que não fazia antes (sem isso, `getEleicaoAtiva()` sempre cai no fallback
+  `null` e reproduziria o mesmo bug). `sql/SIME_logs_eleicao_id_fix.sql` tem
+  o backfill do que já tinha sido gravado assim antes do fix — já aplicado
+  em produção nas duas zonas.
+
+  **Link do WhatsApp pré-preenchido, copiado em vez de aberto (21/08/2026,
+  ajustado no mesmo dia)** — pedido do cartório: indo de nome em nome
+  confirmar se o telefone cadastrado ainda é da pessoa certa, digitar a
+  mesma pergunta toda vez que abre uma conversa nova era repetitivo.
+  `cmMsgConfirmarContato(p)` monta "{saudação}, esse contato é de {NOME} ?"
+  (saudação por horário desde 27/08/2026, ver bloco abaixo) e
+  `linkWhatsApp()` (já aceitava um 2º argumento de mensagem, só não era
+  usado aqui) preenche via `?text=` do link `wa.me`. Primeira versão abria o
+  link direto (`<a target="_blank">`); o cartório pediu pra trocar por
+  **copiar** (`cmCopiarLinkWhatsApp`, `navigator.clipboard.writeText`) —
+  abrir aba/app novo a cada clique, pessoa após pessoa, era mais disruptivo
+  do que precisava; copiado, o link pode ir pra onde for mais conveniente
+  (ex.: um WhatsApp Web já aberto). Ainda precisa colar e enviar manualmente
+  — isso não manda nada sozinho. Só no botão dedicado do modal; o link do
+  telefone no card da lista continua sendo um link normal, sem mensagem
+  (contextos diferentes — o card é só "abrir a conversa", o botão do modal é
+  especificamente o fluxo de "confirmar que é essa pessoa").
+
+  **Copiar o link do WhatsApp já registra a tentativa sozinho (21/08/2026)**
+  — pedido direto: "atualizar automaticamente que tentei contato". Antes,
+  copiar o link e registrar que houve uma tentativa eram duas ações
+  separadas (a segunda exigia preencher a Nota manualmente). Agora
+  `cmCopiarLinkWhatsApp()` chama `cmRegistrarTentativaCore(id, 'whatsapp',
+  'Copiou o link do WhatsApp pra confirmar contato')` na sequência e
+  recarrega a timeline do modal — clicar em copiar já é, por si só, uma
+  tentativa de contato registrada, sem passo extra.
+
+  **Saudação por horário (27/08/2026, pedido direto: "quero que o link
+  faça diferenciação de bom dia, boa tarde ou boa noite a depender da hora
+  copiada")** — antes `cmMsgConfirmarContato()` sempre começava com "Bom
+  dia", mesmo copiado à tarde ou de noite. `cmSaudacaoPorHora()` (nova)
+  decide pelo horário do NAVEGADOR de quem copia (não do servidor — é essa
+  pessoa que vai mandar a mensagem): 05h–11h59 "Bom dia", 12h–17h59 "Boa
+  tarde", resto "Boa noite" (madrugada conta como noite, de propósito — não
+  existe uma 4ª faixa própria pra madrugada, ninguém manda "bom dia" às 3h).
+
+  **Cada telefone virou um cartão com o ícone 💬 acima do número, em vez do
+  botão de texto "🔗 Copiar" ao lado (27/08/2026, pedido direto com print
+  anexado do formato desejado do modal).** Lista de telefones (`cmListaTelefones`)
+  continua a mesma — principal + do TRE + cadastrado à mão — só o jeito de
+  apresentar mudou: cada um vira um cartãozinho (`.cm-tel-card`) com o ícone
+  💬 (parecido com o do WhatsApp, sem usar o logo oficial deles) clicável no
+  topo, o número formatado embaixo, e a origem (label) por último; o ✕ de
+  remover (só no telefone cadastrado à mão) fica num círculo vermelho no
+  canto superior direito do cartão. O clique no ícone é exatamente o mesmo
+  `cmCopiarLinkWhatsAppNumero()` de sempre — só mudou a apresentação visual,
+  não o comportamento (ainda copia o link, ainda registra a tentativa
+  sozinho).
+
+  **Lista única de telefones — principal + alternativos do TRE + cadastrado
+  à mão (21/08/2026)** — achado real: um mesário pode ter mais de um
+  telefone de contato. A planilha do TRE (ELO) já traz até 5 campos por
+  pessoa (`telefone_pessoal_mesario`, `telefone_1_eleitor`,
+  `telefone_2_eleitor`, `telefone_contato_eleitor`,
+  `telefone_comercial_mesario`, todos em `sime_mesarios_raw`), mas
+  `sime_sync_atores_from_raw()` só grava UM em
+  `sime_atores.telefone_whatsapp` — `COALESCE(telefone_pessoal_mesario,
+  telefone_1_eleitor, telefone_2_eleitor, telefone_contato_eleitor)`, nessa
+  ordem (`telefone_comercial_mesario` nem entra no COALESCE) — e os outros
+  ficavam invisíveis pro cartório, mesmo intactos no staging. `cmListaTelefones(p, raw)`
+  junta tudo numa lista só (principal + os do TRE que forem diferentes dele
+  + `sime_atores.telefone_alternativo`, se tiver — ver
+  `sql/SIME_atores_telefone_alternativo.sql`), sempre casando por título de
+  eleitor (`inscricao_eleitoral`/`inscricao` — `ator_id` do staging nunca foi
+  preenchido em produção) e deduplicando por dígito (sem o "55", já que o
+  TRE não segue convenção nenhuma de formato).
+
+  Cada telefone da lista tem seu próprio botão **"🔗 Copiar"** — pedido
+  direto: "o botão de copiar vir antes de cada número, apresentando todos os
+  números do mesário", pra realmente dar pra **tentar contato por qualquer
+  um deles**, não só ver como referência (versão anterior, do mesmo dia, só
+  copiava o texto cru sem montar link nem registrar tentativa —
+  substituída). `cmCopiarLinkWhatsAppNumero(id, numero)` generaliza
+  `cmCopiarLinkWhatsApp()` pra aceitar qualquer número: monta o link `wa.me`
+  já com a mensagem de confirmação PRA AQUELE número específico e registra
+  a tentativa igual ao principal.
+
+  **`telefone_alternativo` (novo campo em `sime_atores`)** — pra quando o
+  cartório descobre um número que não está em NENHUM campo oficial do TRE
+  (ligou pra um parente, alguém do local informou outro contato). Campo
+  "+ Adicionar telefone" no modal (`cmAdicionarTelefoneAlt`) grava ali sem
+  mexer no `telefone_whatsapp` principal (que continua sendo o que
+  Hermes/campanha em massa usam por padrão) — só esse item da lista tem
+  botão de remover (✕), já que é o único que o cartório "possui" de fato (os
+  do TRE são só leitura do staging). "Atualizar no ELO" continua manual — o
+  SIME não escreve na planilha do TRE, isso é fora do sistema.
+
+  **Edição direta no cartãozinho, campo solto removido (27/08/2026, pedido
+  direto com print anexado: "no cartão zinco quero poder editar e quero
+  poder adicionar outros telefones, nao necessariamente o que vem do elo").**
+  Antes disso, o principal se editava por um campo de formulário solto
+  ("Telefone (WhatsApp) — principal"), FORA da lista de telefones, duplicando
+  a mesma informação em dois lugares da tela — removido. Os dois telefones
+  que o SIME de fato possui numa coluna própria (`telefone_whatsapp` e
+  `telefone_alternativo`) agora são editáveis **direto no cartão da lista**
+  (`t.editavel`/`t.campo` em `cmListaTelefones()`, `onblur` chama
+  `cmSalvarTelefoneCard(id, campo, elId)` — mesmo padrão de sempre); os
+  telefones vindos de `sime_mesarios_raw` (staging do TRE) continuam só
+  leitura, são referência de outro sistema. O cartão principal **sempre**
+  aparece na lista, mesmo vazio — sem isso não haveria onde cadastrar o
+  primeiro número de quem ainda não tem nenhum (`cmListaTelefones` empurra
+  esse item incondicionalmente, ao contrário dos demais, que só entram
+  quando têm valor). "+ Adicionar telefone" continua existindo, mas só
+  aparece enquanto `telefone_alternativo` ainda está vazio — depois de
+  cadastrado um, a edição passa a ser pelo próprio cartão dele, sem duplicar
+  input.
+
+  **Bug real corrigido no caminho: `fmtTelefone('')` devolve `'—'`** (o
+  fallback visual pensado pro `<b>` de exibição, de quando não havia campo
+  editável nenhum) — usado sem checar isso no `value=` do `<input>` novo,
+  fazia o cartão vazio do DIEGO (sem telefone nenhum) aparecer com o texto
+  literal "—" dentro do campo, em vez de vazio com o placeholder
+  "(86) 9xxxx-xxxx" à mostra. Corrigido só chamando `fmtTelefone` quando
+  `t.valor` existe; vazio vira `''` puro no `value=`.
+
+  **Bug real, mais sério, achado testando o clique em "💾 Salvar" logo
+  depois de editar o telefone (sem tabular pra outro campo antes).** A
+  primeira versão de `cmSalvarTelefoneCard()` chamava `cmRenderModal()`
+  incondicionalmente ao salvar com sucesso — isso reconstrói `#modal-body`
+  inteiro. Editar o telefone principal e clicar direto em "Salvar" (mouseup/
+  click do próprio clique) dispara o `onblur` no MEIO do gesto do clique; se
+  `cmRenderModal()` roda nesse intervalo, o botão "Salvar" vira outro
+  elemento e o clique se perde — nenhum toast de "Dados atualizados", rastreio
+  e as outras caixas do modal (nota, observação) somem em silêncio, só o
+  telefone em si é salvo (pelo próprio onblur). Corrigido restringindo o
+  `cmRenderModal()` de dentro de `cmSalvarTelefoneCard()` a só quando a
+  ESTRUTURA da lista de fato muda — o alternativo sendo esvaziado (o card
+  "+ Adicionar telefone" precisa reaparecer) — nunca pro principal (sempre o
+  mesmo `<input>`, nada precisa mudar de estrutura na tela). Coberto por
+  teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`
+  (preenche rastreio + telefone principal sem tabular entre os dois, clica
+  Salvar direto, confirma que o modal fecha E as duas gravações acontecem).
+
+  **"⭐ Usar como principal" (27/08/2026, pedido direto: "e se a pessoa tiver
+  4 números? ou eu precisar eleger um para ser o principal").** Antes disso,
+  promover um número do TRE (só leitura) ou o alternativo pra virar o
+  `telefone_whatsapp` (o único que Hermes/campanha em massa de fato usam)
+  exigia copiar o texto e colar manualmente no cartão do principal. Cada
+  cartão que NÃO é o principal e tem valor ganhou um botão de texto "⭐ Usar
+  como principal" (`cmUsarComoPrincipal(id, valor)`) — grava aquele número em
+  `telefone_whatsapp` (com "55", mesma convenção de sempre), loga
+  `mesario_editar_telefone` (mesma ação que já usa a edição manual do
+  principal — não é uma ação nova pro histórico) e recarrega o modal pra
+  refletir o novo valor no cartão do principal. Só copia o número — nunca
+  mexe no `telefone_alternativo` nem em nenhum campo do TRE; se o número já
+  é o principal, só avisa "Já é o telefone principal" sem gravar de novo.
+  (21/08/2026) — achado real reportado pelo cartório num caso concreto
+  (ADRIANA PAZ OLIVEIRA): "tentou contactar" e "telefone atualizado
+  manualmente" apareciam na timeline sem dizer quem do cartório fez.** Só
+  `cmAppendObservacao` (Observações) já cravava o autor — mas embutido no
+  próprio texto do carimbo (`[data] Fulano (cartório): ...`), nunca como
+  campo à parte no log; nenhuma das outras ações (registrar tentativa,
+  copiar link do WhatsApp, editar telefone/rastreio, trocar meio de
+  contato, marcar contato incorreto/precisa-substituir, confirmar
+  manualmente, adicionar/remover telefone alternativo) gravava autor
+  nenhum. Toda chamada a `log()` nesta tela passou a ir por `cmLog()`
+  (`sime_contatar_mesarios.js`), que injeta `payload.autor =
+  window.nomeDoUsuario()` (mesmo helper cacheado que a Observação já usava)
+  antes de gravar — sem tocar no contrato de `acao`/demais campos do
+  payload, então nada que já lia esses logs quebra. As duas timelines do
+  modal (**📞 Tentativas de contato** e **📜 Atualizações**) mostram
+  "(por Fulano)" ao final de cada item via `cmPorAutor()`, só quando o
+  payload tem `autor` — entradas gravadas ANTES deste fix (produção já tem
+  histórico assim) não têm de onde vir esse dado, então ficam sem o "(por
+  ...)" mesmo, em vez de inventar um autor genérico pra elas. Campanhas
+  automáticas do Hermes (📢 na timeline de tentativas) continuam sem autor
+  de propósito — não foi uma pessoa do cartório que mandou aquela.
+
+  **Bug real reportado em 21/08/2026 — "clico em Salvar e o modal não
+  fecha".** Investigando, `cmSalvarModal()` não tinha nenhum try/catch ao
+  redor do `await sb.from('sime_atores').update(patch)...`. Um erro de
+  BANCO (RLS, constraint) não derruba esse await — a chamada resolve
+  normalmente com `{data, error}`, e isso já era tratado (toast + mantém
+  modal aberto). Mas uma falha de REDE de verdade (sem sinal, timeout —
+  cenário que o próprio projeto já assume como normal, ver filosofia
+  offline-first) FAZ o `await` lançar uma exceção de verdade — sem
+  try/catch, ela saía sem tratamento nenhum: nenhum toast aparecia, e
+  `cmFecharModal()` (a última linha da função) nunca era alcançado. Do
+  ponto de vista de quem clicou, parecia que o botão simplesmente não fazia
+  nada. `cmSalvarModal()` agora envolve as escritas num try/catch: em
+  qualquer falha inesperada, mostra "⚠ Falha ao salvar — verifique a
+  conexão e tente de novo" e MANTÉM o modal aberto (não descarta o que a
+  pessoa digitou) em vez de falhar em silêncio.
+
+  **Código de rastreio só aparece no modal quando o meio é Carta Registrada
+  (21/08/2026) — antes aparecia sempre, inclusive pra WhatsApp/Ligação/
+  Ofício, onde rastreio dos Correios não tem sentido nenhum** (achado do
+  cartório: "informação de carta duplicada"). Virou condicional a
+  `meio_contato === 'carta_registrada'`. Como o campo pode não existir no
+  DOM quando o modal renderiza, `cmSalvarModal()` guarda contra
+  `getElementById` retornando `null` — sem o guard, trocar pra WhatsApp e
+  salvar o modal quebraria (e sem o `if (rastreioEl && ...)` no monta-patch,
+  apagaria por engano um código de rastreio já salvo só por ele ter saído
+  de tela).
+
+  **Modal como ponto único de operacionalização da comunicação (20/08/2026)
+  — pedido explícito do cartório depois de ver a tela de referência.** Três
+  adições, todas dentro do modal (não só no card de fora):
+  - **💬 Abrir WhatsApp** — link `wa.me` direto pro número da pessoa (mesma
+    `linkWhatsApp()` já usada no card), pra não precisar copiar telefone.
+  - **Seletor de meio de contato + status, duplicado do card pra dentro do
+    modal** — `cmSalvarMeio`/`cmSalvarStatusAlt` ganharam um
+    `if (cmModalId === id) cmRenderModal()` no final, senão o modal aberto
+    ficava com o `<select>` desatualizado depois de mudar pelo card (ou
+    vice-versa). Trocar WhatsApp→Carta→Ofício direto do modal é o que o
+    cartório chamou de "evolução do meio de contato".
+  - **➕ Registrar tentativa** — diferente das duas listas de histórico já
+    existentes, isso é uma AÇÃO: grava um `sime_logs` novo
+    (`mesario_tentativa_contato`, payload `{ator_id, meio, nota}`) que
+    entra na mesma timeline de "Tentativas de contato", misturado com o que
+    o Hermes já mandou via campanha (`sime_campanhas_confirmacao`) — os dois
+    juntos, ordenados por data, é o que dá pra ver a evolução de abordagem
+    (WhatsApp automático → ligação manual → carta) num lugar só.
+    `mesario_tentativa_contato` fica de propósito FORA de `CM_LOG_LABEL`
+    (não aparece em "Atualizações") — só existe dentro da timeline de
+    tentativas, pra não duplicar a mesma entrada nas duas listas.
+
+  **Bug real corrigido em 21/08/2026 — "Salvar" perdia nota de tentativa/
+  observação digitada, sem aviso.** O modal tem 3 caixas de texto com ação
+  própria (telefone+rastreio → botão "💾 Salvar" do rodapé; nota de
+  tentativa → "➕ Registrar tentativa"; observação → "➕ Adicionar
+  observação") — cartório reportou ter digitado algo e "não salvou": a
+  pessoa digitava numa das caixas de ação rápida e clicava no "Salvar"
+  geral (o botão mais visível, no rodapé, parece "salvar a tela toda"), e
+  esse botão só cobria telefone/rastreio — o texto se perdia em silêncio,
+  sem erro nem aviso. `cmSalvarModal()` agora também recolhe
+  `#mm-tent-nota`/`#mm-obs-nova` se tiverem algo digitado (reaproveitando
+  `cmRegistrarTentativaCore`/`cmAppendObservacao`, extraídos dos botões
+  próprios pra não duplicar lógica) — os botões específicos continuam
+  funcionando igual, só que agora "Salvar" também é uma rede de segurança.
+  Além disso, salvar sem nenhuma alteração (nem telefone, nem rastreio, nem
+  as duas caixas) mostra "Nada para salvar" em vez de fechar o modal calado
+  — fechar sem nenhum feedback também parecia "não fez nada".
+
+  **Bug mais sério, achado investigando o de cima: "Salvar" reescrevia o
+  telefone (tirando o "55") a cada clique, mesmo sem editar nada.** O campo
+  telefone mostra o valor formatado por `fmtTelefone()`, que já tira o "55"
+  da frente pra exibir "(86) 9xxxx-xxxx"; mas `sime_atores.telefone_whatsapp`
+  é guardado COM "55" (mesma convenção do resto do sistema — Ciente/
+  colar-lista já gravam assim). `cmSalvarModal()` comparava esses dois
+  valores direto — sem "55" de um lado, com "55" do outro — então SEMPRE
+  achava que o telefone tinha mudado, mesmo só abrindo o modal e clicando
+  Salvar sem tocar em nada, e regravava a versão sem "55" no banco. Corrigido
+  normalizando os dois lados com `telSemPais()` antes de comparar, e
+  gravando de volta com "55" quando realmente muda.
+
+  **Normalização em massa de `telefone_whatsapp` (21/08/2026)** — investigar
+  o bug acima levantou que ~32% dos 723 atores ativos com telefone (232
+  registros) não estavam no formato "55"+DDD+9dígitos que o resto do sistema
+  assume. Rodado via SQL Editor (não é uma migração — `sql/
+  SIME_telefones_normalizacao.sql` documenta a query e o resultado, não
+  reaplica sozinha): 229 registros corrigidos, cobrindo formatos com DDD+9
+  faltando só o "55" (86, já seguro por definição), sem DDD nenhum (assume
+  86 — as duas zonas do SIME são só no Piauí, DDD único, mesma premissa já
+  usada no parser de "colar lista"), formato antigo de celular sem o dígito
+  9 (regra: subscriber começando 6-9 é celular pré-2016 e ganha o 9; 2-5 é
+  fixo e não ganha), e um "0" extra na frente por erro de digitação. Nenhuma
+  premissa foi assumida sem checar exceção primeiro (COUNT contra os 723
+  registros antes de aplicar). Ficaram de fora, de propósito, por exigirem
+  adivinhar em vez de deduzir: **1 placeholder `"000000000000"`** (não é um
+  número — não vira um número inventado; MARIA DE FATIMA GOMES EDUVIRGES
+  precisa que o cartório confirme se ela tem telefone de verdade ou se o
+  campo deve ficar `NULL`) e **1 registro de 14 dígitos** (ANA KAROLIINE DA
+  SILVA ALVES, `"55869994881793"` — um dígito a mais depois do "55", mesmo
+  artefato de cópia/planilha já documentado alhures; corrigir exigiria
+  adivinhar QUAL dígito é o duplicado).
+
+  **Placeholder da MARIA DE FATIMA GOMES EDUVIRGES resolvido em 27/08/2026**
+  — o cartório trouxe uma lista de 24 contatos atualizados (nome + WhatsApp,
+  sem título de eleitor, casada por nome contra `sime_atores` da 7ª Zona via
+  `similarity()` do `pg_trgm`, já instalado no projeto). Ela tinha um número
+  real desta vez; `telefone_whatsapp` saiu do placeholder `"000000000000"`
+  pro número informado. Dos outros 23 nomes da lista: 20 já existiam e
+  tiveram o telefone atualizado de verdade (número diferente do cadastrado);
+  3 já estavam com o número certo (sem mudança); **1 não foi encontrada**
+  (Ana Karoline dos Santos Sousa, "indicada como voluntária" com CPF, não
+  título — não existe registro com esse nome completo na zona, então não é
+  atualização, é cadastro novo, fora do escopo de um casamento por nome).
+  Casamento por nome só prosseguiu quando havia exatamente 1 candidato óbvio
+  (nome idêntico ou claramente o mesmo, ignorando acento) — nomes com
+  match ambíguo ou de baixa confiança (variações de "Karoline" com
+  sobrenomes diferentes, por exemplo) ficaram de fora, mesmo critério de
+  nunca adivinhar já usado nas demais rotinas de import. Registrado em
+  `sime_logs` (`mesarios_atualizar_telefone_por_nome`) pra auditoria.
+
+  **Ligação telefônica como meio de contato (20/08/2026).** Terceiro meio
+  além de Carta Registrada/Oficial de Justiça, mas com vocabulário de status
+  diferente — "Enviado/Entregue" não faz sentido pra uma ligação.
+  `status_contato_alternativo` ganhou 4 valores novos
+  (`a_ligar`/`atendeu`/`nao_atendeu`/`numero_errado`) só pra esse meio;
+  `cmStatusLabelSet(meio)` escolhe qual dos dois conjuntos mostrar no
+  `<select>`, e trocar de meio zera o status anterior só quando o
+  vocabulário muda de fato (Carta↔Ofício continuam compartilhando os
+  mesmos 4 valores de sempre, então não zeram entre si).
+
+  **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
+  e o `select()` de `sime_contatar_mesarios.js` agora trazem
+  `inscricao_eleitoral`; a busca por nome em `SIME_atores.html` e em
+  "Contatar mesários" também casa pelo número do título, e o card/modal de
+  edição mostram o título quando existe. Campo somente leitura em
+  `SIME_atores.html` (`abrirModal()`) — é dado do TRE, não editável pelo
+  cartório, ao contrário de telefone/observação.
+
+  **Rastreamento de Carta Registrada (20/08/2026) — sem API dos Correios.**
+  Avaliado e descartado: a API oficial dos Correios pra consulta de
+  rastreamento (SIGEP/Cartão de Postagem) exige contrato comercial pago —
+  incompatível com o custo R$ 0,00/mês do projeto e com o volume baixo/
+  irregular de cartas de um cartório (não é remetente contratado, envia
+  avulso). `sime_atores.codigo_rastreio` (novo campo, texto livre — nunca
+  validado por regex, o formato varia) guarda só o número do objeto pra
+  montar o link público
+  `https://rastreamento.correios.com.br/app/index.php?objetos=<codigo>` —
+  o cartório clica, olha o site dos Correios, e marca o status manualmente
+  em "Status do envio" (`status_contato_alternativo`) como sempre. Não há
+  consulta automática nem polling — decisão deliberada, não pendência.
+
+  **"Já contactado, aguardando resposta" (20/08/2026).** Dentro do bucket
+  "pendente" (que hoje é binário: respondeu ou não), `cmCarregar()` também
+  conta quantas campanhas com `status='enviado'` cada pessoa já recebeu
+  (`sime_campanhas_confirmacao`, por `ator_id`) e mostra "📨 Já contactado
+  (Nx) — aguardando resposta" no card de quem tem pelo menos uma — só pra
+  quem ainda está `pendente` (confirmado/recusado/etc. já são um desfecho,
+  não precisam dessa nota). Não virou bucket de filtro novo — é anotação
+  visual dentro do "falta contactar / sem resposta" de sempre, não uma
+  reclassificação.
+
+  **"🧩 Rodar script conversacional" no modal (28/08/2026)** — pedido
+  direto: rodar um script salvo (aba 🧩 Campanhas, em Cadastro de Atores)
+  pra um número avulso, sem precisar montar um filtro no Disparo em massa só
+  pra uma pessoa. Diferente de tudo que já existia nesta tela (que sempre
+  usa `telefone_whatsapp` cadastrado), o campo "Número indicado" aceita
+  **qualquer** telefone — pré-preenchido com o principal da pessoa, mas
+  editável na hora (ex.: ela acabou de informar outro contato por telefone).
+  `cmEnviarScript()` normaliza o número digitado com
+  `normalizarTelefoneWhatsapp()` (mesma heurística de todo import — ver
+  "Todo import normaliza telefone..." acima) e faz exatamente o mesmo
+  INSERT que o Disparo em massa faz em lote pro modelo "script"
+  (`sime_campanhas_confirmacao` com `campanha_id` + `etapa_atual: 1`,
+  `status: 'pendente'`) — só que um item de cada vez, com o `ator_id` da
+  pessoa sempre preservado mesmo quando o número indicado é outro (é o que
+  faz o envio aparecer na timeline "📞 Tentativas de contato" dela, que já
+  filtra por `ator_id`, não por telefone). A mensagem da etapa 1 é
+  personalizada com os mesmos placeholders do Disparo
+  (`{nome}`/`{funcao}`/`{secao}`/`{local}`/`{municipio}`,
+  `cmPersonalizarScript()` — duplicado de `personalizarMensagem()` de
+  `SIME_atores.html` porque esta página não carrega aquele arquivo). Lista
+  de scripts (`cmScriptCampanhas`) carrega junto com o resto de
+  `cmCarregar()`; campanha `encerrada` fica de fora do `<select>` (mesmo
+  filtro do Disparo). Grava `mesario_script_enviado` em `sime_logs` (com
+  autor, `campanha_id` e o telefone usado) pra aparecer também em "📜
+  Atualizações".
+
+  **`avulso` fura o status da campanha pra rascunho/pausada (27/08/2026,
+  `sql/SIME_campanhas_confirmacao_avulso.sql`)** — pedido direto: "ao clicar
+  ele deve colocar o número na fila imediatamente", testado contra um
+  script recém-criado que nascia `rascunho` de propósito (esperando revisão
+  do cartório antes de ir pro ar). Diferente do Disparo em massa (onde
+  "controle total das campanhas" precisa conseguir PARAR de verdade uma
+  fila inteira pausando a campanha), "Rodar script" é uma ação humana
+  pontual — um número só, um clique — então não devia ficar preso esperando
+  alguém lembrar de ativar a campanha inteira. `cmEnviarScript()` grava
+  `avulso: true` no insert; `api/hermes-campanhas.js` (`pendentes`) deixa
+  passar item `avulso=true` mesmo com campanha `rascunho`/`pausada` — só
+  `encerrada` continua bloqueando (status terminal, não reversível, nenhum
+  envio deveria sair sob uma campanha formalmente fechada, nem avulso). O
+  Disparo em massa nunca marca `avulso`, então o comportamento de pausar
+  uma campanha em massa continua parando 100% dela, sem regressão.
+
+  **Cascata por todos os números conhecidos (27/08/2026, pedido direto:
+  "ele seguiria tentando contato com todos os numeros do mesário caso um
+  não confirme vai para o proximo").** Antes, "Rodar script" mandava pra UM
+  número só (o "Número indicado", pré-preenchido com o principal). Agora o
+  campo virou **"Número extra (opcional)"** (vazio por padrão) e o clique
+  em "▶ Enviar" monta uma fila com esse número extra (se preenchido)
+  primeiro, seguida de TODOS os telefones já conhecidos da pessoa
+  (`cmModalHist.telefones` — principal, TRE, cadastrado à mão), dedupinados
+  por dígito. Só o primeiro da fila vai na linha (`telefone_whatsapp`); o
+  resto fica em `numeros_restantes` (`sql/
+  SIME_campanhas_confirmacao_numeros_restantes.sql`, array JSON).
+  `api/hermes-campanhas.js` cascateia sozinho pro próximo número em dois
+  pontos, os dois só quando `etapa_atual=1` (ainda tentando estabelecer
+  contato — depois de confirmado numa etapa por aquele número não faz
+  sentido cascatear mais):
+  - **`avancar_etapa`**, quando o ramo casado é `telefone_incorreto` ("não é
+    essa pessoa") — não fecha o item, passa pro próximo número, zera
+    tentativas e volta a `etapa_atual=1`/`status='pendente'`.
+  - **`pendentes`**, no auto-expira de quem esgotou `MAX_TENTATIVAS` sem
+    resposta nenhuma — mesma lógica, em vez de virar `sem_resposta`.
+  Os dois gravam `campanha_script_proximo_numero` em `sime_logs` (motivo +
+  novo telefone). Sem `numeros_restantes` (ou fora da etapa 1), o
+  comportamento é exatamente o de antes — sem regressão pro fluxo normal
+  (Disparo em massa nunca popula esse campo).
+
+  **Seção colapsável, movida pro fim do modal (27/08/2026, pedido direto:
+  "caso não seja usado fica recolhido... pode reposicionar mais em
+  baixo").** "🧩 Rodar script conversacional" saiu de logo após "📇
+  Contato" e virou a ÚLTIMA seção do modal, depois de "📝 Observações" —
+  é uma ferramenta avulsa, não algo que se olha toda vez que o modal abre.
+  Fechada por padrão (`cmScriptAberto`, mesmo padrão de disclosure ▸/▾ já
+  usado em `sime_resumo_secoes.js`); o corpo (select de script, campo de
+  número extra, botão, prévia) só entra no HTML quando expandida.
+
+  **"📞 Tentativas de contato" agrupada por dia (27/08/2026, pedido direto:
+  "relacionado em um único ponto as tentativas do dia, para verificar se
+  ficou alguma resposta para trás").** Antes era uma lista corrida (mais
+  recente primeiro, sem quebra nenhuma); `cmAgruparTentativasPorDia()`
+  agora quebra a mesma lista em blocos por dia-calendário (fuso do
+  navegador, `cmDiaChave()`), cada um com cabeçalho "📅 dd/mm/aaaa (N)".
+  Cada grupo, exceto o mais recente, ganha um aviso **"⚠️ sem retorno
+  registrado depois"** quando NENHUM log de "📜 Atualizações" nem
+  observação (`sime_atores.observacao`, timestamp extraído do carimbo
+  `[AAAA-MM-DD HH:MM]` por `cmDataDaObs()`) aconteceu depois da última
+  tentativa daquele dia — é o "verificar se ficou resposta pra trás" da
+  pedido: um dia em que o cartório tentou contato e nunca mais voltou nem
+  anotou nada fica visualmente destacado, em vez de se perder rolando uma
+  lista item a item. O dia mais recente nunca é marcado (pode só estar em
+  andamento ainda hoje). Puramente de leitura/agrupamento — não muda o que
+  já é gravado nem os últimos 15 itens que `cmAbrirModal()` já buscava.
+
+  **Hermes agora captura o CONTEÚDO de uma resposta a esse contato manual —
+  quando sai pelo número do Hermes (27/08/2026, pedido direto: "quero que o
+  hermes agent fique monitorando o contato copiado para saber o conteudo da
+  conversa e se houve resolução do caso").** Limitação de arquitetura
+  confirmada com o dono do projeto antes de construir: o link copiado por
+  "🔗 Copiar" pode ser colado em QUALQUER WhatsApp — às vezes o número
+  oficial do Hermes, às vezes o celular pessoal de quem está no cartório
+  ("depende — às vezes um, às vezes outro"). O Baileys só enxerga mensagens
+  do número em que está logado — uma conversa pelo celular pessoal está,
+  por definição, fora do alcance do Hermes, sem solução possível sem mudar
+  esse fluxo pra sempre passar pelo número oficial (não decidido agora).
+  Quando o número usado É o do Hermes, `modules/whatsapp/recadoDireto.js`
+  (repositório `bernardobbs/hermes`) captura a resposta: roda em toda DM
+  que não bateu com script conversacional/identidade de campanha/
+  autoidentificação (roteamento em `router.js`, mesma ordem de sempre —
+  esses três continuam tendo prioridade, senão duplicaria a mensagem em
+  dois lugares), ignora número admin (conversa admin↔bot não é resposta de
+  mesário) e chama `acao='atualizar'` em `api/hermes-mesarios.js` — ação
+  que **já existia** desde a criação de `consultar` ("se algum dado
+  estiver errado... me manda a informação que eu repasso pro cartório"),
+  documentada, mas nunca chamada por nada no Hermes até agora. Não tenta
+  classificar "confirmado"/"recusado"/"resolvido" sozinho a partir do texto
+  — mesma cautela de sempre (`relatoTerceiro.js`, `buscar_nome`): o texto
+  cru vai pra `sime_atores.observacao` (grava `hermes_atualizou_info`,
+  mesmo log que já aparecia em "📜 Atualizações" desde 20/08/2026) e o
+  cartório lê e decide. Telefone que não bate com ninguém cadastrado (404)
+  fica em silêncio — é o caso mais comum de DM desconhecida (número errado,
+  familiar testando o WhatsApp), não um erro. Como a resposta vira log
+  no MESMO dia da tentativa, ela já fecha sozinha o aviso "⚠️ sem retorno
+  registrado depois" acima — sem precisar de nenhuma lógica nova.
+
+  **Área dedicada às tentativas sem resposta (27/08/2026, pedido direto:
+  "eu quero uma área dedicada às tentativas de contato que não tiveram
+  respostas ainda").** O agrupamento por dia acima é POR PESSOA — só ajuda
+  depois de já ter aberto o modal de alguém. Faltava um jeito de ver, pra
+  ZONA inteira, quem já foi contactado mas ainda não voltou, sem precisar
+  abrir pessoa por pessoa. Dois formatos, os dois pedidos ("poderia ser os
+  dois?"), reaproveitando o mesmo dado:
+  - **Bucket próprio no filtro de sempre** — `🕓 Aguardando resposta (já
+    tentamos)` em `CM_BUCKETS`, computado por `cmEhAguardandoResposta(p)`:
+    `confirmacao` ainda `pendente` **e** `p.tentativas > 0`. Deliberadamente
+    um SUBCONJUNTO de `pendente` (que continua existindo do jeito que
+    sempre foi, cobrindo também quem nunca foi contactado) — são ações
+    diferentes: contactar pela primeira vez vs. cobrar quem já foi
+    contactado e não respondeu.
+  - **Painel de destaque, sempre visível** — bloco amarelo (`.ir-warn`) no
+    topo de "📞 Contatar mesários", acima dos filtros, mostrando a
+    contagem e até 6 nomes (`+N` se passar disso) — aparece só quando há
+    pelo menos 1 pessoa nessa situação, e clicar nele aplica o filtro
+    acima. Não escondido atrás de nenhuma seleção, ao contrário do bucket.
+
+  **`p.tentativas` passou a contar tentativa MANUAL, não só campanha
+  (mesmo dia, achado ao construir isso).** Antes, `cmCarregar()` só contava
+  linhas de `sime_campanhas_confirmacao` com `status='enviado'` — uma
+  pessoa contactada só por "➕ Registrar tentativa"/"🔗 Copiar link"
+  (`sime_logs.acao='mesario_tentativa_contato'`) aparecia como se nunca
+  tivesse sido contactada, tanto no badge "📨 Já contactado" quanto (agora)
+  no bucket/painel novos. `cmCarregar()` ganhou uma consulta a mais
+  (`sime_logs` filtrado por essa `acao` — RLS já escopa pra zona/eleição
+  visível, sem precisar repetir o filtro) e soma as duas fontes num
+  `tentativasPorAtor` só. De caminho, `status='aguardando_resposta'` do
+  motor de script (que antes só contava `'enviado'`) também passou a
+  contar — mesmo significado prático: "mensagem saiu, ninguém confirmou".
+
+  **Bug real corrigido no caminho: registrar tentativa não atualizava a
+  lista por trás do modal.** `p.tentativas` vem de uma consulta em lote
+  feita uma vez em `cmCarregar()`, não de um campo simples que
+  `Object.assign(p, patch)` resolvesse sozinho — "➕ Registrar tentativa"
+  só recarregava a timeline do PRÓPRIO modal (`cmAbrirModal`), nunca
+  chamava `render()` da lista. Card, painel e contagem do bucket ficavam
+  com o número antigo até a aba ser recarregada. `cmRegistrarTentativaCore()`
+  agora incrementa `p.tentativas` localmente (bump otimista, mesmo padrão
+  de toda outra ação rápida desta tela) e chama `render()` — reflete na
+  hora nos três lugares (card, painel, contagem do filtro), sem esperar
+  reabrir a aba.
+
+  **Indicador de bolinha 🔴🟡🟢 + sugestão de escalonamento (27/08/2026,
+  pedido direto: "verde amarela e vermelha ... se nunca foi contactado
+  bolinha vermelha, se foi contactado hoje bolinha verde, se já foi
+  contactado e nunca respondeu bolinha amarela ... uma indicação para
+  passar o contato para o próximo nível, no caso carta ou oficial de
+  justiça").** `cmDotStatus(p)` resume visualmente o mesmo dado que já
+  virava texto ("📨 Já contactado (Nx)") — só faz sentido pra quem ainda
+  está `pendente` (quem já tem desfecho não ganha bolinha):
+  - 🔴 `p.tentativas === 0` — nunca tentado, nenhuma fonte (campanha nem
+    manual).
+  - 🟢 já tentado, e a tentativa mais recente (`p.ultimaTentativaTs`) é de
+    HOJE (`cmDiaChave()`, fuso do navegador — mesma função do agrupamento
+    por dia).
+  - 🟡 já tentado, mas a mais recente não é de hoje — "aguardando resposta"
+    de verdade, não só "mandei e ainda nem deu tempo de responder".
+  `p.ultimaTentativaTs` é novo em `cmCarregar()` — mesma varredura que já
+  computava `p.tentativas`, agora também guardando o `created_at`/`ts` mais
+  recente por pessoa (campanha ou `sime_logs.mesario_tentativa_contato`).
+  `cmRegistrarTentativaCore()` atualiza esse campo otimisticamente com a
+  hora local no clique (não espera `sime_now()` nem recarregar a aba) — é
+  o que faz uma tentativa registrada agora virar 🟢 na hora.
+
+  **Sugestão de escalonamento** — `cmPrecisaEscalonamento(p)`: `pendente`,
+  `p.tentativas >= 3` (mesmo número já usado como `MAX_TENTATIVAS` no motor
+  de script conversacional pra desistir de um número, `api/hermes-
+  campanhas.js` — mesma noção de "já tentamos o suficiente por este
+  canal") e `meio_contato` ainda não é Carta Registrada nem Oficial de
+  Justiça (escalar quem já foi escalado não faz sentido). Card ganha uma
+  nota amarela ("⬆️ Nx sem resposta pelo WhatsApp — considere Carta
+  Registrada ou Oficial de Justiça") e dois botões de atalho — "📮 Passar
+  pra Carta Registrada" / "⚖️ Passar pra Oficial de Justiça" —
+  reaproveitando `cmSalvarMeio()` que já existe (mesma função do `<select>`
+  de Meio de contato); a sugestão não é uma ação automática, só facilita o
+  clique que o cartório já faria manualmente pelo seletor. Trocar de meio
+  já limpa a sugestão sozinho (mesmo `render()` que `cmSalvarMeio()` sempre
+  chamou).
+
+  **Indicar/filtrar quem não tem WhatsApp (01/09/2026, pedido direto:
+  "estou com uma dificildade de identificar os mesário que não tem
+  whatsapp. exemplo GILCILENE DOS SANTOS SOUSA. verifique uma forma de
+  indicar se o numero é ou não whatsapp e como filtrar isso").** Investigado
+  antes de construir: `sime_campanhas_confirmacao.whatsapp_existe` (campo
+  que o Hermes gravaria quando um envio falha por número sem WhatsApp) já
+  existe desde a campanha em massa, mas em produção **nunca foi gravado uma
+  vez sequer** — 0 linhas preenchidas, apesar de 36 tentativas registradas
+  — não dá pra depender desse sinal hoje (pendência do lado Hermes, fora
+  deste repositório). GILCILENE especificamente nunca teve nenhuma
+  tentativa de campanha registrada — pro SIME, o número dela é simplesmente
+  desconhecido, não "confirmado sem WhatsApp".
+
+  Dois sinais complementares, nenhum inventa dado:
+  - **Automático** — `telFormatoFixo()` (`sime_ui_utils.js`): um telefone
+    normalizado sem o 9º dígito (DDD+8, não DDD+9) é, pela numeração
+    brasileira, um fixo — fixo não tem WhatsApp. Sempre disponível, não
+    depende de nenhuma tentativa de envio (verificado contra a base real
+    antes de aplicar: 649 números em formato de celular contra só 6 em
+    formato de fixo e 1 caso anômalo, na 7ª Zona).
+  - **Manual** — pro caso de saber por fora (a pessoa mesma disse que não
+    usa WhatsApp nesse número, mesmo ele tendo formato de celular).
+
+  **Redesenhado no mesmo dia, ainda antes de ganhar uso real (pedido
+  direto, olhando o cartãozinho de telefone do modal): "o marcar sem
+  whatsapp deve vir junto ao numero tipo um x no canto para excluir o
+  numero caso não seja numero da pessoa e do outro lado, sem whatsapp".**
+  A primeira versão gravava `sime_atores.sem_whatsapp_manual` — flag da
+  PESSOA — mas uma pessoa tem vários telefones na lista de "Todos os
+  telefones conhecidos" (principal, os do TRE, o cadastrado à mão), e o
+  status de WhatsApp é propriedade de CADA NÚMERO, não da pessoa como um
+  todo. Nasceu no mesmo dia, teve exatamente 1 uso real em produção (MARIA
+  DO SOCORRO OLIVEIRA DE SOUSA) antes de ser substituída — migrado pro novo
+  formato, não perdido (ver abaixo).
+
+  `sql/SIME_atores_telefones_sem_whatsapp.sql` troca a flag única por duas
+  listas, uma por NÚMERO (dígitos sem "55", mesmo formato de `telSemPais()`,
+  em `jsonb`):
+  - **`telefones_sem_whatsapp`** — dígitos dos números que o cartório
+    confirmou não terem WhatsApp, mesmo em formato de celular. Mesmo
+    espírito de `precisa_substituir`: flag do cartório, nunca escrita por
+    sync ou automação.
+  - **`telefones_ignorados`** — dígitos de números que o cartório marcou
+    como "não é o número desta pessoa" (erro de digitação na planilha do
+    TRE, número de outra pessoa). Pro `telefone_whatsapp`/
+    `telefone_alternativo` (colunas próprias do SIME) excluir já limpa o
+    campo direto — esta lista só é necessária pros números vindos de
+    `sime_mesarios_raw` (staging do TRE, só leitura): não dá pra apagar de
+    lá, então só some da lista **desta pessoa** daqui em diante, sem tocar
+    no staging nem em ninguém mais.
+
+  Cada cartão de telefone (`cmListaTelefones`) ganha os dois cantos: **✕**
+  (canto superior direito, todo cartão com valor — antes só existia no
+  telefone alternativo cadastrado à mão) chama `cmExcluirTelefoneCard()` —
+  limpa o campo (principal/alternativo) ou entra em `telefones_ignorados`
+  (número do TRE); **📵** (canto superior esquerdo, cor sólida quando
+  marcado) chama `cmToggleSemWhatsappNumero()` — alterna só aquele número em
+  `telefones_sem_whatsapp`. Quando marcado (manual OU `telFormatoFixo`), o
+  ícone 💬 de copiar link fica opaco/desabilitado (copiar um link de
+  WhatsApp pra um número confirmado sem WhatsApp não faz sentido), a borda
+  do cartão fica vermelha, e uma legenda ("📵 Não é WhatsApp" ou "📵 Formato
+  de fixo", conforme a origem do sinal) aparece embaixo do rótulo. Excluir
+  um número também tira ele de `telefones_sem_whatsapp` se estivesse lá —
+  não faz sentido guardar status de WhatsApp de um número que acabou de
+  deixar de ser desta pessoa.
+
+  `cmSemWhatsapp(p)` (usada pro badge do card na lista e pro bucket
+  `sem_whatsapp` em `CM_BUCKETS`) passou a checar só o telefone PRINCIPAL —
+  é o que Hermes/campanha em massa de fato usam, então é o que importa pra
+  bater o olho na lista sem abrir o modal; o botão de alternância avulso que
+  existia no card e no topo do modal (`cmToggleSemWhatsapp`, 4º botão ao
+  lado de Confirmado/Convocado/Substituir) foi removido — a marcação agora
+  só existe junto do número, dentro de "📞 Todos os telefones conhecidos".
+
+  **Textos de explicação viraram tooltip, não parágrafo fixo (01/09/2026,
+  pedido direto: "assim vamos deixar o modal menos poluido").** Duas frases
+  que ficavam sempre visíveis no modal — a que explica Confirmado×Convocado
+  (abaixo da linha de 3 botões) e a que explicava os ícones da lista de
+  telefones (💬/✕/📵) — viraram `title` (tooltip ao passar o mouse) em vez de
+  texto fixo: a primeira nos botões "✅ Confirmado"/"📋 Convocado" (mesmo
+  texto nos dois, já que explica a relação entre os dois status); a segunda
+  distribuída por ícone — 💬 ganhou o texto sobre mensagem pré-pronta/
+  registro de tentativa, o campo de telefone ganhou "Clique pra editar —
+  salva sozinho ao sair do campo", e ✕/📵 já tinham tooltip próprio desde
+  que nasceram (ver acima). O rótulo "📞 Todos os telefones conhecidos"
+  continua fixo (só o texto instrucional embaixo dele que virou tooltip).
+
+  **Backfill em produção (01/09/2026, pedido direto: "verifique todos os
+  mesários que nas observações foi indicado sem whatsapp... e marque o
+  numero de telefone como não sendo whatsapp").** Varredura em
+  `sime_atores.observacao` (regex cobrindo "sem whatsapp"/"não é
+  whatsapp"/"numero não é whatsapp" e variantes de maiúscula/espaçamento)
+  achou **31 pessoas** na 7ª Zona com essa anotação explícita do cartório —
+  incluindo a própria GILCILENE DOS SANTOS SOUSA, o caso que motivou a
+  feature inteira. Rodado uma vez via SQL Editor/MCP (não é uma migração,
+  não reaplica sozinha) — grava o dígito do `telefone_whatsapp` de cada uma
+  em `telefones_sem_whatsapp`, idempotente (um caso, ANTONIO HIAGO BARBOSA
+  BORGES, já tinha sido marcado manualmente pela UI antes desta varredura e
+  não duplicou). **Um caso ficou de fora de propósito**: ANA KAROLIINE DA
+  SILVA ALVES tem observação "não é o whatsApp" — frase ambígua (pode
+  significar "esse número não tem WhatsApp" OU "esse número não é dela",
+  mesmo problema de duplo-sentido já documentado pra "recusou"/"contato
+  incorreto" alhures) — mesmo critério de "nunca adivinha": não marcada
+  automaticamente, fica pro cartório revisar manualmente pelo cartãozinho
+  (✕ se for número errado, 📵 se for só sem WhatsApp).
+
+  **Terceiro botão de canto — ✅ confirmar número (01/09/2026, pedido
+  direto: "alem de sem whastapp poderia haver um botão para numero
+  confirmado").** `sime_atores.telefones_confirmados` (`sql/
+  SIME_atores_telefones_confirmados.sql`), mesmo formato de array por
+  dígito dos outros dois. Diferente de `sime_atores.confirmacao` (a PESSOA
+  confirmando que vai participar), este é sobre o NÚMERO: o cartório ligou/
+  verificou por fora que aquele telefone específico é mesmo dela — útil
+  quando a lista tem vários candidatos (principal, os do TRE, o
+  alternativo) e nem todos foram checados. `cmToggleNumeroConfirmado()`,
+  botão no canto inferior direito do cartão (✕ fica no superior direito, 📵
+  no superior esquerdo — o terceiro canto disponível), borda verde quando
+  marcado e legenda "✅ Confirmado" abaixo do rótulo. **Não é mutuamente
+  exclusivo com "sem WhatsApp"** — um fixo pode ser confirmado como dela e
+  ainda assim não ter WhatsApp; a borda vermelha (sem WhatsApp) tem
+  prioridade visual sobre a verde quando os dois coexistem, mesmo critério
+  de "o aviso mais acionável vence" já usado noutros lugares do sistema.
+
+  **Bug real, grave, corrigido em 01/09/2026 — número do TRE sem DDD virava
+  cartão duplicado do principal, e excluí-lo não tinha efeito visível
+  nenhum.** Achado real reportado direto: "WANESSA ALVES DE SOUZA mesmo o
+  contato vindo do elo verificamos que não é dela (86) 99471-9268, deveria
+  poder excluir o contato, faltou limpar o modal com as informações".
+  Investigado: `telefone_2_eleitor` dela no TRE trazia "994719268" — o
+  MESMO número do `telefone_whatsapp` principal, só que sem os 2 dígitos do
+  DDD. `cmListaTelefones()` deduplicava só comparando a string de dígitos
+  crua, então "994719268" nunca batia com "86994719268" (do principal) e
+  virava um SEGUNDO cartão pro mesmo número físico — excluir esse cartão
+  (só leitura, ia pra `telefones_ignorados`) não tinha efeito nenhum
+  visível, porque o principal continuava mostrando o mesmo número intocado
+  do lado dele. Varredura antes de corrigir: **331 pessoas na 7ª Zona**
+  tinham pelo menos um campo do TRE nesse formato (8-9 dígitos, sem DDD) —
+  não era só ela, e provavelmente gerava a mesma confusão silenciosa pra
+  qualquer um que tentasse excluir esse tipo de cartão.
+
+  Corrigido passando os dois lados (dígito de dedupe E valor exibido/
+  copiado) pelo mesmo `normalizarTelefoneWhatsapp()` (`sime_ui_utils.js`)
+  já usado em todo import — assume DDD 86 pra número de 8-9 dígitos soltos,
+  mesma premissa segura que o resto do projeto já usa (as duas zonas do SIME
+  são só no Piauí). Um número do TRE sem DDD que é o MESMO que o principal
+  agora dedupe corretamente (nem chega a virar cartão); um que é
+  GENUINAMENTE diferente (só também sem DDD) continua aparecendo como
+  cartão próprio, agora formatado certo. WANESSA corrigida diretamente no
+  banco no mesmo dia (telefone_whatsapp limpo, telefones_ignorados
+  resetado — mesmo efeito que excluir o cartão único faria depois do fix).
+  Coberto por teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`.
+
+  **Segunda rodada no mesmo dia — "mesmo assim o contato no sistema não é
+  dela".** A primeira correção só limpou `telefone_whatsapp` e ZEROU
+  `telefones_ignorados` da WANESSA — mas o campo do TRE (`telefone_2_eleitor`,
+  ainda "994719268" no staging) continuava lá, e sem nada mais "segurando"
+  aquele dígito (nem o principal, que tinha acabado de ser esvaziado; nem a
+  lista de ignorados, que eu tinha zerado por engano), ele voltava a
+  aparecer como cartão PRÓPRIO no próximo carregamento do modal — exatamente
+  o mesmo número, de novo. Corrigido em duas frentes: **dado** — regravei
+  `telefones_ignorados` da WANESSA com o dígito certo (`86994719268`, já
+  normalizado); **código** — `cmExcluirTelefoneCard()` agora grava o dígito
+  em `telefones_ignorados` **sempre**, mesmo excluindo o principal ou o
+  alternativo (antes só fazia isso pros números do TRE, `campo=null`) — sem
+  isso, o mesmo bug se repetiria pra qualquer pessoa cujo número excluído do
+  principal também exista (com ou sem DDD) em algum campo do TRE. Exclui de
+  `telefones_sem_whatsapp`/`telefones_confirmados` também, se estava lá —
+  não faz sentido guardar status de um número que acabou de deixar de ser
+  desta pessoa.
+- **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
+  (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
+  quantos atualizados/inativados.
+- **📄 Relatório ELO** (`sime_relatorio_elo.js`, 21/08/2026) — quem o SIME já
+  sabe que confirmou (`sime_atores.confirmacao='confirmado'`, por WhatsApp ou
+  manualmente) mas cujo registro na planilha do TRE (ELO, staging em
+  `sime_mesarios_raw`) ainda não reflete isso. Nasceu de uma consulta pontual
+  no banco (14 pessoas encontradas na 7ª Zona na primeira vez) que virou tela
+  própria pra não precisar pedir de novo. Junta por **título de eleitor**
+  (`sime_atores.inscricao_eleitoral = sime_mesarios_raw.inscricao`) — não por
+  `ator_id`, que nunca foi preenchido no staging em produção (a sincronização
+  casa por inscrição, não grava o id de volta lá). Três situações mostradas:
+  **"Sem registro no ELO"** (a pessoa não aparece na exportação mais recente
+  do TRE — situação mais comum), **"Sem resposta registrada no ELO"** (existe
+  no ELO mas `confirmou_convocacao` está nulo) e **⚠️ "ELO diz 'Não'"**
+  (existe uma resposta explícita diferente da do SIME — destacado em
+  amarelo e contado à parte, porque isso é uma divergência real que merece
+  conferir com a pessoa antes de simplesmente atualizar o ELO, não só uma
+  lacuna). Quem não tem título de eleitor cadastrado fica de fora — sem
+  título não dá pra cruzar com o ELO de jeito nenhum.
+
+  **Confirmação em lote a partir de dados do próprio ELO (21/08/2026)** — o
+  caminho inverso também acontece: o cartório olha o ELO e vê gente que
+  **já confirmou por lá** (WhatsApp, Título Net, presencial) mas o SIME ainda
+  não sabe. Tratado, na época, como uma aplicação em lote do mesmo `UPDATE`
+  que o botão de confirmar fazia um de cada vez (`confirmacao='confirmado'`
+  + `data_confirmacao`), casando por título de eleitor — **sem enfileirar
+  mensagem nenhuma** (achado real ao aplicar isso pela primeira vez: as
+  pessoas dessa lista específica não tinham `secao_id`/local designado no
+  SIME, e o template de mensagem sem seção/local produzia um texto quebrado
+  — "...na Seção  — local a confirmar, ."). Essa cautela virou regra geral
+  no mesmo dia: o botão "Confirmar" (hoje `cmConfirmarParticipacao()`) foi
+  revertido pra nunca mais enfileirar mensagem nenhuma, nem um de cada vez —
+  ver bloco acima. Decisão: só sincronizar o status;
+  enfileirar mensagem fica pra quando a pessoa já tiver local designado (ou
+  pelo botão "✅ Confirmar" de sempre, um de cada vez, onde o cartório vê o
+  resultado na hora antes de continuar).
+
+- **📬 Correspondência** (`sime_correspondencia.js`, 27/08/2026, pedido
+  direto: "marcou para receber por carta, imprime uma etiqueta com os dados
+  do destinatario e do remetente e imprime o ar") — pra quem está marcado
+  com `meio_contato='carta_registrada'` (aba 📞 Contatar mesários). A carta
+  de convocação em si continua sendo impressa pelo ELO — esta aba só cobre
+  etiqueta de envio e um modelo de AR pra assinatura na entrega, os dois
+  passos manuais que sobravam pro cartório (referência citada:
+  enderecador dos Correios, mas sem integração — ver limitação abaixo).
+
+  **Endereço do destinatário vem do ELO, não é digitado.**
+  `sime_atores` nunca guardou endereço (decisão antiga, já documentada:
+  "Carta/Oficial de Justiça usam o endereço já no processo do TRE"), então
+  `coCarregar()` casa por **título de eleitor** com `sime_mesarios_raw`
+  (mesma junção de `sime_relatorio_elo.js`, incluindo a mesma busca pelas
+  duas formas do título — com e sem zero à esquerda). A planilha do TRE traz
+  até TRÊS blocos de endereço por pessoa (`*_dados_mesario`, `*_eleitor`,
+  `*_comercial_mesario`) — checado direto na produção da 7ª Zona antes de
+  decidir a prioridade: `endereco_dados_mesario` só vem preenchido em 25 de
+  735 registros (3%), comercial em 1; `endereco_eleitor` vem preenchido em
+  TODOS os 735 (100%). `coEnderecoDestinatario()` faz um COALESCE nessa
+  ordem — dados do mesário primeiro (mais provável de estar atualizado,
+  quando existe), cadastro de eleitor como fallback confiável (quase sempre
+  o que realmente popula a etiqueta), comercial por último. Nunca inventa
+  endereço: quem não tem nenhum dos três blocos preenchido fica de fora da
+  lista principal, numa seção "⚠️ Sem endereço no ELO" à parte — mesmo
+  critério "não adivinha" de todo o resto do sistema.
+
+  **Remetente é editável, não hardcoded.** Cogitado sime_usuarios (por
+  pessoa) e sime_eleicoes (por turno), descartados os dois — endereço do
+  cartório não muda por pessoa nem por turno, é propriedade da ZONA.
+  `sime_zonas` ganhou 6 colunas (`remetente_nome/endereco/bairro/cep/
+  municipio/uf`, `sql/SIME_zonas_remetente.sql`, todas opcionais) editáveis
+  direto nesta aba (mesma política "sem trava de perfil" do resto de
+  `SIME_convocacao.html` — RLS de `sime_zonas` já é `sime_zona_visivel`,
+  sem exigir `config_equipe`). Enquanto o remetente não estiver completo
+  (nome+endereço+CEP+município+UF), um aviso amarelo aparece no topo — não
+  dá pra montar etiqueta sem remetente, e adivinhar/deixar em branco seria
+  pior que travar.
+
+  **Bug real corrigido em 27/08/2026 (mesmo dia, achado logo após o
+  lançamento) — os botões de etiqueta/AR ficavam com `disabled` quando
+  faltava campo do remetente.** Reportado como "clicar em etiqueta ou ar não
+  fez nada": um botão `disabled` não dispara `onclick` nenhum, então sem
+  remetente completo o clique simplesmente não fazia nada, sem toast nem
+  aviso — e o placeholder do formulário ("Cartório da 7ª Zona Eleitoral",
+  "PI") mostra um valor plausível igual ao real, fácil de confundir com
+  campo já preenchido. Os botões nunca ficam mais `disabled` — sempre
+  chamam `coImprimir()`, que agora é quem avisa explicitamente o que falta
+  antes de desistir, mesmo padrão de erro amigável usado no resto do
+  sistema.
+
+  **Layout reconstruído em 27/08/2026 pra seguir de perto o modelo público
+  do Enderecador de Encomendas dos Correios** (`www2.correios.com.br/
+  enderecador/encomendas` — ferramenta gratuita, sem contrato SIGEP,
+  diferente da API paga de rastreamento) — a partir de dois PDFs reais que
+  o dono do projeto gerou lá (com um destinatário real da 7ª Zona) e
+  encaminhou como referência. Reproduz a **estrutura e os campos** desses
+  modelos — sem a marca/logo dos Correios, só texto — pra ser reconhecido
+  na hora por qualquer agência ou carteiro, em vez do modelo simplificado
+  do primeiro dia (só remetente pequeno + destinatário grande).
+  - **Etiqueta**: área "USO EXCLUSIVO DOS CORREIOS" no topo, recebedor/
+    assinatura/documento já embutidos na própria etiqueta (backup pra
+    quando não se imprime um AR à parte), "ENTREGA NO VIZINHO AUTORIZADA?"
+    (sempre "não autorizada" — o SIME não oferece opção de autorizar,
+    convocação é documento pra a própria pessoa), barra DESTINATÁRIO,
+    espaço reservado pra colar a etiqueta de rastreio que a agência gera na
+    postagem (nunca um código inventado — mesmo critério do rastreio
+    manual), observação fixa "Carta de convocação", remetente por fora do
+    quadro.
+  - **AR**: virou uma tabela de verdade (é literalmente um formulário de
+    grade) — data de postagem, unidade de postagem, espaço reservado do
+    código do objeto + carimbo da unidade de entrega, "ENDEREÇO PARA
+    DEVOLUÇÃO DO AR" (o remetente), três tentativas de entrega (data+hora),
+    os 9 motivos de devolução oficiais com código (mudou-se/recusado/
+    endereço insuficiente/não procurado/não existe o número/ausente/
+    desconhecido/falecido/outros), rubrica e matrícula do carteiro,
+    assinatura + nome legível + documento de quem recebeu.
+  - **Endereço real da 7ª Zona descoberto e salvo** a partir dos PDFs de
+    referência: Rua Benjamin Constant, 948, Centro, 64280-000, Campo
+    Maior-PI — preenchido direto em `sime_zonas` (antes vazio).
+
+  **AR reconstruído em 31/08/2026 pra bater ESTRUTURA POR ESTRUTURA com o
+  PDF real (pedido direto, comparando os dois PDFs lado a lado: "quero o ar
+  literalmente igual aos dos correios").** A versão de 27/08 já tinha os
+  campos certos, mas a disposição na tabela divergia em três pontos:
+  - DESTINATÁRIO + espaço do código + ENDEREÇO PARA DEVOLUÇÃO DO AR viravam
+    3 linhas cheias separadas, cada uma com borda própria — no original é
+    **uma célula só** (rowspan), sem linha divisória entre as três partes,
+    emparelhada com UNIDADE DE POSTAGEM (em cima) e CARIMBO/UNIDADE DE
+    ENTREGA (embaixo) empilhados na mesma coluna à direita.
+  - A linha de baixo era 2 colunas (rubrica virava texto solto dentro da
+    célula de observação) — o original é **3 colunas de verdade**
+    (TENTATIVAS | OBSERVAÇÃO+MOTIVO | RUBRICA). `<colgroup>` fixa as larguras
+    (45/23/32%, mesma proporção 68/32 do resto da tabela); linhas de 2
+    colunas usam `colspan="2"` nas duas primeiras.
+  - MOTIVO DE DEVOLUÇÃO ganhou caixinhas quadradas numeradas de verdade
+    (`.co-ar-check`), não só o número em texto corrido.
+  Fora da tabela, ganhou a faixa **"(ÁREA DE COLA NO VERSO)"** na margem
+  esquerda (texto girado 90°, `writing-mode:vertical-rl`) — existe no
+  original porque o AR é colado no verso do envelope, sem ela o SIME não
+  tinha esse elemento visual nenhum. O texto do espaço reservado ao código
+  também virou a frase estática do original ("CÓDIGO DE BARRAS OU Nº DE
+  REGISTRO DO OBJETO") em vez da instrução própria do SIME ("cole aqui...")
+  — o comportamento não muda (nunca mostra `codigo_rastreio`, mesmo campo,
+  mesmo critério "nunca inventa" de sempre), só a palavra, pra bater com o
+  modelo oficial. Etiqueta não mudou nesta rodada — só o AR.
+
+  **Bug real, mais grave, corrigido no mesmo dia — o AR "ficou
+  proporcionalmente perfeito, mas não ficou bom pra impressão" (pedido
+  direto, com o PDF impresso de verdade anexado).** A verificação anterior
+  (screenshot com `page.emulateMedia({media:'print'})`) só renderiza o CSS
+  de impressão num único frame contínuo — não simula PAGINAÇÃO real
+  (quebra de página, `@page`, margem/cabeçalho do navegador), então passou
+  limpo mesmo com o defeito presente. Comparado com `page.pdf()` do
+  Playwright (que pagina de verdade, igual ao motor de impressão do
+  Chrome), o problema apareceu: o PDF real veio em **A4 PAISAGEM**
+  (297×210mm, conferido pelas dimensões do arquivo enviado), e o CSS nunca
+  tinha uma regra `@page` nenhuma — a orientação ficava por conta do que a
+  caixa de diálogo de impressão do navegador tinha usado da última vez, não
+  do que o layout (colunas estreitas, tabela alta) sempre assumiu. Em
+  paisagem a altura útil da página cai bastante, e o rodapé (fora da
+  tabela) transbordava sozinho pra uma 2ª página quase em branco. Testado e
+  confirmado à parte (`@page{size:landscape}` sem nenhum parâmetro de
+  orientação no `page.pdf()` produziu mesmo um PDF em paisagem): o
+  `@page` do CSS de fato dirige a orientação no motor de impressão do
+  Chromium, então `@page{size:A4 portrait;margin:10mm;}` (novo, topo do
+  `@media print` de `SIME_convocacao.html`) força portrait sempre, não
+  importa o que ficou selecionado da impressão anterior.
+  Aproveitado pra tirar mais uma fragilidade: `.co-pagina-ar`/
+  `.co-pagina-etiqueta` tinham padding próprio de 12mm/14mm SOMADO ao
+  padrão do navegador (que nunca tinha `@page{margin}` nenhum pra fixar) —
+  virou 6mm em ambos, já que o `@page{margin:10mm}` novo cobre a margem da
+  folha; dobrar a margem tirava justamente a altura que faltava na hora do
+  aperto. `.co-ar-outer` (a faixa de cola + tabela) também deixou de ser
+  `display:flex`: cola girada (`writing-mode:vertical-rl` + `transform`)
+  dentro de flex é um combo conhecido por calcular altura errado
+  especificamente na paginação de impressão (funciona certo em tela — é
+  exatamente por isso que o screenshot anterior não pegou) — virou
+  posicionamento absoluto, fora do fluxo, sem participar do cálculo de
+  altura da tabela ao lado.
+
+  **Bug real, mesmo dia, achado no PDF impresso depois do fix acima —
+  "fica muito esticado".** Com a orientação corrigida (retrato), o motivo
+  ficou visível: o grid de 2 colunas do MOTIVO DE DEVOLUÇÃO vive dentro da
+  coluna OBSERVAÇÃO/MOTIVO, que é só 23% da largura da tabela — estreita
+  demais pros rótulos de 2 palavras ("Endereço insuficiente", "Não existe o
+  número"), que quebravam em 2 linhas. Como a altura de uma linha de tabela
+  é sempre a da célula mais alta, essa quebra inflava a linha inteira
+  (TENTATIVAS/OBSERVAÇÃO+MOTIVO/RUBRICA) bem além do necessário — e
+  TENTATIVAS/RUBRICA, sem conteúdo pra preencher esse espaço extra, ficavam
+  com um vazio esticado entre as linhas, dando a impressão de formulário
+  "esticado" mesmo sem nenhum erro de proporção de página. Corrigido
+  trocando o grid de 2 colunas (`display:grid;grid-template-columns:1fr
+  1fr`) por lista de 1 coluna (`display:flex;flex-direction:column`) — cada
+  motivo cabe inteiro na largura cheia da célula, sem quebrar, e a linha
+  volta a ter a altura que o conteúdo de fato precisa. Verificado com
+  `page.pdf()` de novo (não screenshot) — nenhum item quebra mais linha.
+
+  **AR revisado de novo no mesmo dia — pedido direto: "USE A MESMA
+  estrutura do ar", apontando um PDF real gerado pelo idcore.com.br
+  (Endereçador ++ Pro), outro gerador gratuito de etiqueta+AR.** Diferente
+  do Enderecador de Encomendas dos Correios (usado nas duas rodadas
+  acima), o idcore.com.br desenha o AR sobre a IMAGEM autêntica do
+  formulário oficial (não recriada em HTML) — referência mais confiável.
+  Comparado lado a lado, achou-se:
+  - "DESTINATÁRIO:" e "Endereço de devolução do AR:" ganharam os dois
+    pontos/case do original (antes eram maiúsculas sem pontuação).
+  - Texto do espaço do código virou "COLE AQUI O NÚMERO DE REGISTRO DO
+    OBJETO" (sem parênteses) — outra frase do que o Enderecador de
+    Encomendas usava; comportamento continua o mesmo de sempre (nunca
+    mostra `codigo_rastreio`).
+  - "MOTIVO DE DEVOLUÇÃO" virou "MOTIVO DA DEVOLUÇÃO" (preposição do
+    original) e voltou a ser grid de 2 colunas — a versão de 1 coluna do
+    fix de "esticado" era só workaround pra largura estreita; a largura
+    da coluna foi corrigida junto (ver abaixo), então o grid de 2 colunas
+    cabe sem quebrar de novo. As caixinhas perderam o número (no original
+    são só quadrados vazios) e "Outros" saiu do grid — virou linha própria
+    com espaço em branco pra escrever à mão, igual ao formulário oficial.
+  - O original NÃO tem coluna "OBSERVAÇÃO" — só TENTATIVAS | MOTIVO DA
+    DEVOLUÇÃO | RUBRICA. "Carta de convocação" (contexto que o SIME
+    precisa manter, mesmo sem existir no formulário genérico) migrou pra
+    dentro da nota do destinatário, junto da função/seção.
+  - DATA DE POSTAGEM e DATA DE ENTREGA ganharam uma linha em branco
+    (`___ / ___ / ______`) pra preencher à mão, igual ao original.
+  - Largura das colunas recalculada por MEDIÇÃO DE PIXEL no PDF de
+    referência (não estimativa): a coluna da direita (UNIDADE DE
+    POSTAGEM/CARIMBO/RUBRICA/DATA DE ENTREGA/Nº DOC.) é ~45% da tabela
+    ali, não os 32% copiados do Enderecador de Encomendas — são
+    referências visuais diferentes, com proporções diferentes.
+  - `.co-ar-tentativas` ganhou `white-space:nowrap` — col-a caiu de 45%
+    pra 27% na mudança acima, e sem isso cada linha "1ª ___ / ___ /
+    ______ ___:___h" passou a quebrar em 2, diferente do original (1
+    linha por tentativa).
+  Verificado de novo com `page.pdf()` (impressão real paginada, não
+  screenshot) antes de subir — motivo da devolução e tentativas de
+  entrega, os dois testados como os pontos mais arriscados de quebrar de
+  novo, couberam numa linha só cada.
+
+  **AR revisado uma 3ª vez no mesmo dia — desta vez com o FONTE REAL do
+  gerador oficial ("verifique o site então", depois o HTML literal
+  salvo de `www2.correios.com.br/enderecador/encomendas/act/gerarAR.cfm`,
+  e por fim o PDF gerado por ele com dados de teste).** Diferente das
+  duas rodadas anteriores (Enderecador de Encomendas e idcore.com.br — os
+  dois APROXIMAÇÕES de terceiro, ou a interface de entrada, não o AR
+  impresso em si), isto é o HTML/PDF literal que o próprio `gerarAR.cfm`
+  dos Correios devolve — a fonte mais confiável possível, sem
+  intermediário. Comparado com calma, três coisas que as rodadas
+  anteriores tinham "corrigido" pro lado ERRADO, e uma real:
+  - **"(CÓDIGO DE BARRAS OU Nº DE REGISTRO DO OBJETO)" com parênteses**
+    é o texto oficial de verdade — a versão da 1ª rodada (baseada no
+    Enderecador de Encomendas) já estava certa; a troca pra "COLE AQUI…"
+    da 2ª rodada (idcore.com.br) tinha se afastado do original.
+  - **"DESTINATÁRIO" e "ENDEREÇO PARA DEVOLUÇÃO DO AR" são MAIÚSCULAS,
+    SEM dois-pontos** — de novo, a 1ª rodada já estava certa; os dois
+    pontos/case misto vieram do idcore.com.br, não do formulário oficial.
+  - **"MOTIVO DE DEVOLUÇÃO"** (preposição "DE", não "DA") — mesmo padrão:
+    1ª rodada certa, "DA" era estilo próprio do idcore.com.br.
+  - **As caixinhas do motivo SÃO numeradas (1 a 9) no formulário real** —
+    achado genuíno, nenhuma das duas rodadas anteriores tinha isso certo
+    ao mesmo tempo (a 1ª tinha número mas culpava a numeração pelo bug de
+    "esticado", quando na verdade o culpado era só a largura da coluna,
+    já corrigida; a 2ª tirou o número copiando o idcore.com.br). Números
+    voltaram: 1 Mudou-se/2 Endereço insuficiente/3 Não existe o número/
+    4 Desconhecido/9 Outros na esquerda, 5 Recusado/6 Não procurado/
+    7 Ausente/8 Falecido na direita — ordem exata do PDF real, "Outros"
+    de volta pro grid (não é mais linha própria com espaço em branco;
+    o oficial não tem isso).
+  - **A coluna OBSERVAÇÃO existe de verdade no formulário oficial**
+    (o dono do projeto testou o gerador com "teste" no campo, e apareceu
+    ali) — a 2ª rodada tinha removido essa coluna por engano, achando que
+    era exclusividade do SIME; "Carta de convocação" volta pra lá, e a
+    nota de função/seção do destinatário continua onde sempre esteve
+    (não precisa dividir espaço com a observação).
+  - **Larguras de coluna recalculadas usando as COORDENADAS VETORIAIS do
+    PDF oficial** (não pixel de screenshot, não estimativa) — a coluna da
+    direita (DATA DE POSTAGEM/UNIDADE DE POSTAGEM/CARIMBO/RUBRICA/DATA DE
+    ENTREGA/Nº DOC.) é 25% da largura útil, TENTATIVAS DE ENTREGA 42%,
+    OBSERVAÇÃO+MOTIVO DE DEVOLUÇÃO 33% — nem os 32% (Enderecador de
+    Encomendas) nem os 45% (idcore.com.br) da direita batiam com o
+    original de verdade.
+  - **Linha em branco sob DATA DE POSTAGEM/DATA DE ENTREGA, removida** —
+    era um acréscimo do idcore.com.br; o formulário oficial não desenha
+    nada ali, só o rótulo.
+  Verificado de novo com `page.pdf()` — mesmo com col-a caindo pra 42% (só
+  um pouco menor que os 45% de antes), "TENTATIVAS DE ENTREGA" continua
+  cabendo numa linha por tentativa; e com col-b subindo pra 33%, o grid de
+  2 colunas do motivo (agora com número de novo, ligeiramente mais largo
+  por caixinha) também não quebra.
+
+  **AR revisado uma 4ª vez no mesmo dia — orientação da página, não só
+  conteúdo (pedido direto: "até o tamanho do ar ficou igual?").** As três
+  rodadas anteriores corrigiram texto/estrutura mas mantiveram
+  `@page{size:A4 portrait}` — herdado do fix de 31/08 pro bug da "2ª
+  página" (a primeira vez que o AR saiu em paisagem, sem nenhum `@page`
+  controlando isso, o conteúdo transbordava). Comparando as DIMENSÕES do
+  PDF real do `gerarAR.cfm` oficial (841.9×595.0pt) com o HTML de origem
+  (tabela 552×371, larga e baixa) ficou claro: **o AR oficial É paisagem
+  de propósito** — o bug nunca foi "paisagem é a orientação errada", foi
+  "sem @page nem largura de coluna controlados, um layout pensado pra
+  ficar largo transbordava quando saía estreito por acidente". A etiqueta
+  não muda — ela segue o padrão portrait do Enderecador de Encomendas, uma
+  referência diferente.
+  Implementado com **CSS Paged Media nomeado** (`@page co-ar-page{size:A4
+  landscape}` + `.co-pagina-ar{page:co-ar-page}`), técnica padrão (não
+  vendor-specific) que o motor de impressão do Chrome/Chromium respeita —
+  suficiente aqui, já que a impressão sempre passa por um desses dois. Só
+  `.co-pagina-ar` recebe a página nomeada; `.co-pagina-etiqueta` continua
+  na `@page` default (portrait), então os dois modelos podem ter
+  orientações diferentes no MESMO documento/job de impressão, sem precisar
+  de dois `window.print()` separados.
+  Verificado com `page.pdf()` de novo — não só innerHTML/screenshot, que
+  não pegam orientação real — lendo o `/MediaBox` cru do PDF gerado (sem
+  lib de PDF no projeto, o MediaBox fica em texto puro, não comprimido):
+  AR sai em 1 página só, largura > altura (igual ao oficial); etiqueta
+  continua com altura > largura, sem regressão. Reduzir a altura útil
+  disponível (a preocupação real de virar paisagem, já que a altura da
+  folha cai de ~277mm pra ~190mm) não voltou a estourar pra 2ª página —
+  a largura extra (190mm→277mm) mais do que compensa, dando ainda mais
+  folga pro grid de motivo e pras tentativas de entrega do que a versão
+  portrait tinha.
+
+  **Duas limitações de arquitetura, confirmadas com o dono do projeto antes
+  de construir isto — nenhuma das duas é bug, as duas já eram decisões
+  antigas documentadas alhures:**
+  - Sem integração com a API paga dos Correios (SIGEP, rastreamento
+    automático) — incompatível com o custo R$ 0,00/mês do projeto (mesma
+    razão já documentada pro código de rastreio manual). Isso é diferente
+    do Enderecador (gratuito, só gera o formulário) — o espaço do código de
+    barras/nº de registro do objeto fica **sempre em branco**, tanto na
+    etiqueta quanto no AR, pra colar a etiqueta física que a agência gera
+    na hora da postagem (decisão deliberada de 27/08/2026, confirmada com o
+    dono do projeto: nunca mostrar `codigo_rastreio` ali, mesmo quando já
+    preenchido — evita confundir um número anotado depois com um código
+    válido pra colar por cima).
+  - Etiqueta não é alinhada a nenhuma folha de adesivo específica (Pimaco ou
+    similar) — o cartório não usa um modelo de etiqueta físico conhecido, e
+    inventar coordenadas de impressão pra um formato não confirmado seria
+    pior que uma folha simples que imprime certo em qualquer impressora.
+
+  **Impressão sem popup.** `#print-area` (elemento fixo em
+  `SIME_convocacao.html`, fora do fluxo normal de `#content`) fica
+  `display:none` na tela e só aparece via `@media print` — `coImprimir()`
+  escreve o HTML nele e chama `window.print()` direto, sem depender de
+  `window.open()` (bloqueado por popup blocker em muitos navegadores).
+  Etiqueta e AR aceitam impressão de 1 pessoa (botão no card) ou em lote
+  (checkbox + "Imprimir etiquetas selecionadas" / "Imprimir AR selecionados"
+  — 31/08/2026, pedido direto: "quero poder imprimir os ar também". Decisão
+  original do dia do lançamento dizia que AR "não fazia sentido em lote"
+  porque a assinatura é individual — mas isso confundia a ASSINATURA (que é
+  mesmo individual, uma pessoa por vez, na hora da entrega) com a IMPRESSÃO
+  do formulário em branco, que não tem esse problema: `coImprimir(ids, tipo)`
+  já era genérica pra qualquer `tipo` desde o início, só faltava o botão de
+  lote na tela — nenhuma mudança na função em si, só um segundo botão ao
+  lado do de etiquetas). Cada impressão grava
+  log de auditoria (`correspondencia_etiqueta_impressa`/
+  `correspondencia_ar_impresso`, com autor e lista de atores) — não é
+  confirmação de que o Correio recebeu, só de que o cartório gerou o
+  documento.
+
+- **🙋 Voluntários** (`sime_voluntarios.js`, 28/08/2026, pedido direto: "quero
+  uma pagina para cadastrar os mesários voluntários. no cadastro deve ter cpf
+  nome telefone e selecionar a função que quer trabalhar (mesário, apoio
+  logistico, coordenador de acessibilidade, todas) e o local que quer
+  trabalhar (cidade, e local de votação ou todos). para quando tiver que
+  preencher alguma vaga ir selecionando os voluntários a medida que foram
+  sendo cadastrados.") — cadastro **paralelo** ao roster oficial do TRE
+  (`sime_atores`), tabela própria `sime_voluntarios`
+  (`sql/SIME_voluntarios.sql`), RLS por zona (`sime_zona_visivel`), unique
+  `(zona_id, cpf)` — mesma pessoa não se cadastra duas vezes na mesma zona.
+
+  **Acesso: só a equipe do cartório, decisão explícita (pergunta feita ao
+  dono do projeto: formulário público de auto-cadastro vs. só a equipe
+  digitar — respondeu "Só a equipe do cartório (recomendado pra começar)").**
+  Mesmo padrão de acesso do resto de `SIME_convocacao.html` — sem trava de
+  perfil, qualquer login da equipe cadastra/edita — não é formulário público
+  de voluntariado. Um formulário público fica de fora desta v1, não
+  descartado, só não construído agora.
+
+  **Escopo v1, deliberado: é um REGISTRO com status, não um automatismo.**
+  `funcoes` (array, vazio = "qualquer função") usa o MESMO vocabulário de
+  `sime_atores.funcao` (`mesario`/`auxiliar_eleicao`/`coord_acessibilidade`)
+  de propósito — não pra converter sozinho, mas pra não exigir tradução se
+  um dia isso acontecer manualmente. `status` é só
+  `disponivel`/`convocado`/`indisponivel` — 3 valores simples, botões de
+  troca rápida no card (mesmo padrão de toda ação rápida do projeto). Não
+  cria/edita `sime_atores` em nenhum fluxo — quando o cartório escolhe um
+  voluntário pra preencher uma vaga de verdade, isso continua sendo feito
+  manualmente pelas telas de sempre (`SIME_atores.html`/
+  `SIME_convocacao.html`); `sime_voluntarios.ator_id` existe na tabela só
+  como campo pronto pro futuro (nunca preenchido por código nenhum ainda).
+
+  **Formulário**: nome, documento — CPF OU título de eleitor, WhatsApp
+  opcional (mesma convenção `"55"+DDD+8/9`), função (checkbox "Qualquer
+  função" que desmarca/desabilita as específicas quando marcada — nasce
+  marcada por padrão num cadastro novo), município→local em cascata
+  (`<select>` de município populado a partir de `sime_secoes` da zona —
+  mesma fonte que o resto do sistema usa pra essa dimensão, sem tabela
+  própria; o `<select>` de local só aparece e só lista os locais daquele
+  município depois de escolhido), observação livre. Documento duplicado na
+  mesma zona mostra erro amigável ("⚠ Já existe um voluntário com esse
+  CPF/título de eleitor cadastrado nesta zona"), não a mensagem crua do
+  Postgres — mesmo padrão de erro amigável já usado no resto do projeto.
+  Remover é soft-delete (`ativo=false`) — nunca apaga de verdade, mesmo
+  padrão de auditoria do resto do SIME.
+
+  **Bug real corrigido antes de subir (achado por autorrevisão, não por
+  teste): a busca por nome/documento anulava o filtro por nome quando a
+  query não tinha nenhum dígito.** `vlSoDigitos(v.documento).includes(q.replace(/\D/g,''))`
+  — com uma busca tipo "ana" (sem dígito), `q.replace(/\D/g,'')` vira string
+  vazia, e `''.includes('')` é sempre `true` (string vazia é substring de
+  qualquer coisa) — o item nunca era excluído pelo `&&` do filtro, então
+  buscar por nome mostrava todo mundo, sem filtrar nada. Corrigido: só
+  compara documento quando a busca de fato tem algum dígito extraído.
+
+  **CPF OU título de eleitor, detectado sozinho pelo tamanho (28/08/2026,
+  `sql/SIME_voluntarios_documento.sql`, pedido direto: "no mesário
+  voluntário podemos cadastrar cpf ou titulo, e digitando o numero ele
+  escolhe se cpf ou titulo de eleitor").** A coluna `cpf` (só CPF, criada
+  horas antes) virou `documento` (genérico) + `tipo_documento`
+  (`'cpf'`/`'titulo'`, `not null`, sem default — o cliente sempre calcula e
+  manda os dois juntos; um default mascararia em silêncio um insert que
+  esqueceu de calcular o tipo). Renomear em vez de manter duas colunas foi
+  seguro porque a tabela tinha **zero registros** nas duas zonas até esta
+  migração (criada no mesmo dia). `vlDetectarTipoDocumento()`
+  (`sime_voluntarios.js`) decide só pelo TAMANHO do que sobra depois de
+  tirar tudo que não é dígito: **11 dígitos → CPF, 12 → título de
+  eleitor** — mesma convenção de 12 dígitos já usada em
+  `normalizarTituloEleitor()` (`sime_ui_utils.js`) pro título de eleitor de
+  `sime_atores`. Nunca pergunta o tipo à parte (um único campo "CPF ou
+  título de eleitor" no formulário) nem tenta adivinhar além do tamanho:
+  um título sem o zero à esquerda (ficando com 11 dígitos) é indistinguível
+  de um CPF de verdade e cai como CPF — mesma armadilha já documentada pra
+  `inscricao_eleitoral` em outro lugar deste arquivo, aqui resolvida do
+  mesmo jeito (exigir o zero, nunca adivinhar). Exibição: CPF continua
+  formatado `000.000.000-00`; título fica cru, sem máscara — mesmo padrão
+  que `inscricao_eleitoral` já usa em todo o resto do sistema. Índice único
+  virou `idx_voluntarios_zona_documento` (zona_id, documento) — o mesmo
+  número não pode ser cadastrado duas vezes na zona, seja CPF ou título
+  (nunca colidem entre si: tamanhos diferentes, 11 vs. 12, nunca a mesma
+  string).
+
+  **Dashboard sugere quem deve ocupar a vaga (28/08/2026, `sime_resumo_secoes.js`,
+  pedido direto: "se aparecer seção incompleta e/ou marcado para
+  substituição indicar quem deve ocupar a vaga, deve vir por ordem de
+  cadastro").** No drilldown por seção (📊 Dashboard → clicar num local),
+  cada cargo de mesa **sem ninguém designado (❌)** ou **marcado
+  `precisa_substituir` (🔁)** ganha uma segunda linha ("🙋 Fulano") com o
+  próximo voluntário disponível da fila — só informativo, sem ação de
+  clique nesta v1. `rsCarregar()` carrega `sime_voluntarios` filtrado por
+  `status='disponivel'` e `ativo=true`, já ordenado por `created_at`
+  ascendente; `rsProximoVoluntario(municipio, localNome)` percorre essa
+  lista já ordenada e devolve o PRIMEIRO que casa por função (`mesario` ou
+  "qualquer função") + local (`municipio`/`local_votacao` vazios no
+  cadastro = "topa qualquer lugar", mesma regra de "qualquer" do resto do
+  cadastro de voluntários). **A ordem é estritamente por data de cadastro,
+  nunca por "quão bem" o voluntário casa com a vaga** — um voluntário que
+  topa qualquer local mas se cadastrou primeiro passa na frente de um
+  registrado especificamente pro local exato, se este se cadastrou depois;
+  é fila, não melhor-encaixe. Confirmado/convocado/aguardando resposta não
+  ganham sugestão — só cargos genuinamente em aberto. Escopo desta v1,
+  deliberado: só cobre o drilldown MRV por seção (que já é
+  estruturalmente só de mesário, ver nota mais acima — "estruturalmente
+  sobre os 4 cargos de mesa, não faz sentido encaixar apoio logístico
+  ali"); Coordenador de Acessibilidade/Auxiliar de Eleição não têm essa
+  sugestão ainda, porque o Dashboard não tem um drilldown equivalente por
+  cargo pra eles (só agregado por local/pizza). O mesmo voluntário pode
+  aparecer como sugestão em MAIS de uma vaga simultaneamente (a fila não
+  reserva ninguém) — deliberado: o cartório só usa uma sugestão de fato
+  quando contacta a pessoa e marca "📋 Convocado" em Voluntários, o que já
+  tira ela de `status='disponivel'` e, portanto, das próximas sugestões
+  (sem precisar de nenhuma lógica de reserva/exclusão adicional).
+
+  **Clicar no cargo vazio abre a fila inteira, não só o primeiro (31/08/2026,
+  pedido direto: "ao clicar em cima da função vazia poderia aparecer os
+  voluntários disponíveis").** Antes, o 🙋 no card era só informativo —
+  mostrava o nome do primeiro da fila (`rsProximoVoluntario`), sem clique
+  nenhum. `rsProximoVoluntario` virou uma casca fina sobre
+  `rsVoluntariosDisponiveis()` (nova, mesmo critério de casamento função+
+  local de sempre, só que devolve a lista inteira, não só o primeiro).
+  Cargo ❌ (sem ninguém designado) ganhou `onclick` pra
+  `rsAbrirVoluntarios(municipio, localNome, cargoLabel)` — abre o mesmo
+  `#overlay`/`#modal-body` compartilhado da página (o mesmo que "Contatar
+  mesários" e "Voluntários" já usam) com a lista completa, em ordem de fila,
+  com link de WhatsApp por pessoa. **Só leitura/contato — não designa
+  ninguém sozinho**: apontar um voluntário pra vaga continua sendo feito
+  manualmente pelas telas de sempre (`SIME_convocacao.html`/
+  `SIME_atores.html`), mesma linha do resto do cadastro de voluntários
+  ("é um REGISTRO com status, não um automatismo"). Cargo 🔁 (precisa
+  substituir) e cargos já designados continuam abrindo o modal de CONTATO de
+  sempre (`cmAbrirModal`) — só o ❌ ganhou o comportamento novo, escopo
+  exato do pedido. `rsJsStr()` (nova) escapa nome de local pra dentro do
+  atributo `onclick="..."` — nomes de local têm apóstrofo de verdade (ex.:
+  "Salão Com. 'Mario Cazuza'"), que quebraria o HTML sem isso.
+
+  **Busca por número de seção + filtro por situação (01/09/2026, pedido
+  direto: "quero poder pesquisar o numero da seção. e um filtro para mostrar
+  seções todas confirmadas, seções com vagas e seções com mesários
+  pendentes").** A busca da grade de locais (`rsBusca`) só casava
+  `local_nome`/`municipio` — agora também casa se QUALQUER seção do local
+  tiver o número buscado como substring (`l.secoes.some(sl =>
+  String(sl.secao.numero).includes(q))`), então digitar "63" acha o local
+  que contém a seção 0063 sem precisar saber o nome do prédio. Filtro novo
+  (`rsFiltroStatus`, `<select>` ao lado da busca) com 3 lentes sobre os
+  mesmos locais já filtrados pela busca — **não mutuamente exclusivas** (um
+  local pode bater em mais de uma, o filtro é uma visão por vez, não uma
+  categorização única):
+  - **✅ Todas as seções confirmadas** — `confirmados === totalCargos`
+    (mesmo critério de "mesa completa" já usado no card do local).
+  - **❌ Com vagas** — `designados < totalCargos`: pelo menos um cargo de
+    mesa, em qualquer seção do local, ainda sem ninguém designado.
+  - **🔶 Com mesários pendentes de confirmação** — `confirmados <
+    designados`: tem gente designada em algum cargo que ainda não
+    confirmou (distinto de "vaga" — o cargo já tem alguém, só falta
+    confirmar). Um local com 0 designados (vaga total) não entra aqui —
+    "pendente" pressupõe que já tem alguém esperando confirmação, não
+    ausência total.
+  Escopado à grade de locais do Dashboard (mesmo nível da busca) — não
+  altera o drilldown por seção nem os stat cards/pizzas, que continuam
+  somando a zona inteira independente do filtro.
+
+  **Busca com vários termos, só por vírgula (01/09/2026, pedido direto: "no
+  filtro do dashboard so permite consultar numero por numero").** A busca
+  acima virava sempre UM substring só — buscar duas seções ao mesmo tempo
+  (ex. "63,245") não achava nada, porque nenhum local tem esse texto exato.
+  `rsBusca.split(',')` quebra em termos, cada um comparado à parte
+  (nome/município/nº de seção) — um local entra se casar com QUALQUER termo.
+  Cogitado (e revertido no mesmo dia) separar também por ESPAÇO — quebrou o
+  teste de busca por nome já existente: "Escola B" virava dois termos
+  soltos ("escola" + "b"), e "escola" sozinho já casa com qualquer local que
+  tenha a palavra "escolar" no nome (ex. "Grupo Escolar A" — "escolar"
+  contém "escola" como substring), fazendo o resultado incluir locais que a
+  busca original não trazia. Nome de local é sempre uma frase com espaço, e
+  separar por vírgula não tem esse conflito — só isso ficou.
+
+  **Bug real corrigido em 01/09/2026 — a busca perdia o foco a cada tecla
+  digitada, dando a impressão de só aceitar "um caractere por vez".**
+  Reportado como "a consulta ainda esta sendo caracter por caracter":
+  `renderResumoSecoes()` reconstrói `#content.innerHTML` inteiro a cada
+  `render()`, mesmo padrão do resto do app — pra um botão/select isso não
+  importa, mas pro campo de busca (`oninput`, dispara a cada tecla) trocava
+  o `<input>` por um elemento novo a cada caractere, derrubando o foco:
+  quem digitava "245" de verdade (não colando) só via o "2" entrar, porque
+  o navegador perdia o alvo do teclado depois do primeiro re-render, e
+  precisava clicar de novo no campo pra continuar. Corrigido guardando, no
+  topo de `renderResumoSecoes()` e ANTES de qualquer `innerHTML` ser
+  reescrito, se `document.activeElement` era o campo de busca
+  (`id="rs-busca"`, novo) e a posição do cursor (`selectionStart`); depois
+  do HTML novo estar no ar, reaplica `.focus()` + `.setSelectionRange()` no
+  elemento recriado. Só mexe nesse campo — os outros controles (select de
+  filtro, botões grade/lista) continuam exatamente como eram. Não pego por
+  nenhum teste antes porque `page.fill()` do Playwright seta o valor final
+  de uma vez (um `input` só), sem simular tecla por tecla — só
+  `page.locator(...).pressSequentially()` reproduz o bug de verdade; o teste
+  de regressão usa esse método especificamente por isso.
+
+  **Barra de progresso em gradiente vermelho→amarelo→verde (01/09/2026,
+  pedido direto a partir de um print do card "8/8 designados... 75%"): "a
+  barra de progresso dos convocados pode ir do vermelho ao verde?"** Antes,
+  `rsBarraCor()` era um degrau de 3 valores (vermelho só em 0%, verde só em
+  100%, azul genérico pra tudo entre os dois) — um local em 75% e um em 30%
+  tinham a mesma barra azul, sem noção nenhuma de "quão perto" estava. Em
+  vez de calcular a cor em JS (exigiria saber o hex exato de cada tema —
+  `sime_theme_dark.css` e `sime_theme_cream.css` usam tons de vermelho/
+  amarelo/verde diferentes), `rsBarraGradienteHTML(pct)` pinta o gradiente
+  inteiro (`var(--red)` → `var(--yellow)` → `var(--green)`, que cada tema já
+  define certo) num elemento cheio e usa `clip-path: inset(0 ${100-pct}% 0
+  0)` pra revelar só os primeiros `pct%` dele — o resultado é a mesma barra
+  "termômetro" de sempre, só que a cor do trecho preenchido já é a cor certa
+  daquele ponto da escala. `rsBarraCor()` continua existindo do jeito que
+  sempre foi (degrau de 3 cores) só pro texto do percentual ao lado da
+  barra — não foi trocado, o pedido era especificamente sobre a barra.
+
+  **Nome do Coordenador de Acessibilidade no drilldown do local (01/09/2026,
+  pedido direto: "no dashboard abaixo do nome pode indicar o nome do
+  coordenador de acessibilidade designado?").** O drilldown por seção
+  (clicar num local) já mostrava os 4 cargos de MRV com nome de quem está
+  designado, mas nunca dizia quem é o Coordenador de Acessibilidade daquele
+  prédio — só dava pra saber que "tem alguém" (Set usado pelas pizzas/vaga
+  por local), nunca o nome. `rsCarregar()` passou a trazer
+  `nome_completo`/`precisa_substituir` no select de apoio (antes só
+  `id, confirmacao, secao_id, funcao`) e monta `coordPorSecao` (secao_id →
+  melhor registro de `coord_acessibilidade`, mesma prioridade
+  confirmado>convocado/pendente>recusou/etc. já usada pra mesário).
+  `rsCalcular()` dedupe isso por local (`loc.coordenadores`, já que a vaga é
+  por PRÉDIO, não por seção — mais de uma seção do mesmo local apontando pro
+  mesmo `coordPorSecao` é a mesma pessoa). Nova linha no cabeçalho do
+  drilldown ("🧏 Coordenador(a) de Acessibilidade: ...") reaproveita
+  `rsStatusCargo()` pra manter o mesmo ícone de status dos cargos de mesa
+  (✅/📋/🔶/⚠️/🔍/🔁); sem ninguém designado, mostra "❌ Sem coordenador de
+  acessibilidade designado" em vez de deixar a linha em branco. Auxiliar de
+  Eleição não ganhou a mesma linha nesta v1 — o TRE nunca traz o código do
+  local pra essa função (ver "Auxiliar de Eleição virou contagem por
+  PESSOA" acima), então não haveria como saber QUAL auxiliar pertence a
+  QUAL prédio sem inventar o vínculo.
+
+  **Nome do coordenador clicável (01/09/2026, pedido direto: "permita
+  clicar no nome do coordenador para verificar a situação").** Mesmo dia da
+  feature acima — a linha nova ganhou o mesmo comportamento que o nome do
+  mesário já tem nos cargos de mesa: clicar abre o modal de tentativas de
+  contato (`cmAbrirModal`), mesmo estilo visual (azul, sublinhado).
+
+  **Conflito de papel: mesário × Coordenador de Acessibilidade (01/09/2026,
+  pedido direto: "um mesário nunca pode ser coordenador de acessibilidade e
+  membro da mesa ao mesmo tempo").** Achado real ao conferir isso direto no
+  banco (cruzando por título de eleitor): já existem casos assim na 7ª
+  Zona — duas pessoas confirmadas nos dois papéis, em seções diferentes, ao
+  mesmo tempo (fariam falta uma na outra função no Dia D, já que um cargo
+  exige ficar fixo na seção e o outro exige circular pelo local todo).
+  `rsCarregar()` passou a trazer `inscricao_eleitoral` nos dois selects
+  (mesário e apoio) e monta dois mapas — `mesarioPorInscricao`/
+  `coordPorInscricao` — cada um guardando só o primeiro achado por pessoa.
+  `rsConflitoMesarioComoCoord(ator)`/`rsConflitoCoordComoMesario(coordAtor)`
+  cruzam nos dois sentidos. Não bloqueia nada (mesmo critério "não adivinha"
+  de sempre — o SIME não decide sozinho qual papel a pessoa deveria manter),
+  só avisa: cargo de mesa com conflito ganha uma linha vermelha "⚠️ tb.
+  Coord. Seção N" embaixo do nome (`rsCardSecao`); a linha do coordenador no
+  cabeçalho do drilldown ganha o aviso recíproco "⚠️ também é mesário (Seção
+  N)". Cabe ao cartório resolver manualmente qual dos dois papéis a pessoa
+  fica.
+
+  **Ícone do cargo reflete o meio de contato quando ainda não confirmou
+  (01/09/2026, pedido direto: "mude o icone se for ainda não confirmado
+  permanece o losango, se mudar para carta de convocação mude o icone para
+  uma carta, se for oficial de justiça mude o icone para um policial..., se
+  for contato telefonico mude o [icone] para um telefone").** Só afeta o
+  ÚLTIMO estado de `rsStatusCargo()` (o fallback pendente/substituído/outros,
+  ícone 🔶 "losango") — os demais estados (✅ confirmado, 📋 convocado, ⚠️
+  recusou, 🔍 contato incorreto, 🔁 precisa substituir) continuam com o
+  ícone de sempre, mesmo que a pessoa tenha `meio_contato` diferente de
+  WhatsApp, porque esses já são fatos mais específicos que o meio de
+  contato não deveria sobrescrever. `rsCarregar()` passou a trazer
+  `meio_contato` nos dois selects (mesário e apoio, pra manter
+  `rsStatusCargo()` consistente nos dois lugares que a usam — cargo de mesa
+  e linha do coordenador). Mapa `carta_registrada→✉️`/
+  `oficial_justica→👮` (mais próximo de "policial" que o emoji set
+  oferece)/`ligacao→📞`; sem meio ou WhatsApp continua `🔶`. O rótulo/tooltip
+  também ganha o meio por extenso ("Aguardando confirmação (Carta
+  Registrada) — Nome"), útil tanto no cargo quanto no aviso de conflito.
+
+  **Conferência automática de atribuição (31/08/2026, `sime_voluntarios.js`,
+  pedido direto: "quero que o sistema verifique se os mesários voluntarios
+  já foram atribuidos na parte de convocação e ja marcar como convocado").**
+  Até aqui `status` só mudava por clique manual do cartório — se um
+  voluntário virasse mesário de verdade pelas telas de sempre (Convocação/
+  Atores), nada em Voluntários sabia disso sozinho, então a pessoa
+  continuava aparecendo como "🟢 Disponível" mesmo já ocupando uma vaga.
+  `vlVerificarAtribuicoes()` casa `sime_voluntarios` com o roster oficial
+  só por **título de eleitor** (`tipo_documento==='titulo'`, comparado
+  direto com `sime_atores.inscricao_eleitoral` — os dois já normalizados
+  pra 12 dígitos por construção, ver `vlDetectarTipoDocumento`) — quando
+  bate um `sime_atores` ativo com o mesmo título, marca
+  `status='convocado'` + `ator_id=<id>` e loga `voluntario_convocado_auto`
+  (com o cargo atribuído no payload, pra auditoria). **CPF nunca é
+  verificado sozinho** — `sime_atores` não tem coluna de CPF nenhuma (só o
+  TRE tem esse dado), então não há como cruzar; fica exatamente como
+  documentado desde sempre pro resto do cadastro de voluntários ("nunca
+  adivinha por nome"). Quem já está `convocado` nunca é tocado de novo
+  (idempotente, sem gravação nem log repetido).
+
+  Roda sozinha toda vez que a aba **carrega** (dentro de `vlCarregar()`),
+  silenciosa quando não muda nada — não interrompe o cartório com um toast
+  à toa cada vez que abre a aba; só avisa quando de fato marca alguém. Tem
+  também um botão **"🔄 Verificar atribuições"** (card do topo) pra
+  reconferir na hora sem sair e voltar da aba — útil logo depois de
+  sincronizar o roster (aba 🔄 Sincronizar) em outra sessão/aba do
+  navegador, quando o carregamento inicial já ficou pra trás. Quem tem
+  `ator_id` ganha um selo verde no card, **"🔗 Já designado no roster
+  oficial — {cargo}"** (`vlBadgeAtribuido`, cargo resolvido de
+  `vlDados.atoresPorId`, o mesmo mapa montado durante a conferência) — sem
+  isso o vínculo ficava invisível na lista, só consultável olhando o banco.
+  **Continua não sendo um automatismo que cria `sime_atores`** — só lê o
+  que já existe lá; transformar um voluntário em designação oficial
+  continua manual, mesma linha de sempre.
+
+- **🎓 Treinamento** (`sime_turmas.js`, `sql/SIME_turmas_treinamento.sql`,
+  02/09/2026, pedido direto: o cartório colou o conteúdo da tela de turma de
+  treinamento do ELO — identificação + instrutores + mesários alunos — e
+  avisou "irei enviar 16 turmas") — até aqui o SIME não tinha onde guardar
+  isso: o roster sabia quem foi convocado e como contactar, mas nada sobre
+  treinamento (quem tem turma, quando, onde, quem faltou). O ELO continua
+  sendo o sistema oficial (é lá que a turma existe e de onde saem carta e
+  Título Net); esta aba é a visão OPERACIONAL do cartório.
+
+  **A entrada principal é COLAR o texto do ELO, não um formulário campo a
+  campo** — 16 turmas seriam ~16 formulários e ~600 nomes digitados à mão.
+  `tuParse()` lê o formato real da tela (rótulo numa linha, valor na
+  seguinte; `Início:`/`Fim:`/`Mostrar instruções…` com valor na MESMA linha)
+  e as duas listas de pessoas como pares inscrição→nome, ignorando o
+  cabeçalho da tabela. Aceita várias turmas de uma colagem só (cada uma
+  começa em "1 - Identificação da turma"). Nunca adivinha: turma sem
+  "Número da turma" é recusada com aviso, inscrição sem nome vira aviso pra
+  conferência manual, `Função "-"` vira `null`. Toda inscrição é
+  normalizada pra 12 dígitos (`normalizarTituloEleitor`) — o mesmo bug de
+  zero à esquerda já documentado pro roster não pode se repetir aqui.
+
+  `sime_turmas` (upsert por `zona_id,numero`) + `sime_turma_pessoas`
+  (`papel` instrutor/aluno, upsert por `turma_id,papel,inscricao`) —
+  **recolar a mesma turma atualiza e preserva a presença já marcada**, o
+  upsert de pessoa nunca escreve `presenca`. `ator_id` é resolvido por
+  título de eleitor contra o roster ativo; quem não bate fica `null` e
+  aparece marcado ("🔍 não encontrado no roster ativo"), nunca casado por
+  nome. Drilldown por turma marca presença (pendente/presente/faltou/
+  justificada), copia convite de WhatsApp com data/hora/local (mesmo padrão
+  "copiar, não abrir" de Contatar mesários) e imprime lista de presença
+  pelo `#print-area` (mesmo mecanismo sem popup de Correspondência).
+
+  Card de aviso no topo mostra quem do roster ativo **não é aluno de
+  nenhuma turma** — instrutor não conta (ele treina, não é treinado).
+
+  **Armadilha real, achada ao carregar as 16 turmas da 7ª Zona:** resolver
+  `ator_id` com um `left join sime_atores ... on inscricao_eleitoral` dentro
+  do próprio INSERT quebra com "ON CONFLICT DO UPDATE command cannot affect
+  row a second time" — há gente com DUAS designações ativas (mesário +
+  coordenador de acessibilidade, conflito já documentado acima), e o join
+  duplicava a linha. O caminho do navegador (`tuImportar`) não tem esse
+  problema (casa por um Map, uma pessoa = um ator), mas qualquer carga por
+  SQL precisa escolher UM ator (ex.: preferir `funcao='mesario'`).
+
+  **Carga inicial (02/09/2026)**: as 16 turmas da 7ª Zona (583 alunos,
+  14/09 a 24/09, em Jatobá, Campo Maior e Sigefredo Pacheco) foram gravadas
+  em produção a partir do texto colado pelo cartório. 4 alunos não bateram
+  com o roster ativo (turmas 002, 003, 004 e 013) — ficam marcados na tela
+  pra conferência, sem casamento por nome.
+
+- **⚖️ Oficial de Justiça** (`sime_oficial_justica.js`, 31/08/2026, pedido
+  direto: "ELABORE MAIS UMA ABA PARA O OFICIAL DE JUSTIÇA CONTROLE A
+  CONVOCAÇÃO DOS MESÁRIOS") — `sime_atores.meio_contato='oficial_justica'`
+  já existia no cadastro desde 20/08/2026 (junto de Carta Registrada e
+  Ligação telefônica, `sql/SIME_atores_meio_contato.sql`), mas nunca tinha
+  tela própria: ficava só dentro da fila geral de "📞 Contatar mesários",
+  sem visão dedicada de quem está nessa fila nem uma relação pra entregar
+  ao oficial. Mesmo espírito da aba 📬 Correspondência (que cobre Carta
+  Registrada), reaproveitando o que já existe em vez de duplicar:
+  `CM_STATUS_ALT_LABEL`/vocabulário de status (Carta Registrada e Oficial
+  de Justiça já compartilhavam a_enviar/enviado/entregue/devolvido, ver
+  `cmStatusLabelSet`), `coEnderecoDestinatario()`/`coFmtCep()`/
+  `coRotuloFuncao()` (mesma fonte de endereço — `sime_mesarios_raw`, casando
+  por título de eleitor, mesma prioridade dados do mesário → eleitor →
+  comercial), e `cmLog()` gravando com a MESMA ação `mesario_status_contato_alt`
+  que o `<select>` de status do modal de "Contatar mesários" já usa — uma
+  mudança de status feita aqui aparece certinho na timeline "📜
+  Atualizações" da pessoa lá, sem duplicar rótulo de log nem criar ação
+  nova.
+
+  **Diferente da Correspondência: sem etiqueta nem AR** — isso é fluxo
+  postal (Correios), e o oficial de justiça entrega em mão. O que o
+  cartório precisa é uma **relação** simples pra entregar a ele: nº, nome/
+  função/seção, endereço, e espaço em branco pra assinatura e data de
+  cumprimento (`ojHtmlRelacao()`, imprime via `#print-area`/`window.print()`,
+  mesmo mecanismo sem popup de Correspondência). Individual (botão "🖨️
+  Relação" no card) ou em lote (checkbox + "Imprimir relação selecionados").
+  Cada impressão grava log de auditoria (`oficial_justica_relacao_impressa`,
+  com autor/quantidade/lista de atores) — não é confirmação de que o
+  oficial recebeu, só de que o cartório gerou o documento (mesmo critério
+  já usado nos logs de etiqueta/AR impressos).
+
+  **Decisão deliberada: a relação é rotulada como documento de CONTROLE
+  INTERNO do SIME, não uma peça processual.** Diferente do AR, onde havia
+  referência oficial real (`gerarAR.cfm` dos Correios) pra reproduzir com
+  fidelidade, não existe um mandado/certidão do TJ-PI de referência pra
+  copiar — inventar um formato que parecesse oficial seria o oposto do
+  critério "nunca adivinha" de todo o resto do sistema. O rodapé da relação
+  deixa isso explícito: "Relação de controle interno do SIME — não
+  substitui o mandado/certidão próprios do processo de convocação."
+
+  Quem não tem nenhuma linha correspondente em `sime_mesarios_raw` (sem
+  título de eleitor casável) cai numa seção "⚠ Sem endereço no ELO" à
+  parte, mesmo critério de Correspondência — entra na relação mesmo assim
+  (o oficial pode ter o endereço por outra via), só marcado visualmente pra
+  conferência. Coberto por teste de regressão dedicado em
+  `tests/test_convocacao_mesarios.mjs` (bloco "3.8").
+
+  **Duas amarrações com o resto do fluxo de convocação (01/09/2026, pedidos
+  diretos).**
+  - **Quem confirma sai da lista sozinho** — "quando o mesário for
+    confirmado e estiver na lista de oficial justiça, pode retirar da lista
+    do oficial de justiça". `ojCarregar()` passou a trazer `confirmacao`
+    também e filtra fora `confirmacao='confirmado'` na carga (não só
+    esconder na tela — a pessoa nem entra em `ojDados.pessoas`), venha a
+    confirmação de qualquer via (WhatsApp, botão manual, ELO em massa) — se
+    já confirmou, não precisa mais do oficial. Não é silencioso: um card no
+    topo mostra "✅ N já confirmado(s) — saíram desta lista automaticamente"
+    quando `confirmadosOcultos > 0`, pra não parecer que a pessoa "sumiu"
+    sem explicação.
+  - **"Entregue" já marca convocado** — "quando marcar entregue pelo
+    oficial ja marca como convocado". Marcar o `<select>` de status como
+    "Entregue" é, por definição, o cartório confirmando que a pessoa
+    recebeu a convocação — mesmo critério que "Convocado" já usa em
+    Contatar mesários (`cmMarcarConvocado`, ver seção Dashboard/Contatar
+    acima). `ojSalvarStatus()` replica o mesmo patch
+    (`confirmacao='convocado'`, `data_confirmacao=null`,
+    `convocacao_recebida=true` + `convocacao_recebida_ts`) nesse caso, e
+    grava o mesmo `mesario_marcado_convocado` que aquele botão já usa (a
+    timeline de Atualizações da pessoa mostra os dois fatos — status de
+    contato E confirmação — sem rótulo de log novo). **Só dispara se a
+    pessoa ainda não tinha avançado sozinha** (guarda contra
+    `confirmacao==='confirmado'` — nem apareceria mais na lista — e contra
+    `confirmacao==='convocado'` — já feito, marcar "Entregue" de novo não
+    duplica o log nem regride nada). Como "convocado" ≠ "confirmado", a
+    pessoa CONTINUA na lista depois disso (só muda de aparência — ainda
+    pode ser preciso acompanhar até ela de fato confirmar participação).
+
+> **Landing padrão do site (20/08/2026)**: `vercel.json` redireciona `/`
+> pra `SIME_principal.html?tab=modulos` (antes ia direto pro Admin) —
+> qualquer um que loga cai no hub de módulos, não numa página específica.
+> `?tab=<nome>` é genérico (`abrirAbaDaUrl()`), não só pra `modulos`.
+
+> **Aba "Módulos" — "Painéis de TV" era, na prática, um bucket de "sem fase
+> definida" (achado do cartório, corrigido em 26/08/2026).** `MODS.tv`
+> (`SIME_principal.html`) tinha 9 itens sob o título "Painéis de TV", mas só
+> 2 (Gerenciador de Painéis, TV Dia da Eleição) são televisão de verdade — os
+> outros 7 (Administração, Recolhimento de Mídias, Cadastro de Atores,
+> Convocação de Mesários, Tokens & QR Codes, Problemas, Relatórios) foram
+> parar ali só por não terem `fase` fixa (`dx`/`d1`/`d`), não por serem TV. O
+> cartório sinalizou especificamente Problemas, Convocação de Mesários e
+> Cadastro de Atores como fora de lugar ali. Separado em dois grupos de
+> verdade: `MODS.tv` ficou só com os 2 itens de TV; `MODS.adm` (novo, título
+> "Ferramentas do cartório") recebeu os outros 7. `renderModulos()` já
+> itera `Object.entries(MODS)` genericamente — bastou acrescentar o
+> `<div class="sec-title">`/`<div class="mod-grid" id="mods-adm">` no HTML,
+> nenhuma mudança de lógica. Os demais módulos `TV_*` (Preparação, Véspera,
+> Distribuição) já viviam nos grupos de fase (`dx`/`d1`) desde sempre, perto
+> do módulo de campo que alimentam — não fazem parte desta confusão.
+>
+> **Acesso a `SIME_convocacao.html` não tem trava de perfil, decisão
+> deliberada (20/08/2026).** Qualquer login da equipe do cartório — não só
+> Coordenador Geral/Monitor de Campo — escreve lá (marcar contato incorreto,
+> mudar meio de contato, editar telefone, registrar tentativa, etc.).
+> Diferente de Admin, que restringe seções/equipe/tokens ao perfil
+> `config_equipe`: convocação de mesários é trabalho de todo mundo do
+> cartório, não de um perfil específico, então não faz sentido gatear.
+
+> **O antigo "🧑‍⚖️ Confirmação de mesários" do Admin** (modal próprio em
+> `SIME_admin.html`, aba Seções) foi removido e virou link pra
+> `SIME_convocacao.html` — o modal só sabia confirmado/recusou/substituído
+> (sem contato incorreto, sem meio alternativo, sem dashboard por
+> local/seção) e duplicava o que a página nova já faz melhor.
+
+> **"Recusou" ≠ "não é a pessoa procurada" — e o SIME não separa isso
+> sozinho.** O Hermes grava `confirmacao='recusou'` tanto pra "sou eu mas
+> não vou atuar" quanto pra "não sou essa pessoa" (contato/CPF errado no TRE)
+> — são casos bem diferentes (o segundo precisa de busca de contato novo, o
+> primeiro precisa de substituto) mas caem no mesmo valor. Separar isso
+> automaticamente exigiria o Hermes (repositório separado) classificar a
+> frase e chamar uma ação nova — decisão de 20/08/2026: não fazer isso agora.
+> Em vez disso, o cartório lê o recado na aba "📞 Contatar mesários" e clica
+> "🔍 Marcar contato incorreto", que grava manualmente
+> `confirmacao='contato_incorreto'` — um valor que só essa tela escreve,
+> nunca o Hermes.
+
+> **O "Confirmou convocação" da planilha não vira o status de confirmação do
+> SIME.** Sobe pro staging por completude/auditoria, mas
+> `sime_sync_atores_from_raw` nunca leu (e continua sem ler)
+> `confirmou_convocacao`/`origem_resposta`/`justificativa` pra dentro de
+> `sime_atores.confirmacao` — são dois controles paralelos. O status real do
+> SIME só muda quando a pessoa responde de fato pelo WhatsApp, via
+> `api/hermes-mesarios.js`. É esse campo real que a aba **📊 Dashboard**
+> mostra (não o da planilha).
+
+> **Varredura "Situação=DISPENSADO" do ELO (31/08/2026) — o roster de 81
+> colunas não tem coluna de situação, mas existe outra tela do ELO que tem**
+> (Nome/Inscrição/.../Seção trabalho/Função/**Situação**/Ações — o cartório
+> colou o conteúdo dessa tela, não um CSV). Diferente do
+> `confirmou_convocacao` acima (que é resposta da PESSOA, nunca vira status
+> sozinho), `Situação=DISPENSADO` é o próprio TRE dizendo que aquela
+> designação específica acabou — mas **"dispensado de uma função pode ser
+> pra assumir outra"** (pedido direto do cartório, achado real: 8 das 56
+> pessoas coladas já apareciam no cadastro com OUTRA função de mesa e/ou
+> seção — remanejadas, não removidas). Por isso a varredura casa cada linha
+> por **título de eleitor** e só desativa quando a seção **e** a função de
+> mesa (`funcao_mesa`) atuais em `sime_atores` batem exatamente com o que o
+> relatório diz que foi dispensado — se qualquer um dos dois já mudou, a
+> pessoa fica intocada (está ativa sob a designação nova). Das 56, 39
+> bateram e foram desativadas (`ativo=false`, mesma observação/log de
+> auditoria do padrão HEMANUELA/Francisco); 8 ficaram de fora por
+> remanejamento (duas delas, FRANCYELLE e JEAN, literalmente trocaram de
+> cargo entre si na mesma seção 225). Rodado uma vez via SQL Editor/MCP —
+> não é uma migração, não reaplica sozinha. **Pendência real**: se o
+> cartório conseguir um export em CSV dessa mesma tela do ELO (em vez de
+> colar o texto), dá pra automatizar essa checagem seção+função dentro de
+> "🔄 Sincronizar" como um 4º caminho — hoje ainda depende de colar
+> manualmente.
+
+> **Bug real grave, achado em 01/09/2026 — a dispensa da varredura acima
+> (e a de HEMANUELA/Francisco antes dela) tinha sido silenciosamente
+> DESFEITA por um resync do roster.** Pedido direto: "PAULO JOSE MACEDO
+> BRITO FOI DISPENSADO, TODOS DISPENSADOS A FUNÇÃO DEVE ESTAR VAZIA".
+> Investigando o PAULO especificamente: `observacao` já tinha o carimbo
+> "Dispensado ... Marcado ativo=false" de 31/08/2026, mas ele estava
+> `ativo=true` de novo. Varredura em toda a base achou **56 pessoas** (as
+> mesmas 39+ da varredura Situação=DISPENSADO, mais casos anteriores) na
+> mesma situação: dispensadas manualmente, reativadas sozinhas depois.
+>
+> Causa raiz: `sime_sync_atores_from_raw()` faz `DO UPDATE SET ... ativo =
+> true` **incondicional** — toda vez que a pessoa continua aparecendo na
+> exportação de 81 colunas do TRE (que **nunca** traz uma coluna de
+> "situação/dispensada", só percebe que alguém saiu quando ele some do
+> arquivo inteiro), o próximo "🔄 Sincronizar" reativa ela de novo. A
+> dispensa manual (SQL Editor, fora do pipeline) nunca tinha como
+> "avisar" o sync que aquele `ativo=false` era deliberado, não esquecido.
+>
+> Corrigido com uma flag própria, mesmo espírito de `precisa_substituir`
+> (manual, nunca sobrescrita pelo sync): `sime_atores.dispensado_manual`
+> (`sql/SIME_atores_dispensado_manual.sql`, aplicado em produção). A
+> função `sime_sync_atores_from_raw()` passou a gravar
+> `ativo = CASE WHEN sime_atores.dispensado_manual THEN false ELSE true
+> END` — uma vez marcada, a pessoa nunca mais é reativada sozinha, não
+> importa quantas vezes reapareça no roster do TRE; os demais campos
+> (nome, telefone, seção) continuam atualizando normalmente. A mesma
+> migração já restaurou os 52 casos existentes (`ativo=false` +
+> `dispensado_manual=true`, casando por quem já tinha o carimbo "Dispensado
+> ... Marcado ativo=false" na observação). **Ainda não existe botão na UI
+> pra marcar isso** — continua sendo SQL Editor/MCP, mesmo fluxo manual de
+> sempre; só o resync que agora respeita a marcação.
+
+> **Bug real, achado em 01/09/2026 — cargo de mesa errado gravado quando a
+> pessoa é remanejada, por desempate arbitrário no upsert.** Pedido direto:
+> "FRANCYELLE OLIVEIRA RIBEIRO esta como 2º mesário, e no elo como
+> presidente, o que pode ter havido? no ultimo arquivo atualizado ela consta
+> como presidente". Investigado: o arquivo de 81 colunas não traz uma linha
+> por PESSOA — traz uma linha por EVENTO de designação. Quando alguém é
+> remanejada de cargo, o arquivo às vezes carrega as DUAS linhas pro mesmo
+> título: a designação antiga (`data_nomeacao` preenchido, `data_convocacao`
+> nulo) e a nova (`data_convocacao` preenchido, `data_nomeacao` nulo), mesmo
+> `tipo_registro='MRV'`, `descricao_funcao_eleitoral` diferente entre as
+> duas. `sime_sync_atores_from_raw()` já sabia que podia haver mais de uma
+> linha pro mesmo `(inscricao, funcao)` num mesmo arquivo — daí o
+> `ROW_NUMBER() ... WHERE rn=1` — mas desempatava por `ORDER BY r.id`, o id
+> do STAGING (uuid gerado no INSERT), que não guarda relação nenhuma com
+> qual das duas designações é a mais recente. Na prática, um sorteio: das
+> 13 pessoas da 7ª Zona com esse conflito no arquivo de 01/09/2026, 3
+> ficaram com o cargo ERRADO gravado (FRANCYELLE, JEAN RIBEIRO DE OLIVEIRA e
+> JOAO SERGIO BRITO DO NASCIMENTO — FRANCYELLE e JEAN, aliás, são o mesmo
+> par já documentado acima trocando de cargo na seção 225); outras 5 não
+> foram afetadas na prática por já estarem com `dispensado_manual=true`.
+>
+> Confirmado nos 739 registros da 7ª Zona: `data_atribuicao` está sempre
+> preenchido, sempre em `DD/MM/AAAA`, nas duas linhas de qualquer conflito
+> — e nos 13 casos verificados, a linha com a MAIOR `data_atribuicao` é
+> sempre a que tem `data_convocacao` preenchida (a designação vigente),
+> nunca a com `data_nomeacao` (a antiga). Corrigido trocando o desempate
+> pra `ORDER BY to_date(data_atribuicao, 'DD/MM/YYYY') DESC NULLS LAST,
+> r.id` — só cai em `r.id` quando as duas linhas têm exatamente a mesma
+> data (empate de verdade, sem informação pra decidir). `sql/
+> SIME_sync_atribuicao_mais_recente.sql`, aplicado em produção; rodar de
+> novo `sime_sync_atores_from_raw(7, 'PI')` com a função corrigida já
+> resolveu as 3 pessoas afetadas, sem precisar reenviar nenhum arquivo.
+
+A sincronização pra `sime_atores` é feita por `sime_sync_atores_from_raw(p_zona_numero, p_uf)`
+— UPSERT por `(inscricao_eleitoral, funcao)`, não DELETE+INSERT: preserva o
+`id` de cada ator (não quebra `sime_campanhas_confirmacao.ator_id` nem
+histórico de notificações) e nunca toca `confirmacao`/`status_convocacao`.
+Quem sai da nova exportação vira `ativo=false`, não é apagado.
+Casa o local de trabalho por `lower(municipio)` (não `initcap()` — corrigido
+em 20/08/2026: `initcap('JATOBÁ DO PIAUÍ')` capitaliza o conectivo "Do", que
+não bate com `sime_secoes.municipio='Jatobá do Piauí'` gravado em minúsculo;
+o join nunca casava pra esse município e ~120 mesários de lá entravam sem
+`secao_id`).
+
+> **Bug real grave, corrigido em 27/08/2026 — título de eleitor com zero à
+> esquerda inconsistente duplicava o cadastro da pessoa, escondendo
+> confirmação/observação/flag numa cópia inativa.** Achado investigando o
+> pedido "HEMANUELA já está dispensada no ELO mas ainda consta no SIME".
+> `sime_sync_atores_from_raw()` casa "é a mesma pessoa?" comparando
+> `inscricao_eleitoral` como STRING EXATA — mas diferentes exportações do
+> TRE/planilha trazem o mesmo título ora com zero à esquerda
+> ("080172290760"), ora sem ("80172290760"), porque Excel come o zero
+> quando trata a coluna como número. Toda vez que o formato mudava entre
+> uma sincronização e outra, o UPSERT não reconhecia a pessoa (string
+> diferente) e **criava uma linha nova**, e o passo de inativação marcava
+> `ativo=false` na linha do formato antigo — sem apagar nada, mas escondendo
+> o que só existia nela.
+>
+> Auditoria em produção antes de corrigir (7ª Zona): **709 pares duplicados
+> (1.418 linhas)** — quase metade do cadastro. Composição: 351 pares eram só
+> duplicata de formato (sem informação divergente); 329 já tinham o status
+> certo na linha ativa; **16 tinham confirmação/observação real presa na
+> linha INATIVA** (escondida); **13 apareciam duas vezes na tela** (as duas
+> linhas ativas ao mesmo tempo); 96 `sime_logs` e 1 `sime_campanhas_confirmacao`
+> ficavam presos no id da linha que ia virar órfã. Nunca houve conflito real
+> (duas confirmações diferentes competindo) — sempre foi "uma tem dado, a
+> outra não".
+>
+> Corrigido em duas frentes:
+> - **Dado já duplicado**: `sql/SIME_atores_titulo_duplicados_merge.sql`
+>   (rodado uma vez via SQL Editor, não é uma migração que reaplica sozinha
+>   — mesmo padrão de `SIME_telefones_normalizacao.sql`) migra pra linha
+>   vencedora (a que tem status além de `pendente`; empate decide por
+>   `ativo=true`) qualquer observação/flag/telefone que só existia na
+>   perdedora, reatribui histórico de `sime_campanhas_confirmacao`/
+>   `sime_logs`, normaliza o título pra 12 dígitos, e aposenta a perdedora
+>   (**nunca apaga** — `ativo=false`, `inscricao_eleitoral=NULL` pra liberar
+>   o índice único, nota de auditoria em `observacao`). Ordem importa: a
+>   perdedora precisa ser liberada ANTES da vencedora tentar gravar o título
+>   normalizado, senão colide com a própria perdedora quando por acaso ela
+>   já estava no formato de 12 dígitos e a vencedora não.
+> - **Causa raiz**: `sime_sync_atores_from_raw()` (a função no banco) e os
+>   dois caminhos de casamento por título no cliente (`mcAtualizar`/
+>   `cpAtualizar` em `sime_mesarios_sync.js`, `sime_relatorio_elo.js`) agora
+>   sempre normalizam pra 12 dígitos antes de gravar ou comparar —
+>   `normalizarTituloEleitor()` em `sime_ui_utils.js` (gêmea JS do `lpad(...,
+>   12, '0')` usado na função SQL). `sime_relatorio_elo.js` precisou buscar
+>   as DUAS formas do título em `sime_mesarios_raw` (com e sem zero), já que
+>   o staging da planilha do TRE continua guardando o dígito cru do arquivo
+>   — só `sime_atores.inscricao_eleitoral` passou a ser sempre normalizado.
+>
+> **HEMANUELA especificamente**: depois de consolidada numa linha só, ela
+> continuava `ativo=true` — não é a duplicata, é outra coisa: a linha dela
+> **ainda aparecia no último CSV importado** (24/08). O arquivo de 81
+> colunas que o SIME lê não tem NENHUMA coluna de "situação/dispensada" do
+> ELO — o SIME só percebe que alguém saiu quando a pessoa **some inteira**
+> do arquivo, nunca por uma marcação interna do ELO. Como o cartório já
+> tinha confirmado a dispensa direto no ELO, foi marcada `ativo=false`
+> manualmente, com nota explicando o motivo (pra não parecer que sumiu
+> sozinha da próxima vez que alguém olhar).
+
+> **Bug real corrigido em 21/08/2026 — `telefone_whatsapp` era sobrescrito a
+> cada resync, desfazendo correção/normalização manual.** O comentário do
+> código já prometia "preserva sempre... whatsapp\_\*", mas o `DO UPDATE SET`
+> gravava `telefone_whatsapp = EXCLUDED.telefone_whatsapp` sem condição —
+> ou seja, toda vez que a pessoa continuava na exportação do TRE, o número
+> corrigido/normalizado no SIME (edição manual pelo modal, ou a normalização
+> em massa de 229 registros já aplicada em produção, ver
+> `sql/SIME_telefones_normalizacao.sql`) era substituído de volta pelo
+> `COALESCE` cru dos 4 campos de telefone do próprio arquivo do TRE — mesmo
+> sem o cartório ter mudado nada. Corrigido pra
+> `COALESCE(NULLIF(sime_atores.telefone_whatsapp, ''), EXCLUDED.telefone_whatsapp)`:
+> só entra o valor do TRE se o campo ainda estiver vazio (nunca teve telefone
+> ou foi limpo); um telefone já preenchido nunca mais é tocado pelo resync —
+> corrigir de fato passa a exigir uma ação manual (modal, "atualizar
+> contatos" ou "colar lista"), nunca o roster de 81 colunas.
+
+> **Bug real corrigido em 21/08/2026 — subir só UMA das duas planilhas do
+> TRE inativava por engano quem era da outra.** MRV (`base geral MRV`) e
+> Apoio especializado (`Base Geral Apoio especializado`) são duas
+> abas/arquivos separados, e o cartório nem sempre tem os dois em mãos na
+> mesma sessão de upload (ex.: só a MRV foi atualizada esta semana). Antes,
+> `msSincronizar()` (`modules/sime_mesarios_sync.js`) apagava **todo** o
+> staging da zona/UF em `sime_mesarios_raw` antes de reinserir — subindo só
+> a MRV, o staging da Apoio (gravado numa sincronização anterior) sumia
+> junto, e `sime_sync_atores_from_raw`, ao não achar mais ninguém daquele
+> tipo no staging, marcava `ativo=false` em toda a Apoio da zona, mesmo que
+> ninguém tivesse de fato saído da exportação oficial. Corrigido escopando o
+> `delete()` também por `tipo_registro` (`IN` só dos tipos — 'MRV'/'AL' —
+> presentes nos arquivos carregados nesta sincronização): subir só a MRV
+> agora só mexe no staging da MRV; o staging da Apoio, gravado numa sessão
+> anterior, continua intacto e segue valendo pro cálculo de quem ficou
+> inativo.
+
+> **Bug real corrigido em 22/08/2026 — Coordenador de Acessibilidade e
+> Auxiliar de Eleição entravam SEMPRE sem `secao_id` (100% dos 99 registros
+> AL da 7ª Zona), mesmo os já confirmados.** Achado investigando por que o
+> Dashboard mostrava "Vazio: 63" e 0% pros dois grupos de apoio logístico —
+> o join original só tenta casar por `secao_local_trabalho` (número de
+> seção), e o arquivo do TRE **nunca** preenche esse campo pra
+> `tipo_registro='AL'`, só pra `'MRV'` (confirmado: 0 de 99 registros AL da
+> 7ª Zona tinham esse campo preenchido). Sem `secao_id`, a pessoa existe e
+> pode até estar confirmada, mas o Dashboard (que agrupa por
+> `local_nome`+`município` via esse campo) não tem como saber onde ela
+> atua — aparecia como se ninguém tivesse sido designado em lugar nenhum.
+>
+> Corrigido com uma ponte que **não adivinha nada**: tanto MRV quanto AL
+> trazem `numero_local_votacao_local_trabalho` (código do LOCAL de
+> votação, diferente do número da seção) já preenchido — quando existe. Um
+> mesário (MRV) do mesmo local+município sempre tem `secao_local_trabalho`
+> preenchido, então a função agora usa o número de seção de **qualquer**
+> mesário do mesmo local como ponte pra resolver o `secao_id` do AL.
+> Verificado antes de aplicar que isso é seguro: todas as seções de um
+> mesmo local compartilham o mesmo `sime_secoes.local_nome` (ex.: local
+> 1325 em Campo Maior → 7 seções diferentes, todas "G.E. Treze de Março"),
+> então não importa qual seção específica a ponte resolve — o
+> `local_nome`/município (que é tudo que AL precisa) sai certo de qualquer
+> uma delas. `sql/SIME_sync_al_secao_bridge.sql`.
+>
+> Resultado depois de rodar de novo o sync na 7ª Zona: **Coordenador de
+> Acessibilidade foi de 0/69 pra 64/69 com `secao_id`** — os 5 que
+> continuam sem é porque nem eles têm o número do local no arquivo de
+> origem (nada pra resolver, sem adivinhar). **Auxiliar de Eleição
+> continua 0/30** — não é bug do SIME: os 30 registros dessa função
+> específica simplesmente não trazem `numero_local_votacao_local_trabalho`
+> nenhum no arquivo do TRE (checado direto na fonte), diferente de
+> Coordenador de Acessibilidade que traz na maioria. Sem esse dado na
+> origem, não há ponte possível — precisaria de uma fonte de dado
+> diferente do TRE pra resolver isso (fora do escopo desta correção).
+
+```sql
+-- via SQL Editor (service_role), pra dump ELO/CSV colado manualmente:
+delete from sime_mesarios_raw where zona_eleitoral_trabalho='7' and uf_trabalho='PI';
+-- rodar o INSERT gerado por qualquer um dos três parsers acima
+
+-- sincronizar (idempotente — pode rodar quantas vezes precisar)
+select * from sime_sync_atores_from_raw(7, 'PI');  -- 7ª Zona
+select * from sime_sync_atores_from_raw(94, 'PI'); -- 94ª Zona
+```
+
+> **Rodar de novo em staging já existente conserta dado antigo.** O fix do
+> `initcap()`→`lower()` acima só passou a valer na PRÓXIMA sincronização —
+> não retroagiu sozinho. Descoberto em 20/08/2026 quando a seção 245
+> (Jatobá do Piauí) apareceu com os 4 cargos ❌ no Dashboard mesmo com gente
+> cadastrada: os 682 registros de `sime_mesarios_raw` da 7ª Zona estavam
+> parados desde 03/08, de antes do fix, e ninguém tinha rodado
+> `sime_sync_atores_from_raw` de novo depois dele. Bastou rodar de novo
+> sobre o staging já existente (sem precisar reenviar arquivo) — 682
+> atualizados, 0 sem `secao_id` no final. Se aparecer seção "toda ❌" com
+> gente que deveria estar lá, suspeitar disso antes de procurar bug novo.
+
+> **Todo import normaliza telefone pro padrão WhatsApp agora (21/08/2026)**
+> — pedido do cartório depois da normalização em massa de produção:
+> "sempre que importar o contato, normalizar todos os contatos pro formato
+> WhatsApp". Antes, cada um dos 3 caminhos de importação gravava um formato
+> diferente em `telefone_whatsapp` — `mcAtualizar()` (Atualizar contatos)
+> gravava os dígitos crus do arquivo sem "55"; `cpAtualizar()`/
+> `cpNormalizarTelefone()` (colar lista) devolvia sem "55" e sem o dígito 9
+> de celular antigo; e a própria `sime_sync_atores_from_raw()` (roster de
+> 81 colunas) inseria o COALESCE cru do TRE, também sem "55". Só o modal de
+> edição (`cmSalvarModal()`) já gravava no padrão certo. Os três agora usam
+> a mesma heurística da normalização em massa (`sql/SIME_telefones_normalizacao.sql`):
+> `normalizarTelefoneWhatsapp()` em JS (`sime_ui_utils.js`, carregada antes
+> dos demais scripts em `SIME_convocacao.html`) e sua gêmea em SQL
+> `sime_normalizar_telefone_whatsapp()` (usada dentro do INSERT de
+> `sime_sync_atores_from_raw`, só pra gente NOVA — o preenchimento só
+> entra quando `telefone_whatsapp` já está vazio, ver bug corrigido acima).
+> `cpNormalizarTelefone()` manteve exatamente o mesmo critério de aceitação
+> de sempre (rejeita comprimentos fora de 8/9/10/11/12-13-com-55 — ex.: o
+> caso de 14 dígitos de artefato de cópia continua descartado, listado pra
+> conferência manual) — só o valor de SAÍDA para o que já era aceito virou
+> canônico, com "55" e o dígito 9 quando faltava.
+
+> **Segunda varredura de normalização em massa (21/08/2026, mesmo dia,
+> `sql/SIME_telefones_normalizacao.sql`).** O cartório usou o site ao vivo
+> na janela entre a primeira varredura e os 3 caminhos de import ficarem
+> corrigidos (item acima) — 237 números novos entraram fora do padrão
+> nesse meio-tempo. Como `sime_sync_atores_from_raw` nunca sobrescreve um
+> `telefone_whatsapp` já preenchido (ver bug corrigido), um número ruim
+> gravado uma vez fica errado pra sempre até uma varredura manual — não é
+> bug voltando, é a mesma troca deliberada de sempre. Reaplicado usando a
+> função `sime_normalizar_telefone_whatsapp()` direto (em vez de reescrever
+> o CASE), confirmado idempotente (0 candidatos na checagem seguinte).
+> Moral prática: **rodar essa varredura periodicamente** (não só uma vez)
+> enquanto o cartório seguir usando os 3 caminhos de import em paralelo às
+> minhas correções — é esperado que um pouco de dado não-canônico volte a
+> aparecer entre uma sessão de trabalho e outra.
+
+**Confirmação por telefone é diferente de confirmação por arquivo.**
+`sime_atores.confirmacao` só muda por duas vias, e cada uma sabe algo que a
+outra não sabe:
+- **WhatsApp/Hermes** (`api/hermes-mesarios.js`) — a pessoa respondeu de
+  verdade pelo número cadastrado. Fonte mais confiável para "confirmado" e
+  "recusou" (é a pessoa falando por si).
+- **Arquivo de 16 colunas com `Ciente`** (aba 📞 Atualizar contatos, ver
+  acima) — o TRE já correu atrás desse contato por outro canal. Única fonte
+  pra "contato incorreto" em massa (`Ciente=2`), já que o Hermes não tem
+  como aprender isso sozinho quando o número nem é da pessoa.
+
+O roster de 81 colunas fica de fora dessa lista de propósito — nunca deve
+escrever em `confirmacao`, mesmo carregando `confirmou_convocacao` pro
+staging (só auditoria).
 
 ---
 
@@ -237,6 +2691,18 @@ supabase
   .subscribe();
 ```
 
+> **Armadilha real, já mordeu em produção (06/08/2026)**: assinar a tabela no
+> JS não basta — ela também precisa estar na publicação `supabase_realtime`
+> do Postgres (`ALTER PUBLICATION supabase_realtime ADD TABLE ...`), senão o
+> canal nunca dispara e ninguém percebe (não dá erro; a tela só nunca
+> atualiza sozinha). `sime_mesa_estado` ficou sem isso desde sempre — só
+> `sime_ocorrencias` tinha sido adicionada — e o sintoma foi "TV Dia não
+> atualiza depois que o cartório resolve um problema" (um celular disfarça
+> o mesmo bug porque relê o estado a cada volta de tela; um TV box ligado o
+> dia inteiro não tem esse reforço). Corrigido e formalizado em
+> `sql/SIME_realtime_publicacao.sql` — ao criar uma `subscribeX()` nova em
+> `sime_realtime.js`, adicionar a tabela lá também.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
@@ -246,18 +2712,44 @@ Admin, enum de funções, `sime_empresas`, token de acessibilidade) estão
 **concluídos** — assim como Realtime nas TVs, Supabase Auth, deploy na Vercel
 e os QR Codes por zona.
 
-### Migração localStorage → Supabase (parcial)
+### Migração localStorage → Supabase (concluída)
 
 Já leem do banco: Admin (seções, equipe, mesários, atores), portal
 (zonas, eleição), TVs (Realtime), tokens e os 6 módulos de campo.
 
-Ainda só em `localStorage`:
-- **Nome da eleição, início da distribuição e intervalo entre saídas** — não
-  têm coluna em `sime_eleicoes` (o resto da configuração já persiste).
-- **Cadastro/edição de ator** em `SIME_atores.html` — a *leitura* vem do banco,
-  mas criar e editar ainda grava local.
-- **Estado de campo** (`sime_lacre_v3`, `sime_inst_v1`, `sime_dist_v1`) —
-  escrito pelos módulos e lido pelas TVs.
+> Esta seção dizia até 10/08/2026 que carga/lacre, instalador e distribuição
+> "ainda" só gravavam em `localStorage` — desatualizado desde os lotes 5d/E
+> da auditoria de UI/UX (08/08). Corrigido aqui porque uma pendência marcada
+> como aberta que já foi fechada é pior que não documentar nada: leva a
+> gastar tempo "migrando" o que já está migrado.
+
+**Estado de campo já é Supabase-first**, com `localStorage` só como cópia
+offline (mesmo padrão de todo o resto do app — grava no banco, espelha
+localmente, sincroniza quando volta a rede):
+- **Carga/lacre** (Coordenador de Preparação, TV Preparação, TV Véspera) —
+  tabela `sime_carga_lacre` (upsert por `eleicao_id,secao_id`), com Realtime
+  propagando pras TVs. `localStorage['sime_lacre_v3']` é só o espelho local
+  (`save()`/`load()` em `SIME_coordenador_preparacao.html`), não a fonte.
+- **Instalador** — grava via RPC `sime_acao_mesa` (mesma usada pelo
+  Mesário); `localStorage['sime_inst_v1']` é o espelho local.
+- **Conferente / TV Distribuição** — grava via RPC `sime_rota_estado_upsert`/
+  `sime_rota_urna_toggle`; TV Distribuição lê por Realtime
+  (`subscribeRotasEstado`); `localStorage['sime_dist_v1']` é o espelho local
+  do Conferente.
+
+**Nome da eleição, início da distribuição e intervalo entre saídas** —
+concluído: `sime_eleicoes` ganhou `nome`/`dist_inicio`/`intervalo_saidas_min`
+(mesmo padrão dos demais campos — banco é a fonte, localStorage é a cópia
+offline). `getEleicaoAtiva()` (`sime_dados.js`) já devolve os três; `nome` é
+compartilhado entre as duas linhas (1º/2º turno) da mesma zona, já que o
+formulário só tem um campo pra ele.
+
+Cadastro/edição de ator em `SIME_atores.html` grava direto em `sime_atores`
+com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravava
+`localStorage`, então uma edição "sumia" ao abrir em outra máquina. Como
+`getAtores()` fica cacheado pela sessão (`sime_dados.js`), o salvar aplica a
+mudança na cópia local (`window.ATORES_REAIS`) em vez de rebuscar — rebuscar
+devolveria a lista antiga do cache.
 
 ### Pânico — propagação de volta ao campo (parcial)
 
@@ -267,35 +2759,403 @@ aparelho. Além disso, **os campos de pânico só entram no payload quando o
 toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
 ação pode desfazer a resolução (vale offline também).
 
-Os outros cinco módulos de campo (motorista, conferente, instalador, mídias,
-acessibilidade) **ainda só escrevem**. O caso real é o pânico da
-acessibilidade: se a equipe resolver pelo Admin, aquele aparelho não fica
-sabendo. Instrução operacional até lá: resolver naquele aparelho.
+O `SIME_acessibilidade.html` também recebe — assina as seções do **local** do
+coordenador (`secao_id=in.(...)`, não a zona inteira) e relê ao entrar e a cada
+volta de tela. Só o pânico vem do servidor: a fila é contagem local do
+coordenador, e sobrescrevê-la com o número de outro aparelho seria pior que não
+sincronizar.
+
+Motorista, conferente, instalador e mídias **continuam só escrevendo** — são os
+quatro em que ninguém de fora altera o estado durante a operação. Mesário e
+acessibilidade, os dois que a equipe altera à distância (pânico), já recebem.
 
 ### Operação — antes de 4 de outubro
 
-- **94ª Zona zerada**: 0 tokens e 0 atores. Precisa importar os atores e gerar
-  os cartões.
-- **Data de carga e lacre** (`data_dx_ini`) nula nas duas zonas — não há padrão
-  legal, é decisão de cada cartório.
+> **Prioridade é a 7ª Zona.** A 94ª segue zerada (0 tokens, 0 atores) e fica
+> deliberadamente fora do foco atual — não é bloqueador pra nada que envolva
+> a 7ª, e não deve ditar prazo nem prioridade de trabalho enquanto a 7ª não
+> estiver pronta. Retomar a 94ª como tarefa própria, não como item que puxa
+> os demais.
+
+> **Rotas de recolhimento de mídia da 7ª Zona substituídas pelo MaxLog
+> (31/08/2026, pedido direto: "essas rotas que enviei hoje são as
+> definitivas, as que existiam antes vamos desconsiderar").** O cartório
+> mandou um export do MaxLog (Sistema de Logística das Eleições do TRE) com
+> as rotas oficiais de recolhimento — `sql/SIME_rotas_7zona_maxlog_2026-08-31.sql`
+> (aplicado em produção, não idempotente, ver nota no próprio arquivo)
+> reescreveu `sime_rotas`/`sime_secoes.rota_id` da zona a partir dele.
+>
+> - **12 rotas antigas (001-012) tiveram o conteúdo TROCADO** pelo do MaxLog
+>   — mesmo código, itinerário totalmente diferente. Rota 005 não veio no
+>   export desta vez e ficou intocada.
+> - **8 rotas novas**: 013-018 vêm direto do MaxLog; 019 e 020 são rotas
+>   próprias criadas pra dois "pontos de consolidação" (Creche Mamãe Lima
+>   M. Oliveira, em Jatobá, e G.E. Monsenhor Mateus, em Sigefredo Pacheco)
+>   onde 3 rotas diferentes convergiam sem dar pra saber qual delas de fato
+>   atende as seções que ficam fisicamente ali — pedido direto do cartório
+>   pra separar isso em vez de adivinhar.
+> - **"Rota 4" tinha duas versões no export** (1º turno 04/10, com paradas
+>   em Corredores; 2º turno 24/10, com paradas completamente diferentes em
+>   Tangará) — `sime_rotas` não distingue por turno, então só a versão de
+>   1º turno foi gravada (decisão do cartório: "só gravar a do 1º turno
+>   agora"). Se houver 2º turno, revisar essa rota específica na época.
+> - **⚠️ Cobertura parcial, pendência real:** o export só tinha 42 dos ~64
+>   locais de votação da zona. Os outros 22 (CAIC, EMATER, FSESP, Prefeitura
+>   Municipal, Sec. Mun. de Educação, IFPI, SAAE, Sec. Est. de Fazenda, Col.
+>   Est. Profª Raimundinho, Centro Ed. JA Mulata Lima, Clube dos Comerciários
+>   em Campo Maior; U.E. Tertuliano Pereira, U.E. João Félix de Andrade em
+>   Jatobá; U.E. Dr. Jerônimo S. Silva, U.E. José Ribeiro da Luz em
+>   Sigefredo) ficaram **sem rota** — 76 seções ao todo. Isso inclui 16
+>   locais que tinham rota atribuída ANTES (nas rotas 004/006/009/012, que
+>   foram redefinidas) e ficaram órfãos de propósito, em vez de continuar
+>   apontando pra uma rota que agora significa outra coisa. Falta o cartório
+>   trazer o restante do export do MaxLog (ou confirmar que esses locais
+>   ainda não têm rota definida no sistema oficial).
+
+> **Como adicionar o primeiro usuário de uma zona vazia (27/08/2026, pedido
+> direto: "como adicionamos usuários a zona 94?").** A Edge Function
+> `sime-admin-user` (aba Equipe → "+ Novo membro") já aceitava `zona_id` no
+> corpo pra `super_admin` escolher outra zona (`supabase/functions/
+> sime-admin-user/index.ts:138-141` — qualquer outro perfil sempre cria na
+> própria zona, ignorando o campo) — mas a tela nunca mandava esse campo, só
+> `{nome, email, perfil}`. Sem isso era ovo-e-galinha: pra criar o primeiro
+> usuário da 94ª seria preciso logar como alguém DA 94ª, que não existia.
+> Corrigido com um seletor "Zona eleitoral" no formulário de novo membro
+> (`showMemberModal()`), visível só quando `window.SIME_IDENTIDADE.perfil===
+> 'super_admin'` e só ao criar (não edita a zona de quem já existe) —
+> reaproveita `window.ZONAS_REAIS` (já carregado pra aba Zonas) e pré-marca a
+> própria zona do super_admin. `saveMember()` só inclui `zona_id` no corpo se
+> o campo existir no DOM — pra qualquer outro perfil, o comportamento
+> continua idêntico a antes (sempre a própria zona, decidido pela Edge
+> Function). Na prática: um `super_admin` logado (mesmo da 7ª) escolhe "94ª
+> Zona" no formulário e cria o primeiro `coordenador` de lá; dali em diante,
+> esse coordenador já consegue logar e cadastrar o resto da própria equipe
+> normalmente (sem precisar mais do seletor).
+
+> **Enviar as credenciais de acesso por WhatsApp ao criar um membro
+> (28/08/2026, pedido direto: "quando criar um usuário, e constar o telefone
+> podemos enviar os dados pelo whatsapp").** O campo de telefone do
+> formulário "+ Novo membro" — antes rotulado "WhatsApp (escalonamento de
+> pânico)" e visível só pra Gestor de Problemas/Chefe de Cartório — virou
+> **"WhatsApp de contato"**, de uso geral: agora aparece ao criar QUALQUER
+> perfil (`showMemberModal()`/`onPerfilChange()`, `isNew || ehEscalonamento`),
+> e ao editar continua restrito a gestor_prob/coordenador (só eles usam o
+> número pra escalonamento; reenviar credenciais numa edição não faz
+> sentido). Preenchido, `saveMember()` enfileira as credenciais
+> (painel/e-mail/senha temporária) direto em `sime_campanhas_confirmacao` —
+> **fluxo "SIMPLES"** já existente (`campanha_id` nulo, sem `ator_id` porque
+> não é mesário), a mesma fila que `api/hermes-campanhas.js` já drena pro
+> Hermes mandar por WhatsApp. Nenhum código novo do lado do Hermes foi
+> necessário — o fluxo simples já suportava exatamente isto.
+>
+> **Bug real, achado no caminho: `sime_usuarios.telefone_whatsapp` gravava
+> dígito cru, sem "55" na frente** — único telefone do projeto fora da
+> convenção usada em `sime_atores`/`sime_campanhas_confirmacao`. Nunca dava
+> pra perceber porque, até agora, nada de fato ENVIAVA mensagem pra esse
+> número (só existia pra `hermes-contatos.js` ler); ligar o envio de
+> credenciais teria quebrado em silêncio com o formato errado. Corrigido:
+> grava sempre com "55" (`telSemPais(...)` + `'55'+d`), e o campo agora
+> EXIBE formatado (`fmtTelefone()`, mesmo padrão dos cartões de telefone de
+> Contatar mesários) em vez do valor cru.
+>
+> **Bug real, mais sério, achado no mesmo caminho: o modal "✓ Acesso criado"
+> (senha temporária) abria e fechava sozinho, no mesmo instante, sem
+> ninguém nunca conseguir vê-lo.** `saveMember()` sempre terminava com
+> `saveTeam(team); closeModal(); renderTeam();` incondicional — um
+> `closeModal()` que rodava LOGO depois de `mostrarSenhaTemporaria()` ter
+> acabado de abrir esse mesmo modal, na mesma execução síncrona, sem
+> nenhuma interação do usuário no meio. Ou seja: desde que esse fluxo
+> existe, a senha temporária de um login novo nunca ficou de fato visível
+> pra ninguém — fechava sozinha antes de qualquer clique. Corrigido
+> restringindo o `closeModal()` de baixo à mesma condição que já decidia o
+> toast "Membro salvo" (`!(email && !jaTinhaEmail)`) — ou seja, só fecha
+> quando NÃO acabamos de criar um login novo; quando criamos, o modal de
+> credenciais fica aberto até a própria pessoa clicar "Copiar"/"Fechar".
+>
+> Quando o envio por WhatsApp é enfileirado com sucesso, o modal de
+> credenciais ganha uma nota extra ("💬 Essas credenciais também já foram
+> enfileiradas...") — não substitui a tela, é reforço pra quando o WhatsApp/
+> Hermes falhar ou não for o canal mais rápido no momento. Log de auditoria
+> (`membro_credenciais_whatsapp_enfileiradas`) usa `window.ELEICAO_ID`
+> (já resolvido no boot por `iniciarMesaEstadoReal()`) — não o
+> `getEleicaoAtiva` importado no `<script type="module">` do topo, que é
+> invisível pro `<script>` clássico onde `saveMember()` vive
+> (`ReferenceError` achado testando isto).
+- **Data de carga e lacre da 7ª Zona** (`data_dx_ini`) nula — não há padrão
+  legal, é decisão do cartório.
 - **Segredos do Hermes** (`HERMES_SECRET_ZONA_7/94`) na Vercel e no Hermes.
 - **Testar em campo**: um QR real com PIN e a legibilidade física dos cartões.
+- **Detecção de eventos de seção (`eventos.js`) só propõe, não grava**
+  (`enc`, `zeresima`, `panico_*`, `urna`, `midia_pronta`, `mesa_completa` — o
+  domínio de dia D). Regex + fallback IA identificam e mandam pro Telegram
+  pra validação humana, mas nada chama `/api/hermes-update` — decisão
+  deliberada (modo proposta), não escrever automaticamente sem medir taxa de
+  acerto primeiro. Sem isso, "seção 63 encerrada" dito no grupo continua
+  exigindo lançamento manual no Admin ou por telefone.
+- **Escalonamento por papel — lado SIME pronto, lado Hermes falta ligar**: a
+  fila de notificações drenada ainda manda pra todos os `ADMIN_NUMBERS` do
+  Hermes, independente do nível. `sime_usuarios.telefone_whatsapp` (coluna
+  nova) + `/api/hermes-contatos` (`acao=listar`) já resolvem "quem é o Gestor
+  de Problemas/Chefe de Cartório desta zona" — o admin cadastra o próprio
+  WhatsApp na aba Equipe do `SIME_admin.html` (campo só aparece pros dois
+  perfis certos). Falta só `index.js` no Pi somar esses números aos
+  `ADMIN_NUMBERS` conforme `idade_s` — ver `SIME_hermes_skill_escalonamento.md`
+  no repositório `bernardobbs/hermes`.
+  94ª Zona também zerada aqui (ninguém cadastrou telefone ainda).
+- ~~Autoatendimento por telefone ("oi" → função + seção) não está ligado no
+  Hermes~~ — **ligado em 27/08/2026**, pedido direto ("tem um script para
+  quando uma pessoa manda mensagem?"). `modules/campanhas/autoidentificacao.js`
+  (repositório `bernardobbs/hermes`) já cobria uma autoidentificação
+  espontânea por frase longa ("sou mesário"); ganhou um segundo gatilho,
+  `ehSaudacao()`, pra saudação simples ("oi"/"bom dia"/"boa tarde"/"boa
+  noite"/etc.) — mesma ação (chama `acao=consultar`, manda `mensagem_wa` +
+  imagem se tiver). Deliberadamente **não** reaproveita o casamento por
+  substring das frases longas: "oi" como substring bateria em qualquer
+  mensagem com a palavra "coisa", por exemplo — `ehSaudacao()` exige
+  IGUALDADE com a mensagem inteira normalizada, não substring, então "Boa
+  noite, aqui é a Ana do local 12" continua caindo no fluxo normal, não
+  nesta saudação.
+  **Achado ao ligar isso, antes de subir**: `acao=consultar` devolve
+  `mensagem_wa` ("Não encontrei seu telefone...") mesmo quando NINGUÉM bate
+  com o telefone — resposta correta pra quem afirma "sou mesário" (merece um
+  "não encontrei, fale com o cartório" como resposta direta ao que disse),
+  mas teria reproduzido o mesmo incidente do `buscar_nome` se aplicada à
+  saudação: qualquer estranho que mandasse "oi" pro número (número errado,
+  familiar testando o WhatsApp) receberia esse mesmo texto sem sentido pra
+  ele. Corrigido antes de ir ao ar: saudação só responde quando
+  `resposta.body.encontrado > 0` de verdade; sem match, fica em silêncio —
+  "sou mesário" continua respondendo os dois casos, porque ali a afirmação
+  é explícita.
+  Busca por **nome** (`acao=buscar_nome`) continua existindo no endpoint,
+  mas o gatilho automático no WhatsApp (qualquer DM não reconhecida como
+  comando, com 2+ palavras, era tratada como nome de convocação) segue
+  **suprimido desde 06/08/2026** — disparava em cima de conversa comum
+  ("Bom dia", "É Bernardo do cartório") e respondia "não encontrei ninguém
+  chamado <frase>" pra qualquer coisa que não fosse um comando, confundindo
+  quem mandava mensagem normal pro número (flagrado em campo).
+  `buscarConvocacaoPorNome` continua disponível em
+  `modules/whatsapp/confirmacao.js`, só não é mais acionado automaticamente
+  — isso continua pendente, não foi religado agora.
+- **Canal de DM (individual) restrito a `ADMIN_NUMBERS`, desde 06/08/2026**
+  — mesmo incidente do item acima. Antes, `status` e `fila` respondiam a
+  qualquer remetente; agora todo o `modules/whatsapp/comandos.js` retorna
+  sem responder nada pra quem não está na lista (nem "sem permissão" — só a
+  DM chegando, sem nenhuma resposta visível). Toda DM é logada no `pm2 logs`
+  (nunca no WhatsApp) pra ainda dar pra achar um admin legítimo bloqueado
+  por JID `@lid` fora da lista.
+- **94ª Zona sem instância de Hermes**: só a 7ª tem o Raspberry Pi rodando. O
+  Pi já tem `HERMES_BACKUP_ATIVO` configurado (dois números de WhatsApp), mas
+  isso hoje é redundância de **sessão** pra 7ª — os dois números compartilham
+  o mesmo `HERMES_SECRET`, não dá cobertura à 94ª por si só. Fazer os dois
+  números monitorarem grupos das duas zonas é mudança de arquitetura maior
+  (grupo→zona, Bearer por zona, filas por zona) — patch consolidado pronto
+  pra aplicar em `PATCH_CONSOLIDADO_2026-08-08.md` (repositório
+  `bernardobbs/hermes`, junto com
+  autoatendimento e escalonamento, numa sequência só), com o trade-off
+  explícito: junta o raio de impacto de uma queda do Pi inteiro nas duas
+  zonas (a redundância só
+  cobre a sessão do WhatsApp cair, não o Pi cair).
+- **JID `@lid` do Baileys**: quando o WhatsApp identifica o remetente por um ID
+  interno em vez do telefone, o Hermes não consegue casar com `sime_atores` —
+  bloqueia confirmação automática para essas mensagens. Medir a frequência.
+- **Ponto único de falha do Hermes**: Pi 3B doméstico, Wi-Fi, sem redundância —
+  se cair no dia da eleição, não há monitoramento por WhatsApp (a fila offline
+  do SIME em si continua funcionando). Só existe um Raspberry Pi disponível,
+  então não há como mitigar a queda do Pi em si — isso continua ponto único
+  de falha real, sem solução. Mitigação parcial disponível desde 05/08, e
+  restrita a um recorte menor do problema: `services/papel.js` +
+  `core/bootstrap.js` permitem um **segundo número de WhatsApp no mesmo Pi**
+  (`HERMES_BACKUP_ATIVO=true`, dois sockets Baileys no mesmo processo, cada
+  um com sua pasta de sessão) assumir a **monitoria de grupo** quando o
+  socket principal desconecta — decisão local e instantânea, não depende de
+  rede. Cobre a sessão do WhatsApp cair sozinha (deslogado, banido, chave
+  corrompida); **não cobre o Pi cair** (energia, Wi-Fi, SD, processo
+  travado), já que os dois números são o mesmo processo/hardware. Também não
+  cobre fila de pânico nem disparo em massa, que continuam só no principal
+  mesmo com o backup ativo (decisão deliberada, ver `HERMES_RUNTIME.md` no
+  repositório `bernardobbs/hermes`).
+  Não ligado por padrão: exige um segundo número de WhatsApp + esse número
+  adicionado manualmente em cada grupo monitorado.
 
 ---
 
 ## HERMES AGENT
+
+### Gestão do Hermes (versão + heartbeat) — `sql/SIME_hermes_gestao_schema.sql` + `/api/hermes-heartbeat`
+
+Primeiro passo da "Proposta de Evolução do Hermes Agent": dar ao SIME
+visibilidade e controle remoto sobre o Hermes, sem reescrever o runtime
+inteiro ainda.
+
+- `sime_componentes` (por zona): `versao_instalada`/`commit_instalado`
+  (o que o Hermes reportou), `versao_desejada`/`atualizar_agora` (o que o
+  admin pediu). SIME nunca empurra comando — o mesmo problema de NAT de
+  sempre — então pedir atualização é só marcar a linha; o Hermes decide se
+  atende no próprio ciclo.
+- `sime_heartbeat` (por zona): pulso de vida + telemetria (versão, uptime,
+  CPU/RAM/temperatura, disco, status WhatsApp/Telegram, última sincronização).
+  "Online" é derivado no cliente (heartbeat < 5 min), não guardado.
+- **Via endpoint, não Supabase direto** — `/api/hermes-heartbeat`
+  (`enviar`/`confirmar_atualizacao`/`erro_atualizacao`, ver
+  `SIME_hermes_skill_heartbeat.md` no repositório `bernardobbs/hermes`),
+  mesmo Bearer por zona dos demais.
+  `index.js` não fala mais com o Supabase direto desde 03/08/2026 (ver
+  `HERMES_RUNTIME.md` no repositório `bernardobbs/hermes`), então esta é a
+  única gravação válida — nada de
+  service key no Hermes pra estas tabelas.
+- Aba "🤖 Hermes" no Admin (`SIME_admin.html`) **lê as tabelas direto** (RLS
+  por zona) — isso é o padrão normal do SIME, o frontend sempre fala com o
+  Supabase com a anon key; só o Hermes é que passa por endpoint. Tem o botão
+  "Solicitar atualização", que faz upsert com `atualizar_agora=true` +
+  `versao_desejada`. Realtime em `sime_heartbeat` (`subscribeHeartbeat` em
+  `sime_realtime.js`) atualiza a tela sozinha.
+- **Não automatizar a aplicação da atualização perto da eleição** (04/10) —
+  o botão do Admin só marca o pedido; o próprio skill doc já registra isso
+  como critério deliberado, não esquecimento.
+- **Em produção desde 06/08/2026** — o Hermes da 7ª Zona chama o endpoint a
+  cada ciclo (`services/telemetria.js`) e recebe `200`. Causa raiz de um 401
+  e depois um 400 (`Zona não encontrada`) que bloquearam isso por um tempo:
+  duas env vars do Vercel (`HERMES_SECRET_ZONA_7`, depois
+  `SUPABASE_SERVICE_ROLE_KEY`) tinham valor vazio/errado apesar de aparecerem
+  "configuradas" no painel — editar não persistia o novo valor; só deletar e
+  recriar a variável resolveu as duas vezes.
 
 ### Skills instaladas
 - `sime_monitor` — detecta 12 tipos de evento em linguagem natural
 - `sime_notificar` — envia WhatsApp com 8 templates
 - `sime_updater` — persiste eventos de seção via `/api/hermes-update` (só escrita)
 - `sime_mesarios` — consulta mesários e registra confirmação de permanência na
-  função via `/api/hermes-mesarios` (leitura + `sime_atores.confirmacao`)
+  função via `/api/hermes-mesarios` (leitura + autoatendimento + `sime_atores.confirmacao`)
+- `sime_campanha` — drena a fila de disparo em massa via `/api/hermes-campanhas`
+  (leitura + `sime_campanhas_confirmacao.status`)
+- `sime_heartbeat` — reporta telemetria e verifica pedido de atualização via
+  `/api/hermes-heartbeat` (escrita em `sime_heartbeat`/`sime_componentes`)
+- `sime_escalonamento` — resolve telefone de Gestor de Problemas/Chefe de
+  Cartório via `/api/hermes-contatos` (só leitura) — **proposta, endpoint
+  pronto mas ainda não chamado pelo `index.js`**
+
+> As skills acima descrevem o **contrato de dados** com o SIME (schema dos
+> endpoints, templates), não um agente de IA com skills de verdade — a
+> instância da 7ª Zona é um app Node.js + Baileys sob medida num Raspberry
+> Pi, documentado em `HERMES_RUNTIME.md` (não o CLI genérico que `setup.sh`
+> instala — ambos no repositório `bernardobbs/hermes`). Regex cobre a maior
+> parte da detecção; Gemini
+> só entra como fallback nos casos que o regex não resolve. Estado de cada
+> contrato, desde 03/08/2026:
+>
+> | Skill | Estado real no Pi |
+> |---|---|
+> | `sime_mesarios` | confirmação/recusa em PRIMEIRA pessoa grava via `/api/hermes-mesarios`, em grupo monitorado (`modules/whatsapp/confirmacao.js`) e por autoidentificação espontânea em DM (`modules/campanhas/autoidentificacao.js`, frases fixas tipo "sou mesário" → `consultar`, **+ saudação simples "oi"/"bom dia" desde 27/08/2026**, só quando encontra a pessoa — ver "Autoatendimento por telefone" nas Pendências); gatilho automático de busca por nome livre (`buscar_nome`) continua suprimido desde 06/08/2026 (disparava em cima de conversa comum). **Relato de TERCEIRO (21/08/2026, `modules/whatsapp/relatoTerceiro.js`)** — novo: monitora grupo E DM por alguém reportando a situação de um COLEGA nomeado (não de si mesmo); nunca confirma sozinho, só marca "precisa confirmar" via `relatar_terceiro` (ver acima). Esta linha documentava o estado de 03/08/2026 e ficou desatualizada em relação ao runtime real — corrigida em 21/08/2026 ao investigar este pedido. |
+> | `sime_notificar` | fila de pânico drenada e enviada automaticamente (`/api/hermes-notificacoes`) |
+> | `sime_campanha` | disparo em massa funcionando (`/api/hermes-campanhas`), com `pausar envio`/`retomar envio`/`fila` por WhatsApp — **desligado por padrão** (`DISPATCH_ATIVO=false`) |
+> | `sime_monitor` / `sime_updater` | `eventos.js` detecta (regex + fallback IA) e propõe no Telegram — **modo proposta deliberado, não grava** via `/api/hermes-update` |
+> | `sime_heartbeat` | reportando telemetria em produção desde 06/08/2026, `200` a cada ciclo |
+> | `sime_escalonamento` | endpoint (`/api/hermes-contatos`) pronto em produção desde 08/08/2026; `index.js` ainda não o chama |
+>
+> A 94ª Zona ainda não tem instância nenhuma.
+
+### Disparo em massa (`SIME_atores.html` → aba "📢 Disparo em massa")
+
+O SIME popula `sime_campanhas_confirmacao` (telefone, `ator_id`, `zona_id`,
+`mensagem_enviada`, `status='pendente'`); o Hermes é quem lê essa fila (via
+`/api/hermes-campanhas`, mesmo padrão pendentes/confirmar/erro de
+`hermes-notificacoes`) e envia, respeitando 5 msgs/min. A zona vem do usuário
+logado (`zonaDoUsuario()`), nunca de campo na tela. Tem um modelo pronto de
+alerta anti-golpe e um modo de mensagem livre; filtro por função decide quem
+recebe (default: todos os ativos com telefone).
+
+**O envio de fato depende do Hermes estar com `DISPATCH_ATIVO=true`** — isso é
+decisão de quem opera o Raspberry Pi, fora deste repo. Popular a fila não
+garante que a mensagem saia.
+
+Ainda não implementado: capturar a resposta de quem recebeu a campanha
+(`sime_campanhas_confirmacao.resposta_recebida`/`decisao_detectada`) — hoje
+uma resposta cai no fluxo de sempre (`sime_mesarios` confirmar/recusar/
+substituir/atualizar), não fica associada à campanha específica que a gerou.
+
+**Bug real corrigido em 22/08/2026 — imagem do disparo nunca chegava pra
+quem usava "🧩 Usar script salvo".** O campo "Imagem" da tela de Disparo em
+massa aparecia igual pros 3 modelos (golpe/livre/script), mas
+`api/hermes-campanhas.js` só repassava `imagem_url` quando
+`proxima_acao='enviar'` (fluxo simples) — nunca pra
+`enviar_etapa_script`/`reenviar_etapa_script`. O cartório digitava a URL,
+disparava um script, e a imagem simplesmente não saía, sem erro nenhum.
+
+Corrigido construindo suporte de verdade, não só repassando o campo:
+imagem passou a pertencer à **ETAPA** (`sime_campanha_etapas.imagem_url`,
+`sql/SIME_campanha_etapas_imagem.sql`), não à linha de fila — cada etapa do
+script pode ter a sua própria imagem, inclusive etapas seguintes (2, 3...),
+não só a primeira. Consequências:
+- O campo "Imagem" do Disparo em massa (`SIME_atores.html`) deixa de
+  aparecer pro modelo "🧩 Usar script salvo" — a prévia da etapa 1 mostra a
+  imagem dela (só leitura) quando existe. Editar imagem de qualquer etapa é
+  só no editor de script (aba 🧩 Campanhas,
+  `modules/sime_campanha_script_editor.js`), junto da mensagem da etapa.
+- `api/hermes-campanhas.js`: `pendentes` resolve `imagem_url` da etapa
+  certa (busca em lote por `campanha_id:etapa_numero`, tanto pro primeiro
+  envio quanto pro reenvio — reenvio usa a etapa ATUAL, nunca a etapa 1
+  congelada); `avancar_etapa` devolve `proxima_imagem_url` junto de
+  `proxima_mensagem` ao avançar pra próxima etapa.
+- Lado Hermes (`bernardobbs/hermes`, `src/modules/campanhas/dispatch.js` e
+  `script.js`): quando há `imagem_url`/`proxima_imagem_url`, manda
+  `sock.sendMessage` com `image: {url}` + `caption`; sem imagem, continua
+  mandando só texto, igual sempre.
+
+Coberto por `tests/test_hermes_campanhas_script.mjs` (primeiro envio,
+reenvio na mesma etapa, reenvio já avançado pra etapa sem imagem própria —
+pra garantir que não herda a de outra etapa —, e `avancar_etapa` terminal
+vs. não-terminal com/sem imagem no destino). Migração aplicada em produção
+em 27/08/2026 (ficou pendente entre 22-27/08 por indisponibilidade
+temporária do acesso ao Supabase nesta sessão) — `sime_campanha_etapas.imagem_url`
+já existe na 7ª e 94ª Zona (coluna é da tabela, não por zona).
+
+> **Primeiro script conversacional real criado em produção (27/08/2026,
+> pedido direto: "quero que você crie os scripts").** `sime_campanhas`
+> id `7e0d92ba-360c-4293-9443-26a7c6b50d45`, 7ª Zona, nome "Convocação com
+> confirmação de identidade — 7ª Zona", status **`rascunho`** de propósito
+> (nasce parado — só vira `ativa` quando o cartório revisar na aba 🧩
+> Campanhas e clicar "▶ Iniciar campanha", mesmo padrão de toda campanha
+> nova criada pelo editor). Recria o fluxo legado de "Convocação com
+> confirmação de identidade" (que já existia como modelo fixo em
+> `SIME_atores.html` — `TEMPLATE_VERIFICACAO`/`TEMPLATE_CONVOCACAO_TEXTO`)
+> como script de verdade, pra ganhar os controles de
+> pausar/retomar/encerrar/relatório que só campanha de script tem — **sem
+> inventar texto novo**: as duas mensagens são cópia literal desses dois
+> templates, e as palavras-chave de SIM/NÃO da etapa 1 são as mesmas já
+> em produção há semanas em `identidade.js` (repositório `bernardobbs/hermes`,
+> `RESPOSTAS_SIM`/`RESPOSTAS_NAO`), não uma lista inventada agora.
+>
+> **Etapa 2 (convocação) sai sem nenhuma palavra-chave própria
+> (`respostas_esperadas: []`) — decisão deliberada, não pendência.** O fluxo
+> legado nunca esperava resposta depois de mandar a 2ª mensagem (marcava
+> `finalizado` na hora); o motor de script, por natureza, sempre espera
+> alguma palavra-chave pra fechar uma etapa, e inventar um vocabulário de
+> "ok/confirmado/entendi" agora seria decidir um comportamento novo sem
+> pedido explícito. Efeito prático enquanto ninguém mexe nisso: quem
+> responder qualquer coisa à etapa 2 cai em `fora_do_script` (fila de
+> atenção, nunca perdido) em vez de fechar sozinho; quem não responder tem
+> a própria mensagem reenviada até `MAX_TENTATIVAS` (3, ~72h) e então some
+> como `sem_resposta`. Se o cartório quiser um fechamento automático depois
+> de mandar a convocação, é só abrir esta campanha na aba 🧩 Campanhas e
+> adicionar um ramo na etapa 2 (ex.: palavras-chave "ok/certo/entendi" →
+> status final "finalizado") — a tela já suporta isso, só não foi decidido
+> agora.
+>
+> **Texto da etapa 2 menciona "na próxima mensagem" a imagem** — frase
+> herdada do fluxo legado (onde texto e imagem saem em duas mensagens
+> separadas da mesma linha de fila). No motor de script, se uma
+> `imagem_url` for adicionada a esta etapa depois (editor, aba 🧩
+> Campanhas), ela sai **junto** da mensagem, como legenda de uma única
+> mensagem — não numa mensagem seguinte. Ficou documentado aqui em vez de
+> reescrever a frase por conta própria: mudar o texto de uma mensagem real
+> de convocação eleitoral não é uma decisão de redação que deva ser tomada
+> sem o cartório revisar primeiro.
 
 ### Como o Hermes recebe as notificações (SIME → Hermes)
 
-O Hermes roda atrás de NAT (PC do cartório), sem endereço público — o Supabase
-não consegue chamá-lo. Então **o Hermes é quem pergunta**, a cada ~30s:
+O Hermes roda atrás de NAT (Raspberry Pi em rede doméstica), sem endereço
+público — o Supabase não consegue chamá-lo. Então **o Hermes é quem
+pergunta**, a cada ~30s:
 
 ```
 POST /api/hermes-notificacoes  { "acao": "pendentes" }   → fila da zona
@@ -307,6 +3167,15 @@ O gatilho de pânico/mídia **enfileira** em `sime_notificacoes`; o POST direto
 para o Hermes virou aceleração opcional, só quando `app.hermes_url` existe.
 Cada notificação traz `idade_s` (relógio do servidor) — é com ela que o Hermes
 decide o nível de escalonamento, sem depender do horário do PC.
+
+A fila de disparo em massa segue o mesmo formato, endpoint próprio:
+```
+POST /api/hermes-campanhas  { "acao": "pendentes" }   → fila da zona
+POST /api/hermes-campanhas  { "acao": "confirmar", "ids": [...], "whatsapp_existe"?: bool }
+POST /api/hermes-campanhas  { "acao": "erro", "ids": [...], "erro_msg": "...", "whatsapp_existe"?: bool }
+```
+Item sem `mensagem_enviada` preenchida já não aparece em `pendentes` — evita o
+Hermes gastar um ciclo só para dar erro num item vazio.
 
 Atraso: até um ciclo. Para um pânico que escala em 10 min, irrelevante.
 
@@ -333,16 +3202,133 @@ Eventos suportados:
   panico_resolvido, urna, midia_pronta, mesa_completa
 ```
 
-### Endpoint Vercel — mesários (leitura + confirmação)
+### Endpoint Vercel — mesários (leitura + autoatendimento + confirmação)
 ```
 POST /api/hermes-mesarios
 Authorization: Bearer HERMES_SECRET_ZONA_<numero>
-Body: { acao, secao?, status?, telefone? }
+Body: { acao, secao?, status?, telefone?, mensagem?, nome?, telefone_relator?, origem? }
 
 Ações:
-  listar                          → lista mesários da zona (nome, telefone, seção, status)
+  listar                           → lista mesários + apoio logístico da zona (nome, telefone, seção, status)
+  consultar                        → autoatendimento: telefone → função + seção (se MRV), pronto pra WhatsApp
+  buscar_nome                      → autoatendimento por nome (substring), pra quem não manda do próprio telefone
+  atualizar                        → anexa recado livre da PRÓPRIA pessoa em observacao (por telefone dela)
+  relatar_terceiro                 → outro mesário reporta a situação de um COLEGA nomeado (por nome, não telefone)
   confirmar | recusar | substituir → grava sime_atores.confirmacao (por telefone)
 ```
+
+`consultar` é o que responde quando alguém da base manda "oi" pela primeira
+vez: acha pelo telefone (mesma pessoa pode ter 2 convocações — mesário E apoio
+logístico), devolve `mensagem_wa` já pronta com a função e, sendo MRV, a seção
+(número/local/município, via `secao_id`). Termina convidando a mandar correção,
+que vai pra `atualizar` — ver `SIME_hermes_skill_mesarios.md` no
+repositório `bernardobbs/hermes`.
+
+**`relatar_terceiro` (21/08/2026)** — pedido direto: "o hermes agente deve
+ficar monitorando as mensagens do grupo e dm que chegarem para poder
+atualizar os contatos. indicar que foi atualização vinda de mesários e
+precisa confirmar." Diferente de `atualizar`/`confirmar`/`recusar`/
+`substituir` (sempre a PRÓPRIA pessoa, identificada pelo `telefone` dela),
+aqui quem manda a mensagem (`telefone_relator`) reporta sobre OUTRA pessoa,
+identificada por `nome` (substring, mesmo critério de `buscar_nome` — quem
+relata raramente sabe o telefone cadastrado do colega). Por isso **nunca
+muda `confirmacao=`** — só anexa em `observacao` um carimbo com a origem
+(grupo/DM), o telefone de quem relatou e a marca **"PRECISA CONFIRMAR COM A
+PESSOA"**, pro cartório verificar antes de agir (segundo-mão errado é pior
+que não registrar). Ambíguo (2+ pessoas distintas batendo no nome) devolve
+`409` sem gravar em ninguém — não adivinha qual. `sime_contatar_mesarios.js`
+(`CM_LOG_HERMES_LABEL.hermes_relato_terceiro`) mostra esse log na aba
+"📜 Atualizações" do modal com rótulo próprio ("⚠️ Relato de terceiro... —
+PRECISA CONFIRMAR"), distinto de um recado da própria pessoa. Lado Hermes:
+`modules/whatsapp/relatoTerceiro.js` (repositório `bernardobbs/hermes`) —
+pré-filtro por palavras-gatilho ("não vai poder", "avisa que", "pediu pra
+avisar" etc.) antes de gastar cota de IA, IA extrai nome+status, chamado em
+paralelo tanto no roteamento de GRUPO quanto de DM (`modules/whatsapp/router.js`).
+
+**`atualizar_telefone_terceiro` (21/08/2026)** — pedido direto depois que o
+cartório testou encaminhar contatos de mesário (nome + telefone) pro
+WhatsApp do Hermes esperando que isso atualizasse algo: hoje não atualizava
+nada. Diferente de `relatar_terceiro` (que é sobre a SITUAÇÃO da pessoa e
+nunca grava telefone): aqui o dado **é** um telefone. Casa por nome (mesmo
+critério de `buscar_nome`/`relatar_terceiro`) e só grava automaticamente
+quando bate em EXATAMENTE 1 pessoa — grava só em `telefone_alternativo`,
+**nunca** em `telefone_whatsapp` (o que Hermes/campanha usam por padrão),
+então nem um nome batendo errado sobrescreveria o telefone principal. Nome
+ambíguo (409) ou não encontrado (404) não adivinha; telefone fora do
+formato reconhecível (422, mesmo critério de aceitação de "colar lista" —
+8/9/10/11/12-13-com-55 dígitos) também não grava. Lado Hermes:
+`modules/whatsapp/atualizarContatoTerceiro.js` — sem IA, cobre DUAS formas
+de chegar: (1) texto colado/digitado, reconhecido só por FORMATO (mensagem
+de exatamente 2 linhas: nome na primeira, telefone na segunda), removendo
+saudação da frente do nome se tiver ("Boa noite, Fulano" → "Fulano"); e (2)
+**contato COMPARTILHADO de verdade** (`contactMessage`/`contactsArrayMessage`
+do Baileys, adicionado no mesmo dia ao testar em campo e descobrir que um
+cartão de contato de verdade — diferente de texto colado — não tem `text`
+nenhum pro roteador extrair, precisando de um caminho próprio): usa o
+`displayName` do cartão como nome e extrai o telefone do `vcard` (prioriza
+o parâmetro `waid=`, já no formato do WhatsApp; cai pro número escrito
+depois do `:` da linha `TEL` só se `waid=` não existir). Um cartão sem
+telefone reconhecível no vCard é ignorado. Roda em paralelo com
+`relatoTerceiro.js` tanto em grupo quanto em DM — não conflitam, porque o
+pré-filtro de cada um é mutuamente exclusivo (um exige frase de status, o
+outro exige formato de contato/vCard). Como já usa `telefone_alternativo`,
+o campo aparece automaticamente na lista de telefones do modal de
+"Contatar mesários" (`cmListaTelefones`) — nenhuma UI nova foi necessária
+do lado SIME.
+
+**Bug real corrigido em 22/08/2026, só lado Hermes — aviso do Telegram sem
+contexto.** Um aviso real em produção chegou só como "não achei 'Daluz 🌝'
+no SIME / Origem: DM", sem dizer quem mandou nem qual telefone estava em
+jogo — o cartório não tinha nada pra agir. Toda mensagem do módulo
+(ambíguo, não encontrado, telefone irreconhecível, falha de rede, sucesso,
+e a sugestão de correção) agora sempre mostra o telefone do contato **e**
+o telefone de quem mandou a mensagem no WhatsApp.
+
+**Correção depois de um contato vira SUGESTÃO no Telegram, nunca gravação
+automática (21/08/2026, só lado Hermes — nenhuma mudança no SIME).** Achado
+em campo: depois de compartilhar um contato, é comum vir uma frase solta
+esclarecendo o nome ("Esse é da Esther Mariele", "Vaniele Honório de
+Carvalho 👆") — texto livre demais pra gravar sozinho com segurança.
+`atualizarContatoTerceiro.sugerirSeReferenciaContato()` (repositório
+`bernardobbs/hermes`) detecta isso (reply formal ao cartão, ou frase
+deítica — "esse é"/emoji apontando — logo depois de um cartão no mesmo
+chat, cache de 10 min) e manda só um aviso no Telegram com o contato
+original + a frase, pro cartório decidir se atualiza manualmente pelo SIME
+(nenhum endpoint novo — usa a mesma tela de sempre).
+
+**Flag `tem_relato_terceiro_pendente` (21/08/2026, `sql/
+SIME_atores_relato_terceiro_pendente.sql`)** — achado real ao perguntar "como
+saberei os relatos de terceiros": o carimbo em `observacao` já ficava
+gravado, mas invisível a menos que o cartório abrisse o modal daquela pessoa
+especificamente — não tinha como saber QUEM tem relato pendente sem olhar um
+por um. Mesmo espírito de `precisa_substituir` (flag booleana própria,
+independente de `confirmacao`, `default false`): `api/hermes-mesarios.js`
+grava `tem_relato_terceiro_pendente=true` junto com o carimbo em
+`observacao` quando `relatar_terceiro` encontra a pessoa (nas duas linhas,
+se ela tiver mesário + apoio). Em `sime_contatar_mesarios.js`: badge
+"⚠️ Relato de terceiro pendente" no card e na linha "Situação" do modal,
+bucket próprio em `CM_BUCKETS` (`relato_terceiro_pendente`, filtro
+independente de qualquer valor de `confirmacao`) e botão "✓ Marcar relato
+como resolvido" (`cmResolverRelatoTerceiro`, card e modal) que só desmarca a
+flag — nunca mexe em `confirmacao` nem apaga o carimbo já anexado em
+`observacao` (fica como registro histórico de que o relato existiu e foi
+checado), gravando `mesario_relato_terceiro_resolvido` em `sime_logs`. Uso
+esperado: o cartório vê o badge, confirma com a PRÓPRIA pessoa (telefone,
+WhatsApp, presencial) o que o terceiro relatou, e só então desmarca.
+
+### Endpoint Vercel — contatos por papel (escalonamento)
+```
+POST /api/hermes-contatos
+Authorization: Bearer HERMES_SECRET_ZONA_<numero>
+Body: { acao: 'listar' }
+
+→ { ok, zona, contatos: { gestor_prob: [telefones...], coordenador: [telefones...] } }
+```
+Só leitura — telefone vem de `sime_usuarios.telefone_whatsapp` (`ativo=true`),
+cadastrado pelo admin na aba Equipe. Lista vazia = ninguém daquele perfil
+cadastrou telefone ainda, não é erro. Contrato completo e como pluga no loop
+de `sime_notificar`: `SIME_hermes_skill_escalonamento.md` no repositório
+`bernardobbs/hermes`.
 
 ---
 

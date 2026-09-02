@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME · Convocação de Mesários</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);}
+.tabs{background:var(--card);border-bottom:1px solid var(--border);display:flex;padding:0 12px;overflow-x:auto;}
+.tab{padding:10px 14px;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.tab.active{color:var(--text);border-bottom-color:var(--text);}
+.content{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;}
+
+.import-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:18px;}
+.ic-title{font-weight:800;margin-bottom:6px;}
+.ic-sub{font-size:.78rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.drop-zone{border:2px dashed var(--border2);border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg2);margin-bottom:12px;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:var(--blue-bg);}
+.dz-icon{font-size:2rem;margin-bottom:8px;}
+.dz-txt{font-size:.8rem;font-weight:700;color:var(--text2);}
+.dz-sub{font-size:.7rem;color:var(--text3);margin-top:4px;}
+.import-result{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:.78rem;font-weight:700;}
+.ir-ok  {background:var(--green-bg);color:var(--green);}
+.ir-err {background:var(--red-bg);color:var(--red);}
+.ir-warn{background:var(--yellow-bg);color:var(--yellow);}
+
+.btn{padding:9px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;}
+.btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+
+.form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
+.form-group input,.form-group select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;}
+
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:11px;box-shadow:0 8px 30px rgba(0,0,0,.12);padding:24px;width:min(360px,92vw);}
+.login-card input{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;margin-top:8px;font-size:.9rem;font-family:inherit;color:var(--text);background:var(--bg2);}
+.login-card button.primary{width:100%;margin-top:10px;}
+
+/* MESA CARGO BADGES (usados na aba Dashboard) */
+.cargo-ok{color:var(--green);}
+.cargo-sem{color:var(--red);}
+
+/* MODAL (mesmo padrão visual de SIME_atores.html) */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.m-title{font-weight:800;font-size:.92rem;}
+.m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+.m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.m-hist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
+.m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
+.m-hist-item b{color:var(--text);}
+.m-kv{display:flex;flex-direction:column;gap:5px;background:var(--bg2);border-radius:8px;padding:10px 12px;}
+.m-kv-row{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;}
+.m-kv-row b{color:var(--text2);font-weight:700;}
+.m-kv-row span{color:var(--text);text-align:right;}
+.m-section{border-top:1px solid var(--border);padding-top:12px;}
+.m-section-hdr{font-size:.7rem;font-weight:800;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
+
+/* CORRESPONDÊNCIA — impressão de etiqueta/AR (sime_correspondencia.js).
+   #print-area fica invisível na tela e só aparece no papel — evita depender
+   de popup (bloqueado por padrão em muitos navegadores). Layout alinhado ao
+   modelo público do Enderecador de Encomendas dos Correios (27/08/2026, ver
+   comentário no topo de sime_correspondencia.js) — texto/estrutura, sem a
+   marca deles. */
+#print-area{display:none;}
+/* Bug real reportado em 31/08/2026 — "proporcionalmente perfeito, mas não
+   ficou bom pra impressão": o PDF impresso de verdade veio em A4 PAISAGEM,
+   sem nenhum `@page` no CSS pra fixar isso — a orientação ficava por conta
+   do que a caixa de diálogo de impressão do navegador tinha usado da
+   última vez. Corrigido na hora forçando A4 PORTRAIT — mas o PDF real do
+   `gerarAR.cfm` oficial (conferido depois, no mesmo dia, com o HTML/PDF
+   literais do gerador dos Correios) mostrou que o AR OFICIAL É PAISAGEM
+   de propósito (tabela larga e baixa, 552×371 no HTML de origem) — o bug
+   nunca foi "paisagem é errado", foi "sem largura de coluna nem @page
+   controlados, uma orientação claramente pensada pra ficar larga
+   transbordava quando saía estreita". A etiqueta continua PORTRAIT (padrão
+   do Enderecador de Encomendas); só o AR usa uma `@page` NOMEADA em
+   paisagem (`page: co-ar-page`, ver `.co-pagina-ar` abaixo) — CSS Paged
+   Media padrão, suportado pelo motor de impressão do Chrome/Chromium (que
+   é o que interessa aqui — não precisa funcionar em todo navegador). */
+@page{size:A4 portrait;margin:10mm;}
+@page co-ar-page{size:A4 landscape;margin:10mm;}
+@media print{
+  body > *:not(#print-area){display:none!important;}
+  /* Bug real corrigido em 27/08/2026, achado no primeiro teste em produção:
+     ".co-et-barra" (DESTINATÁRIO / ENTREGA NO VIZINHO) saía cinza claro sem
+     fundo preto no PDF gerado pelo navegador — Chrome e a maioria dos
+     navegadores removem cor de fundo na impressão por padrão, mesmo com
+     `background:#000` explícito no CSS, a menos que a página force isso.
+     `print-color-adjust:exact` (+ prefixo `-webkit-`) é o jeito padrão de
+     dizer "imprima a cor de fundo mesmo assim" — sem isso a etiqueta perdia
+     as duas barras pretas que servem de âncora visual no modelo oficial. */
+  #print-area, #print-area *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
+  #print-area{display:block!important;color:#000;}
+
+  /* ── Etiqueta ── */
+  /* Padding reduzido de 14mm pra 6mm em 31/08/2026 — `@page{margin:10mm}`
+     acima já reserva a margem da folha; somar os dois padding+margin dava
+     24mm de sobra em cada lado, terreno perdido bem na hora em que a folha
+     precisa de toda altura disponível (ver nota do AR, mesmo dia). */
+  .co-pagina-etiqueta{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-et-topo{border:1px solid #000;padding:4mm;margin-bottom:10mm;text-align:center;font-size:8pt;}
+  .co-et-topo-tit{font-weight:700;margin-bottom:1mm;}
+  .co-etiqueta{border:1px solid #000;width:120mm;font-size:9pt;line-height:1.5;}
+  .co-et-recebedor{padding:3mm 4mm;border-bottom:1px solid #000;}
+  .co-linha{display:inline-block;border-bottom:1px solid #000;min-width:28mm;height:3.5mm;}
+  .co-linha-lg{min-width:55mm;}
+  .co-et-barra{background:#000;color:#fff;font-weight:700;padding:1.5mm 4mm;font-size:8.5pt;}
+  .co-et-vizinho{padding:2mm 4mm;border-bottom:1px solid #000;}
+  .co-et-corpo{display:flex;gap:4mm;padding:3mm 4mm;font-size:10pt;line-height:1.6;}
+  .co-et-dest{flex:1;}
+  .co-et-lateral{width:45mm;flex:none;font-size:7pt;}
+  .co-et-codigo{border:1px dashed #666;color:#555;padding:2.5mm;text-align:center;margin-bottom:3mm;}
+  .co-et-obs{font-size:8pt;}
+  .co-et-remetente{font-size:8pt;margin-top:6mm;padding-left:1mm;line-height:1.5;}
+
+  /* ── AR — estrutura batida contra o PDF real do Enderecador de Encomendas
+     dos Correios (31/08/2026, ver nota em coHtmlAr): destinatário+código+
+     devolução numa célula só (rowspan), 3 colunas na linha de baixo
+     (tentativas | observação+motivo | rubrica), checkbox quadrado no
+     motivo, faixa "(ÁREA DE COLA NO VERSO)" fora da tabela. ── */
+  /* Padding reduzido de 12mm pra 6mm (mesmo motivo da etiqueta acima) e
+     ".co-ar-outer" deixou de ser `display:flex` — a faixa de cola girada
+     (`writing-mode:vertical-rl` + `transform`) dentro de um container flex
+     é um combo conhecido por calcular altura errado na paginação real de
+     impressão (funciona certo em tela/screenshot, que foi o que a
+     verificação anterior usou e por isso não pegou o defeito). Virou
+     posicionamento absoluto — não participa mais do cálculo de altura do
+     conteúdo ao lado. */
+  .co-pagina-ar{page:co-ar-page;page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .co-ar-outer{position:relative;border:1px dashed #999;padding-left:6mm;}
+  .co-ar-cola{position:absolute;left:0;top:0;bottom:0;width:6mm;display:flex;align-items:center;justify-content:center;border-right:1px dashed #999;}
+  .co-ar-cola span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:6.5pt;letter-spacing:.5px;color:#333;white-space:nowrap;}
+  .co-ar-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.5;table-layout:fixed;}
+  /* Larguras recalculadas em 31/08/2026 — pedido direto: "verifique o
+     site então" / o usuário anexou o HTML *real* do gerarAR.cfm oficial
+     (não um clone de terceiro) e depois o PDF gerado por ele. Medido a
+     partir das coordenadas VETORIAIS do PDF oficial (não pixel de
+     screenshot): a coluna da direita (DATA DE POSTAGEM/UNIDADE DE
+     POSTAGEM/CARIMBO/RUBRICA/DATA DE ENTREGA/Nº DOC.) é 25% da largura
+     útil ali — nem os 32% copiados do Enderecador de Encomendas, nem os
+     45% estimados a partir do idcore.com.br (nenhum dos dois é o
+     original de verdade). TENTATIVAS DE ENTREGA fica com 42%,
+     OBSERVAÇÃO+MOTIVO DE DEVOLUÇÃO com 33%. */
+  .co-ar-col-a{width:42%;}
+  .co-ar-col-b{width:33%;}
+  .co-ar-col-c{width:25%;}
+  .co-ar-tabela td{border:1px solid #000;padding:2.5mm 3mm;vertical-align:top;}
+  .co-ar-titulo{font-weight:800;font-size:11pt;font-style:italic;}
+  .co-ar-sigla{font-size:20pt;font-style:normal;font-weight:800;margin-left:4mm;}
+  .co-ar-campo{font-size:7pt;font-weight:700;color:#333;}
+  .co-ar-rotulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
+  .co-ar-nota{font-size:7.5pt;color:#333;margin-top:2mm;}
+  .co-ar-codigo{text-align:center;color:#555;font-size:7.5pt;border:1px dashed #666;padding:3mm;margin:3mm 0;}
+  /* Checkbox NUMERADO de volta (1-9) — o PDF real do gerarAR.cfm mostra
+     números dentro dos quadrados; a versão sem número era baseada só no
+     idcore.com.br, que simplifica isso. "Outros" (9) volta pro grid —
+     no oficial ele é só mais um item numerado, sem linha em branco
+     própria. Grid de 2 colunas com 9 itens em ordem par (1,5,2,6,3,7,4,8,9)
+     — o auto-flow "row" do CSS Grid preenche linha a linha, então isso
+     resulta em coluna esquerda=1,2,3,4,9 e direita=5,6,7,8, igual ao
+     original (9 fica sozinho na última linha, coluna esquerda). */
+  .co-ar-motivos{display:grid;grid-template-columns:1fr 1fr;gap:.7mm 2mm;font-size:7pt;margin:1.5mm 0;}
+  .co-ar-motivos>div{white-space:nowrap;}
+  .co-ar-check{display:inline-flex;align-items:center;justify-content:center;width:3mm;height:3mm;border:1px solid #000;font-size:5.5pt;font-weight:700;margin-right:1mm;}
+  .co-ar-tentativas{font-size:7.5pt;white-space:nowrap;}
+  .co-ar-rubrica{font-size:7.5pt;}
+  .co-ar-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+
+  /* ── Oficial de Justiça — relação de controle interno (31/08/2026) ──
+     Diferente de etiqueta/AR (fluxo postal, com referência oficial dos
+     Correios pra reproduzir), aqui não existe um mandado/certidão do
+     TJ-PI pra copiar — a relação é deliberadamente um documento de
+     CONTROLE INTERNO do cartório pra entregar ao oficial de justiça
+     (nome, endereço, campo de assinatura/data), rotulado como tal no
+     rodapé. Layout simples de lista/tabela em retrato — sem @page nomeada
+     própria, o padrão A4 portrait do topo do arquivo já serve. */
+  .oj-pagina-relacao{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .oj-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
+  .oj-titulo{font-weight:800;font-size:12pt;}
+  .oj-sub{font-size:8pt;color:#333;margin-top:1mm;}
+  .oj-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
+  .oj-tabela th,.oj-tabela td{border:1px solid #000;padding:2.5mm 2.5mm;vertical-align:top;text-align:left;}
+  .oj-tabela th{background:#eee;font-size:8pt;}
+  .oj-col-num{width:6%;text-align:center;}
+  .oj-col-nome{width:28%;}
+  .oj-col-end{width:34%;}
+  .oj-col-assinatura{width:22%;}
+  .oj-col-data{width:10%;}
+  .oj-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+}
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+    <div style="font-size:.8rem;color:var(--text2);margin-bottom:8px;">Convocação de mesários exige login da equipe.</div>
+    <form id="login-form">
+      <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+      <div id="login-erro" style="color:var(--red);font-size:.78rem;min-height:1em;margin-top:6px;"></div>
+      <button class="btn btn-dark primary" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="painel-conteudo" style="display:none">
+  <div class="header">
+    <div class="logo">S</div>
+    <div class="h-info">
+      <div class="h-title">SIME · Convocação de Mesários</div>
+      <div class="h-sub" id="h-sub">carregando…</div>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <div class="tab active" id="tab-dashboard-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('dashboard',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📊 Dashboard</div>
+    <div class="tab" id="tab-contatar-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('contatar',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📞 Contatar mesários</div>
+    <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
+    <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
+    <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
+    <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
+    <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
+    <div class="tab" id="tab-turmas-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('turmas',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🎓 Treinamento</div>
+    <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
+  </div>
+
+  <div class="content" id="content"></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="cmFecharModal(event);vlFecharModal(event);rsFecharModal(event)">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="print-area"></div>
+
+<script src="./sime_ui_utils.js"></script>
+<script src="./sime_mesarios_sync.js"></script>
+<script src="./sime_resumo_secoes.js"></script>
+<script src="./sime_contatar_mesarios.js"></script>
+<script src="./sime_historico_sync.js"></script>
+<script src="./sime_relatorio_elo.js"></script>
+<script src="./sime_correspondencia.js"></script>
+<script src="./sime_voluntarios.js"></script>
+<script src="./sime_turmas.js"></script>
+<script src="./sime_oficial_justica.js"></script>
+<script type="module">
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+import { initSimeDados, getEleicaoAtiva } from './sime_dados.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+window.supabaseAtores = supabase; // mesmo nome global que sime_mesarios_sync.js/sime_resumo_secoes.js já esperam (vieram de SIME_atores.html)
+initSimeDados(supabase); // necessário pra getEleicaoAtiva() funcionar — sem isso ela sempre cai no fallback (ver log() abaixo)
+
+let _zonaCache = null;
+let _nomeCache = null;
+async function _carregarUsuario() {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data } = await supabase.from('sime_usuarios').select('zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
+  _zonaCache = data?.zona_id || null;
+  _nomeCache = data?.nome || null;
+}
+window.zonaDoUsuario = async function zonaDoUsuario() {
+  if (!_zonaCache) await _carregarUsuario();
+  return _zonaCache;
+};
+
+// Bug real corrigido em 21/08/2026: log() gravava eleicao_id=null sempre (não
+// existia esse campo aqui) — a policy de SELECT de sime_logs é
+// `eleicao_id IN (SELECT id FROM sime_eleicoes WHERE zona visível)`, e NULL
+// nunca casa com um IN, então TODO log gravado por esta página (tentativa de
+// contato, observação, edição de telefone, histórico de sincronização) *
+// gravava* com sucesso mas ficava invisível pra sempre na releitura — sintoma
+// real reportado pelo cartório: "Registrar tentativa" dá toast de sucesso, a
+// lista de Tentativas de contato nunca mostra nada. sql/SIME_logs_eleicao_id_fix.sql
+// tem o backfill dos registros que já foram gravados assim antes do fix.
+let _eleicaoIdCache = null;
+async function _eleicaoIdAtual() {
+  if (_eleicaoIdCache) return _eleicaoIdCache;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) return null;
+  const eleicao = await getEleicaoAtiva({ fallback: null, zonaId });
+  _eleicaoIdCache = eleicao?.id || null;
+  return _eleicaoIdCache;
+}
+// Autor de observações adicionadas manualmente (aba Contatar mesários) —
+// mesmo cache de sessão que zonaDoUsuario, só que devolve o nome em vez do
+// zona_id. 'Cartório' é fallback pra sessões sem sime_usuarios.nome (raro).
+window.nomeDoUsuario = async function nomeDoUsuario() {
+  if (!_nomeCache) await _carregarUsuario();
+  return _nomeCache || 'Cartório';
+};
+
+window.log = async function log(acao, secao, payload) {
+  try {
+    const eleicaoId = await _eleicaoIdAtual();
+    await supabase.from('sime_logs').insert({ acao, modulo: 'convocacao', secao_id: null, eleicao_id: eleicaoId, payload });
+  } catch (e) { /* auditoria é melhor-esforço — não bloqueia a ação principal */ }
+};
+
+async function atualizarCabecalho() {
+  const zonaId = await zonaDoUsuario();
+  const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
+  document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
+}
+
+function mostrarPainel() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('painel-conteudo').style.display = '';
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erro = document.getElementById('login-erro');
+  erro.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    erro.textContent = /Failed to fetch|NetworkError/i.test(error.message || '') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.';
+    return;
+  }
+  mostrarPainel();
+  await atualizarCabecalho();
+  window.render();
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    mostrarPainel();
+    await atualizarCabecalho();
+    window.render();
+  }
+})();
+</script>
+<script>
+let curTab = 'dashboard';
+function goTab(tab, btn) {
+  curTab = tab;
+  document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+  if (btn) { btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); }
+  // Recarrega do banco a cada entrada — evita mostrar dado desatualizado
+  // depois de sincronizar ou de mudar status noutra aba.
+  if (tab === 'dashboard' && typeof rsDados !== 'undefined') rsDados = null;
+  if (tab === 'contatar' && typeof cmDados !== 'undefined') cmDados = null;
+  if (tab === 'historico' && typeof hsDados !== 'undefined') hsDados = null;
+  if (tab === 'relatorio-elo' && typeof reDados !== 'undefined') reDados = null;
+  if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
+  if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
+  if (tab === 'oficial-justica' && typeof ojDados !== 'undefined') ojDados = null;
+  if (tab === 'turmas' && typeof tuDados !== 'undefined') tuDados = null;
+  render();
+}
+function render() {
+  if (curTab === 'dashboard') { renderResumoSecoes(); return; }
+  if (curTab === 'contatar') { renderContatarMesarios(); return; }
+  if (curTab === 'sync') { renderSyncMesarios(); return; }
+  if (curTab === 'historico') { renderHistoricoSync(); return; }
+  if (curTab === 'relatorio-elo') { renderRelatorioElo(); return; }
+  if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
+  if (curTab === 'voluntarios') { renderVoluntarios(); return; }
+  if (curTab === 'oficial-justica') { renderOficialJustica(); return; }
+  if (curTab === 'turmas') { renderTurmas(); return; }
+}
+window.render = render;
+</script>
+</body>
+</html>

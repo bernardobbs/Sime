@@ -32,6 +32,8 @@ export function createClient(url, key) {
       };
       return qb;
     },
+    channel(){ return { on(){ return this; }, subscribe(){ return this; } }; },
+    removeChannel(){},
   };
 }
 `;

@@ -232,10 +232,14 @@ se o resto valeu.
 Código-fonte completo em [`android-tv/`](../android-tv/): quatro painéis,
 GeckoView, auto-início, vigia de tela, reconexão e anti burn-in.
 
-**Não foi compilado nem testado em aparelho** — o ambiente onde foi escrito não
-tem Android SDK e não consegue baixá-lo (proxy bloqueia `dl.google.com`). Falta:
+**Não foi compilado nem testado em aparelho** — o ambiente onde foi escrito
+(sandbox do Claude Code) tem um proxy de saída que bloqueia `dl.google.com`/
+`maven.google.com` e `maven.mozilla.org`, os repositórios de que o Android
+Gradle Plugin e o GeckoView dependem. O wrapper do Gradle (`android-tv/gradlew`)
+já está commitado, então falta:
 
-1. Abrir no Android Studio e gerar o APK assinado.
+1. Compilar numa máquina com internet normal — ver "Compilar" em
+   `android-tv/README.md` (Android Studio ou SDK por linha de comando).
 2. Instalar num MXQ Pro 4K real e rodar o roteiro de `android-tv/README.md`.
 
 O primeiro item do roteiro — *o painel carrega e sai do fallback* — é o que

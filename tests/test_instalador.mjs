@@ -7,6 +7,17 @@ const { chromium } = pw;
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
+// Estas suítes exercitam o fluxo COM PIN. A operação suprimiu o PIN por ora
+// (SIME_CONFIG.exigirPin=false), mas o caminho continua no código e volta
+// quando o cartório quiser — então aqui a configuração é fixada, em vez de
+// deixar a suíte seguir um flag de produção que muda debaixo dela.
+const STUB_CONFIG = `export const SIME_CONFIG = {
+  exigirPin: true,
+  supabaseUrl: 'https://exemplo.supabase.co',
+  supabaseAnonKey: 'anon-de-teste',
+};`;
+
+
 const STUB_SUPABASE_JS = `
 function rowsFor(table) { return (window.__mockConfig[table] || []); }
 function matchFilters(row, filters) { return Object.entries(filters).every(([k, v]) => row[k] === v); }
@@ -38,6 +49,7 @@ async function newPage(ctx, mockConfig) {
   await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS });
   });
+  await p.route('**/sime_config.js**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_CONFIG }));
   return p;
 }
 
@@ -80,6 +92,13 @@ async function login(p) {
   const chegouCall = calls.find(c => c.params?.p_urna_chegou === true);
   check('toggle "chegou" chama sime_acao_mesa com p_urna_chegou=true', !!chegouCall);
   check('payload usa secao_id/eleicao_id reais e origem instalador', chegouCall.params.p_secao_id === 'sec-uuid-17' && chegouCall.params.p_eleicao_id === 'ele-uuid-1' && chegouCall.params.p_origem === 'instalador');
+  check('badge de sync visível após login', await p.evaluate(() => document.getElementById('sync-badge').style.display !== 'none'));
+
+  // marcar etapa só vibrava — toggleProb() (problema) já avisava por texto,
+  // mas as etapas da urna ficavam sem nenhum feedback textual (achado "baixo")
+  const toastTxt = await p.locator('#toast').textContent();
+  check('marcar etapa mostra toast (não só vibra)', toastTxt.includes('Chegou'), toastTxt);
+
   check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
@@ -155,6 +174,50 @@ async function login(p) {
   check('continuar offline: nenhuma chamada rpc (sem sessão)', calls.length === 0, 'calls=' + calls.length);
   check('continuar offline: checkbox ainda marca localmente', await p.evaluate(() => document.querySelector('.ck.s1').classList.contains('on')));
   check('continuar offline: zero erros JS', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 5. Token com escopo real (secoes) substitui a lista de exemplo ──
+// Achado crítico da auditoria: SECOES era hardcoded e nunca era trocada pela
+// rota de verdade — todo instalador via os mesmos dados de exemplo. A sessão
+// (sime-login) devolve `secoes` (comentário em sime_campo_auth.js confirma
+// que mesário/instalador/mídias usam esse campo); resolverEscopo() precisa
+// filtrar getSecoes() por ele e chamar window.aplicarSecoesReais().
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  // Duas seções reais da rota deste instalador — nenhuma delas é a '0017' do
+  // exemplo hardcoded, então só aparecerem na tela prova que a troca ocorreu.
+  cfg.sime_secoes = [
+    { id: 'sec-uuid-63', numero: 63, local_nome: 'G.E. Treze de Março', municipio: 'Campo Maior', eleitores: 300, ativo: true, parada: null, sime_rotas: null },
+    { id: 'sec-uuid-64', numero: 64, local_nome: 'G.E. Treze de Março', municipio: 'Campo Maior', eleitores: 280, ativo: true, parada: null, sime_rotas: null },
+    // Seção real da zona que NÃO pertence à rota deste instalador — não pode aparecer.
+    { id: 'sec-uuid-99', numero: 99, local_nome: 'Fora da rota', municipio: 'Campo Maior', eleitores: 50, ativo: true, parada: null, sime_rotas: null },
+  ];
+  await ctx.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      jwt: 'jwt.x', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-7', tipo: 'instalador',
+      secoes: ['0063', '0064'],
+    }) });
+  });
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_instalador.html');
+  await login(p);
+  await p.waitForTimeout(300);
+
+  const cards = await p.evaluate(() => [...document.querySelectorAll('.sec-card')].map(c => c.dataset.sec));
+  check('troca pra rota real: mostra só as seções do token (0063, 0064)', JSON.stringify(cards.sort()) === JSON.stringify(['0063', '0064']), JSON.stringify(cards));
+  check('não mostra a seção de exemplo (0017)', !cards.includes('0017'), JSON.stringify(cards));
+  check('não mostra seção real fora da rota deste instalador (0099)', !cards.includes('0099'), JSON.stringify(cards));
+
+  await p.click('.ck.s1'); // marca "chegou" da 1ª seção real da lista (0063)
+  await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_urna_chegou === true));
+  const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
+  const chegouCall = calls.find(c => c.params?.p_urna_chegou === true);
+  check('sincroniza com o UUID real da seção 0063 (não a de exemplo)', chegouCall?.params?.p_secao_id === 'sec-uuid-63', JSON.stringify(chegouCall));
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
 

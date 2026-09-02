@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>SIME · Conferente</title>
 <link rel="stylesheet" href="./sime_theme_cream.css">
@@ -21,6 +21,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .h-title{font-weight:700;font-size:.92rem;}
 .h-sub{font-size:.68rem;color:var(--text2);margin-top:1px;}
 .h-clock{font-size:.78rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Badge 🟡/🟢 de sincronização (regra 5, CLAUDE.md) — sem isso o conferente
+   não tinha como saber se "rota pronta"/"saída registrada" chegou de fato
+   ao cartório ou só ficou na fila offline do aparelho. */
+.sync-badge{display:flex;align-items:center;gap:4px;font-size:.65rem;font-weight:700;padding:3px 8px;border-radius:99px;flex-shrink:0;}
+.sync-badge.sync-ok  {background:var(--green-bg);color:var(--green);}
+.sync-badge.sync-pend{background:var(--yellow-bg);color:var(--yellow);}
 
 /* ── VIEWS ── */
 .view{display:none;flex:1;flex-direction:column;}
@@ -51,7 +57,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* ── EMBARQUE (visão de rota aberta) ── */
 .emb-header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 14px;flex-shrink:0;}
 .emb-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
-.emb-back{width:30px;height:30px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.emb-back{width:44px;height:44px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
 .emb-rota{font-weight:800;font-size:1rem;}
 .emb-meta{font-size:.72rem;color:var(--text2);margin-top:1px;}
 .emb-conf-row{display:flex;gap:8px;align-items:center;}
@@ -64,7 +70,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .emb-note{background:var(--yellow-bg);border:1px solid var(--yellow-bd);border-radius:7px;padding:7px 11px;font-size:.72rem;color:var(--yellow);margin:8px 14px 0;flex-shrink:0;}
 
 .urna-list{padding:8px 14px 140px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;flex:1;}
-.ordem-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 2px 3px;}
+.ordem-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);padding:8px 2px 3px;}
 
 .urna-item{
   background:var(--card);border:1.5px solid var(--border);
@@ -93,9 +99,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .ui-info{flex:1;}
 .ui-sec{font-weight:800;font-size:1rem;}
 .ui-local{font-size:.73rem;color:var(--text2);line-height:1.3;}
-.ui-parada{font-size:.62rem;color:var(--text3);}
+.ui-parada{font-size:.62rem;color:var(--text2);}
 .ui-right{text-align:right;}
-.ui-mun{font-size:.62rem;color:var(--text3);}
+.ui-mun{font-size:.62rem;color:var(--text2);}
 
 /* footer fixo */
 .emb-footer{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:10px 14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 -4px 20px rgba(0,0,0,.08);}
@@ -105,8 +111,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-pronta.alerta {background:var(--red);color:#fff;animation:shake .4s ease;}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .btn-saiu{width:100%;padding:14px;border-radius:12px;font-size:.9rem;font-weight:800;cursor:pointer;border:none;background:#1a1a22;color:#e0e0f0;}
-.footer-row{display:flex;gap:8px;}
-.btn-desfazer{flex:1;padding:10px;border-radius:9px;font-size:.76rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
+.footer-row{display:flex;gap:14px;}
+.btn-desfazer{flex:1;padding:10px;min-height:44px;border-radius:9px;font-size:.76rem;font-weight:700;cursor:pointer;border:1px solid var(--border2);background:var(--bg2);color:var(--text2);}
 .btn-desfazer:active{background:var(--bg3);}
 
 /* ── LOGIN SCREEN ── */
@@ -122,7 +128,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .pin-inp.error{border-color:var(--red);background:var(--red-bg);}
 .btn-login{width:100%;padding:14px;border-radius:10px;font-size:.88rem;font-weight:800;cursor:pointer;border:none;background:#2a2a2a;color:#fff;}
 .btn-login:active{background:#444;}
-.login-hint{font-size:.7rem;color:var(--text3);text-align:center;}
+.login-hint{font-size:.7rem;color:var(--text2);text-align:center;}
 
 /* BADGE DE USUÁRIO NO HEADER */
 .h-user{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
@@ -160,6 +166,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-user-nome" id="h-user-nome"></div>
     <div class="h-user-rotas" id="h-user-rotas"></div>
   </div>
+  <div class="sync-badge sync-ok" id="sync-badge">🟢 Sync</div>
   <div class="h-clock" id="clock">--:--</div>
 </div>
 
@@ -170,10 +177,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="login-title">SIME Conferente</div>
     <div class="login-sub">Digite o PIN de 4 dígitos recebido do cartório ou escaneie o QR Code com a câmera do celular.</div>
     <div class="pin-input-wrap">
-      <input class="pin-inp" id="pin-0" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,0)">
-      <input class="pin-inp" id="pin-1" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,1)">
-      <input class="pin-inp" id="pin-2" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,2)">
-      <input class="pin-inp" id="pin-3" type="number" min="0" max="9" maxlength="1" oninput="pinInput(this,3)">
+      <input class="pin-inp" id="pin-0" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,0)">
+      <input class="pin-inp" id="pin-1" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,1)">
+      <input class="pin-inp" id="pin-2" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,2)">
+      <input class="pin-inp" id="pin-3" type="tel" inputmode="numeric" maxlength="1" oninput="pinInput(this,3)">
     </div>
     <button class="btn-login" onclick="loginWithPIN()">Entrar →</button>
     <div class="login-hint">Não tem PIN? Peça ao coordenador do cartório.</div>
@@ -196,7 +203,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       </div>
     </div>
     <div class="emb-conf-row">
-      <input class="emb-conf-inp" id="conf-nome" placeholder="Seu nome (obrigatório)" oninput="saveConferente()">
+      <input class="emb-conf-inp" id="conf-nome" placeholder="Seu nome (opcional)" oninput="saveConferente()">
     </div>
     <div id="emb-timestamps" style="font-size:.65rem;color:var(--text3);margin-top:4px;min-height:14px;padding:0 2px;"></div>
     <div class="emb-prog-wrap">
@@ -240,13 +247,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_ui_utils.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { bootstrapCampoSession } from './sime_campo_auth.js';
+import { bootstrapCampoSession, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getRotas, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
 import { SIME_CONFIG } from './sime_config.js';
+
+// PIN suprimido pela operação: esconde o teclado de 4 dígitos. Quem valida é
+// o servidor — o flag do cliente só controla o que aparece na tela.
+window.PIN_SUPRIMIDO = aplicarSupressaoPin(SIME_CONFIG);
 
 let campoClient = null;
 let eleicaoId = null;
@@ -320,6 +331,15 @@ window.simeCampo = {
     }
     await sincronizarOuEnfileirar('rota_urna', { p_rota_estado_id: rotaEstadoId, p_secao_id: secaoId, p_embarcada: embarcada });
   },
+  // Timestamps exibidos (aberta/pronta/saiu) vinham do relógio do celular —
+  // podiam divergir do horário oficial gravado no servidor (achado "médio").
+  async now() {
+    if (!campoClient) return null;
+    try {
+      const { data } = await campoClient.rpc('sime_now');
+      return data ? new Date(data).getTime() : null;
+    } catch (e) { return null; }
+  },
 };
 
 // Dois usos, ver o <script> clássico:
@@ -340,10 +360,22 @@ async function tentarLoginCampo(token, pin) {
   if (!client) return { ok: false, rotas: [] };
   campoClient = client;
   await resolverEscopo();
-  iniciarRetryPeriodico(syncQueueFn);
+  iniciarRetryPeriodico(syncQueueFn, (pendentes) => updateSyncBadge(pendentes));
   return { ok: true, rotas: (rotas || []).map(c => 'Rota ' + String(c).padStart(3, '0')) };
 }
 window.tentarLoginCampo = tentarLoginCampo;
+
+function updateSyncBadge(pending) {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  if (pending > 0) {
+    el.className = 'sync-badge sync-pend';
+    el.textContent = '🟡 ' + pending + ' pendente' + (pending > 1 ? 's' : '');
+  } else {
+    el.className = 'sync-badge sync-ok';
+    el.textContent = '🟢 Sync';
+  }
+}
 </script>
 <script>
 // ══════════════════════════════════════════════
@@ -590,17 +622,32 @@ function renderRotas(){
   const temFiltro   = minhasRotas.length > 0;
   const todasRotas  = Object.keys(ROTAS);
 
-  // Separar: minhas rotas primeiro, depois as demais
+  // Separar: minhas rotas primeiro, depois as demais.
+  //
+  // minhasRotas vem do TOKEN e todasRotas vem dos dados carregados — os dois
+  // podem divergir (rota renomeada, removida, ou rótulo do cartão diferente do
+  // que o servidor devolveu). Sem filtrar, ROTAS[nome] vinha undefined e a
+  // tela inteira quebrava no .secs, deixando o conferente sem nada na véspera.
+  // Agora a rota desconhecida é reportada, não derruba o resto.
+  const minhasConhecidas = minhasRotas.filter(r => ROTAS[r]);
+  const minhasOrfas      = minhasRotas.filter(r => !ROTAS[r]);
   const ordenadas = temFiltro
-    ? [...minhasRotas, ...todasRotas.filter(r => !minhasRotas.includes(r))]
+    ? [...minhasConhecidas, ...todasRotas.filter(r => !minhasConhecidas.includes(r))]
     : todasRotas;
 
   // Label separador "Minhas rotas"
   if(temFiltro){
     const lbl1 = document.createElement('div');
     lbl1.className = 'sec-label-rotas';
-    lbl1.textContent = `Suas rotas (${minhasRotas.length})`;
+    lbl1.textContent = `Suas rotas (${minhasConhecidas.length})`;
     list.appendChild(lbl1);
+    if(minhasOrfas.length){
+      const av = document.createElement('div');
+      av.className = 'sec-label-rotas';
+      av.style.cssText = 'color:#b45309';
+      av.textContent = `⚠ ${minhasOrfas.join(', ')} não está na lista de rotas — avise o cartório`;
+      list.appendChild(av);
+    }
   }
 
   let passouParaOutras = false;
@@ -657,11 +704,12 @@ function renderRotas(){
 // ══════════════════════════════════════════════
 // ABRIR ROTA
 // ══════════════════════════════════════════════
-function abrirRota(rota){
+async function abrirRota(rota){
   curRota = rota;
   const st = getRotaState(rota);
   if(st.status === 'aguardando'){
-    updateRotaState(rota, { status:'embarcando', ts_aberta: Date.now() });
+    const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+    updateRotaState(rota, { status:'embarcando', ts_aberta: ts });
     if (window.simeCampo) window.simeCampo.syncRotaEstado(rota, { p_status: 'embarcando', p_ts_aberta: true });
   }
 
@@ -853,20 +901,19 @@ function confirmarPronta(){
   const nome = document.getElementById('conf-nome').value.trim();
   if(nome) updateRotaState(curRota, { conferente: nome });
 
-  openSheet({
-    icon:'✅',
-    title:`${curRota} — confirmar`,
-    sub:`${total} urnas embarcadas. A rota está pronta para sair?`,
-    okLabel:'Pronta para sair',
-    okBg:'#2e7d52',
-    action:() => {
-      updateRotaState(curRota, { status:'pronta', ts_pronta:Date.now(), alerta:false });
-      if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
-      renderUrnas();
-      showToast('✅ Rota pronta!');
-      vib([60,30,60]);
-    }
-  });
+  // Sem modal: já existe desfazerPronta() de um toque só logo abaixo — pedir
+  // confirmação aqui era fricção que a filosofia do projeto não previa pra
+  // uma ação reversível (achado "baixo" da auditoria).
+  confirmarProntaDireto();
+}
+
+async function confirmarProntaDireto(){
+  const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+  updateRotaState(curRota, { status:'pronta', ts_pronta:ts, alerta:false });
+  if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'pronta', p_ts_pronta: true, p_alerta: false });
+  renderUrnas();
+  showToast('✅ Rota pronta!');
+  vib([60,30,60]);
 }
 
 function desfazerPronta(){
@@ -885,8 +932,9 @@ function confirmarSaiu(){
     sub: 'O veículo saiu do cartório com todas as urnas?',
     okLabel: 'Confirmar saída',
     okClass: 'sbtn danger',
-    action: () => {
-      updateRotaState(curRota, { status:'saiu', ts_saiu: Date.now() });
+    action: async () => {
+      const ts = (window.simeCampo && await window.simeCampo.now()) || Date.now();
+      updateRotaState(curRota, { status:'saiu', ts_saiu: ts });
       if (window.simeCampo) window.simeCampo.syncRotaEstado(curRota, { p_status: 'saiu', p_ts_saiu: true });
       renderUrnas();
       showToast('🚗 Saída registrada!');
@@ -1041,10 +1089,14 @@ function erroPin(msg){
 }
 
 async function loginWithPIN(){
-  const pin = [0,1,2,3].map(i => document.getElementById('pin-'+i).value).join('');
-  if(pin.length < 4){
+  const pin = [0,1,2,3].map(i => document.getElementById('pin-'+i)?.value || '').join('');
+  // Com o PIN suprimido, quem identifica o operador é só o token do QR Code —
+  // sem ele não há o que enviar ao servidor, e entrar seria entrar como ninguém.
+  if(window.PIN_SUPRIMIDO){
+    if(!TOKEN_URL){ showToast('⚠ Abra pelo QR Code do seu cartão'); return; }
+  } else if(pin.length < 4){
     showToast('⚠ Digite os 4 dígitos do PIN');
-    document.getElementById('pin-0').focus();
+    document.getElementById('pin-0')?.focus();
     return;
   }
 
