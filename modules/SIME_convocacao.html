@@ -276,15 +276,24 @@ initSimeDados(supabase); // necessário pra getEleicaoAtiva() funcionar — sem 
 
 let _zonaCache = null;
 let _nomeCache = null;
+let _idCache = null;
 async function _carregarUsuario() {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data } = await supabase.from('sime_usuarios').select('zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
+  const { data } = await supabase.from('sime_usuarios').select('id, zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
   _zonaCache = data?.zona_id || null;
   _nomeCache = data?.nome || null;
+  _idCache = data?.id || null;
 }
 window.zonaDoUsuario = async function zonaDoUsuario() {
   if (!_zonaCache) await _carregarUsuario();
   return _zonaCache;
+};
+// id em sime_usuarios de quem está logado — usado por "🙋 Assumir"/"↪️
+// Encaminhar" em Contatar mesários (03/09/2026), pra saber quem é "eu" na
+// hora de virar responsável. Mesmo cache de sessão de zonaDoUsuario/nomeDoUsuario.
+window.meuUsuarioId = async function meuUsuarioId() {
+  if (!_idCache) await _carregarUsuario();
+  return _idCache;
 };
 
 // Bug real corrigido em 21/08/2026: log() gravava eleicao_id=null sempre (não

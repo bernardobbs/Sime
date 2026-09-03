@@ -2899,6 +2899,76 @@ dropdown").
 
 ---
 
+## RESPONSÁVEL + PRÓXIMO CONTATO — "Contatar mesários" (03/09/2026)
+
+Pedido direto, depois de uma conversa sobre o que faltaria pro módulo virar
+uma espécie de CRM de mesários. Das 5 ideias levantadas, o cartório aprovou
+3: **"1 faz sentido, podendo enviar para outra pessoa concluir tarefa,
+comunicação"** (dono do caso + encaminhar), **"2 sim faz sentido"** (próximo
+contato agendado) e **"4 sim"** (SLA por tempo) — descartou por enquanto a
+fila de trabalho pessoal como tela própria (item 3) e o kanban visual (item
+5). Na comunicação do encaminhamento, a resposta foi objetiva: **"só
+registra"** — nunca manda WhatsApp pro novo responsável, só fica no
+histórico de quem abrir a pessoa.
+
+`sql/SIME_atores_responsavel_proximo_contato.sql`: `sime_atores` ganha
+`responsavel_usuario_id` (FK `sime_usuarios`, nullable), `proximo_contato_em`
+(timestamptz) e `proximo_contato_nota` (texto). Nenhum campo bloqueia
+nenhuma ação — mesma filosofia de sempre ("nunca bloquear por campo
+opcional"): responsável é organização de equipe, não permissão; qualquer um
+do cartório continua podendo editar qualquer mesário, tenha dono ou não.
+
+**Dois botões no modal, seção "👤 Responsável e próximo contato"** (novo,
+logo abaixo da linha Confirmado/Convocado/Substituir):
+- **"🙋 Assumir pra mim"** — toque único, sem motivo, sempre disponível
+  (mesmo se já tiver responsável — "rouba" o caso de propósito, sem
+  precisar de permissão especial pra isso).
+- **"↪️ Encaminhar"** — abre um miniformulário inline (select da equipe +
+  motivo obrigatório). Mesmo padrão já usado pelo Painel de Problemas
+  (`sime_ocorrencia_delegar`, que também exige motivo) — só que aqui é um
+  `update` direto em `sime_atores`, não uma RPC própria: diferente de
+  ocorrência, não há necessidade de "recusar se já tem dono" nem de
+  `SECURITY DEFINER`, já que qualquer membro da equipe já pode editar
+  qualquer mesário mesmo sem ser o responsável. Grava
+  `mesario_responsavel_encaminhado` em `sime_logs` (com o nome de quem
+  recebeu + motivo) — aparece em "📜 Atualizações", nunca manda nada por
+  WhatsApp.
+
+**Próximo contato**: campo de data (sem hora — não é crítico pra este uso)
++ nota opcional, botão **"📅 Agendar"** (nome escolhido de propósito pra não
+colidir com o "💾 Salvar" geral do rodapé — a primeira versão usava "📅
+Salvar" e isso quebrava `button:has-text("Salvar")` em produção e nos
+testes, casando com os dois botões ao mesmo tempo). Salvar com o campo de
+data vazio remove o agendamento (limpa nota junto).
+
+**Atraso é sempre relativo à data que a PRÓPRIA pessoa do cartório
+agendou** (`cmAtrasado()`) — não um prazo fixo arbitrário tipo "3 dias sem
+contato". Sem agendamento, não há como saber se está atrasado; com
+agendamento vencido (e `confirmacao` ainda não `confirmado` — desfecho
+fechado não cobra mais), o card e o modal mostram "🔴 Atrasado desde
+dd/mm/aaaa". Vira bucket próprio em `CM_BUCKETS`
+(`atrasado`) e ganha o mesmo painel de destaque clicável que "🕓 Aguardando
+resposta" já tinha — os dois painéis convivem, cada um cobrindo um sinal
+diferente (tentativas sem resposta vs. retorno agendado vencido).
+
+**Filtro "👤 Responsável"** (Todos / Meus / Sem responsável / cada membro da
+equipe) sai de graça da mesma coluna nova — não virou tela própria (item 3
+foi descartado nesta rodada), só mais um `<select>` ao lado dos filtros que
+já existiam (status/função/município). `cmCarregar()` passou a buscar
+`sime_usuarios` da zona (id+nome, só quem está `ativo`) pra popular esse
+filtro e o `<select>` de "Encaminhar para"; `window.meuUsuarioId()` (novo em
+`SIME_convocacao.html`, mesmo padrão de cache de sessão de
+`zonaDoUsuario()`/`nomeDoUsuario()`) resolve quem é "eu" pro filtro "Meus" e
+pro "🙋 Assumir".
+
+Card da lista ganha três badges novos, condicionais: nome do responsável
+(`👤 Fulano`), atraso (`🔴 Atrasado desde…`) ou, se não estiver atrasado mas
+tiver data marcada, `📅 Retorno em dd/mm`. Coberto pela suíte inteira
+(`bash tests/run_all.sh`, 75 suítes, 0 falhas) — nenhum teste precisou
+mudar, só o botão renomeado acima pra não colidir.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
