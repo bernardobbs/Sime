@@ -1036,7 +1036,12 @@ async function login(p) {
   // ("Bom dia"/"Boa tarde"/"Boa noite") agora depende da hora em que o link
   // é copiado — o teste roda a qualquer hora do dia, então calcula a
   // saudação esperada com a mesma regra em vez de fixar "Bom dia".
-  const saudacaoEsperada = (() => { const h = new Date().getHours(); return h >= 5 && h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; })();
+  // Bug real achado em 03/09/2026 (CI falhando na madrugada, 02h UTC): esta
+  // reimplementação local não tratava h<5 — caía em "h<18" e virava "Boa
+  // tarde" às 2h da manhã. cmSaudacaoPorHora() (produção) já tratava isso
+  // certo (madrugada = "Boa noite", "resto" no comentário do CLAUDE.md);
+  // corrigido pra espelhar exatamente a mesma regra (h>=12 explícito).
+  const saudacaoEsperada = (() => { const h = new Date().getHours(); if (h >= 5 && h < 12) return 'Bom dia'; if (h >= 12 && h < 18) return 'Boa tarde'; return 'Boa noite'; })();
   check('link copiado já vem com a mensagem de confirmação pré-preenchida, saudação certa pra hora atual', (linkCopiado || '').includes('?text=' + encodeURIComponent(`${saudacaoEsperada}, esse contato é de BRUNO MESARIO ?`)), linkCopiado);
   // Pedido de 21/08/2026: copiar o link do WhatsApp já deve contar como
   // tentativa de contato, sem precisar preencher a Nota separada.
