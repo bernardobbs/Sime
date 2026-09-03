@@ -2880,6 +2880,54 @@ com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravav
 mudança na cópia local (`window.ATORES_REAIS`) em vez de rebuscar — rebuscar
 devolveria a lista antiga do cache.
 
+**Varredura dedicada de "pontas soltas" (03/09/2026)** — pedido agendado:
+achar telas que ainda dependem só de `localStorage` sem sincronizar de
+verdade com o Supabase, ou onde os dois podem divergir sem ninguém
+perceber (diferente do uso legítimo de `localStorage` como cache offline,
+que é a arquitetura de sempre). Focada em mesários/convocação (nenhum
+achado — `SIME_convocacao.html`/`sime_contatar_mesarios.js` e os demais
+arquivos do módulo são 100% Supabase, nunca tiveram `localStorage`) e Dia D
+(`SIME_mesario.html`, `SIME_tv_dia.html`, `SIME_admin.html`). Dois achados
+reais, os dois corrigidos:
+
+- **`getHor()` do TV Dia lia só `localStorage['sime_eleicao_v1']`, chave
+  gravada em outro aparelho.** Usada pra pré-preencher o campo de
+  auto-troca com o horário real de encerramento da zona — como essa chave
+  só é gravada pelo Painel Principal, num computador diferente da própria
+  TV, o campo sempre caía no "17:00" chumbado (a TV nunca tinha essa chave
+  no próprio navegador). É a MESMA classe de bug já achada e corrigida em
+  `SIME_tokens.html`/`SIME_admin.html` (`window.ELEICAO_ATIVA`, vindo de
+  `getEleicaoAtiva()`/Supabase) — só nunca tinha sido replicada em TV Dia.
+  Corrigido: `getHor()` agora prefere `window.ELEICAO_ATIVA.horario_ab`/
+  `horario_enc` (populado pelo `<script type="module">` já existente,
+  `.slice(0,5)` porque o Postgres devolve "HH:MM:SS" e `#auto-switch` é
+  `<input type="time">`, que só aceita "HH:MM"); o campo é re-preenchido
+  assim que o dado real chega, sem depender de ordem de execução entre o
+  script clássico e o módulo.
+- **Mesário grava status de mídia mas nunca lia de volta.** `marcarMidiaPronta()`
+  já sincronizava direito com o Supabase (RPC `sime_acao_midia`) — o
+  problema era leitura: `loadMidia()`/`renderMidiaBtn()` liam só
+  `localStorage['sime_midias_v1']` do PRÓPRIO aparelho, que nunca reflete
+  "coletada"/"entregue_transmissao" (essas transições acontecem no
+  aparelho do Coletor de Mídias, `SIME_midias.html` — um dispositivo físico
+  diferente). O botão já tinha até os textos prontos pra esses dois
+  estados, só eram inalcançáveis — o mesário nunca ficava sabendo que a
+  própria mídia já tinha sido recolhida. Corrigido com o mesmo padrão já
+  usado pro pânico (Realtime + leitura inicial + releitura ao voltar pra
+  tela): nova `subscribeMidiasSecao()` em `sime_realtime.js` (filtrada por
+  seção — um celular de mesário não deve receber o tráfego de mídia das
+  outras ~174 seções da zona, mesmo motivo de `subscribeMesaEstadoSecao`),
+  `window.aplicarMidiaRemota()` (script clássico) aplica o status recebido
+  em `MIDIA_KEY` e rechama `renderMidiaBtn()`.
+
+Os dois cobertos por teste de regressão dedicado — `tests/test_tv_dia.mjs`
+(Caso 3) e `tests/test_mesario_midia_realtime.mjs` (novo arquivo). A suíte
+de pânico (`test_mesario_panico_realtime.mjs`) precisou de um ajuste — o
+mock de `channel()` só guardava o ÚLTIMO canal criado numa página
+(`canalNome`/`realtimeFiltro`/`realtimeCallback`), e agora o mesário abre
+dois canais (pânico + mídia); virou um array `window.__mockConfig.canais`,
+indexável por tabela, sem mudar o que os testes de pânico já verificavam.
+
 ### Pânico — propagação de volta ao campo (parcial)
 
 O `SIME_mesario.html` assina o Realtime da própria seção e relê o estado ao

@@ -439,7 +439,7 @@ import { createClient } from './vendor/supabase-js.esm.js';
 import { bootstrapCampoSession, preencherTokenDaUrl, aplicarSupressaoPin } from './sime_campo_auth.js';
 import { initSimeDados, getSecoes, getEleicaoAtiva } from './sime_dados.js';
 import { enqueue, iniciarRetryPeriodico } from './sime_offline_queue.js';
-import { subscribeMesaEstadoSecao } from './sime_realtime.js';
+import { subscribeMesaEstadoSecao, subscribeMidiasSecao } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -465,6 +465,7 @@ async function resolverEscopo(secoesToken) {
     secaoId = s.id;
     if (window.aplicarSecaoAtiva) window.aplicarSecaoAtiva(s.numero, s.local_nome, s.municipio);
     assinarPanicoRemoto();
+    assinarMidiaRemota();
   }
 }
 
@@ -487,9 +488,11 @@ function assinarPanicoRemoto() {
 
   // O canal só entrega o que acontece enquanto ele está de pé. Um celular no
   // bolso a manhã inteira perde os eventos do período — então, toda vez que a
-  // tela volta, relemos a linha em vez de confiar só no canal.
+  // tela volta, relemos a linha em vez de confiar só no canal. Mesmo motivo
+  // vale pra mídia (lerMidiaAtual) — reaproveita o mesmo listener em vez de
+  // registrar um segundo.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') lerPanicoAtual();
+    if (document.visibilityState === 'visible') { lerPanicoAtual(); lerMidiaAtual(); }
   });
 }
 
@@ -507,6 +510,33 @@ async function lerPanicoAtual() {
     const { data, error } = await q.maybeSingle();
     if (error || !data) return;
     if (window.aplicarPanicoRemoto) window.aplicarPanicoRemoto(data);
+  } catch (e) { /* offline — o localStorage segue valendo */ }
+}
+
+// Achado real na auditoria de 03/09/2026: este aparelho grava o status de
+// mídia (sime_acao_midia) mas nunca lia de volta — só do próprio
+// localStorage['sime_midias_v1'], que jamais reflete "coletada"/
+// "entregue_transmissao" (gravados no aparelho do Coletor de Mídias, um
+// dispositivo físico diferente). window.aplicarMidiaRemota (script clássico)
+// já sabe aplicar isso; aqui só assina + lê o estado atual, mesmo padrão do
+// pânico acima, com filtro por seção (sem isso o celular receberia o
+// tráfego de mídia das outras ~174 seções da zona no Dia D).
+function assinarMidiaRemota() {
+  if (!campoClient || !secaoId) return;
+  subscribeMidiasSecao(campoClient, secaoId, (row) => {
+    if (window.aplicarMidiaRemota) window.aplicarMidiaRemota(row);
+  });
+  lerMidiaAtual();
+}
+
+async function lerMidiaAtual() {
+  if (!campoClient || !secaoId) return;
+  try {
+    let q = campoClient.from('sime_midias').select('status, pronta_ts').eq('secao_id', secaoId);
+    if (eleicaoId) q = q.eq('eleicao_id', eleicaoId);
+    const { data, error } = await q.maybeSingle();
+    if (error || !data) return;
+    if (window.aplicarMidiaRemota) window.aplicarMidiaRemota(data);
   } catch (e) { /* offline — o localStorage segue valendo */ }
 }
 
@@ -1111,6 +1141,23 @@ function renderMidiaBtn(){
 // Checar a cada 3s (usa S — estado em memória, sempre atualizado)
 setInterval(renderMidiaBtn, 3000);
 setTimeout(renderMidiaBtn, 400);
+
+// Chamado pelo Realtime (assinarMidiaRemota, no <script type="module">)
+// quando a linha de mídia da seção muda no servidor. Achado real na
+// auditoria de 03/09/2026: este aparelho só grava "pronta_para_coleta" em
+// MIDIA_KEY (marcarMidiaPronta) — os status "coletada"/"entregue_transmissao"
+// são gravados no aparelho do Coletor de Mídias (SIME_midias.html), um
+// dispositivo físico diferente. Sem isto, o botão do mesário tinha até os
+// textos prontos pra esses dois estados (renderMidiaBtn acima), mas eles
+// nunca eram alcançáveis — o mesário nunca ficava sabendo que a própria
+// mídia já tinha sido recolhida.
+window.aplicarMidiaRemota = function(row) {
+  if (!row || !row.status) return;
+  const n = SECAO_ID || '0063';
+  if (loadMidia(n).status === row.status) return; // nada mudou
+  saveMidia(n, { status: row.status, pronta_ts: row.pronta_ts || loadMidia(n).pronta_ts });
+  renderMidiaBtn();
+};
 </script>
 
 </body>
