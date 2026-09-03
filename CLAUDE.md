@@ -1169,15 +1169,27 @@ cada um com propósito diferente:
   "🏛️ Convocação oficial (ZEO/TRE)" acima, "📢 Criar campanha com estes",
   escolher o script salvo no Disparo em massa.
 
-  **Por que não veio pré-carregada com uma lista de pessoas.** Perguntado
-  onde estava "a lista ZEO fornecida pelo cartório em 31/08/2026" — não
-  achei nada com "zeo" em `sime_atores`/`sime_logs` nem no repositório antes
-  de construir isto — a resposta foi "está no sime", ou seja: não é uma
-  lista externa pra importar, é o próprio filtro acima que o cartório vai
-  usar pra reunir quem for marcando como ZEO daqui em diante. Por isso o
-  meio de contato + o filtro têm que existir ANTES da campanha ser
-  disparada de fato — sem gente marcada como `zeo` ainda, o filtro
-  simplesmente mostra zero pessoas, o que é esperado nesta v1.
+  **Por que não veio pré-carregada com uma lista de pessoas — corrigido no
+  mesmo dia, a lista existia sim.** Perguntado onde estava "a lista ZEO
+  fornecida pelo cartório em 31/08/2026" — a busca original checou
+  `meio_contato`/`confirmacao` (colunas estruturadas) e não achou nada, e a
+  resposta do cartório foi "está no sime". Estava mesmo, só num lugar que a
+  busca não tinha olhado: `sime_logs.acao='mesario_tentativa_contato'` já
+  tinha **228 registros** com `payload->>'meio' = 'Convocação oficial
+  (ZEO/TRE)'`, todos com o mesmo timestamp (31/08/2026 10:13 local) e autor
+  `"Claude (lista ZEO fornecida pelo cartório, 31/08/2026)"` — uma tentativa
+  de contato em massa já registrada por uma sessão anterior, que nunca
+  tinha sido espelhada em `sime_atores.meio_contato` (porque o valor `zeo`
+  não existia ainda naquela época). Corrigido com um `UPDATE` em massa
+  (`sime_logs.acao='mesarios_marcar_meio_zeo_lote'`) casando por
+  `payload->>'ator_id'`: dos 228, **220 foram marcados como `zeo`** — os
+  outros **8 foram deliberadamente preservados** porque já tinham um
+  `mesario_meio_contato` gravado DEPOIS da tentativa ZEO, escalonando pra
+  `carta_registrada`/`oficial_justica` (decisão manual mais recente do
+  cartório — sobrescrever de volta pra `zeo` teria apagado esse
+  escalonamento). Com os 220 marcados, o filtro "🏛️ Convocação oficial
+  (ZEO/TRE)" acima já não está mais vazio — "Criar campanha com estes" já
+  tem pra quem mandar.
 
   **Anexo de PDF por pessoa continua sem existir.** `sime_campanha_etapas.imagem_url`
   ainda é uma imagem só, compartilhada por TODOS os destinatários da etapa
