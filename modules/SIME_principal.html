@@ -441,6 +441,12 @@ async function carregarZonas(){
   if (perfilEl) perfilEl.textContent = (window.PERFIL_LABEL && window.PERFIL_LABEL[meu.perfil]) || meu.perfil;
   if (avatarEl && window.iniciais) avatarEl.textContent = window.iniciais(meu.nome);
 
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo componente
+  // compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  if (window.initSimeUserMenu) {
+    window.initSimeUserMenu(supabase, { chipEl: document.querySelector('.user-pill') });
+  }
+
   // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
   // só opera a sua. Mesma regra já usada em SIME_admin.html.
   const btn = document.getElementById('tab-zonas-btn');
@@ -584,6 +590,7 @@ function abrirAbaDaUrl() {
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
 function loadEl(){ try{return JSON.parse(localStorage.getItem(ELEICAO_KEY)||'{}')}catch(e){return{}} }

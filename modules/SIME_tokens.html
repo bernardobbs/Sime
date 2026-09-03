@@ -138,6 +138,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="topbar-right">
     <button class="btn btn-out btn-sm" onclick="window.print()">🖨️ Imprimir todos</button>
     <button class="btn btn-red btn-sm" onclick="resetarTodos()">🗑 Limpar todos</button>
+    <span id="sime-um-slot" style="display:none"></span>
   </div>
 </div>
 
@@ -255,6 +256,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 </div>
 
+<script src="./sime_user_menu.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas } from './sime_dados.js';
@@ -283,11 +285,22 @@ async function carregarIdentidadeZona() {
     const { data: { user } = {} } = await supabase.auth.getUser() || {};
     if (!user) return;
     const { data: meu } = await supabase
-      .from('sime_usuarios').select('perfil, zona_id')
+      .from('sime_usuarios').select('nome, perfil, zona_id')
       .eq('auth_user_id', user.id).maybeSingle();
     if (!meu) return;
     minhaZonaId = meu.zona_id || null;
     souSuperAdmin = meu.perfil === 'super_admin';
+
+    // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+    // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+    // Esta página nunca teve nome nem "Sair" no topbar antes.
+    if (window.initSimeUserMenu) {
+      window.initSimeUserMenu(supabase, {
+        slotEl: document.getElementById('sime-um-slot'),
+        nome: meu.nome || user.email || 'Usuário',
+        perfil: meu.perfil,
+      });
+    }
 
     // A RLS já limita sime_zonas ao que este usuário pode ver: um admin de zona
     // recebe só a dele, o super_admin recebe todas.

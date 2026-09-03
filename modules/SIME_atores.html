@@ -98,6 +98,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="h-title">SIME · Atores</div>
     <div class="h-sub" id="h-sub">0 atores cadastrados</div>
   </div>
+  <span id="sime-um-slot" style="display:none"></span>
   <button class="btn btn-dark" style="font-size:.72rem;padding:6px 10px;" onclick="abrirModal(null)">+ Novo</button>
 </div>
 
@@ -125,6 +126,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="toast" id="toast"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script src="./sime_campanha_script_editor.js"></script>
 <script type="module">
 // Carrega os atores do Supabase. Este módulo era 100% localStorage: a zona
@@ -144,6 +146,21 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   if (!session) return;
   initSimeDados(supabase);
   window.supabaseAtores = supabase;
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+  // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  // Melhor-esforço: uma falha aqui nunca deve impedir o resto da tela
+  // (lista de atores, disparo em massa, etc.) de terminar de carregar.
+  try {
+    if (window.initSimeUserMenu) {
+      const { data: meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', session.user.id).maybeSingle();
+      window.initSimeUserMenu(supabase, {
+        slotEl: document.getElementById('sime-um-slot'),
+        nome: meu?.nome || session.user.email || 'Usuário',
+        perfil: meu?.perfil,
+      });
+    }
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
 
   // Pra log() (Modo Guerra) resolver numero -> secao_id ao gravar em sime_logs.
   const secoesReais = await getSecoes({ fallback: null });

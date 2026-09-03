@@ -2846,6 +2846,59 @@ supabase
 
 ---
 
+## MENU DO USUÁRIO — trocar senha / sair (03/09/2026)
+
+Pedido direto, a partir de um print do topbar de `SIME_principal.html`: "o
+usuário ao clicar em cima do seu nome, deve mostrar um menu para ele trocar
+senha ou sair do sistema. essa barra superior deve ficar aberta em todas as
+janelas". `modules/sime_user_menu.js` (novo, sem dependências, sem
+framework) — dropdown compartilhado por **toda a camada Admin** (login por
+e-mail/senha via Supabase Auth): `SIME_principal.html`, `SIME_admin.html`,
+`SIME_convocacao.html`, `SIME_atores.html`, `SIME_relatorios.html`,
+`SIME_problemas.html`, `SIME_tokens.html`, `SIME_hermes_painel.html`,
+`SIME_coordenador_preparacao.html` — as 9 janelas que de fato têm uma sessão
+autenticada pra trocar senha. **Fora do escopo, deliberadamente**: os
+módulos de campo (QR+PIN — Mesário, Motorista, Conferente, Instalador,
+Mídias, Acessibilidade) não usam Supabase Auth, então "trocar senha" não
+existe pra eles; `SIME_paineis.html` (gerenciador de TVs) e os próprios
+painéis de TV também não têm sessão de usuário nenhuma.
+
+`window.initSimeUserMenu(supabase, opts)` — `opts.chipEl` reaproveita um
+elemento que a página já usa pra mostrar nome/perfil (`SIME_principal.html`/
+`SIME_admin.html`, que já tinham esse chip pronto); `opts.slotEl` + `nome`/
+`perfil` monta um chip padrão do zero dentro de um `<span id="sime-um-slot">`
+vazio, pras 7 páginas que nunca mostravam nome nenhum no topbar (só zona,
+ou nada). `opts.sairEl` reaproveita um botão de "Sair" que a página já
+tinha (`SIME_admin.html`/`SIME_relatorios.html`/`SIME_problemas.html`) —
+movido pra dentro do dropdown, sem duplicar a ação de logout; sem `sairEl`
+o menu cria a própria opção padrão.
+
+**Trocar senha** abre um modal próprio (2 campos, mínimo 6 caracteres,
+confirmação precisa bater) e chama `supabase.auth.updateUser({password})`
+— funciona em qualquer uma das 9 páginas porque todas compartilham a mesma
+sessão do Supabase Auth (`persistSession`, mesma origem). **Sair do
+sistema** chama `supabase.auth.signOut()` e recarrega a página (mesmo
+comportamento que os `simeLogout()`/`btn-logout` de sempre já tinham,
+onde existiam) — toque único, sem confirmação modal: logout é reversível
+(só precisa logar de novo), não se enquadra na regra de "confirmação só
+pra ação irreversível".
+
+**Toda chamada de identidade (`supabase.auth.getUser()` + `sime_usuarios`)
+que alimenta o menu é melhor-esforço, envolta em try/catch** — achado real
+testando `SIME_coordenador_preparacao.html`: a primeira versão deixava
+essa chamada solta no meio do `await carregarDadosReais()`, e uma falha ali
+(sessão velha, stub de teste sem `auth.getUser`) abortava a função inteira
+— seções, cabeçalho dinâmico, upsert de carga/lacre, tudo parava de
+carregar só porque o menu de conta (um extra) não conseguiu montar. Mesmo
+critério já aplicado em `sime_user_menu.js` internamente (`initSimeUserMenu`
+nunca propaga exceção pro chamador). Coberto pela suíte inteira existente
+(`bash tests/run_all.sh`, 74 suítes) — nenhum teste precisou mudar, exceto
+o comportamento em si ser preservado (`#btn-logout` continua existindo com
+o mesmo id, só migrou de "botão solto no topbar" pra "item dentro do
+dropdown").
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

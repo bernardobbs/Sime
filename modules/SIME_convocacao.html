@@ -229,6 +229,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div class="h-title">SIME · Convocação de Mesários</div>
       <div class="h-sub" id="h-sub">carregando…</div>
     </div>
+    <span id="sime-um-slot" style="display:none"></span>
   </div>
 
   <div class="tabs" role="tablist">
@@ -254,6 +255,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div id="print-area"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script src="./sime_mesarios_sync.js"></script>
 <script src="./sime_resumo_secoes.js"></script>
 <script src="./sime_contatar_mesarios.js"></script>
@@ -322,6 +324,21 @@ async function atualizarCabecalho() {
   const zonaId = await zonaDoUsuario();
   const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
   document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+  // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  // Melhor-esforço: uma falha aqui nunca deve derrubar o resto do cabeçalho.
+  try {
+    if (window.initSimeUserMenu) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: meu } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+      window.initSimeUserMenu(supabase, {
+        slotEl: document.getElementById('sime-um-slot'),
+        nome: await nomeDoUsuario(),
+        perfil: meu?.perfil,
+      });
+    }
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
 }
 
 function mostrarPainel() {

@@ -715,6 +715,7 @@ supabase.auth.onAuthStateChange?.((event) => {
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS E CONSTANTES
@@ -893,6 +894,17 @@ window.aplicarIdentidade = function(){
   const btnSair = document.getElementById('btn-logout');
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo componente
+  // compartilhado por toda a camada Admin, ver sime_user_menu.js. #btn-logout
+  // continua existindo (só some da vista solta e passa a viver dentro do
+  // dropdown), então o teste que checa a visibilidade dele continua válido.
+  if (window.initSimeUserMenu) {
+    window.initSimeUserMenu(supabase, {
+      chipEl: document.querySelector('.user-chip'),
+      sairEl: document.getElementById('btn-logout'),
+    });
+  }
 };
 
 // ── HERMES (heartbeat + versão) ──────────────────────────────────────────
