@@ -2191,6 +2191,13 @@ async function login(p) {
   // campos opcionais").
   await p.locator('.import-card:has-text("PATRICIA SUBSTITUTA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(200);
+  // 04/09/2026: "Dispensar (ELO)" agora recolhe de novo pra CADA pessoa (não
+  // fica "lembrando" que foi expandida pra outra, ver cmAbrirModal) — precisa
+  // expandir de novo aqui, diferente de antes, quando o estado vazava de
+  // OLIVIA (linha 2163 acima) pra PATRICIA sem querer.
+  check('seção "Dispensar (ELO)" também começa recolhida pra PATRICIA (não herdou o estado de OLIVIA)', await p.locator('#mm-dispensar-motivo').count() === 0);
+  await p.locator('.m-section-hdr:has-text("Dispensar (ELO)")').click();
+  await p.waitForTimeout(150);
   await p.locator('#modal-body button:has-text("Dispensar e tirar do cadastro")').click();
   await p.waitForTimeout(250);
   const atorPatriciaDepois = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a51'));

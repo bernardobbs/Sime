@@ -68,6 +68,33 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 @media (min-width:700px){
   .modal{max-width:720px;max-height:90vh;}
 }
+/* Modal de "Contatar mesários" em quase-tela-cheia no desktop, com o corpo
+   em 2-3 colunas (04/09/2026, pedido direto: "poderia preencher toda a
+   tela, ficando duas ou três colunas, mantendo o x no canto superior").
+   Só ESTE modal ganha o tratamento — marcado via classe `cm-modal-wide`,
+   ligada/desligada por JS em cmRenderModal()/cmFecharModal() (ver
+   sime_contatar_mesarios.js) — os demais modais deste arquivo (Voluntários,
+   Turmas, drilldown do Dashboard) continuam do jeito que sempre foram,
+   só com o max-width:720px genérico acima. `column-width` (não
+   `column-count` fixo) deixa o navegador decidir sozinho 2 ou 3 colunas
+   conforme o espaço disponível, sem breakpoint extra pra isso. Cabeçalho
+   (com o ✕) e rodapé ficam fixos (`flex:none` dentro do modal em coluna);
+   só o corpo rola — por isso o ✕ nunca sai da vista, mesmo com o modal
+   cheio de seções. Abaixo de 900px nada muda (a classe existe no elemento,
+   mas sem efeito até a media query valer). */
+@media (min-width:900px){
+  .cm-modal-wide{
+    width:100%;max-width:1400px;
+    max-height:calc(100vh - 32px);
+    display:flex;flex-direction:column;
+  }
+  .cm-modal-wide .m-hdr,.cm-modal-wide .m-foot{flex:none;}
+  .cm-modal-wide .m-body{
+    display:block;flex:1;min-height:0;overflow-y:auto;
+    column-width:380px;column-gap:20px;
+  }
+  .cm-modal-wide .m-body>*{break-inside:avoid;margin-bottom:12px;}
+}
 .m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .m-title{font-weight:800;font-size:.92rem;}
 .m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}

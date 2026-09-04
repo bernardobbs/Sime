@@ -3012,6 +3012,45 @@ largura nova. Escopado só a `SIME_convocacao.html` — `.modal` é definido
 dentro do `<style>` de cada módulo (não um arquivo CSS compartilhado), então
 essa mudança não afeta o modal de nenhuma outra tela do sistema.
 
+**Revisado no mesmo dia — tela cheia com 2-3 colunas (pedido direto: "poderia
+preencher toda a tela, ficando duas ou três colunas, mantendo o x no canto
+superior").** O ajuste de 720px acima ainda ajudava pouco num monitor
+largo de verdade. `.cm-modal-wide` (classe nova, ligada/desligada por JS,
+não CSS estático) é o marcador que decide quem ganha o tratamento — só o
+modal de pessoa em "Contatar mesários" (`cmRenderModal()` adiciona a classe
+ao abrir; `cmFecharModal()` remove ao fechar); os outros modais deste
+arquivo (`vlRenderModal()` em Voluntários, `rsAbrirVoluntarios()` no
+drilldown do Dashboard) removem a classe defensivamente no próprio início,
+já que `#modal-body` é um elemento único compartilhado por todos eles.
+Acima de 900px: o modal ocupa quase a tela toda (`max-width:1400px`, teto
+pra não virar 4+ colunas ilegíveis num monitor gigante), cabeçalho (com o
+✕) e rodapé (Fechar/Salvar) ficam fixos via `display:flex;flex-direction:
+column` + `flex:none` nos dois, e só o corpo rola. As colunas usam
+`column-width:380px` (não `column-count` fixo) — o navegador decide sozinho
+2 ou 3 colunas conforme o espaço, sem precisar de mais um breakpoint; cada
+seção ganha `break-inside:avoid` pra nunca ser cortada ao meio entre
+colunas. Abaixo de 900px nada muda.
+
+**Conferido antes de mexer: o botão "💾 Salvar" do rodapé não é código
+morto.** Continua sendo rede de segurança pro telefone principal/
+alternativo, código de rastreio e nome/telefone do substituto (que hoje já
+salvam sozinhos ao sair do campo — "Salvar" só cobre quem edita e clica
+direto nele sem tabular) e também recolhe texto deixado nas caixas de
+"nota da tentativa"/"observação" sem passar pelos botões próprios delas
+(bug real de 21/08/2026, já documentado acima). Nenhuma mudança nele.
+
+**Bug real corrigido no caminho: "Rodar script"/"Dispensar" não resetavam
+ao trocar de pessoa.** As duas seções já nasciam recolhidas por padrão
+(`cmScriptAberto`/`cmDispensarAberto`, ambas `false`) — mas são variáveis do
+MÓDULO, não por pessoa: expandir uma delas pra alguém e depois abrir o
+modal de OUTRA pessoa mantinha a seção aberta lá também. `cmAbrirModal(id)`
+agora zera as duas toda vez que abre — corrigido justamente porque um teste
+de regressão existente (`tests/test_convocacao_mesarios.mjs`, bloco "🚫
+Dispensar (ELO)") dependia implicitamente desse vazamento (abria "Dispensar"
+pra OLIVIA e clicava direto no botão de PATRICIA sem reabrir a seção,
+porque o estado "vazava") — o teste foi ajustado pra expandir a seção de
+novo pra PATRICIA também, refletindo o comportamento certo agora.
+
 ---
 
 ## MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 04/09/2026)

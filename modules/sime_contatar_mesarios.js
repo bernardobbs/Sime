@@ -1086,6 +1086,12 @@ async function cmEnviarScript(id) {
 async function cmAbrirModal(id) {
   cmModalId = id;
   cmModalHist = null;
+  // "Rodar script"/"Dispensar" sempre começam recolhidos pra CADA pessoa —
+  // bug real achado em 04/09/2026: sem isso, expandir uma dessas seções pra
+  // alguém e depois abrir o modal de OUTRA pessoa mantinha a mesma seção
+  // aberta lá também (o estado é uma variável do módulo, não por pessoa).
+  cmScriptAberto = false;
+  cmDispensarAberto = false;
   document.getElementById('overlay')?.classList.add('open');
   if (!cmDados) { await cmCarregar(); if (cmModalId !== id) return; }
   cmRenderModal();
@@ -1235,6 +1241,7 @@ async function cmUsarComoPrincipal(id, valorBruto) {
 function cmFecharModal(e) {
   if (!e || e.target === document.getElementById('overlay')) {
     document.getElementById('overlay')?.classList.remove('open');
+    document.getElementById('modal-body')?.classList.remove('cm-modal-wide');
     cmModalId = null;
     cmModalHist = null;
   }
@@ -1300,6 +1307,11 @@ function cmAgruparTentativasPorDia(tentativas, posterioresMs) {
 function cmRenderModal() {
   const modal = document.getElementById('modal-body');
   if (!modal) return;
+  // Marca esse modal (só este) pra ganhar o tratamento de tela cheia/colunas
+  // no desktop (ver CSS `.cm-modal-wide` em SIME_convocacao.html) — removida
+  // em cmFecharModal() e, defensivamente, no início de qualquer outro modal
+  // deste arquivo (#modal-body é compartilhado entre todos eles).
+  modal.classList.add('cm-modal-wide');
   const p = cmPessoaModal();
   if (!p) { modal.innerHTML = ''; return; }
   const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;

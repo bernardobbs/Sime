@@ -203,6 +203,10 @@ function rsJsStr(s) {
 function rsAbrirVoluntarios(municipio, localNome, cargoLabel) {
   const lista = rsVoluntariosDisponiveis(municipio, localNome);
   document.getElementById('overlay').classList.add('open');
+  // Defesa: #modal-body é compartilhado com o modal de "Contatar mesários",
+  // que se marca com `cm-modal-wide` (tela cheia/colunas no desktop) — esse
+  // modal aqui nunca deve herdar isso.
+  document.getElementById('modal-body')?.classList.remove('cm-modal-wide');
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">🙋 Voluntários disponíveis — ${rsEsc(cargoLabel)}</div>
