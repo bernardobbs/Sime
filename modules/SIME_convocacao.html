@@ -57,6 +57,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
 .overlay.open{opacity:1;pointer-events:all;}
 .modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+/* Desktop (04/09/2026, pedido direto com print anexado do modal do mesário
+   "espremido" numa tela grande): o modal era fixo em 480px mesmo em telas
+   largas, obrigando muita rolagem vertical num conteúdo que tem espaço de
+   sobra pros lados. 480px continua sendo o padrão pra celular/tablet
+   estreito (onde é o próprio limite físico da tela, não uma escolha); a
+   media query só entra em telas com espaço real pra aproveitar — o
+   `.cm-tel-card`/`.m-kv-row` por dentro já usam flex-wrap, então ganham
+   colunas extras sozinhos com mais largura, sem precisar mexer neles. */
+@media (min-width:700px){
+  .modal{max-width:720px;max-height:90vh;}
+}
 .m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .m-title{font-weight:800;font-size:.92rem;}
 .m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}

@@ -2011,11 +2011,9 @@ function secaoForm(id){
       </div>
       <div class="form-group"><label for="sc-local">Local de votação</label>
         <input type="text" id="sc-local" value="${s?.local_nome||''}" placeholder="Nome do local"></div>
-      <div class="form-group"><label for="sc-rota">Rota (opcional)</label>
-        <select id="sc-rota">
-          <option value="">— sem rota —</option>
-          ${rotas.map(r=>`<option value="${r.id}" ${s?.rota_id===r.id?'selected':''}>Rota ${r.codigo}</option>`).join('')}
-        </select>
+      <div class="form-group"><label>Rota de distribuição/recolhimento de urna</label>
+        <div style="font-size:.85rem;color:var(--text2);padding:8px 0">${s?.rota_id ? `Rota ${(rotas.find(r=>r.id===s.rota_id)||{}).codigo || '?'}` : '— sem rota —'}</div>
+        <a href="./SIME_rotas.html" target="_blank" style="font-size:.78rem">🗺️ Atribuir/trocar rota no módulo de Rotas</a>
       </div>
       <div class="form-group"><label><input type="checkbox" id="sc-ativo" ${(!s||s.ativo)?'checked':''}> Seção ativa</label></div>
     </div>
@@ -2030,14 +2028,18 @@ async function salvarSecao(id){
   const municipio=document.getElementById('sc-municipio').value.trim();
   const local=document.getElementById('sc-local').value.trim();
   const eleitoresRaw=document.getElementById('sc-eleitores').value;
-  const rota_id=document.getElementById('sc-rota').value||null;
   const ativo=document.getElementById('sc-ativo').checked;
   if(!numero){ showToast('⚠ Número obrigatório'); return; }
   if(!municipio||!local){ showToast('⚠ Município e local obrigatórios'); return; }
   const zona_id=window.MINHA_ZONA_ID;
   if(!zona_id){ showToast('⚠ Zona do usuário não resolvida'); return; }
+  // rota_id/parada não são mais editados por aqui (04/09/2026) — migraram
+  // pro módulo 🗺️ Rotas, que também escreve nesses dois campos legados
+  // quando a rota tem tipo distribuição/recolhimento de urna (ver
+  // sime_rotas_modulo.js). Editar por aqui de novo reintroduziria uma
+  // segunda fonte de verdade sem sincronia com a nova tabela sime_rota_secoes.
   const payload={ zona_id, numero, municipio, local_nome:local,
-    eleitores: eleitoresRaw===''?null:parseInt(eleitoresRaw,10), rota_id, ativo };
+    eleitores: eleitoresRaw===''?null:parseInt(eleitoresRaw,10), ativo };
   let error;
   if(id){
     ({ error } = await supabase.from('sime_secoes').update(payload).eq('id',id));

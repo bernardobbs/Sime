@@ -77,7 +77,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
 /
 ├── CLAUDE.md                          ← Este arquivo
-├── modules/                           ← 20 módulos HTML
+├── modules/                           ← 21 módulos HTML
 │   ├── SIME_coordenador_preparacao.html  D-X
 │   ├── SIME_tv_preparacao.html           D-X (TV)
 │   ├── SIME_conferente.html              D-1
@@ -92,6 +92,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
 │   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
+│   ├── SIME_rotas.html                   Pré-eleição (cadastro de rotas — ver seção própria abaixo)
 │   ├── SIME_principal.html               Todos — landing padrão do site (/ redireciona pra cá)
 │   ├── SIME_tokens.html                  Pré-eleição
 │   ├── SIME_paineis.html                 Todos
@@ -194,7 +195,8 @@ Detecção (SIME/Hermes)
 ```sql
 sime_zonas          -- zonas eleitorais
 sime_secoes         -- seções com local, município, eleitores (por zona)
-sime_rotas          -- rotas com paradas (por zona)
+sime_rotas          -- rotas com paradas (por zona); tipos[] desde 04/09/2026 (ver módulo 🗺️ Rotas)
+sime_rota_secoes    -- junção rota↔seção (04/09/2026) — uma seção pode estar em rotas diferentes por tipo
 sime_eleicoes       -- por zona e turno
 sime_empresas       -- empresas contratadas (motoristas) ← NOVO
 sime_usuarios       -- admins com perfil, zona_id, empresa_id, local_id
@@ -2993,6 +2995,95 @@ ordem no DOM, então não foi necessário mudar mais nada. Ordem nova: 📊
 Dashboard, 📞 Contatar mesários, ⚖️ Oficial de Justiça, 📬 Correspondência,
 🙋 Voluntários, 🎓 Treinamento, 📄 Relatório ELO, 🔄 Sincronizar, 📜
 Histórico.
+
+**Modal mais largo em telas de desktop (04/09/2026, pedido direto com print
+anexado do modal do mesário "espremido" numa tela grande).** `.modal` era
+fixo em `max-width:480px` em qualquer tamanho de tela — no celular isso é o
+próprio limite físico (não uma escolha), mas num monitor largo sobrava
+espaço dos dois lados enquanto o conteúdo (Confirmado/Convocado/Substituir,
+Responsável e próximo contato, todos os telefones conhecidos, tentativas de
+contato) empilhava tudo numa coluna estreita, exigindo bem mais rolagem
+vertical do que precisaria. `@media (min-width:700px){.modal{max-width:720px;
+max-height:90vh}}` — só entra em telas com espaço de sobra; abaixo de 700px
+(celular, a maioria dos tablets em retrato) o comportamento é
+exatamente o de antes. Nenhum elemento interno precisou mudar — `.cm-tel-card`/
+`.m-kv-row` já usam `flex-wrap`, então ganham colunas extras sozinhos com a
+largura nova. Escopado só a `SIME_convocacao.html` — `.modal` é definido
+dentro do `<style>` de cada módulo (não um arquivo CSS compartilhado), então
+essa mudança não afeta o modal de nenhuma outra tela do sistema.
+
+---
+
+## MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 04/09/2026)
+
+Pedido direto: "vamos fazer um modulo de rotas precisa ser rota poder
+cadastrar rotas de recolhimento de midias, distribuição e recolhimento de
+urnas, rotas de instalação de seção".
+
+**Contexto que faltava antes de mexer no schema.** `sime_rotas` já existia,
+mas sem nenhum jeito de dizer PRA QUE cada rota serve. As 35 linhas da 7ª
+Zona (+7 da 94ª) vieram do export do MaxLog (Sistema de Logística das
+Eleições do TRE, 31/08/2026, ver "Rotas de recolhimento de mídia da 7ª Zona
+substituídas pelo MaxLog" acima) — o nome usado até aqui ("recolhimento de
+mídia") era impreciso. Perguntado direto ao dono do projeto antes de aplicar
+qualquer migração: essas rotas cobrem **ida (distribuição) E volta
+(recolhimento de urna) pelo MESMO trajeto físico** — o mesmo veículo leva a
+urna e traz de volta. `urnas_estimadas` preenchido em quase todas e o texto
+do itinerário ("entrega direta pelo presidente de mesa", "ponto de
+consolidação") batem com isso, não com recolhimento de mídia (cartão de
+memória, logística bem mais leve).
+
+`sql/SIME_rotas_modulo.sql` (aplicado em produção nas duas zonas em
+04/09/2026, idempotente):
+- **`sime_rotas.tipos`** — `TEXT[]`, não um valor único: as 42 rotas atuais
+  já são o caso de uma mesma rota servindo DOIS propósitos ao mesmo tempo
+  (`{distribuicao,recolhimento_urna}`, valor do backfill) — um enum de valor
+  só não serviria nem pro dado que já existia. `CHECK` garante só os 4
+  valores conhecidos (`distribuicao`/`recolhimento_urna`/
+  `recolhimento_midia`/`instalacao`) e pelo menos 1.
+- **`sime_rota_secoes`** (nova, `rota_id, secao_id, parada`, `UNIQUE(rota_id,
+  secao_id)`) — uma seção pode precisar de rotas DIFERENTES por tipo ao
+  mesmo tempo (ex.: rota de instalação numa data, rota de
+  distribuição/recolhimento de urna noutra — datas e veículos diferentes),
+  o que o FK único antigo (`sime_secoes.rota_id`) não comporta. Backfillada
+  a partir do que já existia em `sime_secoes.rota_id` (174/175 seções da 7ª
+  Zona) — o módulo novo já abre mostrando a atribuição real, sem re-digitar
+  nada.
+
+**`sime_secoes.rota_id`/`parada` CONTINUAM existindo** e são a fonte real
+pra quem já lê direto de lá sem passar por este módulo (Motorista,
+Conferente, TV Distribuição, `sime_dados.js` `getRotas()`/`getSecoes()`).
+Pra edição feita no módulo novo valer de verdade nesses módulos
+operacionais, toda escrita em `sime_rota_secoes` que envolve uma rota com
+tipo `distribuicao` ou `recolhimento_urna` (`rtRotaTemTipoLegado()`) também
+espelha em `sime_secoes.rota_id`/`parada` — adicionar, remover e reordenar
+seção fazem os DOIS updates juntos. Pra `recolhimento_midia`/`instalacao`
+(sem consumidor legado nenhum ainda) só `sime_rota_secoes` é tocada.
+Remover uma seção só limpa o campo legado se ele ainda apontar pra ESTA
+rota — nunca sobrescreve uma reatribuição que já tenha acontecido por outro
+caminho. Mover uma seção de uma rota legada pra OUTRA rota legada
+SOBRESCREVE o campo (nunca bloqueia — filosofia de sempre), mas avisa por
+toast que ela "estava em outra rota de distribuição/recolhimento de urna",
+pra não confundir silêncio com sucesso sem intercorrência.
+
+**`SIME_admin.html` → aba Seções não edita mais `rota_id` (mesmo dia)** — o
+`<select>` de rota virou um texto só-leitura ("Rota 005" ou "— sem rota —")
+com um link "🗺️ Atribuir/trocar rota no módulo de Rotas". Deixar duas telas
+escrevendo em `rota_id` (uma sem saber da outra) reintroduziria a mesma
+classe de bug de fonte-dupla que a tabela de junção nova foi criada pra
+evitar. `salvarSecao()` não manda mais `rota_id` no payload nenhum.
+
+**Escopo desta v1, deliberado**: é um cadastro de rotas com atribuição de
+seções — não reconstrói os fluxos operacionais de Dia D/D-1 (Motorista,
+Conferente, TV Distribuição continuam exatamente como eram, só passam a
+receber edições feitas por este módulo também). `recolhimento_midia` e
+`instalacao` nascem sem nenhuma rota cadastrada — o cartório cria do zero
+neste módulo quando tiver a informação real (ex.: quando o MaxLog mandar um
+export específico de recolhimento de mídia, ou quando as rotas de
+instalação forem definidas). Coberto por `tests/test_rotas.mjs` (45
+checks) — write-through pra tipo legado, ausência dele pro tipo sem
+consumidor, filtro por tipo, busca, CRUD de rota, toggle ativo, mover seção
+entre rotas com aviso.
 
 ---
 
