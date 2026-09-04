@@ -44,7 +44,15 @@ const RT_TIPO_LABEL = {
 const RT_TIPOS = Object.keys(RT_TIPO_LABEL);
 // Tipos que já têm consumidor legado (sime_secoes.rota_id/parada) — decide
 // se uma escrita em sime_rota_secoes precisa espelhar pra lá também.
-const RT_TIPOS_LEGADO = ['distribuicao', 'recolhimento_urna'];
+//
+// Só 'distribuicao' (04/09/2026, corrigido no mesmo dia em que foi
+// escrito) — 'recolhimento_urna' foi removido daqui: recolhimento de urna
+// é a rota de distribuição invertida e em OUTRO DIA (confirmado com o
+// dono do projeto), não a mesma linha; como sime_secoes.rota_id é uma FK
+// única por seção, não dava pra guardar os dois sentidos ali ao mesmo
+// tempo. Vira cadastro próprio (rota_origem_id aponta pra rota de
+// distribuição de origem, quando gerada como retorno de uma).
+const RT_TIPOS_LEGADO = ['distribuicao'];
 
 let rtDados = null; // { rotas:[...], secoesZona:[...], secoesPorRota: Map(rota_id -> [{...secao, parada}]), zonaId }
 let rtFiltroTipo = '';
@@ -74,13 +82,17 @@ async function rtCarregar(opts = {}) {
     return;
   }
 
-  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo').eq('zona_id', zonaId).order('codigo'),
-    sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
+  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }] = await Promise.all([
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id').eq('zona_id', zonaId).order('codigo'),
+    sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
+    // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
+    // (não só mesário; um responsável de rota pode ser motorista, apoio
+    // logístico, etc., não faz sentido restringir por função aqui).
+    sb.from('sime_atores').select('id, nome_completo').eq('zona_id', zonaId).eq('ativo', true).order('nome_completo'),
   ]);
-  if (e1 || e2 || e3) {
-    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3).message }; render(); }
+  if (e1 || e2 || e3 || e4) {
+    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4).message }; render(); }
     return;
   }
 
@@ -94,8 +106,18 @@ async function rtCarregar(opts = {}) {
   }
   for (const arr of porRota.values()) arr.sort((a, b) => (a.parada ?? 999) - (b.parada ?? 999) || a.numero - b.numero);
 
-  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, zonaId };
+  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], zonaId };
   if (!opts.silencioso) render();
+}
+
+function rtNomeAtor(id) {
+  if (!id) return null;
+  return rtDados.atores?.find(a => a.id === id)?.nome_completo || null;
+}
+// "08:30" pro <input type=time>; aceita "08:30:00" (formato que o Postgres
+// devolve pra TIME) e já vem pronto assim.
+function rtFmtHora(h) {
+  return h ? String(h).slice(0, 5) : null;
 }
 
 function rtFiltrar() {
@@ -156,6 +178,9 @@ function renderRotas() {
           ${(r.tipos || []).map(t => `<span class="import-result ir-ok" style="margin:0;padding:3px 8px;font-size:.68rem">${RT_TIPO_LABEL[t] || t}</span>`).join('')}
         </div>
         ${r.itinerario ? `<div class="ic-sub" style="margin:6px 0 0">${rtEsc(r.itinerario)}</div>` : ''}
+        ${(r.ponto_partida || r.destino) ? `<div class="ic-sub" style="margin:2px 0 0">📍 ${rtEsc(r.ponto_partida || '—')} → ${rtEsc(r.destino || '—')}</div>` : ''}
+        ${(r.horario_saida || r.horario_chegada_previsto) ? `<div class="ic-sub" style="margin:2px 0 0">🕐 Sai ${rtFmtHora(r.horario_saida) || '—'} · chega (previsão) ${rtFmtHora(r.horario_chegada_previsto) || '—'}</div>` : ''}
+        ${r.responsavel_ator_id ? `<div class="ic-sub" style="margin:2px 0 0">👤 Responsável: ${rtEsc(rtNomeAtor(r.responsavel_ator_id) || '—')}</div>` : ''}
         ${r.urnas_estimadas != null ? `<div class="ic-sub" style="margin:2px 0 0">Urnas estimadas: ${r.urnas_estimadas}</div>` : ''}
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -208,6 +233,24 @@ function rtRenderModalRota() {
       </div>
       <div class="form-group"><label for="rt-itinerario">Itinerário (descrição livre das paradas)</label>
         <textarea id="rt-itinerario" rows="3" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit" placeholder="ex.: Escola A → Escola B → Sede da Zona">${rtEsc(r?.itinerario || '')}</textarea></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:150px"><label for="rt-partida">Ponto de partida</label>
+          <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida || '')}" placeholder="ex.: Sede da 7ª Zona"></div>
+        <div class="form-group" style="flex:1;min-width:150px"><label for="rt-destino">Destino</label>
+          <input type="text" id="rt-destino" value="${rtEsc(r?.destino || '')}" placeholder="ex.: Escola A"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-saida">Horário de saída</label>
+          <input type="time" id="rt-hora-saida" value="${rtFmtHora(r?.horario_saida) || ''}"></div>
+        <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-chegada">Previsão de chegada</label>
+          <input type="time" id="rt-hora-chegada" value="${rtFmtHora(r?.horario_chegada_previsto) || ''}"></div>
+      </div>
+      <div class="form-group"><label for="rt-responsavel">Responsável pela rota (opcional)</label>
+        <select id="rt-responsavel">
+          <option value="">— sem responsável —</option>
+          ${(rtDados.atores || []).map(a => `<option value="${a.id}" ${r?.responsavel_ator_id === a.id ? 'selected' : ''}>${rtEsc(a.nome_completo)}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group"><label for="rt-urnas">Urnas estimadas (opcional)</label>
         <input type="number" id="rt-urnas" min="0" value="${r?.urnas_estimadas ?? ''}"></div>
       ${!isNovo ? `
@@ -230,6 +273,11 @@ async function rtSalvarRota() {
   const municipios = municipiosRaw ? municipiosRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
   const tipos = [...document.querySelectorAll('.rt-tipo-check:checked')].map(el => el.value);
   const itinerario = document.getElementById('rt-itinerario').value.trim() || null;
+  const ponto_partida = document.getElementById('rt-partida').value.trim() || null;
+  const destino = document.getElementById('rt-destino').value.trim() || null;
+  const horario_saida = document.getElementById('rt-hora-saida').value || null;
+  const horario_chegada_previsto = document.getElementById('rt-hora-chegada').value || null;
+  const responsavel_ator_id = document.getElementById('rt-responsavel').value || null;
   const urnasRaw = document.getElementById('rt-urnas').value.trim();
   const urnas_estimadas = urnasRaw ? parseInt(urnasRaw, 10) : null;
   const isNovo = rtModalId === '';
@@ -241,7 +289,7 @@ async function rtSalvarRota() {
   if (!tipos.length) { showToast('⚠ Marque ao menos um tipo de rota'); return; }
 
   const zonaId = rtDados.zonaId;
-  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas };
+  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id };
   try {
     if (isNovo) {
       const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true });
@@ -317,7 +365,7 @@ function rtRenderModalSecoes() {
       <div class="m-hist">
         ${atuais.length ? atuais.map(s => `
         <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span><input type="number" value="${s.parada ?? ''}" min="1" style="width:48px;padding:3px 5px;border-radius:5px;border:1px solid var(--border2);background:var(--bg);color:var(--text)" onblur="rtSalvarParada('${rota.id}','${s.id}',this.value)"> <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}</span>
+          <span><input type="number" value="${s.parada ?? ''}" min="1" style="width:48px;padding:3px 5px;border-radius:5px;border:1px solid var(--border2);background:var(--bg);color:var(--text)" onblur="rtSalvarParada('${rota.id}','${s.id}',this.value)"> <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
           <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${rota.id}','${s.id}')">✕</button>
         </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhuma seção vinculada ainda.</div>'}
       </div>

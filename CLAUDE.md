@@ -3094,10 +3094,12 @@ pra quem já lê direto de lá sem passar por este módulo (Motorista,
 Conferente, TV Distribuição, `sime_dados.js` `getRotas()`/`getSecoes()`).
 Pra edição feita no módulo novo valer de verdade nesses módulos
 operacionais, toda escrita em `sime_rota_secoes` que envolve uma rota com
-tipo `distribuicao` ou `recolhimento_urna` (`rtRotaTemTipoLegado()`) também
-espelha em `sime_secoes.rota_id`/`parada` — adicionar, remover e reordenar
-seção fazem os DOIS updates juntos. Pra `recolhimento_midia`/`instalacao`
-(sem consumidor legado nenhum ainda) só `sime_rota_secoes` é tocada.
+tipo `distribuicao` (`rtRotaTemTipoLegado()` — só esse tipo desde a
+correção de "recolhimento de urna é cadastro separado", ver abaixo)
+também espelha em `sime_secoes.rota_id`/`parada` — adicionar, remover e
+reordenar seção fazem os DOIS updates juntos. Pra
+`recolhimento_urna`/`recolhimento_midia`/`instalacao` (sem consumidor
+legado) só `sime_rota_secoes` é tocada.
 Remover uma seção só limpa o campo legado se ele ainda apontar pra ESTA
 rota — nunca sobrescreve uma reatribuição que já tenha acontecido por outro
 caminho. Mover uma seção de uma rota legada pra OUTRA rota legada
@@ -3115,14 +3117,66 @@ evitar. `salvarSecao()` não manda mais `rota_id` no payload nenhum.
 **Escopo desta v1, deliberado**: é um cadastro de rotas com atribuição de
 seções — não reconstrói os fluxos operacionais de Dia D/D-1 (Motorista,
 Conferente, TV Distribuição continuam exatamente como eram, só passam a
-receber edições feitas por este módulo também). `recolhimento_midia` e
-`instalacao` nascem sem nenhuma rota cadastrada — o cartório cria do zero
-neste módulo quando tiver a informação real (ex.: quando o MaxLog mandar um
-export específico de recolhimento de mídia, ou quando as rotas de
-instalação forem definidas). Coberto por `tests/test_rotas.mjs` (45
-checks) — write-through pra tipo legado, ausência dele pro tipo sem
-consumidor, filtro por tipo, busca, CRUD de rota, toggle ativo, mover seção
-entre rotas com aviso.
+receber edições feitas por este módulo também). Coberto por
+`tests/test_rotas.mjs` — write-through pra tipo legado, ausência dele pro
+tipo sem consumidor, filtro por tipo, busca, CRUD de rota, toggle ativo,
+mover seção entre rotas com aviso.
+
+**Correção no mesmo dia: as 42 rotas do MaxLog são de recolhimento de
+MÍDIA, não de urna.** A pergunta original ("essas rotas cobrem ida
+(distribuição) E volta (recolhimento de urna)?") tinha sido respondida
+"sim" — mas o dono do projeto corrigiu isso horas depois, revertendo pra
+interpretação que o CLAUDE.md já tinha ANTES deste módulo existir
+("recolhimento de mídia"). `sql/SIME_rotas_recolhimento_midia_e_estrutura.sql`
+(aplicado em produção): as 42 rotas viraram `tipos=['recolhimento_midia']`
+— **hoje não existe nenhuma rota de distribuição/recolhimento de urna
+cadastrada**, nascem do zero quando houver dado real.
+
+**Recolhimento de urna é a distribuição percorrida ao contrário, em OUTRO
+DIA — cadastro separado, não a mesma linha.** Pedido direto: "o
+recolhimento de urnas é a rota de distribuição de urnas só que inversa e
+no outro dia." Por isso `RT_TIPOS_LEGADO` (`sime_rotas_modulo.js`) só tem
+`'distribuicao'` agora — `'recolhimento_urna'` foi removido: como
+`sime_secoes.rota_id` é uma FK única por seção, não dava pra guardar os
+dois sentidos ali ao mesmo tempo (ida e volta são rotas diferentes, com
+paradas em ordem invertida). `rota_origem_id` (nova coluna em `sime_rotas`,
+FK pra ela mesma) já existe pronta pra quando um gerador de "rota de
+retorno" for construído — ainda não foi, porque não há nenhuma rota de
+distribuição real pra reverter.
+
+**Como consequência, `sime_secoes.rota_id`/`parada` foram LIMPOS** (174
+seções da 7ª Zona) — antes apontavam pras rotas de mídia, e
+Motorista/Conferente/TV Distribuição liam isso como se fosse a rota de
+distribuição, mostrando dado errado com aparência de certo.
+`sime_rotas_estado`/`sime_rotas_urnas` tinham zero linhas no momento da
+limpeza (ninguém usou essas telas pra valer ainda) — era o momento mais
+barato pra corrigir; "sem rota" é mais seguro que dado errado.
+
+**Estrutura de itinerário mais rica** — toda rota ganhou `ponto_partida`,
+`destino`, `horario_saida` e `horario_chegada_previsto` (antes só existia
+o campo livre "itinerário"), editáveis no mesmo modal de criar/editar rota
+e exibidos no card. **Responsável pela rota** — `responsavel_ator_id`
+(FK opcional pra `sime_atores`, qualquer ator ativo da zona, sem restringir
+por função) — select no mesmo modal, nome exibido no card.
+
+**Georreferência por LOCAL de votação** — `sime_secoes.latitude`/
+`longitude` (repetida entre as seções do mesmo prédio, mesmo padrão de
+`local_nome`/`municipio` — não existe tabela de "locais" própria).
+Importada da 7ª Zona a partir de um KML do GEL ("Locais de Votação",
+19/06/2026) colado pelo cartório — casado por **nome** (nunca pelo
+"código" do local do KML, que não é único: o mesmo código aparece em até 3
+locais diferentes no arquivo, achado real que inicialmente grudou a
+coordenada errada em "SAAE" antes de eu trocar a chave de match pra texto).
+Casamento por similaridade com expansão de abreviação
+(U.E./G.E./Esc./Mun./Sec./Col./Prof.../etc.) + 3 siglas curtas
+(CAIC/SAAE/FSESP) revisadas manualmente, porque sozinhas bateram por acaso
+com um nome errado no primeiro passe — corrigidas por conterem a sigla
+como palavra inteira no nome do KML. 61 dos 64 locais distintos da zona
+casaram; 3 ficaram sem geo, de propósito, por não aparecerem no arquivo
+sob nenhuma variação de nome ("Creche Tia Medeiros", "Sec. Mun. de
+Educação", "U.E. Antônio Rodrigues") — nunca adivinhados. No módulo, cada
+seção com coordenada ganha um link "📍" pro Google Maps, dentro do modal
+"Seções da rota".
 
 ---
 

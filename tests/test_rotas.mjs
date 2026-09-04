@@ -81,17 +81,25 @@ function mock() {
     sime_eleicoes: [{ id: 'el7', zona_id: 'z7', turno: 1, ativa: true, nome: 'Eleições 2026' }],
     sime_logs: [],
     sime_secoes: [
-      { id: 's1', numero: 30, local_nome: 'Grupo Escolar A', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: 'r1', parada: 1 },
-      { id: 's2', numero: 31, local_nome: 'Grupo Escolar A', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: 'r1', parada: 2 },
-      { id: 's3', numero: 63, local_nome: 'Escola B', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null },
+      { id: 's1', numero: 30, local_nome: 'Grupo Escolar A', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: 'r1', parada: 1, latitude: -4.83, longitude: -42.16 },
+      { id: 's2', numero: 31, local_nome: 'Grupo Escolar A', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: 'r1', parada: 2, latitude: null, longitude: null },
+      { id: 's3', numero: 63, local_nome: 'Escola B', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: null, longitude: null },
     ],
     sime_rotas: [
-      { id: 'r1', zona_id: 'z7', codigo: '001', nome: 'Rota 001', municipios: ['Campo Maior'], tipos: ['distribuicao', 'recolhimento_urna'], itinerario: 'Escola A → Sede', urnas_estimadas: 5, ativo: true },
-      { id: 'r2', zona_id: 'z7', codigo: '002', nome: 'Rota 002 mídia', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true },
+      { id: 'r1', zona_id: 'z7', codigo: '001', nome: 'Rota 001', municipios: ['Campo Maior'], tipos: ['distribuicao', 'recolhimento_urna'], itinerario: 'Escola A → Sede', urnas_estimadas: 5, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null },
+      { id: 'r2', zona_id: 'z7', codigo: '002', nome: 'Rota 002 mídia', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null },
+      // Só recolhimento_urna, SEM distribuicao (04/09/2026, achado real:
+      // recolhimento de urna é a distribuição invertida, em outro dia — não
+      // é mais o mesmo cadastro; deixou de ser tipo "legado" pra sime_secoes.rota_id).
+      { id: 'r4', zona_id: 'z7', codigo: '004', nome: 'Rota 004 recolhimento urna', municipios: ['Campo Maior'], tipos: ['recolhimento_urna'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null },
     ],
     sime_rota_secoes: [
       { id: 'rs1', rota_id: 'r1', secao_id: 's1', parada: 1 },
       { id: 'rs2', rota_id: 'r1', secao_id: 's2', parada: 2 },
+    ],
+    sime_atores: [
+      { id: 'a1', nome_completo: 'JOAO MOTORISTA', zona_id: 'z7', ativo: true },
+      { id: 'a2', nome_completo: 'MARIA COORDENADORA', zona_id: 'z7', ativo: true },
     ],
   };
 }
@@ -342,6 +350,90 @@ async function login(p) {
   check('avisa que a seção foi movida de outra rota de distribuição/recolhimento', /estava em outra rota de distribuição\/recolhimento de urna/.test(toast), toast);
   const updLegado = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_secoes' && e.filtro.id === 's1').pop());
   check('sime_secoes.rota_id passa a apontar pra rota nova (r3)', updLegado?.payload?.rota_id === 'r3', JSON.stringify(updLegado));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 8. Rota SÓ com tipo recolhimento_urna (sem distribuicao) — 04/09/2026,
+// achado real: recolhimento de urna é a rota de distribuição invertida, em
+// OUTRO DIA, não a mesma linha — deixou de escrever em sime_secoes.rota_id
+// (só 'distribuicao' continua sendo tipo legado). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 004")').locator('button:has-text("👥 Seções")').click();
+  await p.waitForTimeout(100);
+  check('rota só recolhimento_urna NÃO avisa nada sobre Motorista/Conferente', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
+
+  await p.fill('#rt-secao-busca', '63');
+  await p.waitForTimeout(350);
+  await p.locator('.m-hist-item:has-text("63")').click();
+  await p.waitForTimeout(200);
+
+  const insJuncao = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_rota_secoes' && e.payload.rota_id === 'r4'));
+  check('grava a junção rota↔seção mesmo assim', insJuncao?.payload?.secao_id === 's3', JSON.stringify(insJuncao));
+  const updLegado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_secoes' && e.filtro.id === 's3'));
+  check('NÃO mexe em sime_secoes.rota_id (recolhimento_urna sozinho não é mais tipo legado)', !updLegado, JSON.stringify(updLegado));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 9. Campos novos: partida/destino/horário/responsável — salvar, exibir
+// no card, e o <select> de responsável lista os atores da zona. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+
+  const opcoesResponsavel = await p.locator('#rt-responsavel').textContent();
+  check('select de responsável lista os atores da zona', /JOAO MOTORISTA/.test(opcoesResponsavel) && /MARIA COORDENADORA/.test(opcoesResponsavel), opcoesResponsavel);
+
+  await p.fill('#rt-partida', 'Sede da 7ª Zona');
+  await p.fill('#rt-destino', 'Escola B');
+  await p.fill('#rt-hora-saida', '06:30');
+  await p.fill('#rt-hora-chegada', '08:00');
+  await p.selectOption('#rt-responsavel', 'a1');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r2'));
+  check('grava ponto_partida/destino', upd?.payload?.ponto_partida === 'Sede da 7ª Zona' && upd?.payload?.destino === 'Escola B', JSON.stringify(upd));
+  check('grava horário de saída/chegada prevista', upd?.payload?.horario_saida === '06:30' && upd?.payload?.horario_chegada_previsto === '08:00', JSON.stringify(upd));
+  check('grava o responsável escolhido', upd?.payload?.responsavel_ator_id === 'a1', JSON.stringify(upd));
+
+  const txt = (await p.locator('.import-card:has-text("Rota 002")').textContent()).replace(/\s+/g, ' ');
+  check('card mostra partida → destino', /Sede da 7ª Zona → Escola B/.test(txt), txt);
+  check('card mostra horário de saída/chegada', /06:30/.test(txt) && /08:00/.test(txt), txt);
+  check('card mostra o nome do responsável', /JOAO MOTORISTA/.test(txt), txt);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 10. Georreferência: link "Ver no mapa" só aparece pra seção com
+// latitude/longitude preenchidas, apontando pro Google Maps certo. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("👥 Seções")').click();
+  await p.waitForTimeout(100);
+
+  const linkMapa = p.locator('.m-hist-item:has-text("30") a[title="Ver no mapa"]');
+  check('seção COM latitude/longitude ganha o link "Ver no mapa"', await linkMapa.count() === 1);
+  check('link aponta pro Google Maps com as coordenadas certas', (await linkMapa.getAttribute('href')) === 'https://www.google.com/maps?q=-4.83,-42.16', await linkMapa.getAttribute('href'));
+  check('seção SEM latitude/longitude não ganha o link', await p.locator('.m-hist-item:has-text("31") a[title="Ver no mapa"]').count() === 0);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
