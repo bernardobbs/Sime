@@ -203,6 +203,10 @@ function rsJsStr(s) {
 function rsAbrirVoluntarios(municipio, localNome, cargoLabel) {
   const lista = rsVoluntariosDisponiveis(municipio, localNome);
   document.getElementById('overlay').classList.add('open');
+  // Defesa: #modal-body é compartilhado com o modal de "Contatar mesários",
+  // que se marca com `cm-modal-wide` (tela cheia/colunas no desktop) — esse
+  // modal aqui nunca deve herdar isso.
+  document.getElementById('modal-body')?.classList.remove('cm-modal-wide');
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">🙋 Voluntários disponíveis — ${rsEsc(cargoLabel)}</div>
@@ -249,8 +253,8 @@ function rsStatusCargo(ator) {
   // telefonico mude o [ícone] para um telefone") — só essa faixa muda; as
   // demais (✅/📋/⚠️/🔍/🔁 acima) continuam com o ícone de sempre, mesmo se
   // o meio de contato também estiver marcado.
-  const RS_ICONE_POR_MEIO = { carta_registrada: '✉️', oficial_justica: '👮', ligacao: '📞' };
-  const RS_MEIO_SUFIXO = { carta_registrada: ' (Carta Registrada)', oficial_justica: ' (Oficial de Justiça)', ligacao: ' (Ligação telefônica)' };
+  const RS_ICONE_POR_MEIO = { carta_registrada: '✉️', oficial_justica: '👮', ligacao: '📞', zeo: '🏛️' };
+  const RS_MEIO_SUFIXO = { carta_registrada: ' (Carta Registrada)', oficial_justica: ' (Oficial de Justiça)', ligacao: ' (Ligação telefônica)', zeo: ' (ZEO/TRE)' };
   const icone = RS_ICONE_POR_MEIO[ator.meio_contato] || '🔶';
   const sufixo = RS_MEIO_SUFIXO[ator.meio_contato] || '';
   return { icone, label: `Aguardando confirmação${sufixo} — ${nome}`, cls: 'rs-aguardando', nome, id };
@@ -428,7 +432,23 @@ function rsPizzaSVG3(valConfirmado, valConvocado, valVazio, corConfirmado, corCo
     </svg>`;
 }
 
-const RS_COR_CONFIRMADO = 'var(--green)', RS_COR_CONVOCADO = 'var(--blue)', RS_COR_VAZIO = 'var(--border2)';
+// Cores das 3 fatias (02/09/2026, revisado — pedido direto do cartório:
+// "achei um pouco confuso"). Confirmado/Convocado continuam verde/azul (a
+// dupla mais segura pra quem tem daltonismo vermelho-verde, o tipo mais
+// comum); "Vazio" era `var(--border2)` — um bege/cinza quase da cor do
+// próprio card no tema claro, então a fatia "some" visualmente em vez de
+// avisar que falta gente. Trocado por `var(--red)`, mesmo sinal de "falta
+// preencher" que `rsBarraCor()` já usa pro gradiente por local (0%→vermelho)
+// — fica consistente com o resto do Dashboard, não é uma cor nova inventada
+// só pra isto.
+const RS_COR_CONFIRMADO = 'var(--green)', RS_COR_CONVOCADO = 'var(--blue)', RS_COR_VAZIO = 'var(--red)';
+
+// Cada linha da legenda ganhou o percentual ao lado da contagem (pedido
+// junto: "adicionar o percentual nas fatias/barras") — antes só a fatia
+// Confirmado tinha percentual, e só dentro do SVG (`rsPizzaSVG3`, centro do
+// donut); Convocado/Vazio não tinham nenhum, obrigando a fazer conta de
+// cabeça pra saber a proporção.
+function rsPct(valor, total) { return total ? Math.round((valor / total) * 100) : 0; }
 
 function rsPizzaCard3(titulo, valConfirmado, valConvocado, valVazio) {
   const total = valConfirmado + valConvocado + valVazio;
@@ -439,15 +459,15 @@ function rsPizzaCard3(titulo, valConfirmado, valConvocado, valVazio) {
         <div style="font-weight:800;font-size:.76rem;margin-bottom:6px">${titulo}</div>
         <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:2px">
           <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_CONFIRMADO};display:inline-block;flex-shrink:0"></span>
-          Confirmado: <b style="color:var(--text)">${valConfirmado}</b>
+          Confirmado: <b style="color:var(--text)">${valConfirmado}</b> <span style="color:var(--text3)">(${rsPct(valConfirmado, total)}%)</span>
         </div>
         <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px;margin-bottom:2px">
           <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_CONVOCADO};display:inline-block;flex-shrink:0"></span>
-          Convocado: <b style="color:var(--text)">${valConvocado}</b>
+          Convocado: <b style="color:var(--text)">${valConvocado}</b> <span style="color:var(--text3)">(${rsPct(valConvocado, total)}%)</span>
         </div>
         <div style="font-size:.72rem;color:var(--text2);display:flex;align-items:center;gap:6px">
           <span style="width:9px;height:9px;border-radius:2px;background:${RS_COR_VAZIO};display:inline-block;flex-shrink:0"></span>
-          Vazio: <b style="color:var(--text)">${valVazio}</b>
+          Vazio: <b style="color:var(--text)">${valVazio}</b> <span style="color:var(--text3)">(${rsPct(valVazio, total)}%)</span>
         </div>
         <div style="font-size:.68rem;color:var(--text3);margin-top:4px">Total: ${total}</div>
       </div>
@@ -475,8 +495,8 @@ function rsBarraFunil(total, convocados, confirmados) {
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:.74rem">
         <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corTotal};display:inline-block;flex-shrink:0"></span>Total de vagas: <b>${total}</b></div>
-        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConvocado};display:inline-block;flex-shrink:0"></span>Convocados: <b>${convocados}</b></div>
-        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConfirmado};display:inline-block;flex-shrink:0"></span>Confirmados: <b>${confirmados}</b></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConvocado};display:inline-block;flex-shrink:0"></span>Convocados: <b>${convocados}</b> <span style="color:var(--text3)">(${Math.round(pctConv)}%)</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:${corConfirmado};display:inline-block;flex-shrink:0"></span>Confirmados: <b>${confirmados}</b> <span style="color:var(--text3)">(${Math.round(pctConf)}%)</span></div>
       </div>
     </div>`;
 }

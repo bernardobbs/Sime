@@ -57,6 +57,44 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
 .overlay.open{opacity:1;pointer-events:all;}
 .modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+/* Desktop (04/09/2026, pedido direto com print anexado do modal do mesário
+   "espremido" numa tela grande): o modal era fixo em 480px mesmo em telas
+   largas, obrigando muita rolagem vertical num conteúdo que tem espaço de
+   sobra pros lados. 480px continua sendo o padrão pra celular/tablet
+   estreito (onde é o próprio limite físico da tela, não uma escolha); a
+   media query só entra em telas com espaço real pra aproveitar — o
+   `.cm-tel-card`/`.m-kv-row` por dentro já usam flex-wrap, então ganham
+   colunas extras sozinhos com mais largura, sem precisar mexer neles. */
+@media (min-width:700px){
+  .modal{max-width:720px;max-height:90vh;}
+}
+/* Modal de "Contatar mesários" em quase-tela-cheia no desktop, com o corpo
+   em 2-3 colunas (04/09/2026, pedido direto: "poderia preencher toda a
+   tela, ficando duas ou três colunas, mantendo o x no canto superior").
+   Só ESTE modal ganha o tratamento — marcado via classe `cm-modal-wide`,
+   ligada/desligada por JS em cmRenderModal()/cmFecharModal() (ver
+   sime_contatar_mesarios.js) — os demais modais deste arquivo (Voluntários,
+   Turmas, drilldown do Dashboard) continuam do jeito que sempre foram,
+   só com o max-width:720px genérico acima. `column-width` (não
+   `column-count` fixo) deixa o navegador decidir sozinho 2 ou 3 colunas
+   conforme o espaço disponível, sem breakpoint extra pra isso. Cabeçalho
+   (com o ✕) e rodapé ficam fixos (`flex:none` dentro do modal em coluna);
+   só o corpo rola — por isso o ✕ nunca sai da vista, mesmo com o modal
+   cheio de seções. Abaixo de 900px nada muda (a classe existe no elemento,
+   mas sem efeito até a media query valer). */
+@media (min-width:900px){
+  .cm-modal-wide{
+    width:100%;max-width:1400px;
+    max-height:calc(100vh - 32px);
+    display:flex;flex-direction:column;
+  }
+  .cm-modal-wide .m-hdr,.cm-modal-wide .m-foot{flex:none;}
+  .cm-modal-wide .m-body{
+    display:block;flex:1;min-height:0;overflow-y:auto;
+    column-width:380px;column-gap:20px;
+  }
+  .cm-modal-wide .m-body>*{break-inside:avoid;margin-bottom:12px;}
+}
 .m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .m-title{font-weight:800;font-size:.92rem;}
 .m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
@@ -229,18 +267,19 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div class="h-title">SIME · Convocação de Mesários</div>
       <div class="h-sub" id="h-sub">carregando…</div>
     </div>
+    <span id="sime-um-slot" style="display:none"></span>
   </div>
 
   <div class="tabs" role="tablist">
     <div class="tab active" id="tab-dashboard-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('dashboard',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📊 Dashboard</div>
     <div class="tab" id="tab-contatar-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('contatar',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📞 Contatar mesários</div>
-    <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
-    <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
-    <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
+    <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
     <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
     <div class="tab" id="tab-turmas-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('turmas',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🎓 Treinamento</div>
-    <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
+    <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
+    <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
+    <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
   </div>
 
   <div class="content" id="content"></div>
@@ -254,6 +293,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div id="print-area"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script src="./sime_mesarios_sync.js"></script>
 <script src="./sime_resumo_secoes.js"></script>
 <script src="./sime_contatar_mesarios.js"></script>
@@ -274,15 +314,24 @@ initSimeDados(supabase); // necessário pra getEleicaoAtiva() funcionar — sem 
 
 let _zonaCache = null;
 let _nomeCache = null;
+let _idCache = null;
 async function _carregarUsuario() {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data } = await supabase.from('sime_usuarios').select('zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
+  const { data } = await supabase.from('sime_usuarios').select('id, zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
   _zonaCache = data?.zona_id || null;
   _nomeCache = data?.nome || null;
+  _idCache = data?.id || null;
 }
 window.zonaDoUsuario = async function zonaDoUsuario() {
   if (!_zonaCache) await _carregarUsuario();
   return _zonaCache;
+};
+// id em sime_usuarios de quem está logado — usado por "🙋 Assumir"/"↪️
+// Encaminhar" em Contatar mesários (03/09/2026), pra saber quem é "eu" na
+// hora de virar responsável. Mesmo cache de sessão de zonaDoUsuario/nomeDoUsuario.
+window.meuUsuarioId = async function meuUsuarioId() {
+  if (!_idCache) await _carregarUsuario();
+  return _idCache;
 };
 
 // Bug real corrigido em 21/08/2026: log() gravava eleicao_id=null sempre (não
@@ -322,6 +371,21 @@ async function atualizarCabecalho() {
   const zonaId = await zonaDoUsuario();
   const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
   document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+  // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  // Melhor-esforço: uma falha aqui nunca deve derrubar o resto do cabeçalho.
+  try {
+    if (window.initSimeUserMenu) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: meu } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+      window.initSimeUserMenu(supabase, {
+        slotEl: document.getElementById('sime-um-slot'),
+        nome: await nomeDoUsuario(),
+        perfil: meu?.perfil,
+      });
+    }
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
 }
 
 function mostrarPainel() {

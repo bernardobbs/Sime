@@ -321,7 +321,7 @@ body{display:flex;flex-direction:column;}
 </div>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow } from './sime_dados.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow } from './sime_dados.js';
 import { subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
@@ -332,6 +332,23 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
   initSimeDados(client);
+
+  // Achado real na auditoria de 03/09/2026: getHor() (script clássico, usado
+  // só pra pré-preencher o campo de auto-troca com o horário real de
+  // encerramento) lia SÓ localStorage['sime_eleicao_v1'] — chave gravada
+  // pelo Painel Principal, num aparelho DIFERENTE (o computador do cartório,
+  // não a própria TV). Sem alguém ter aberto o Principal nessa mesma TV uma
+  // vez, a chave nunca existe ali, e o campo sempre cai no "17:00" chumbado
+  // — o mesmo bug já corrigido em SIME_tokens.html/SIME_admin.html (ver
+  // comentários em calcularExpiracao()), só que nunca replicado aqui.
+  // window.ELEICAO_ATIVA (mesmo global que os outros dois já usam) passa a
+  // vir do Supabase de verdade; getHor() abaixo prefere ele.
+  const eleicaoAtiva = await getEleicaoAtiva({ fallback: null });
+  if (eleicaoAtiva) {
+    window.ELEICAO_ATIVA = eleicaoAtiva;
+    const inpAutoSwitch = document.getElementById('auto-switch');
+    if (inpAutoSwitch && window.getHor) inpAutoSwitch.value = window.getHor().enc;
+  }
 
   // CITIES: NUMPAGES e os pontos de paginação são montados uma única vez no
   // carregamento — troca via cache+reload (mesmo padrão de SIME_tv_vespera.html).
@@ -479,7 +496,19 @@ function getSt(n,mesa){
   }
   return st;
 }
-function getHor(){try{const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');const t=el['turno'+(el.turno_ativo||1)]||{};return{ab:t.abertura||'07:00',enc:t.encerramento||'17:00'};}catch(e){return{ab:'07:00',enc:'17:00'};}}
+// Prefere sime_eleicoes (Supabase, window.ELEICAO_ATIVA — populado pelo
+// <script type="module"> acima) sobre localStorage['sime_eleicao_v1'], que só
+// existe nesta TV se alguém já tiver aberto o Painel Principal no MESMO
+// aparelho (achado real de 03/09/2026 — mesma classe de bug já corrigida em
+// SIME_tokens.html/SIME_admin.html, nunca replicada aqui até agora).
+function getHor(){
+  const real = window.ELEICAO_ATIVA;
+  // .slice(0,5): horario_ab/horario_enc vêm do Postgres como "HH:MM:SS"
+  // (tipo time) — #auto-switch é <input type="time">, que só aceita "HH:MM"
+  // (mesmo corte já usado em SIME_admin.html pra exibir esses campos).
+  if (real && (real.horario_ab || real.horario_enc)) return { ab: (real.horario_ab || '').slice(0, 5) || '07:00', enc: (real.horario_enc || '').slice(0, 5) || '17:00' };
+  try{const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');const t=el['turno'+(el.turno_ativo||1)]||{};return{ab:t.abertura||'07:00',enc:t.encerramento||'17:00'};}catch(e){return{ab:'07:00',enc:'17:00'};}
+}
 function toMin(hm){const[h,m]=(hm||'00:00').split(':').map(Number);return h*60+m;}
 function nowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 // fmtNow() vem de sime_ui_utils.js

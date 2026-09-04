@@ -391,6 +391,7 @@
         >
           Atualizar
         </button>
+        <span id="sime-um-slot" style="display:none"></span>
       </div>
     </header>
 
@@ -574,6 +575,7 @@
 
   </main>
 
+  <script src="./sime_user_menu.js"></script>
   <script type="module">
 
     import { createClient } from './vendor/supabase-js.esm.js';
@@ -588,9 +590,26 @@
     async function zonaDoUsuario() {
       if (_zonaCache) return _zonaCache;
       const { data: { user } } = await supabase.auth.getUser();
-      const { data } = await supabase.from('sime_usuarios').select('zona_id, sime_zonas(numero)').eq('auth_user_id', user?.id).maybeSingle();
-      _zonaCache = { zonaId: data?.zona_id || null, zonaNumero: data?.sime_zonas?.numero ?? null };
+      const { data } = await supabase.from('sime_usuarios').select('nome, perfil, zona_id, sime_zonas(numero)').eq('auth_user_id', user?.id).maybeSingle();
+      _zonaCache = {
+        zonaId: data?.zona_id || null, zonaNumero: data?.sime_zonas?.numero ?? null,
+        nome: data?.nome || user?.email || 'Usuário', perfil: data?.perfil || null,
+      };
       return _zonaCache;
+    }
+
+    // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+    // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+    async function iniciarMenuUsuario() {
+      try {
+        if (!window.initSimeUserMenu) return;
+        const eu = await zonaDoUsuario();
+        window.initSimeUserMenu(supabase, {
+          slotEl: document.getElementById('sime-um-slot'),
+          nome: eu.nome,
+          perfil: eu.perfil,
+        });
+      } catch (e) { /* melhor-esforço — nunca deve travar o painel de métricas */ }
     }
 
     const elements = {
@@ -945,6 +964,7 @@
     function mostrarPainel() {
       document.getElementById('login-overlay').style.display = 'none';
       document.getElementById('painel-conteudo').style.display = '';
+      iniciarMenuUsuario();
     }
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {

@@ -51,10 +51,23 @@ class QB {
 export function createClient(url, key, opts) {
   return {
     from(table) { return new QB(table); },
+    // SIME_mesario.html abre MAIS de um canal Realtime (pânico em
+    // sime_mesa_estado + mídia em sime_midias, ver auditoria de 03/09/2026)
+    // — window.__mockConfig.canais guarda todos, pra um teste achar o canal
+    // certo por tabela em vez de assumir que só existe um. canalNome/
+    // realtimeFiltro/realtimeCallback continuam existindo, sempre apontando
+    // pro ÚLTIMO canal criado (compat com quem já usava esse formato).
     channel(name) {
+      if (!window.__mockConfig.canais) window.__mockConfig.canais = [];
+      const registro = { nome: name };
+      window.__mockConfig.canais.push(registro);
       window.__mockConfig.canalNome = name;
       const chan = {
-        on(ev, filtro, cb) { window.__mockConfig.realtimeFiltro = filtro; window.__mockConfig.realtimeCallback = cb; return chan; },
+        on(ev, filtro, cb) {
+          registro.filtro = filtro; registro.callback = cb;
+          window.__mockConfig.realtimeFiltro = filtro; window.__mockConfig.realtimeCallback = cb;
+          return chan;
+        },
         subscribe() { return chan; },
       };
       return chan;
@@ -118,13 +131,17 @@ const estadoPanico = (id) => ({
   const cfg = baseMockConfig(null);
   const { p, erros } = await abrirLogado(ctx, cfg);
 
-  const nome = await p.evaluate(() => window.__mockConfig.canalNome);
-  const filtro = await p.evaluate(() => window.__mockConfig.realtimeFiltro);
-  check('assina um canal próprio da seção', nome === 'sime_mesa_estado_secao_sec-uuid-63', `nome=${nome}`);
+  const canalPanico = await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado'));
+  check('assina um canal próprio da seção', canalPanico?.nome === 'sime_mesa_estado_secao_sec-uuid-63', `nome=${canalPanico?.nome}`);
   check('filtra por secao_id (não recebe as outras 174 seções)',
-    filtro?.filter === 'secao_id=eq.sec-uuid-63', JSON.stringify(filtro));
-  check('assina a tabela sime_mesa_estado', filtro?.table === 'sime_mesa_estado');
-  check('callback do Realtime registrado', await p.evaluate(() => typeof window.__mockConfig.realtimeCallback === 'function'));
+    canalPanico?.filtro?.filter === 'secao_id=eq.sec-uuid-63', JSON.stringify(canalPanico?.filtro));
+  check('assina a tabela sime_mesa_estado', canalPanico?.filtro?.table === 'sime_mesa_estado');
+  check('callback do Realtime registrado', await p.evaluate(() => window.__mockConfig.canais.some(c => c.filtro?.table === 'sime_mesa_estado' && typeof c.callback === 'function')));
+  // Mesma auditoria: mídia também assina Realtime agora, por seção — não
+  // deve regredir pro comportamento antigo (sem canal nenhum de mídia).
+  const canalMidia = await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_midias'));
+  check('mídia também assina um canal próprio da seção', canalMidia?.nome === 'sime_midias_secao_sec-uuid-63', `nome=${canalMidia?.nome}`);
+  check('mídia filtra por secao_id também', canalMidia?.filtro?.filter === 'secao_id=eq.sec-uuid-63', JSON.stringify(canalMidia?.filtro));
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -142,7 +159,7 @@ const estadoPanico = (id) => ({
   check('pânico local: badge vermelho', (await p.locator('#badge-energia').textContent()) === '🔴');
 
   // Equipe resolve pelo Admin → o servidor emite o UPDATE
-  await p.evaluate(() => window.__mockConfig.realtimeCallback({
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
     new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
            panico_energia_resolvido: true, panico_urna_resolvido: false },
     eventType: 'UPDATE',
@@ -168,7 +185,7 @@ const estadoPanico = (id) => ({
   await p.click('#btn-energia');
   await p.waitForTimeout(200);
   // Evento em trânsito, disparado ANTES do toque, chegando depois dele.
-  await p.evaluate(() => window.__mockConfig.realtimeCallback({
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
     new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
            panico_energia_resolvido: false, panico_urna_resolvido: false },
     eventType: 'UPDATE',
@@ -300,7 +317,7 @@ const estadoPanico = (id) => ({
   await p.waitForTimeout(200);
 
   // Evento disparado antes do toque, chegando com a escrita ainda em voo.
-  await p.evaluate(() => window.__mockConfig.realtimeCallback({
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
     new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
            panico_energia_resolvido: false, panico_urna_resolvido: false },
     eventType: 'UPDATE',
@@ -315,7 +332,7 @@ const estadoPanico = (id) => ({
   // Escrita conclui → a partir daí eventos voltam a valer.
   await p.evaluate(() => window.__mockConfig.destravar());
   await p.waitForTimeout(200);
-  await p.evaluate(() => window.__mockConfig.realtimeCallback({
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
     new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
            panico_energia_resolvido: true, panico_urna_resolvido: false },
     eventType: 'UPDATE',

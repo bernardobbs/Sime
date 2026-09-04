@@ -143,6 +143,7 @@ select.campo{margin-bottom:8px;}
   <div class="sp"></div>
   <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
   <span class="zona" id="zona-info"></span>
+  <span id="sime-um-slot" style="display:none"></span>
   <button id="btn-sair" onclick="simeLogout()" aria-label="Sair" style="display:none;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.73rem;font-weight:700;cursor:pointer;">⎋</button>
 </div>
 
@@ -177,6 +178,7 @@ select.campo{margin-bottom:8px;}
 <div class="toast" id="toast"></div>
 
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -358,6 +360,17 @@ async function iniciar(){
   // Tokens de TV entram em sime_usuarios como 'observador' — não são gente
   // pra quem se delega um problema.
   EQUIPE = (equipe.data||[]).filter(u=>u.perfil!=='observador');
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
+  // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  if (window.initSimeUserMenu && EU) {
+    window.initSimeUserMenu(supabase, {
+      slotEl: document.getElementById('sime-um-slot'),
+      nome: EU.nome || 'Usuário',
+      perfil: EU.perfil,
+      sairEl: document.getElementById('btn-sair'),
+    });
+  }
 
   window.assinarOcorrencias();
   await recarregar();

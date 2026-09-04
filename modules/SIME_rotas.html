@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIME · Rotas</title>
+<link rel="stylesheet" href="./sime_theme_cream.css">
+<link rel="stylesheet" href="./sime_components.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20;}
+.logo{width:32px;height:32px;border-radius:8px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;flex-shrink:0;}
+.h-info{flex:1;}
+.h-title{font-weight:800;font-size:.9rem;}
+.h-sub{font-size:.68rem;color:var(--text2);}
+.content{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;}
+
+.import-card{background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:18px;}
+.ic-title{font-weight:800;margin-bottom:6px;}
+.ic-sub{font-size:.78rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.import-result{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:.78rem;font-weight:700;}
+.ir-ok  {background:var(--green-bg);color:var(--green);}
+.ir-err {background:var(--red-bg);color:var(--red);}
+.ir-warn{background:var(--yellow-bg);color:var(--yellow);}
+
+.btn{padding:9px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;border:none;transition:all .15s;}
+.btn-dark{background:#2a2a2a;color:#fff;}
+.btn-dark:hover{background:#444;}
+.btn-out{background:var(--bg2);color:var(--text2);border:1px solid var(--border);}
+.btn-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd);}
+.btn-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);}
+
+.form-group label{font-size:.72rem;font-weight:700;color:var(--text2);display:block;margin-bottom:3px;}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);outline:none;font-family:inherit;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:9px 16px;border-radius:99px;font-size:.76rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;}
+
+#login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50;}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:11px;box-shadow:0 8px 30px rgba(0,0,0,.12);padding:24px;width:min(360px,92vw);}
+.login-card input{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;margin-top:8px;font-size:.9rem;font-family:inherit;color:var(--text);background:var(--bg2);}
+.login-card button.primary{width:100%;margin-top:10px;}
+
+/* MODAL (mesmo padrão visual do resto do sistema) */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.m-title{font-weight:800;font-size:.92rem;}
+.m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+.m-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;}
+.close-btn{width:44px;height:44px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;}
+.m-hist{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
+.m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
+.m-hist-item b{color:var(--text);}
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <div style="font-weight:800;font-size:1rem;margin-bottom:4px;">Entrar no SIME</div>
+    <div style="font-size:.8rem;color:var(--text2);margin-bottom:8px;">Rotas exige login da equipe.</div>
+    <form id="login-form">
+      <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="senha" autocomplete="current-password">
+      <div id="login-erro" style="color:var(--red);font-size:.78rem;min-height:1em;margin-top:6px;"></div>
+      <button class="btn btn-dark primary" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="painel-conteudo" style="display:none">
+  <div class="header">
+    <div class="logo">S</div>
+    <div class="h-info">
+      <div class="h-title">SIME · Rotas</div>
+      <div class="h-sub" id="h-sub">carregando…</div>
+    </div>
+    <span id="sime-um-slot" style="display:none"></span>
+  </div>
+
+  <div class="content" id="content"></div>
+</div>
+
+<div class="overlay" id="overlay" onclick="rtFecharModal(event);rtFecharModalSecoes(event)">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
+<script src="./sime_rotas_modulo.js"></script>
+<script type="module">
+import { createClient } from './vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from './sime_config.js';
+import { initSimeDados, getEleicaoAtiva } from './sime_dados.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+window.supabaseAtores = supabase; // mesmo nome global que sime_rotas_modulo.js espera (convenção de todo o app)
+initSimeDados(supabase);
+
+let _zonaCache = null;
+let _nomeCache = null;
+async function _carregarUsuario() {
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data } = await supabase.from('sime_usuarios').select('zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
+  _zonaCache = data?.zona_id || null;
+  _nomeCache = data?.nome || null;
+}
+window.zonaDoUsuario = async function zonaDoUsuario() {
+  if (!_zonaCache) await _carregarUsuario();
+  return _zonaCache;
+};
+window.nomeDoUsuario = async function nomeDoUsuario() {
+  if (!_nomeCache) await _carregarUsuario();
+  return _nomeCache || 'Cartório';
+};
+
+// Mesmo bug real já corrigido em SIME_convocacao.html (21/08/2026): sem
+// eleicao_id, a policy de SELECT de sime_logs (`eleicao_id IN (...)`) nunca
+// casa com NULL — o registro grava com sucesso mas fica invisível pra
+// sempre. Toda ação desta página passa por log(), então resolve a eleição
+// ativa da zona antes de gravar, igual ao resto do sistema.
+let _eleicaoIdCache = null;
+async function _eleicaoIdAtual() {
+  if (_eleicaoIdCache) return _eleicaoIdCache;
+  const zonaId = await zonaDoUsuario();
+  if (!zonaId) return null;
+  const eleicao = await getEleicaoAtiva({ fallback: null, zonaId });
+  _eleicaoIdCache = eleicao?.id || null;
+  return _eleicaoIdCache;
+}
+window.log = async function log(acao, secao, payload) {
+  try {
+    const eleicaoId = await _eleicaoIdAtual();
+    await supabase.from('sime_logs').insert({ acao, modulo: 'rotas', secao_id: null, eleicao_id: eleicaoId, payload });
+  } catch (e) { /* auditoria é melhor-esforço — não bloqueia a ação principal */ }
+};
+
+async function atualizarCabecalho() {
+  const zonaId = await zonaDoUsuario();
+  const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
+  document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
+
+  try {
+    if (window.initSimeUserMenu) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: meu } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+      window.initSimeUserMenu(supabase, {
+        slotEl: document.getElementById('sime-um-slot'),
+        nome: await nomeDoUsuario(),
+        perfil: meu?.perfil,
+      });
+    }
+  } catch (e) { /* melhor-esforço */ }
+}
+
+function mostrarPainel() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('painel-conteudo').style.display = '';
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-pass').value;
+  const erro = document.getElementById('login-erro');
+  erro.textContent = '';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    erro.textContent = /Failed to fetch|NetworkError/i.test(error.message || '') ? 'Sem conexão com o servidor.' : 'E-mail ou senha inválidos.';
+    return;
+  }
+  mostrarPainel();
+  await atualizarCabecalho();
+  window.render();
+});
+
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    mostrarPainel();
+    await atualizarCabecalho();
+    window.render();
+  }
+})();
+</script>
+<script>
+window.render = renderRotas;
+</script>
+</body>
+</html>
