@@ -3138,18 +3138,41 @@ acessibilidade, os dois que a equipe altera à distância (pânico), já recebem
 >   Tangará) — `sime_rotas` não distingue por turno, então só a versão de
 >   1º turno foi gravada (decisão do cartório: "só gravar a do 1º turno
 >   agora"). Se houver 2º turno, revisar essa rota específica na época.
-> - **⚠️ Cobertura parcial, pendência real:** o export só tinha 42 dos ~64
->   locais de votação da zona. Os outros 22 (CAIC, EMATER, FSESP, Prefeitura
->   Municipal, Sec. Mun. de Educação, IFPI, SAAE, Sec. Est. de Fazenda, Col.
->   Est. Profª Raimundinho, Centro Ed. JA Mulata Lima, Clube dos Comerciários
->   em Campo Maior; U.E. Tertuliano Pereira, U.E. João Félix de Andrade em
->   Jatobá; U.E. Dr. Jerônimo S. Silva, U.E. José Ribeiro da Luz em
->   Sigefredo) ficaram **sem rota** — 76 seções ao todo. Isso inclui 16
->   locais que tinham rota atribuída ANTES (nas rotas 004/006/009/012, que
->   foram redefinidas) e ficaram órfãos de propósito, em vez de continuar
->   apontando pra uma rota que agora significa outra coisa. Falta o cartório
->   trazer o restante do export do MaxLog (ou confirmar que esses locais
->   ainda não têm rota definida no sistema oficial).
+> - **Cobertura completa desde 01/09/2026** — o export do MaxLog só tinha 42
+>   dos ~64 locais de votação; os 17 locais restantes (76 seções) ficaram sem
+>   rota até o cartório explicar, em pedido direto, como a mídia deles chega
+>   ao cartório: em Campo Maior "os presidentes levam para o cartório
+>   eleitoral diretamente"; U.E. Tertuliano Pereira e U.E. João Félix de
+>   Andrade (Jatobá) "levam ao ponto de transmissão da Creche Mamãe Lima";
+>   U.E. José Ribeiro da Luz e U.E. Dr. Jerônimo S. Silva (Sigefredo)
+>   "levam para o ponto de transmissão do Monsenhor Mateus". Não são rotas de
+>   veículo do MaxLog — o trajeto é do próprio presidente de mesa — mas foram
+>   registradas como rota mesmo assim (decisão do cartório), pra que toda
+>   seção tenha rota e esses locais parem de aparecer como pendência nas telas
+>   de distribuição/mídias. `sql/SIME_rotas_7zona_entrega_direta_2026-09-01.sql`
+>   (aplicado em produção, não idempotente): **021-033**, uma rota por local
+>   em Campo Maior (formato escolhido pelo cartório em vez de uma rota única
+>   de entrega direta — dá pra acompanhar local a local); **034** e **035**,
+>   rotas próprias de entrega nos dois pontos de consolidação, deliberadamente
+>   separadas das rotas 019/020 que fazem o trecho de veículo ponto→cartório,
+>   pra deixar explícito qual trecho é do presidente e qual é do veículo.
+>   A 7ª Zona ficou com **35 rotas / 174 seções / 35.347 eleitores** — nenhuma
+>   seção sem rota, exceto a fantasma abaixo.
+>
+> **Seção 146 (U.E. Antônio Rodrigues) é registro fantasma — investigado em
+> 01/09/2026, ainda sem decisão do cartório.** Achado ao responder "qual seção
+> do U.E. Antônio Rodrigues": o cartório respondeu "não existe seção 146".
+> Confere — a linha existe só em `sime_secoes`, sem lastro em lugar nenhum:
+> `eleitores` nulo (só 2 das 175 seções da zona estão assim, e a outra tem
+> mesários de verdade), zero atores (nem inativos), zero linhas em
+> `sime_mesarios_raw` da 7ª/PI (nem pela seção, com ou sem zero à esquerda,
+> nem pelo nome do local), e zero dependências em `sime_mesa_estado`/
+> `sime_midias`/`sime_carga_lacre`/`sime_ocorrencias`. Provável resquício do
+> seed manual original da 7ª (feito fora do repositório) — não há log que
+> registre a origem. Deliberadamente deixada **de fora** das rotas de entrega
+> direta, apesar de constar na lista que o cartório mandou (criar rota pra ela
+> consolidaria dado ruim). Excluí-la é `delete` simples, sem cascata, mas é
+> apagar dado de produção — pendente de confirmação.
 
 > **Como adicionar o primeiro usuário de uma zona vazia (27/08/2026, pedido
 > direto: "como adicionamos usuários a zona 94?").** A Edge Function
