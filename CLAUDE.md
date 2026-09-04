@@ -3178,6 +3178,38 @@ Educação", "U.E. Antônio Rodrigues") — nunca adivinhados. No módulo, cada
 seção com coordenada ganha um link "📍" pro Google Maps, dentro do modal
 "Seções da rota".
 
+**Ponto de partida/destino das 35 rotas de mídia da 7ª Zona, preenchidos
+(04/09/2026).** Regra confirmada com o dono do projeto: toda rota de
+recolhimento de mídia começa numa seção (local de votação) e termina num
+dos 4 **pontos de transmissão** fixos — Cartório Eleitoral da 7ª Zona
+Eleitoral, Creche Mamãe Lima (Jatobá), Escola Monsenhor Mateus (Sigefredo
+Pacheco) e Escola da Baixinha (Sigefredo Pacheco). `sql/
+SIME_rotas_partida_destino_zona7.sql` (rodado uma vez, não é migração)
+preencheu `ponto_partida` (primeiro trecho do itinerário) e `destino`
+(reconhecido no último trecho — "Sede da 7ª Zona" no texto do MaxLog vira
+o nome canônico do Cartório) pras 33 rotas que batem com o padrão.
+**Escola da Baixinha não tem nenhuma rota apontando pra ela hoje** — nem
+existe em `sime_secoes.local_nome` — só documentado como ponto válido,
+sem dado pra preencher agora. **Rota 001 e Rota 005 ficaram sem `destino`,
+de propósito, não adivinhadas**: a 001 (4 locais de Sigefredo Pacheco)
+não menciona nenhum dos 4 pontos no itinerário do MaxLog, mesmo sendo do
+mesmo município das rotas que consolidam em Monsenhor Mateus — pode ser
+dado incompleto do export; a 005 ("Secretaria (Campo Maior)") é dado
+ANTIGO, de antes do MaxLog (já documentado acima que "não veio no export
+desta vez e ficou intocada"), não segue o padrão de rota de mídia nenhum.
+Falta o cartório confirmar as duas antes de eu preencher algo ali.
+
+**Distribuição de urna e o retorno (recolhimento de urna), confirmados
+mas ainda sem dado real pra aplicar.** Regra: toda rota de distribuição
+começa no Cartório Eleitoral, termina em alguns locais de votação, na
+véspera da eleição; o recolhimento começa no ÚLTIMO ponto da rota de
+distribuição e volta ao Cartório, no Dia D após o encerramento da votação
+— mesma relação de "reverso, em outro dia" já documentada acima. Ainda
+não há nenhuma rota de distribuição cadastrada pra aplicar isso — quando
+houver, o padrão é: `ponto_partida='Cartório Eleitoral da 7ª Zona
+Eleitoral'` na ida, invertido na volta (`ponto_partida`=último local da
+ida, `destino='Cartório Eleitoral da 7ª Zona Eleitoral'`).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
