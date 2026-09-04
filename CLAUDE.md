@@ -2967,6 +2967,33 @@ tiver data marcada, `📅 Retorno em dd/mm`. Coberto pela suíte inteira
 (`bash tests/run_all.sh`, 75 suítes, 0 falhas) — nenhum teste precisou
 mudar, só o botão renomeado acima pra não colidir.
 
+**Bug real corrigido em 04/09/2026, reportado pelo cartório com print
+anexado: "em encaminhar apareceu o token".** O select "Encaminhar para" (e
+o filtro "👤 Responsável" da mesma leva) listava também os TOKENS de acesso
+de campo (QR/PIN de mesário, conferente, instalador, coordenador de
+acessibilidade, coletor de mídias, TVs) — eles também moram em
+`sime_usuarios`, com `perfil='observador'` e `nome` tipo "Token mesario
+(BX86FPJ7)", não são pessoas do cartório. Checado direto no banco antes de
+corrigir: os 15 registros `observador` da 7ª Zona são 100% desse tipo
+(`nome ILIKE 'Token %'`); equipe de verdade é só `coordenador`(2) +
+`gestor_prob`(5) = 7 pessoas. `SIME_problemas.html` já filtrava
+`perfil!=='observador'` no seletor de "delegar" ocorrência — o mesmo
+critério nunca tinha sido replicado aqui ao buscar `sime_usuarios` em
+`cmCarregar()`. Corrigido com o mesmo filtro, em JS depois da busca (não
+`.neq()` na query — o mock de teste não suporta esse método, e travaria a
+tabela toda). Coberto por teste de regressão dedicado em
+`tests/test_convocacao_mesarios.mjs` (bloco "2.63" — injeta um token
+`observador` no mock e confirma que ele nunca aparece nem no filtro nem no
+select de encaminhar, só gente de verdade).
+
+**Ordem das abas reorganizada (04/09/2026, pedido direto).** Só reordenação
+de `<div class="tab">` no HTML — cada aba já navega por `goTab('<nome>',
+this)` independente de posição, nenhuma lógica de `goTab`/teclado depende da
+ordem no DOM, então não foi necessário mudar mais nada. Ordem nova: 📊
+Dashboard, 📞 Contatar mesários, ⚖️ Oficial de Justiça, 📬 Correspondência,
+🙋 Voluntários, 🎓 Treinamento, 📄 Relatório ELO, 🔄 Sincronizar, 📜
+Histórico.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

@@ -799,6 +799,40 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.63 Bug real corrigido em 04/09/2026, reportado pelo cartório com
+// print anexado: "em encaminhar apareceu o token" — o select de "Encaminhar
+// para" (e o filtro "👤 Responsável") listava também os tokens de acesso de
+// campo (QR/PIN de mesário, conferente, instalador...), que moram em
+// sime_usuarios com perfil='observador', não são pessoas de verdade. Mesmo
+// critério já usado em SIME_problemas.html pro seletor de "delegar", que
+// não tinha sido replicado aqui. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_usuarios.push({ id:'u-token-mesario', nome:'Token mesario (BX86FPJ7)', perfil:'observador', zona_id:'z7', ativo:true, auth_user_id:null });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const filtroResp = await p.locator('#cm-filtro-responsavel').textContent();
+  check('filtro "Responsável" não lista token de acesso de campo', !/Token mesario/.test(filtroResp), filtroResp);
+  check('filtro "Responsável" lista gente de verdade da equipe', /Maria/.test(filtroResp), filtroResp);
+
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  await cardBruno.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.click('#modal-body button:has-text("↪️ Encaminhar")');
+  await p.waitForTimeout(80);
+
+  const opcoesEncaminhar = await p.locator('#mm-encaminhar-para').textContent();
+  check('select "Encaminhar para" não lista token de acesso de campo', !/Token mesario/.test(opcoesEncaminhar), opcoesEncaminhar);
+  check('select "Encaminhar para" lista gente de verdade da equipe', /Maria/.test(opcoesEncaminhar), opcoesEncaminhar);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.62 Lista única de telefones — principal + alternativos do TRE + cadastrado à mão (21/08/2026) ──
 {
   const ctx = await b.newContext();

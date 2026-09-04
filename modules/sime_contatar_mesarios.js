@@ -314,10 +314,16 @@ async function cmCarregar() {
     // cada responsável possível) e pro filtro "Meus". Uma falha aqui não deve
     // travar a fila inteira (por isso fora do `if (e1||e2)` abaixo) — só
     // faria o nome do responsável cair no fallback de "—".
-    sb.from('sime_usuarios').select('id, nome').eq('zona_id', zonaId).eq('ativo', true).order('nome'),
+    // Bug real (04/09/2026, achado pelo cartório: apareciam "Token conferente",
+    // "Token mesario (BX86FPJ7)" etc. no select de encaminhar): tokens de
+    // campo (QR de mesário/conferente/instalador/...) também moram em
+    // sime_usuarios, com perfil='observador' — filtrado abaixo em JS (não na
+    // query, pra bater com o mesmo critério que SIME_problemas.html já usa
+    // pro seletor de "delegar", que eu não tinha copiado aqui).
+    sb.from('sime_usuarios').select('id, nome, perfil').eq('zona_id', zonaId).eq('ativo', true).order('nome'),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
-  cmEquipe = equipe || [];
+  cmEquipe = (equipe || []).filter(u => u.perfil !== 'observador');
   cmMeuId = window.meuUsuarioId ? await window.meuUsuarioId() : null;
 
   const tentativasPorAtor = {};
