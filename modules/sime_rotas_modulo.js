@@ -103,6 +103,105 @@ function rtSomarMinutos(horaStr, minutos) {
   return `${String(hFinal).padStart(2, '0')}:${String(mFinal).padStart(2, '0')}`;
 }
 
+// Previsão de chegada estimada (08/09/2026, pedido direto: "como o sistema
+// calcula a rota pelo google maps e tempo medio de espera de 10 minutos em
+// cada local conseguimos calcular automaticamente a previsão de chegada?"
+// — esclarecido com o dono do projeto antes de implementar: o SIME NUNCA
+// consultou o Google de verdade, só gera um LINK gratuito pra abrir no
+// mapa; calcular deslocamento real exigiria a API paga do Google
+// (Directions/Distance Matrix), fora do orçamento R$ 0,00/mês. Escolhida a
+// opção "estimativa em linha reta": distância HAVERSINE entre as
+// coordenadas já cadastradas (não segue estrada nenhuma) ÷ uma velocidade
+// média FIXA assumida pra estrada de zona rural, somada ao tempo parado de
+// sempre (`rtTempoTotalParadasMin`). Sempre rotulada como estimativa
+// aproximada — nunca grava sozinha, só pré-preenche `#rt-hora-chegada`
+// quando esse campo ainda está vazio (mesmo critério de "sugestão, nunca
+// força" já usado pra ponto de partida/destino).
+const RT_VELOCIDADE_MEDIA_KMH = 40; // fixo nesta v1 — não é config por rota, é só uma aproximação de estrada rural sem asfalto
+function rtHaversineKm(a, b) {
+  const R = 6371;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(h));
+}
+// Só calcula quando TODAS as paradas têm geo (nunca subestima em silêncio
+// pulando uma perna sem coordenada) e quando já há horário de saída e
+// tempo por parada preenchidos — sem os dois não tem o que somar.
+function rtChegadaEstimada(rota, paradas) {
+  if (!rota.horario_saida || rota.tempo_parada_min == null || !paradas.length) return null;
+  if (paradas.some(s => s.latitude == null || s.longitude == null)) return null;
+  let travelKm = 0;
+  for (let i = 1; i < paradas.length; i++) travelKm += rtHaversineKm(paradas[i - 1], paradas[i]);
+  const travelMin = Math.round(travelKm / RT_VELOCIDADE_MEDIA_KMH * 60);
+  const dwellMin = rtTempoTotalParadasMin(rota, paradas.length) || 0;
+  const horario = rtSomarMinutos(rota.horario_saida, travelMin + dwellMin);
+  if (!horario) return null;
+  return { horario, travelKm, travelMin, dwellMin };
+}
+
+// URL do Google Maps Directions (sem chave/custo) — usado tanto pro link
+// "Ver rota completa no mapa" (tela) quanto pro QR code da ficha impressa
+// (rtHtmlFicha). Extraído aqui pra não duplicar a lógica entre os dois
+// lugares.
+//
+// 08/09/2026, pedido direto: "o destino deve ser incluido no mapa de
+// rotas" — origem/destino SEMPRE priorizam o TEXTO digitado em "Ponto de
+// partida"/"Destino" (o Google geocodifica o endereço/nome sozinho, de
+// graça, ao abrir o link) — é o valor que reflete a intenção real da rota,
+// que pode não ser nenhuma parada geolocalizada (ex.: "Cartório Eleitoral
+// da 7ª Zona", numa rota de distribuição). Só cai pra coordenada da
+// 1ª/última parada quando o campo de texto correspondente está vazio.
+function rtMapsUrl(rota, paradas) {
+  const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
+  const origemTexto = (rota.ponto_partida || '').trim();
+  const destinoTexto = (rota.destino || '').trim();
+  const origin = origemTexto ? encodeURIComponent(origemTexto) : (comGeo[0] ? `${comGeo[0].latitude},${comGeo[0].longitude}` : null);
+  const destination = destinoTexto ? encodeURIComponent(destinoTexto) : (comGeo.length ? `${comGeo[comGeo.length - 1].latitude},${comGeo[comGeo.length - 1].longitude}` : null);
+  if (!origin || !destination) return null;
+  // Waypoints: as paradas geolocalizadas que não foram elas mesmas usadas
+  // como origem/destino acima (evita repetir o mesmo ponto duas vezes).
+  let meio = comGeo;
+  if (!origemTexto && meio.length) meio = meio.slice(1);
+  if (!destinoTexto && meio.length) meio = meio.slice(0, -1);
+  const waypoints = meio.length ? `&waypoints=${meio.map(s => `${s.latitude},${s.longitude}`).join('|')}` : '';
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}`;
+}
+
+// Mapa esquemático da rota, pra imprimir (08/09/2026, pedido direto: "em
+// imprimir ficha conseguimos gerar para imprimir um mapa da rota?") — SVG
+// desenhado a partir das coordenadas já cadastradas, sem depender de rede
+// nem de API paga (diferente de um mapa de verdade, com ruas — isso exigiria
+// um serviço de mapa estático, pago ou de terceiro). É um ESQUEMA: liga os
+// pontos em linha reta, na ordem das paradas, só pra dar uma noção visual
+// de onde cada seção fica em relação às outras — não segue estrada nenhuma,
+// texto do rodapé deixa isso explícito. Só desenha com pelo menos 2 paradas
+// geolocalizadas (1 ponto sozinho não forma mapa nenhum).
+function rtSvgMinimapa(paradas) {
+  const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
+  if (comGeo.length < 2) return '';
+  const W = 560, H = 320, PAD = 26;
+  const lats = comGeo.map(s => s.latitude), lons = comGeo.map(s => s.longitude);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const spanLat = (maxLat - minLat) || 0.001, spanLon = (maxLon - minLon) || 0.001;
+  const x = lon => PAD + ((lon - minLon) / spanLon) * (W - 2 * PAD);
+  const y = lat => PAD + (1 - (lat - minLat) / spanLat) * (H - 2 * PAD); // inverte: latitude maior = mais ao norte = mais acima
+  const pontos = comGeo.map(s => ({ ...s, sx: x(s.longitude), sy: y(s.latitude) }));
+  const linha = pontos.map(p => `${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(' ');
+  const marcadores = pontos.map((p, i) => {
+    const cor = i === 0 ? '#1a7a3c' : (i === pontos.length - 1 ? '#b3261e' : '#2a2a2a');
+    return `<circle cx="${p.sx.toFixed(1)}" cy="${p.sy.toFixed(1)}" r="10" fill="${cor}" stroke="#fff" stroke-width="1.5"/>
+      <text x="${p.sx.toFixed(1)}" y="${(p.sy + 3.5).toFixed(1)}" text-anchor="middle" font-size="9.5" fill="#fff" font-family="Arial,Helvetica,sans-serif" font-weight="bold">${i + 1}</text>
+      <text x="${p.sx.toFixed(1)}" y="${(p.sy + 22).toFixed(1)}" text-anchor="middle" font-size="8" fill="#000" font-family="Arial,Helvetica,sans-serif">${rtEsc(String(p.numero))}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;display:block;border:1px solid #999;background:#f5f3ee" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="${linha}" fill="none" stroke="#666" stroke-width="2" stroke-dasharray="6,4"/>
+    ${marcadores}
+  </svg>`;
+}
+
 let rtDados = null; // { rotas:[...], secoesZona:[...], secoesPorRota: Map(rota_id -> [{...secao, parada}]), zonaId }
 let rtFiltroTipo = '';
 let rtBusca = '';
@@ -416,6 +515,21 @@ function rtUsarSugestaoDestino() {
   const el = document.getElementById('rt-destino');
   if (el) el.value = rtNomeLocalParada(atuais[atuais.length - 1]);
 }
+// Recalcula a previsão de chegada ESTIMADA sob demanda (mesmo padrão de
+// rtUsarSugestaoPartida/Destino) — lê horário de saída/tempo por parada
+// DIGITADOS na hora (não só o valor salvo), pra já refletir o que a pessoa
+// acabou de preencher sem precisar salvar e reabrir o modal primeiro.
+function rtUsarSugestaoChegada() {
+  const r = rtDados.rotas.find(x => x.id === rtModalId);
+  const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
+  const horario_saida = document.getElementById('rt-hora-saida')?.value || null;
+  const tempoRaw = document.getElementById('rt-tempo-parada')?.value.trim();
+  const tempo_parada_min = tempoRaw ? parseInt(tempoRaw, 10) : null;
+  const eta = rtChegadaEstimada({ horario_saida, tempo_parada_min }, atuais);
+  if (!eta) { showToast('⚠ Preencha horário de saída, tempo por parada e a geolocalização de todas as paradas primeiro'); return; }
+  const el = document.getElementById('rt-hora-chegada');
+  if (el) el.value = eta.horario;
+}
 function rtRenderModalRota() {
   const isNovo = rtModalId === '';
   const r = isNovo ? null : rtDados.rotas.find(x => x.id === rtModalId);
@@ -439,6 +553,11 @@ function rtRenderModalRota() {
   const paradasAtuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
   const partidaSugerida = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[0]) : '';
   const destinoSugerido = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[paradasAtuais.length - 1]) : '';
+  // Previsão de chegada estimada (08/09/2026, pedido direto — ver
+  // rtChegadaEstimada) — mesmo critério de sugestão de partida/destino:
+  // só entra como valor default do campo quando ele ainda está vazio,
+  // nunca sobrescreve o que o cartório já digitou.
+  const eta = (!isNovo && r) ? rtChegadaEstimada(r, paradasAtuais) : null;
 
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
@@ -485,11 +604,16 @@ function rtRenderModalRota() {
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-saida">Horário de saída</label>
           <input type="time" id="rt-hora-saida" value="${rtFmtHora(r?.horario_saida) || ''}"></div>
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-chegada">Previsão de chegada</label>
-          <input type="time" id="rt-hora-chegada" value="${rtFmtHora(r?.horario_chegada_previsto) || ''}"></div>
+          <div style="display:flex;gap:4px">
+            <input type="time" id="rt-hora-chegada" value="${rtFmtHora(r?.horario_chegada_previsto) || eta?.horario || ''}" style="flex:1">
+            ${!isNovo && eta ? `<button type="button" id="rt-chegada-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoChegada()" title="Recalcular a estimativa">↻</button>` : ''}
+          </div>
+        </div>
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-tempo-parada">Tempo por parada (min)</label>
           <input type="number" id="rt-tempo-parada" min="0" value="${r?.tempo_parada_min ?? ''}" placeholder="ex.: 10"></div>
       </div>
       ${!isNovo && r?.tempo_parada_min != null && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">⏱️ Tempo total estimado parado: ${paradasAtuais.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, paradasAtuais.length))}${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, paradasAtuais.length))}` : ''}.</div>` : ''}
+      ${!isNovo && eta ? `<div class="ic-sub" style="margin:-6px 0 0">🧭 Previsão de chegada ESTIMADA (linha reta, ~${RT_VELOCIDADE_MEDIA_KMH}km/h assumidos — não é o Google calculando de verdade, isso exigiria API paga): ~${eta.travelKm.toFixed(1)}km de deslocamento (${rtFmtMinutos(eta.travelMin)}) + ${rtFmtMinutos(eta.dwellMin)} parado(a) → chega por volta de ${eta.horario}. Pode ficar bem diferente da estrada real — ajuste o campo acima se souber melhor.</div>` : ''}
       <div class="form-group"><label for="rt-responsavel">Responsável pela rota (opcional)</label>
         <select id="rt-responsavel">
           <option value="">— sem responsável —</option>
@@ -539,12 +663,9 @@ function rtRenderParadas() {
   if (!r) return;
   const atuais = rtDados.secoesPorRota.get(r.id) || [];
   const atuaisIds = new Set(atuais.map(s => s.id));
-  // "Ver rota completa no mapa" (08/09/2026, melhoria própria) — só as
-  // paradas COM geo, na mesma ordem já definida por `parada`; sem endereço
-  // geocodificado pros trechos livres (ponto_partida/destino são texto
-  // livre, nunca tiveram lat/long). Precisa de pelo menos 2 pontos com geo
-  // pra fazer sentido desenhar um trajeto.
-  const comGeo = atuais.filter(s => s.latitude != null && s.longitude != null);
+  // "Ver rota completa no mapa" (08/09/2026, melhoria própria, estendida no
+  // mesmo dia pra incluir Partida/Destino digitados — ver rtMapsUrl).
+  const mapsUrl = rtMapsUrl(r, atuais);
   const q = rtSecaoBusca.trim().toLowerCase();
   const candidatas = rtDados.secoesZona
     .filter(s => !atuaisIds.has(s.id) && (!q || `${s.numero} ${s.local_nome} ${s.municipio}`.toLowerCase().includes(q)))
@@ -557,11 +678,17 @@ function rtRenderParadas() {
 
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
-    ${comGeo.length >= 2 ? `<a href="https://www.google.com/maps/dir/?api=1&origin=${comGeo[0].latitude},${comGeo[0].longitude}&destination=${comGeo[comGeo.length - 1].latitude},${comGeo[comGeo.length - 1].longitude}${comGeo.length > 2 ? '&waypoints=' + comGeo.slice(1, -1).map(s => `${s.latitude},${s.longitude}`).join('|') : ''}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;display:inline-block;margin-bottom:8px;text-decoration:none">🗺️ Ver rota completa no mapa (${comGeo.length} de ${atuais.length} com geo)</a>` : ''}
+    ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;display:inline-block;margin-bottom:8px;text-decoration:none" title="Usa a Partida/Destino digitados, quando preenchidos, e as paradas geolocalizadas no meio">🗺️ Ver rota completa no mapa</a>` : ''}
     <div class="m-hist">
-      ${atuais.length ? atuais.map(s => `
+      ${atuais.length ? atuais.map((s, idx) => `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span><input type="number" value="${s.parada ?? ''}" min="1" style="width:48px;padding:3px 5px;border-radius:5px;border:1px solid var(--border2);background:var(--bg);color:var(--text)" onblur="rtSalvarParada('${r.id}','${s.id}',this.value)"> <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span style="display:inline-flex;flex-direction:column;gap:2px">
+            <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',-1)" ${idx === 0 ? 'disabled' : ''} title="Mover pra cima (mais cedo na rota)">▲</button>
+            <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',1)" ${idx === atuais.length - 1 ? 'disabled' : ''} title="Mover pra baixo (mais tarde na rota)">▼</button>
+          </span>
+          <span><b>${idx + 1}º</b> — <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
+        </span>
         <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>
       </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
     </div>
@@ -737,20 +864,41 @@ async function rtRemoverSecao(rotaId, secaoId) {
   await rtRecarregarParadas();
 }
 
-async function rtSalvarParada(rotaId, secaoId, valor) {
+// Reposicionar parada com ▲/▼ (08/09/2026, pedido direto com print de
+// produção anexado: "quero poder reposicionar os locais da rota de modo a
+// fazer mais sentido" — o print mostrado tinha 3 paradas com o número "1"
+// ao mesmo tempo). O campo numérico livre de antes (`rtSalvarParada`,
+// digitar um número qualquer) permitia exatamente esse tipo de bagunça —
+// nada impedia duas paradas com o mesmo número, ou pulos na sequência.
+// `rtMoverParada` troca a POSIÇÃO na lista (não só um número solto) e
+// RENUMERA TUDO sequencialmente 1..N a cada movimento — o que
+// automaticamente corrige qualquer duplicata/lacuna já existente na
+// primeira vez que alguém mexe naquela rota, sem precisar de migração
+// própria pra dado antigo.
+async function rtMoverParada(rotaId, secaoId, direcao) {
   const sb = window.supabaseAtores;
-  const parada = valor === '' ? null : parseInt(valor, 10);
   const rota = rtDados.rotas.find(r => r.id === rotaId);
+  const atuais = [...(rtDados.secoesPorRota.get(rotaId) || [])]; // já vem ordenada
+  const idx = atuais.findIndex(s => s.id === secaoId);
+  const novoIdx = idx + direcao;
+  if (idx < 0 || novoIdx < 0 || novoIdx >= atuais.length) return; // já é a 1ª/última — nada a fazer
+  [atuais[idx], atuais[novoIdx]] = [atuais[novoIdx], atuais[idx]];
 
-  const { error } = await sb.from('sime_rota_secoes').update({ parada }).eq('rota_id', rotaId).eq('secao_id', secaoId);
-  if (error) { showToast('⚠ ' + error.message); return; }
-  if (rtRotaTemTipoLegado(rota)) {
-    await sb.from('sime_secoes').update({ parada }).eq('id', secaoId).eq('rota_id', rotaId);
+  for (let i = 0; i < atuais.length; i++) {
+    const novaParada = i + 1;
+    if (atuais[i].parada === novaParada) continue; // já está certo, evita escrita à toa
+    const { error } = await sb.from('sime_rota_secoes').update({ parada: novaParada }).eq('rota_id', rotaId).eq('secao_id', atuais[i].id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    if (rtRotaTemTipoLegado(rota)) {
+      await sb.from('sime_secoes').update({ parada: novaParada }).eq('id', atuais[i].id).eq('rota_id', rotaId);
+    }
+    atuais[i] = { ...atuais[i], parada: novaParada };
   }
-  const arr = rtDados.secoesPorRota.get(rotaId) || [];
-  const s = arr.find(x => x.id === secaoId);
-  if (s) s.parada = parada;
+  rtDados.secoesPorRota.set(rotaId, atuais);
+  await log('rota_secao_reordenada', '', { rota_id: rotaId, secao_id: secaoId, direcao });
   showToast('✓ Ordem atualizada');
+  rtRenderParadas();
+  render();
 }
 
 // rtCarregar({silencioso:true}) recarrega sem tocar na tela — rtModalId não
@@ -784,6 +932,32 @@ function rtHtmlFicha(rota, paradas, responsavel) {
       <td>${s.latitude != null && s.longitude != null ? `${rtEsc(String(s.latitude))}, ${rtEsc(String(s.longitude))}` : '<span class="rt-sub">sem geo</span>'}</td>
       <td class="rt-col-chegada"></td>
     </tr>`).join('');
+
+  // Mapa (08/09/2026, pedido direto: "em imprimir ficha conseguimos gerar
+  // para imprimir um mapa da rota?") — esquema desenhado das coordenadas
+  // (rtSvgMinimapa) + QR pro Google Maps de verdade (rtImprimirFicha injeta
+  // depois de montar este HTML) + legenda de Partida/Destino SEMPRE
+  // presente (pedido direto no mesmo dia: "o destino deve ser incluido no
+  // mapa de rotas" — o destino digitado pode não ser nenhuma parada
+  // geolocalizada, ex. "Cartório Eleitoral da 7ª Zona" numa rota de
+  // distribuição; mostrar o texto aqui não depende de coordenada nenhuma).
+  const mapsUrl = rtMapsUrl(rota, paradas);
+  const svgMapa = rtSvgMinimapa(paradas);
+  const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
+  const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
+  const mapaHtml = (svgMapa || mapsUrl) ? `
+      <div class="rt-mapa">
+        <div class="rt-mapa-titulo">🗺️ Mapa esquemático da rota</div>
+        ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar o esquema — use o QR/link abaixo.</div>'}
+        <div class="rt-mapa-legenda">🟢 Partida: ${rtEsc(origemLabel)} &nbsp;·&nbsp; 🔴 Destino: ${rtEsc(destinoLabel)}</div>
+        ${mapsUrl ? `
+        <div class="rt-mapa-qr">
+          <div id="rt-ficha-qr"></div>
+          <div class="rt-sub">📱 Aponte a câmera pra abrir a rota completa no Google Maps</div>
+        </div>` : ''}
+        <div class="rt-sub">Esquema em linha reta entre as coordenadas cadastradas — não segue estrada nenhuma. Pra navegação de verdade, use o QR/link.</div>
+      </div>` : '';
+
   return `
     <div class="rt-pagina-ficha">
       <div class="rt-cabecalho">
@@ -799,6 +973,7 @@ function rtHtmlFicha(rota, paradas, responsavel) {
         ${rota.tempo_parada_min != null && paradas.length ? `<div><b>Tempo estimado parado:</b> ${paradas.length} × ${rota.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(rota, paradas.length))} (sem contar deslocamento entre paradas)</div>` : ''}
         ${rota.itinerario ? `<div><b>Observações:</b> ${rtEsc(rota.itinerario)}</div>` : ''}
       </div>
+      ${mapaHtml}
       <table class="rt-tabela">
         <colgroup><col class="rt-col-num"><col class="rt-col-local"><col class="rt-col-mun"><col class="rt-col-geo"><col class="rt-col-chegada"></colgroup>
         <thead><tr>
@@ -817,6 +992,16 @@ async function rtImprimirFicha(rotaId) {
   const responsavel = rtAtor(rota.responsavel_ator_id);
   const area = document.getElementById('print-area');
   area.innerHTML = rtHtmlFicha(rota, paradas, responsavel);
+  // QR gerado à parte, depois do innerHTML — a mesma lib já vendorizada
+  // (vendor/qrcode.min.js) que SIME_tokens.html usa pros QR de campo,
+  // offline, sem custo. `new QRCode()` desenha sozinho (canvas), síncrono.
+  const mapsUrl = rtMapsUrl(rota, paradas);
+  const qrEl = document.getElementById('rt-ficha-qr');
+  if (qrEl && mapsUrl && window.QRCode) {
+    try {
+      new QRCode(qrEl, { text: mapsUrl, width: 96, height: 96, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+    } catch (e) { qrEl.innerHTML = ''; }
+  }
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_ficha_impressa', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
   window.print();

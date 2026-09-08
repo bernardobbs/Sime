@@ -3460,6 +3460,103 @@ rota." Coberto por `tests/test_rotas.mjs` (blocos 17-18, 21 checks novos).
   `tempo_parada_min` não está preenchido ou a rota ainda não tem paradas —
   mesmo critério de "nunca fabrica dado" já usado no resto do módulo.
 
+**Mapa esquemático + QR na ficha impressa, reposicionar paradas com ▲/▼,
+previsão de chegada estimada e destino incluído no mapa/link (08/09/2026,
+pedidos diretos em sequência).** Quatro pedidos do mesmo dia, sobre o
+módulo recém-lançado:
+
+- **"em imprimir ficha conseguimos gerar para imprimir um mapa da rota?"**
+  — `rtSvgMinimapa(paradas)` desenha um SVG esquemático a partir das
+  coordenadas já cadastradas: liga as paradas em LINHA RETA, na ordem,
+  marcador verde na 1ª (partida), vermelho na última (destino), número da
+  ordem dentro de cada círculo e o número da seção embaixo. Deliberadamente
+  NÃO é um mapa de verdade (sem ruas, sem rio, sem relevo) — um mapa
+  estático de verdade exigiria um serviço de terceiro (a maioria paga; os
+  gratuitos como staticmap.openstreetmap.de dependem de rede no ato de
+  imprimir, incompatível com conectividade ruim no interior do Piauí) —
+  então é só um ESQUEMA offline, sem custo, sem depender de rede. O rodapé
+  do mapa deixa isso explícito ("não segue estrada nenhuma"). Complementado
+  por um **QR code** (`vendor/qrcode.min.js`, a mesma lib já vendorizada
+  que gera os QR de token de campo em `SIME_tokens.html` — offline, sem
+  custo) apontando pro link de verdade do Google Maps
+  (`rtMapsUrl`) — quem for dirigir aponta a câmera e abre a navegação real,
+  quando tiver sinal. `rtImprimirFicha()` gera o QR depois de montar o
+  HTML do `#print-area` (`new QRCode()` é síncrono, desenha um `<canvas>`
+  — mesmo padrão de `SIME_tokens.html`).
+- **"o destino deve ser incluido no mapa de rotas"** — achado ao construir
+  o item acima: o esquema só desenhava as PARADAS (`sime_rota_secoes`),
+  mas Partida/Destino são campos de texto livre que podem não ser NENHUMA
+  parada geolocalizada (ex.: `ponto_partida='Cartório Eleitoral da 7ª
+  Zona Eleitoral'`, já em produção em várias rotas de distribuição — ver
+  acima). Resolvido em duas frentes, sem inventar coordenada nenhuma pro
+  texto livre:
+  - Uma **legenda de texto**, sempre presente abaixo do mapa/SVG
+    ("🟢 Partida: X · 🔴 Destino: Y"), usando o texto digitado quando
+    existe (senão cai pro nome do 1º/último local, mesma sugestão que já
+    preenche os campos do formulário) — nunca depende de o destino ter
+    coordenada pra aparecer.
+  - `rtMapsUrl(rota, paradas)` (usada tanto pelo link "Ver rota completa
+    no mapa" na tela quanto pelo QR da ficha) passou a priorizar o TEXTO
+    de Partida/Destino como origem/destino da URL do Google Maps Directions
+    — o próprio Google geocodifica o endereço/nome sozinho, de graça, ao
+    abrir o link; só cai pra coordenada da 1ª/última parada quando o campo
+    de texto correspondente está vazio. Antes disso, um "Cartório Eleitoral"
+    digitado como destino era simplesmente ignorado pelo link, que sempre
+    usava só as paradas geolocalizadas.
+- **"no modal de cada rota, podemos ter duas colunas com as informações
+  para não ter que ficar rolando tela"** — mesmo mecanismo já usado no
+  modal de "Contatar mesários" (`SIME_convocacao.html`, 04/09/2026):
+  cabeçalho (com o ✕) e rodapé (Cancelar/Salvar) ficam FIXOS
+  (`flex:none`), só o corpo rola (`.m-body{overflow-y:auto}`) — só entra
+  em telas `>=1000px` (`.modal{max-width:900px}`); abaixo disso nada muda.
+  Diferente de Convocação (`column-width` automático, decide 2 ou 3
+  colunas sozinho), aqui é **`column-count:2` fixo** — o pedido foi
+  especificamente "duas colunas", e o formulário de rota é mais estreito
+  que o de pessoa, então 2 já usa bem o espaço sem precisar de uma 3ª.
+  `break-inside:avoid` em cada filho direto de `.m-body` evita cortar um
+  campo (ou a seção de paradas inteira) ao meio entre as colunas.
+- **"quero poder reposicionar os locais da rota de modo a fazer mais
+  sentido"** — pedido com print de produção anexado mostrando 3 paradas
+  com o número de ordem **"1" ao mesmo tempo** (e outra com "2") — o campo
+  numérico livre de antes (`rtSalvarParada`, digitar qualquer número e
+  perder o foco) não impedia duplicata nem lacuna, e claramente confundiu
+  o cartório em uso real. Removido de vez — trocado por botões **"▲"/"▼"**
+  por parada (`rtMoverParada(rotaId, secaoId, direcao)`), desabilitados nas
+  pontas (1ª parada sem "▲", última sem "▼"). Cada clique troca a POSIÇÃO
+  na lista (não só edita um número solto) e **renumera TODAS as paradas
+  daquela rota sequencialmente, 1..N**, o que corrige sozinho qualquer
+  duplicata/lacuna que já existisse assim que alguém mexe na rota — sem
+  precisar de nenhuma migração própria pro dado velho. Mesma escrita de
+  mão-dupla de sempre pra `sime_secoes.parada` em rota de tipo legado
+  (`rtRotaTemTipoLegado`); rota sem consumidor legado só grava em
+  `sime_rota_secoes`, sem tocar `sime_secoes`.
+- **"como o sistema calcula a rota pelo google maps e tempo medio de
+  espera de 10 minutos em cada local conseguimos calcular automaticamente
+  a previsão de chegada?"** — esclarecido com o dono do projeto ANTES de
+  implementar (pergunta direta, via `AskUserQuestion`): o SIME nunca
+  consultou o Google de verdade, só gera um LINK gratuito; calcular
+  deslocamento real exigiria a API paga do Google (Directions/Distance
+  Matrix), fora do orçamento R$ 0,00/mês. Escolhida a opção recomendada:
+  **estimativa em linha reta**. `rtChegadaEstimada(rota, paradas)` só
+  calcula quando TODAS as paradas têm geo (nunca subestima em silêncio
+  pulando uma perna sem coordenada) e há horário de saída + tempo por
+  parada preenchidos — soma o tempo parado de sempre
+  (`rtTempoTotalParadasMin`) com o tempo de deslocamento estimado
+  (distância HAVERSINE entre paradas consecutivas ÷ `RT_VELOCIDADE_MEDIA_KMH`
+  = 40km/h fixo, aproximação de estrada rural, não configurável por rota
+  nesta v1) ao horário de saída. Mesmo critério de "sugestão, nunca
+  força" já usado em Partida/Destino: só entra como valor DEFAULT do campo
+  "Previsão de chegada" quando ele ainda está vazio no banco; nota abaixo
+  do campo (`🧭 Previsão de chegada ESTIMADA...`) deixa explícito que é
+  aproximação, cita a velocidade assumida e convida a ajustar manualmente;
+  botão **"↻"** (`rtUsarSugestaoChegada()`) recalcula sob demanda usando
+  os valores DIGITADOS na hora (saída/tempo por parada), não só o que já
+  está salvo — útil pra testar "e se eu sair mais cedo" sem precisar
+  salvar primeiro.
+
+Coberto por `tests/test_rotas.mjs` (blocos 19-24, 148 checks no total no
+arquivo inteiro).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

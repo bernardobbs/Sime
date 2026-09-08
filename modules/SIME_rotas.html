@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME · Rotas</title>
+<script src="./vendor/qrcode.min.js"></script>
 <link rel="stylesheet" href="./sime_theme_cream.css">
 <link rel="stylesheet" href="./sime_components.css">
 <style>
@@ -54,7 +55,29 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
    parada) que só cabe numa linha só com mais espaço. Mesmo padrão já
    aplicado em SIME_convocacao.html (.modal, 04/09/2026). */
 @media (min-width:700px){.modal{max-width:640px}}
-@media (min-width:1000px){.modal{max-width:820px;max-height:92vh}}
+/* Layout em 2 colunas no desktop (08/09/2026, pedido direto: "no modal de
+   cada rota, podemos ter duas colunas com as informações para não ter que
+   ficar rolando tela") — mesmo mecanismo já usado em SIME_convocacao.html
+   (.cm-modal-wide, 04/09/2026): cabeçalho (com o ✕) e rodapé (Cancelar/
+   Salvar) ficam FIXOS (`flex:none`), só o corpo rola — por isso não precisa
+   mais rolar a tela toda pra achar o ✕ ou o botão Salvar. `column-count:2`
+   fixo (não `column-width` automático como em Convocação) porque o pedido
+   foi especificamente "duas colunas", não "duas ou três" — o formulário de
+   rota é mais estreito que o de pessoa, 2 colunas já usa bem o espaço.
+   `break-inside:avoid` em cada filho direto de `.m-body` evita que um campo
+   (ou a seção de paradas) seja cortado ao meio entre as colunas. */
+@media (min-width:1000px){
+  .modal{
+    max-width:900px;max-height:92vh;
+    display:flex;flex-direction:column;
+  }
+  .modal .m-hdr,.modal .m-foot{flex:none;}
+  .modal .m-body{
+    display:block;flex:1;min-height:0;overflow-y:auto;
+    column-count:2;column-gap:20px;
+  }
+  .modal .m-body>*{break-inside:avoid;margin-bottom:12px;}
+}
 .m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .m-title{font-weight:800;font-size:.92rem;}
 .m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
@@ -79,6 +102,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .rt-titulo{font-weight:800;font-size:12pt;}
   .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}
   .rt-info{font-size:9pt;line-height:1.7;margin-bottom:4mm;}
+  /* Mapa esquemático + QR (08/09/2026, pedido direto: "em imprimir ficha
+     conseguimos gerar para imprimir um mapa da rota?") — SVG desenhado das
+     coordenadas (sem depender de rede/API paga) + QR pro Google Maps de
+     verdade (vendor/qrcode.min.js, mesma lib offline dos QR de token de
+     campo). page-break-inside:avoid pra não cortar o bloco entre 2 páginas. */
+  .rt-mapa{margin-bottom:4mm;page-break-inside:avoid;}
+  .rt-mapa-titulo{font-weight:800;font-size:9.5pt;margin-bottom:2mm;}
+  .rt-mapa-legenda{font-size:8pt;margin-top:2mm;}
+  .rt-mapa-qr{display:flex;align-items:center;gap:3mm;margin-top:2mm;}
+  .rt-mapa-qr .rt-sub{margin-top:0;max-width:110px;}
   .rt-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
   .rt-tabela th,.rt-tabela td{border:1px solid #000;padding:2.5mm;vertical-align:top;text-align:left;}
   .rt-tabela th{background:#eee;font-size:8pt;}

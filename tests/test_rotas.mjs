@@ -301,14 +301,22 @@ async function login(p) {
   const modalTxt2 = await p.locator('#modal-body').textContent();
   check('modal recarregado mostra as 3 seções agora', /63/.test(modalTxt2) && (modalTxt2.match(/✕/g) || []).length >= 3, modalTxt2.replace(/\s+/g, ' ').slice(0, 400));
 
-  // Reordenar: muda a parada da seção 30 pra 9.
-  await p.locator('.m-hist-item:has-text("30")').locator('input[type=number]').fill('9');
-  await p.locator('.m-hist-item:has-text("30")').locator('input[type=number]').blur();
+  // Reposicionar (08/09/2026, pedido direto com print de produção anexado:
+  // "quero poder reposicionar os locais da rota de modo a fazer mais
+  // sentido" — o número livre de antes permitia duplicata/lacuna) — botão
+  // "▼" na 1ª parada (seção 30) troca de lugar com a 2ª (seção 31).
+  check('1ª parada (seção 30) não tem botão "▲" (já é a primeira)', await p.locator('.m-hist-item:has-text("30")').locator('button[title="Mover pra cima (mais cedo na rota)"]').isDisabled());
+  await p.locator('.m-hist-item:has-text("30")').locator('button[title="Mover pra baixo (mais tarde na rota)"]').click();
   await p.waitForTimeout(150);
-  const updParadaJuncao = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rota_secoes' && e.filtro.secao_id === 's1' && e.payload.parada === 9));
-  check('reordenar grava a nova parada na junção', !!updParadaJuncao, JSON.stringify(updParadaJuncao));
-  const updParadaLegado = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_secoes' && e.filtro.id === 's1' && e.payload.parada === 9));
-  check('reordenar também espelha a nova parada no campo legado', !!updParadaLegado, JSON.stringify(updParadaLegado));
+  const updParadaJuncaoS1 = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rota_secoes' && e.filtro.secao_id === 's1').pop());
+  check('reposicionar grava a seção 30 na 2ª posição', updParadaJuncaoS1?.payload?.parada === 2, JSON.stringify(updParadaJuncaoS1));
+  const updParadaJuncaoS2 = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rota_secoes' && e.filtro.secao_id === 's2').pop());
+  check('e a seção 31 assume a 1ª posição (troca completa, sem duplicar número)', updParadaJuncaoS2?.payload?.parada === 1, JSON.stringify(updParadaJuncaoS2));
+  const updParadaLegado = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_secoes' && e.filtro.id === 's1').pop());
+  check('reposicionar também espelha a nova ordem no campo legado', updParadaLegado?.payload?.parada === 2, JSON.stringify(updParadaLegado));
+  const txtReordenado = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  const posicao31 = txtReordenado.indexOf(' 31 '), posicao30 = txtReordenado.indexOf(' 30 ');
+  check('lista reflete a nova ordem (seção 31 agora antes da 30)', posicao31 !== -1 && posicao30 !== -1 && posicao31 < posicao30, txtReordenado.slice(0, 400));
 
   // Remover a seção 31.
   await p.locator('.m-hist-item:has-text("31")').locator('button:has-text("✕")').click();
@@ -721,6 +729,207 @@ async function login(p) {
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
+}
+
+// ── 19. Link "Ver rota completa no mapa" inclui o Destino digitado (texto
+// livre, sem coordenada) — não só as paradas geolocalizadas (08/09/2026,
+// pedido direto: "o destino deve ser incluido no mapa de rotas"). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona'; // não é nenhuma parada geolocalizada
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+
+  const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
+  check('URL usa a 1ª parada geolocalizada (s1) como origem, já que Partida está vazia', href?.includes('origin=-4.83,-42.16'), href);
+  check('URL usa o TEXTO do Destino, geocodificado pelo próprio Google — não uma coordenada', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona')}`), href);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 20. Previsão de chegada ESTIMADA (linha reta + tempo por parada) — só
+// quando TODAS as paradas têm geo, horário de saída e tempo por parada
+// preenchidos; nunca sobrescreve um valor já salvo (08/09/2026, pedido
+// direto — "como o sistema calcula a rota pelo google maps e tempo medio
+// de espera de 10 minutos... conseguimos calcular automaticamente a
+// previsão de chegada?", confirmado via pergunta que seria uma estimativa
+// em linha reta, não o Google de verdade). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.horario_saida = '07:00';
+  r1.tempo_parada_min = 10;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+
+  // 2 paradas × 10min parado = 20min; deslocamento em linha reta entre as
+  // duas coordenadas (bem próximas) arredonda pra 0min a 40km/h — chega às
+  // 07:20.
+  check('"Previsão de chegada" já vem sugerida (estimativa automática)', (await p.locator('#rt-hora-chegada').inputValue()) === '07:20');
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('nota deixa claro que é ESTIMATIVA em linha reta, não o Google calculando de verdade', /ESTIMADA/.test(modalTxt) && /não é o Google calculando de verdade/.test(modalTxt), modalTxt);
+  check('nota menciona a velocidade assumida (40km/h) e o tempo parado (20min)', /40km\/h/.test(modalTxt) && /20min parado/.test(modalTxt), modalTxt);
+
+  // Cartório digita um valor manual por cima — a estimativa nunca é forçada.
+  await p.fill('#rt-hora-chegada', '08:00');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1'));
+  check('grava o valor digitado, não a estimativa', upd?.payload?.horario_chegada_previsto === '08:00', JSON.stringify(upd));
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  check('reabrindo, mostra o valor salvo (não mais a sugestão)', (await p.locator('#rt-hora-chegada').inputValue()) === '08:00');
+
+  // Botão "↻" recalcula com os valores DIGITADOS na hora, sem precisar
+  // salvar primeiro (5min por parada em vez dos 10 salvos, saída às 08:00).
+  await p.fill('#rt-hora-saida', '08:00');
+  await p.fill('#rt-tempo-parada', '5');
+  await p.fill('#rt-hora-chegada', '');
+  await p.click('#rt-chegada-sugerir');
+  check('"↻" recalcula com os valores digitados na hora (não só o que já estava salvo)', (await p.locator('#rt-hora-chegada').inputValue()) === '08:10');
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 21. Rota sem geo completa (uma parada sem coordenada) NÃO gera
+// estimativa de chegada — "nunca adivinha" também vale aqui, melhor não
+// sugerir do que subestimar silenciosamente um trecho sem coordenada. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.horario_saida = '07:00';
+  r1.tempo_parada_min = 10; // s2 continua sem geo no mock padrão
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  check('sem geo em todas as paradas, o campo de chegada fica vazio (sem estimativa forçada)', (await p.locator('#rt-hora-chegada').inputValue()) === '');
+  check('e não mostra a nota de estimativa nem o botão "↻" de recalcular', await p.locator('#rt-chegada-sugerir').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 22. Ficha impressa: mapa esquemático (SVG) + legenda com Partida/
+// Destino SEMPRE presente (mesmo quando o destino não é nenhuma parada
+// geolocalizada) + QR pro Google Maps de verdade (08/09/2026, pedido
+// direto: "em imprimir ficha conseguimos gerar para imprimir um mapa da
+// rota?" e "o destino deve ser incluido no mapa de rotas"). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona'; // não é nenhuma parada geolocalizada
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('ficha inclui um mapa esquemático (SVG desenhado das coordenadas)', /<svg/.test(printHtml), printHtml.slice(0, 300));
+  check('legenda do mapa sempre mostra o Destino, mesmo sem coordenada pra ele', /Destino: Cartório Eleitoral da 7ª Zona/.test(printHtml), printHtml);
+  check('legenda também mostra a Partida (sugerida a partir da 1ª parada)', /Partida: Grupo Escolar A, Campo Maior/.test(printHtml), printHtml);
+  check('nota deixa claro que o esquema é em linha reta, não segue estrada', /não segue estrada nenhuma/.test(printHtml), printHtml);
+
+  const qrCount = await p.locator('#rt-ficha-qr canvas, #rt-ficha-qr table').count();
+  check('QR code é de fato gerado dentro do placeholder', qrCount === 1);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 23. Reposicionar (▲/▼): limites — 1ª parada não tem "▲", última não
+// tem "▼"; e rota SEM tipo legado reposiciona sem tocar sime_secoes. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  // Rota 002 (só recolhimento_midia, sem consumidor legado) — precisa ter
+  // 2 paradas pra testar reposicionar; adiciona a seção 63.
+  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("+")');
+  await p.waitForTimeout(100);
+  await p.fill('#rt-secao-busca', '30');
+  await p.waitForTimeout(350);
+  await p.locator('.m-hist-item:has-text("30")').click();
+  await p.waitForTimeout(150);
+  // A busca continua aberta depois de adicionar (não fecha sozinha) — só
+  // troca o termo, sem precisar clicar em "+" de novo.
+  await p.fill('#rt-secao-busca', '63');
+  await p.waitForTimeout(350);
+  await p.locator('.m-hist-item:has-text("63")').click();
+  await p.waitForTimeout(150);
+
+  check('1ª parada não tem "▲" habilitado', await p.locator('.m-hist-item:has-text("30")').locator('button[title="Mover pra cima (mais cedo na rota)"]').isDisabled());
+  check('última parada não tem "▼" habilitado', await p.locator('.m-hist-item:has-text("63")').locator('button[title="Mover pra baixo (mais tarde na rota)"]').isDisabled());
+
+  await p.locator('.m-hist-item:has-text("30")').locator('button[title="Mover pra baixo (mais tarde na rota)"]').click();
+  await p.waitForTimeout(150);
+
+  const updLegadoR2 = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_secoes'));
+  check('reposicionar numa rota sem tipo legado NÃO mexe em sime_secoes', !updLegadoR2, JSON.stringify(updLegadoR2));
+  const updJuncao = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rota_secoes'));
+  check('mas grava a nova ordem na junção normalmente', updJuncao.length === 2, JSON.stringify(updJuncao));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 24. Modal em 2 colunas no desktop (>=1000px) — some no celular
+// (08/09/2026, pedido direto: "no modal de cada rota, podemos ter duas
+// colunas com as informações para não ter que ficar rolando tela"). ──
+{
+  const ctxLargo = await b.newContext({ viewport: { width: 1280, height: 800 } });
+  const { p: pLargo, erros: errosLargo } = await abrir(ctxLargo, mock());
+  await login(pLargo);
+  await pLargo.waitForTimeout(200);
+  await pLargo.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await pLargo.waitForTimeout(100);
+
+  const colCountLargo = await pLargo.locator('.m-body').evaluate(el => getComputedStyle(el).columnCount);
+  check('modal em tela larga (>=1000px) usa 2 colunas', colCountLargo === '2', colCountLargo);
+  const footerFixo = await pLargo.locator('.m-foot').evaluate(el => getComputedStyle(el).flexShrink);
+  check('rodapé (Cancelar/Salvar) fica fixo, não rola junto com o corpo', footerFixo === '0', footerFixo);
+  check('zero erros JS (tela larga)', errosLargo.length === 0, errosLargo.join(' | '));
+  await ctxLargo.close();
+
+  const ctxCelular = await b.newContext({ viewport: { width: 390, height: 800 } });
+  const { p: pCel, erros: errosCel } = await abrir(ctxCelular, mock());
+  await login(pCel);
+  await pCel.waitForTimeout(200);
+  await pCel.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await pCel.waitForTimeout(100);
+
+  const colCountCel = await pCel.locator('.m-body').evaluate(el => getComputedStyle(el).columnCount);
+  check('no celular (390px) continua em 1 coluna, sem mudança nenhuma', colCountCel === 'auto', colCountCel);
+  check('zero erros JS (celular)', errosCel.length === 0, errosCel.join(' | '));
+  await ctxCelular.close();
 }
 
 await b.close();
