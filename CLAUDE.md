@@ -3305,6 +3305,96 @@ Seções" em todos os blocos que testam locais de votação; bloco 2 ajustado
 pra esperar o modal continuar aberto em modo edição, com a seção de locais
 já visível, em vez de fechar).
 
+**Seis melhorias próprias (08/09/2026), do mais fácil ao mais difícil —
+depois de "somente pense" (brainstorm) seguido de "faça um plano de
+implantação do mais fácil ao dificil" e "implemente o que falta para o
+módulo rotas".** Nenhuma veio de um pedido específico do cartório — são
+lacunas identificadas ao revisar o módulo inteiro depois da unificação
+acima. Todas cobertas por `tests/test_rotas.mjs` (blocos 11-16, 100
+checks no total).
+
+1. **Aviso de conflito de responsável** — `rtConflitosDe(rota)`: mesma
+   pessoa (`responsavel_ator_id`) escalada em duas rotas ATIVAS com
+   horário sobreposto ganha um aviso vermelho no card de cada uma,
+   citando a outra pelo código (`rtHorariosSobrepoem`, comparando sempre
+   normalizado por `rtFmtHora()` — "08:30" vs "08:30:00" batidos direto
+   como string dava falso negativo). Só calcula quando as DUAS rotas têm
+   `horario_saida` **e** `horario_chegada_previsto` preenchidos — sem os
+   dois não dá pra saber se sobrepõe, e "nunca adivinha" vale aqui
+   também: melhor não avisar do que avisar errado.
+2. **Painel "⚠️ Seções sem rota, por tipo"** — `rtSecoesOrfasPorTipo()`,
+   card novo entre a busca e a lista de rotas, com disclosure por tipo
+   (▸/▾, `rtToggleOrfas()`, mesmo padrão de `rsToggleMunicipios()` em
+   `sime_resumo_secoes.js`). Só considera um tipo se já existe pelo menos
+   1 rota ATIVA desse tipo cadastrada (`tipoEmUso`) — sem isso, um tipo
+   ainda não iniciado (ex.: distribuição de urnas, hoje sem nenhuma rota
+   real) apareceria como "175 seções sem rota", que é esperado/conhecido,
+   não uma lacuna acionável. O aviso real de "76 seções órfãs"
+   (recolhimento de mídia, já documentado acima) é exatamente o caso que
+   isto cobre: um tipo já em uso, com cobertura parcial.
+3. **"🗺️ Ver rota completa no mapa"** — dentro de "📍 Locais de votação
+   (paradas)", link único (Google Maps Directions API, sem chave/custo)
+   ligando a 1ª parada com geo até a última, com as do meio como
+   `waypoints=`. Só aparece com pelo menos 2 paradas geolocalizadas — só
+   um ponto não forma trajeto. Complementa (não substitui) o "📍 Ver no
+   mapa" que já existia por parada individual.
+4. **Gerador de "rota de recolhimento"** — `rtGerarRetorno(rotaId)`,
+   botão "🔄 Gerar rota de recolhimento" (só em rota com tipo
+   `distribuicao`, e só enquanto ela ainda não tem um retorno gerado).
+   Abre "Nova rota" PRÉ-PREENCHIDA (partida/destino invertidos, tipo
+   `recolhimento_urna` já marcado) mas nunca salva sozinho — código é
+   obrigatório e não dá pra adivinhar um que não colida, então o cartório
+   sempre revisa e confirma pelo "💾 Salvar" de sempre. Só as paradas (sem
+   ambiguidade nenhuma — é a mesma lista, ao contrário) são copiadas
+   automaticamente pra rota nova, logo depois dela ser salva pela primeira
+   vez (`rtCopiarParadasInvertidas`, INSERT em lote com `parada: total -
+   idx`). Usa `sime_rotas.rota_origem_id` (FK pra ela mesma) — a coluna
+   estava DOCUMENTADA aqui como "já existe pronta" desde 04/09/2026, mas
+   uma checagem direta no schema de produção (antes de escrever qualquer
+   código que dependesse dela) mostrou que nunca tinha sido criada de
+   verdade; migrada via `mcp__Supabase__apply_migration` nesta sessão,
+   antes do gerador ser construído. Card da rota de origem passa a avisar
+   "↩️ Já tem recolhimento gerado: Rota X" e esconde o botão (evita gerar
+   duas vezes); a rota gerada mostra "↩️ Recolhimento gerado a partir da
+   Rota Y".
+5. **Impressão da ficha da rota pro motorista** — `rtImprimirFicha(rotaId)`
+   / `rtHtmlFicha()`, botão "🖨️ Imprimir ficha" em todo card. Mesmo
+   mecanismo sem popup já usado em Correspondência/Oficial de Justiça
+   (`SIME_convocacao.html`): `#print-area` oculto na tela, só visível via
+   `@media print`, populado por `innerHTML` e `window.print()` chamado
+   direto (sem `window.open()`, que popup blocker costuma barrar) — CSS
+   novo em `SIME_rotas.html`, que até então não tinha nenhum mecanismo de
+   impressão. Documento de apoio operacional (não uma peça oficial):
+   partida/destino/horários, responsável **com telefone** (`sime_atores`
+   ganhou `telefone_whatsapp` no SELECT de `rtCarregar()` só pra isto),
+   itinerário/observações, e a tabela de paradas em ordem com
+   número/local/município/coordenadas (ou "sem geo") e uma coluna em
+   branco pra anotar o horário real de chegada em campo. Cada impressão
+   grava log de auditoria (`rota_ficha_impressa`, autor + quantidade de
+   paradas) — mesmo critério das demais telas de impressão do sistema:
+   não é confirmação de que a rota foi cumprida, só de que o documento foi
+   gerado.
+6. **Status operacional de Dia D, só leitura** — `sime_rotas_estado`/
+   `sime_rotas_urnas` já existiam desde a criação original do módulo de
+   Rotas (`sql/SIME_schema.sql`) pra uso do Conferente (embarque de urna,
+   `sime_rota_estado_upsert`/`sime_rota_urna_toggle`, com fila offline
+   própria) e da TV Distribuição — nunca eram lidas aqui. `rtCarregar()`
+   passou a buscar `sime_rotas_estado` da eleição ativa da zona
+   (`window.eleicaoIdAtual()`, exposto por `SIME_rotas.html` reaproveitando
+   a mesma resolução que `log()` já fazia — não duplica a query) e, a
+   partir dos ids encontrados, `sime_rotas_urnas`. Card da rota mostra uma
+   linha ("📦 Embarcando — Dia D: 1/2 embarcada(s) · Conferente: Fulano ·
+   aberta 09:00...") só quando existe uma linha de `sime_rotas_estado`
+   pra aquela rota+eleição — **nunca fabrica um "aguardando" que ninguém
+   registrou**: rota sem operação em andamento não mostra nada extra.
+   Puramente informativo — o módulo de Rotas continua sem nenhum jeito de
+   ESCREVER nesse status; isso continua sendo trabalho do Conferente
+   (offline-first, com fila própria), que não faz sentido duplicar aqui.
+   RLS de `sime_rotas_estado`/`sime_rotas_urnas` já era por zona
+   (`sime_zona_visivel`, via `eleicao_id`/`rota_estado_id`) desde a
+   criação — qualquer membro da equipe logado em Rotas já podia ler, só
+   nunca tinha sido pedido.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

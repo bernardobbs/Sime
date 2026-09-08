@@ -53,6 +53,32 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-hist{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
 .m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
 .m-hist-item b{color:var(--text);}
+
+/* IMPRESSÃO — mesmo mecanismo sem popup já usado em SIME_convocacao.html
+   (Correspondência/Oficial de Justiça, 08/09/2026): #print-area fica
+   invisível na tela e só aparece via @media print, evitando depender de
+   window.open() (bloqueado por popup blocker em muitos navegadores).
+   Documento de apoio operacional, não uma peça oficial — layout simples de
+   lista/tabela em retrato, sem @page nomeada própria. */
+#print-area{display:none;}
+@media print{
+  body > *:not(#print-area){display:none!important;}
+  #print-area{display:block!important;color:#000;}
+  .rt-pagina-ficha{padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  .rt-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
+  .rt-titulo{font-weight:800;font-size:12pt;}
+  .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}
+  .rt-info{font-size:9pt;line-height:1.7;margin-bottom:4mm;}
+  .rt-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
+  .rt-tabela th,.rt-tabela td{border:1px solid #000;padding:2.5mm;vertical-align:top;text-align:left;}
+  .rt-tabela th{background:#eee;font-size:8pt;}
+  .rt-col-num{width:6%;text-align:center;}
+  .rt-col-local{width:32%;}
+  .rt-col-mun{width:20%;}
+  .rt-col-geo{width:24%;}
+  .rt-col-chegada{width:18%;}
+  .rt-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+}
 </style>
 </head>
 <body>
@@ -88,6 +114,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="print-area"></div>
 
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_user_menu.js"></script>
@@ -138,6 +165,12 @@ window.log = async function log(acao, secao, payload) {
     await supabase.from('sime_logs').insert({ acao, modulo: 'rotas', secao_id: null, eleicao_id: eleicaoId, payload });
   } catch (e) { /* auditoria é melhor-esforço — não bloqueia a ação principal */ }
 };
+
+// Exposta pra sime_rotas_modulo.js poder ler o status operacional de Dia D
+// (sime_rotas_estado/sime_rotas_urnas, gravado por Conferente/TV
+// Distribuição) — a mesma resolução de eleição ativa que log() já usa,
+// pra não duplicar a query em dois lugares.
+window.eleicaoIdAtual = _eleicaoIdAtual;
 
 async function atualizarCabecalho() {
   const zonaId = await zonaDoUsuario();

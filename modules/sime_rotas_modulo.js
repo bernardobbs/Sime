@@ -54,6 +54,29 @@ const RT_TIPOS = Object.keys(RT_TIPO_LABEL);
 // distribuição de origem, quando gerada como retorno de uma).
 const RT_TIPOS_LEGADO = ['distribuicao'];
 
+// Status operacional de Dia D/D-1 (08/09/2026, melhoria própria) — quem
+// grava é o Conferente (SIME_conferente.html, embarque de urna) e quem
+// mostra em telão é a TV Distribuição; sime_rotas_estado/sime_rotas_urnas
+// já existiam pra isso (sql/SIME_schema.sql), só nunca eram lidas aqui. O
+// módulo de Rotas é só leitura desse status — escrever continua sendo
+// trabalho do Conferente (que tem o RPC sime_rota_estado_upsert/
+// sime_rota_urna_toggle com fila offline própria); aqui é só um resumo pro
+// cartório não precisar abrir a TV/Conferente pra saber como uma rota está
+// indo. Só busca quando há eleição ativa pra zona — sem isso não existe
+// "eleicao_id" nenhum pra filtrar (sime_rotas_estado é por eleição, não por
+// zona direto).
+const RT_STATUS_ESTADO_LABEL = {
+  aguardando: '⏳ Aguardando',
+  embarcando: '📦 Embarcando',
+  pronta: '✅ Pronta',
+  alerta: '⚠️ Alerta',
+  saiu: '🚚 Saiu',
+};
+function rtFmtTs(ts) {
+  if (!ts) return null;
+  try { return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return null; }
+}
+
 let rtDados = null; // { rotas:[...], secoesZona:[...], secoesPorRota: Map(rota_id -> [{...secao, parada}]), zonaId }
 let rtFiltroTipo = '';
 let rtBusca = '';
@@ -61,6 +84,8 @@ let rtBuscaTimer = null;
 let rtModalId = null; // null = fechado; '' = criando nova rota; id = editando
 let rtSecaoBusca = '';
 let rtSecaoBuscaTimer = null;
+let rtOrfasAberto = null; // tipo (string) com a lista de seções órfãs expandida, ou null
+let rtGerandoRetornoDe = null; // id da rota de distribuição de origem, enquanto a "Nova rota" aberta é um rascunho de retorno gerado a partir dela
 
 function rtEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,18 +106,40 @@ async function rtCarregar(opts = {}) {
     return;
   }
 
-  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id').eq('zona_id', zonaId).order('codigo'),
+  const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
+
+  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }] = await Promise.all([
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
     // (não só mesário; um responsável de rota pode ser motorista, apoio
     // logístico, etc., não faz sentido restringir por função aqui).
-    sb.from('sime_atores').select('id, nome_completo').eq('zona_id', zonaId).eq('ativo', true).order('nome_completo'),
+    // telefone_whatsapp junto (08/09/2026) — a ficha impressa da rota
+    // (rtImprimirFicha) mostra o contato do responsável pro motorista poder
+    // ligar em caso de imprevisto.
+    sb.from('sime_atores').select('id, nome_completo, telefone_whatsapp').eq('zona_id', zonaId).eq('ativo', true).order('nome_completo'),
+    // Status operacional de Dia D (08/09/2026, só leitura — ver comentário
+    // acima de RT_STATUS_ESTADO_LABEL). Sem eleição ativa não há
+    // eleicao_id pra filtrar; nesse caso nem tenta.
+    eleicaoId
+      ? sb.from('sime_rotas_estado').select('id, rota_id, status, conferente_nome, ts_aberta, ts_pronta, ts_saiu, alerta').eq('eleicao_id', eleicaoId)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (e1 || e2 || e3 || e4) {
-    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4).message }; render(); }
+  if (e1 || e2 || e3 || e4 || e5) {
+    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4 || e5).message }; render(); }
     return;
+  }
+
+  const estadoIds = (estados || []).map(e => e.id);
+  const { data: urnas } = estadoIds.length
+    ? await sb.from('sime_rotas_urnas').select('rota_estado_id, secao_id, embarcada').in('rota_estado_id', estadoIds)
+    : { data: [] };
+  const estadoPorRota = new Map((estados || []).map(e => [e.rota_id, e]));
+  const urnasPorEstado = new Map();
+  for (const u of urnas || []) {
+    if (!urnasPorEstado.has(u.rota_estado_id)) urnasPorEstado.set(u.rota_estado_id, []);
+    urnasPorEstado.get(u.rota_estado_id).push(u);
   }
 
   const secoesPorId = new Map((secoesZona || []).map(s => [s.id, s]));
@@ -105,7 +152,7 @@ async function rtCarregar(opts = {}) {
   }
   for (const arr of porRota.values()) arr.sort((a, b) => (a.parada ?? 999) - (b.parada ?? 999) || a.numero - b.numero);
 
-  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], zonaId };
+  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], estadoPorRota, urnasPorEstado, zonaId };
   if (!opts.silencioso) render();
 }
 
@@ -113,10 +160,65 @@ function rtNomeAtor(id) {
   if (!id) return null;
   return rtDados.atores?.find(a => a.id === id)?.nome_completo || null;
 }
+function rtAtor(id) {
+  if (!id) return null;
+  return rtDados.atores?.find(a => a.id === id) || null;
+}
 // "08:30" pro <input type=time>; aceita "08:30:00" (formato que o Postgres
 // devolve pra TIME) e já vem pronto assim.
 function rtFmtHora(h) {
   return h ? String(h).slice(0, 5) : null;
+}
+
+// Aviso de conflito: mesma pessoa responsável por duas rotas ATIVAS com
+// horário sobreposto (08/09/2026, melhoria própria — mesmo espírito do
+// aviso de conflito mesário×coordenador de acessibilidade já existente no
+// Dashboard de Convocação). Só calcula quando as DUAS rotas têm
+// horario_saida E horario_chegada_previsto preenchidos — sem os dois não
+// dá pra saber se sobrepõe, e "nunca adivinha" vale aqui também: melhor
+// não avisar do que avisar errado. Compara sempre normalizado por
+// rtFmtHora() (sempre "HH:MM") — comparar "08:30" com "08:30:00" direto
+// (formatos que convivem entre um valor recém-salvo e um lido do Postgres)
+// dá resultado errado na comparação de string.
+function rtHorariosSobrepoem(a, b) {
+  const aIni = rtFmtHora(a.horario_saida), aFim = rtFmtHora(a.horario_chegada_previsto);
+  const bIni = rtFmtHora(b.horario_saida), bFim = rtFmtHora(b.horario_chegada_previsto);
+  if (!aIni || !aFim || !bIni || !bFim) return false;
+  return aIni < bFim && bIni < aFim;
+}
+function rtConflitosDe(rota) {
+  if (!rota.responsavel_ator_id || !rota.ativo) return [];
+  return rtDados.rotas.filter(r => r.id !== rota.id && r.ativo && r.responsavel_ator_id === rota.responsavel_ator_id && rtHorariosSobrepoem(rota, r));
+}
+
+// Painel de seções órfãs, por tipo (08/09/2026, melhoria própria) — quantas
+// seções da zona ainda não estão em NENHUMA rota ativa de cada tipo. Só
+// avisa pra um tipo se já existe pelo menos 1 rota ATIVA desse tipo
+// cadastrada (`tipoEmUso`) — sem isso, um tipo ainda não iniciado (ex.:
+// distribuição de urnas, que hoje não tem nenhuma rota real) apareceria
+// como "175 seções sem rota", o que é esperado/conhecido, não um gap
+// acionável. O aviso real de "76 seções órfãs" (recolhimento de mídia,
+// documentado no CLAUDE.md) é exatamente o caso que isto cobre: um tipo já
+// em uso, com cobertura parcial.
+function rtSecoesOrfasPorTipo() {
+  const vinculadasPorTipo = {}; const tipoEmUso = {};
+  for (const t of RT_TIPOS) { vinculadasPorTipo[t] = new Set(); tipoEmUso[t] = false; }
+  for (const r of rtDados.rotas) {
+    if (!r.ativo) continue;
+    const secoes = rtDados.secoesPorRota.get(r.id) || [];
+    for (const t of (r.tipos || [])) {
+      if (!(t in vinculadasPorTipo)) continue;
+      tipoEmUso[t] = true;
+      for (const s of secoes) vinculadasPorTipo[t].add(s.id);
+    }
+  }
+  const orfas = {};
+  for (const t of RT_TIPOS) orfas[t] = tipoEmUso[t] ? rtDados.secoesZona.filter(s => !vinculadasPorTipo[t].has(s.id)) : [];
+  return orfas;
+}
+function rtToggleOrfas(tipo) {
+  rtOrfasAberto = rtOrfasAberto === tipo ? null : tipo;
+  render();
 }
 
 function rtFiltrar() {
@@ -147,6 +249,8 @@ function renderRotas() {
   const lista = rtFiltrar();
   const contagem = {};
   for (const r of rtDados.rotas) for (const t of (r.tipos || [])) contagem[t] = (contagem[t] || 0) + 1;
+  const orfasPorTipo = rtSecoesOrfasPorTipo();
+  const tiposComOrfa = RT_TIPOS.filter(t => orfasPorTipo[t].length);
 
   c.innerHTML = `
     <div class="import-card">
@@ -166,9 +270,30 @@ function renderRotas() {
       <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${rtDados.rotas.length} rota(s)</div>
     </div>
 
+    ${tiposComOrfa.length ? `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.86rem">⚠️ Seções sem rota, por tipo</div>
+      <div class="ic-sub">Só considera tipos que já têm pelo menos 1 rota ativa cadastrada — um tipo ainda não iniciado não conta como lacuna.</div>
+      ${tiposComOrfa.map(t => `
+      <div style="margin-top:8px">
+        <div style="cursor:pointer;font-size:.8rem;font-weight:700" onclick="rtToggleOrfas('${t}')">${rtOrfasAberto === t ? '▾' : '▸'} ${RT_TIPO_LABEL[t]}: ${orfasPorTipo[t].length} seção(ões) sem rota</div>
+        ${rtOrfasAberto === t ? `<div class="ic-sub" style="margin:4px 0 0">${orfasPorTipo[t].map(s => `${rtEsc(String(s.numero))} — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}`).join(' · ')}</div>` : ''}
+      </div>`).join('')}
+    </div>` : ''}
+
     <div style="display:flex;flex-direction:column;gap:8px">
       ${lista.length ? lista.map(r => {
         const secoes = rtDados.secoesPorRota.get(r.id) || [];
+        const conflitos = rtConflitosDe(r);
+        const retornoGerado = rtDados.rotas.find(x => x.rota_origem_id === r.id);
+        const estado = rtDados.estadoPorRota.get(r.id);
+        const urnasEstado = estado ? (rtDados.urnasPorEstado.get(estado.id) || []) : [];
+        const embarcadas = urnasEstado.filter(u => u.embarcada).length;
+        const marcos = estado ? [
+          estado.ts_aberta && `aberta ${rtFmtTs(estado.ts_aberta)}`,
+          estado.ts_pronta && `pronta ${rtFmtTs(estado.ts_pronta)}`,
+          estado.ts_saiu && `saiu ${rtFmtTs(estado.ts_saiu)}`,
+        ].filter(Boolean).join(', ') : '';
         return `
       <div class="import-card" style="padding:12px 14px;${r.ativo ? '' : 'opacity:.6'}">
         <div style="font-weight:800;font-size:.86rem">Rota ${rtEsc(r.codigo)} — ${rtEsc(r.nome)}</div>
@@ -180,10 +305,16 @@ function renderRotas() {
         ${(r.ponto_partida || r.destino) ? `<div class="ic-sub" style="margin:2px 0 0">📍 ${rtEsc(r.ponto_partida || '—')} → ${rtEsc(r.destino || '—')}</div>` : ''}
         ${(r.horario_saida || r.horario_chegada_previsto) ? `<div class="ic-sub" style="margin:2px 0 0">🕐 Sai ${rtFmtHora(r.horario_saida) || '—'} · chega (previsão) ${rtFmtHora(r.horario_chegada_previsto) || '—'}</div>` : ''}
         ${r.responsavel_ator_id ? `<div class="ic-sub" style="margin:2px 0 0">👤 Responsável: ${rtEsc(rtNomeAtor(r.responsavel_ator_id) || '—')}</div>` : ''}
+        ${conflitos.length ? `<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">⚠️ ${rtEsc(rtNomeAtor(r.responsavel_ator_id))} também está escalado na Rota ${conflitos.map(c => rtEsc(c.codigo)).join(', ')} nesse horário</div>` : ''}
         ${r.urnas_estimadas != null ? `<div class="ic-sub" style="margin:2px 0 0">Urnas estimadas: ${r.urnas_estimadas}</div>` : ''}
+        ${r.rota_origem_id ? `<div class="ic-sub" style="margin:2px 0 0">↩️ Recolhimento gerado a partir da Rota ${rtEsc(rtDados.rotas.find(x => x.id === r.rota_origem_id)?.codigo || '—')}</div>` : ''}
+        ${retornoGerado ? `<div class="ic-sub" style="margin:2px 0 0">↩️ Já tem recolhimento gerado: Rota ${rtEsc(retornoGerado.codigo)}</div>` : ''}
+        ${estado ? `<div class="ic-sub" style="margin:2px 0 0${estado.alerta ? ';color:var(--red)' : ''}">${RT_STATUS_ESTADO_LABEL[estado.status] || estado.status}${estado.alerta ? ' ⚠️' : ''} — Dia D: ${embarcadas}/${secoes.length} embarcada(s)${estado.conferente_nome ? ` · Conferente: ${rtEsc(estado.conferente_nome)}` : ''}${marcos ? ` · ${marcos}` : ''}</div>` : ''}
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtAbrirEditar('${r.id}')">✏️ Editar</button>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirFicha('${r.id}')" title="Imprime a ficha da rota (paradas em ordem, contato do responsável)">🖨️ Imprimir ficha</button>
+          ${rtRotaTemTipoLegado(r) && !retornoGerado ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>
         </div>
       </div>`;
@@ -203,13 +334,43 @@ function rtFecharModal(e) {
   if (rtModalId === null) return;
   if (!e || e.target === document.getElementById('overlay')) {
     rtModalId = null;
+    rtGerandoRetornoDe = null;
     document.getElementById('overlay')?.classList.remove('open');
   }
+}
+
+// "🔄 Gerar rota de recolhimento" (08/09/2026, melhoria própria — schema já
+// previa isso desde 04/09/2026 com `rota_origem_id`, só nunca tinha sido
+// construído). Recolhimento de urna é a distribuição percorrida ao
+// contrário, em outro dia (já documentado no CLAUDE.md) — abre "Nova rota"
+// PRÉ-PREENCHIDA com partida/destino invertidos e tipo 'recolhimento_urna',
+// mas não salva sozinho: o cartório revisa (código é obrigatório e não dá
+// pra adivinhar um que não colida) e confirma pelo "💾 Salvar" de sempre.
+// Só as paradas (que não têm ambiguidade nenhuma — é a mesma lista, ao
+// contrário) são copiadas automaticamente, depois de salvar, em
+// rtSalvarRota().
+function rtGerarRetorno(rotaId) {
+  const origem = rtDados.rotas.find(r => r.id === rotaId);
+  if (!origem) return;
+  rtGerandoRetornoDe = rotaId;
+  rtModalId = '';
+  rtRenderModalRota();
 }
 function rtRenderModalRota() {
   const isNovo = rtModalId === '';
   const r = isNovo ? null : rtDados.rotas.find(x => x.id === rtModalId);
-  const tiposAtuais = r?.tipos || [];
+  // Rascunho de "rota de recolhimento" gerado a partir de uma rota de
+  // distribuição (rtGerarRetorno()) — só existe enquanto isNovo; nunca
+  // sobrescreve os valores de uma rota já salva (r tem sempre prioridade).
+  const origem = isNovo && rtGerandoRetornoDe ? rtDados.rotas.find(x => x.id === rtGerandoRetornoDe) : null;
+  const pre = origem ? {
+    nome: `Recolhimento — ${origem.nome}`,
+    municipios: origem.municipios || [],
+    tipos: ['recolhimento_urna'],
+    ponto_partida: origem.destino || '',
+    destino: origem.ponto_partida || '',
+  } : null;
+  const tiposAtuais = r?.tipos || pre?.tipos || [];
 
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
@@ -217,12 +378,13 @@ function rtRenderModalRota() {
       <button class="close-btn" aria-label="Fechar" onclick="rtFecharModal()">✕</button>
     </div>
     <div class="m-body">
+      ${origem ? `<div class="import-result ir-ok" style="margin:0 0 10px">🔄 Rascunho de recolhimento gerado a partir da Rota ${rtEsc(origem.codigo)} — confira o código, os horários (é OUTRO DIA) e salve.</div>` : ''}
       <div class="form-group"><label for="rt-codigo">Código</label>
         <input type="text" id="rt-codigo" value="${rtEsc(r?.codigo || '')}" placeholder="ex.: 036" maxlength="3"></div>
       <div class="form-group"><label for="rt-nome">Nome</label>
-        <input type="text" id="rt-nome" value="${rtEsc(r?.nome || '')}" placeholder="ex.: Rota 036"></div>
+        <input type="text" id="rt-nome" value="${rtEsc(r?.nome ?? pre?.nome ?? '')}" placeholder="ex.: Rota 036"></div>
       <div class="form-group"><label for="rt-municipios">Municípios (separados por vírgula)</label>
-        <input type="text" id="rt-municipios" value="${rtEsc((r?.municipios || []).join(', '))}" placeholder="ex.: Campo Maior, Jatobá do Piauí"></div>
+        <input type="text" id="rt-municipios" value="${rtEsc((r?.municipios || pre?.municipios || []).join(', '))}" placeholder="ex.: Campo Maior, Jatobá do Piauí"></div>
       <div class="form-group"><label>Tipo (marque quantos precisar)</label>
         ${RT_TIPOS.map(t => `
         <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;margin-top:4px;cursor:pointer">
@@ -232,16 +394,16 @@ function rtRenderModalRota() {
       <div class="form-group"><label for="rt-itinerario">Itinerário (observações livres, opcional)</label>
         <textarea id="rt-itinerario" rows="2" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit" placeholder="ex.: vira à direita depois da ponte">${rtEsc(r?.itinerario || '')}</textarea></div>
       ${isNovo ? `
-      <div class="form-group"><div class="ic-sub" style="margin:0">📍 Salve a rota primeiro pra poder cadastrar os locais de votação (com geolocalização) abaixo.</div></div>` : `
+      <div class="form-group"><div class="ic-sub" style="margin:0">📍 Salve a rota primeiro pra poder cadastrar os locais de votação (com geolocalização) abaixo.${origem ? ' As paradas da rota de origem serão copiadas automaticamente, na ordem invertida.' : ''}</div></div>` : `
       <div class="form-group" style="margin-top:4px">
         <label>📍 Locais de votação (paradas)</label>
         <div id="rt-paradas-secao"></div>
       </div>`}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:150px"><label for="rt-partida">Ponto de partida</label>
-          <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida || '')}" placeholder="ex.: Sede da 7ª Zona"></div>
+          <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida ?? pre?.ponto_partida ?? '')}" placeholder="ex.: Sede da 7ª Zona"></div>
         <div class="form-group" style="flex:1;min-width:150px"><label for="rt-destino">Destino</label>
-          <input type="text" id="rt-destino" value="${rtEsc(r?.destino || '')}" placeholder="ex.: Escola A"></div>
+          <input type="text" id="rt-destino" value="${rtEsc(r?.destino ?? pre?.destino ?? '')}" placeholder="ex.: Escola A"></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-saida">Horário de saída</label>
@@ -286,6 +448,12 @@ function rtRenderParadas() {
   if (!r) return;
   const atuais = rtDados.secoesPorRota.get(r.id) || [];
   const atuaisIds = new Set(atuais.map(s => s.id));
+  // "Ver rota completa no mapa" (08/09/2026, melhoria própria) — só as
+  // paradas COM geo, na mesma ordem já definida por `parada`; sem endereço
+  // geocodificado pros trechos livres (ponto_partida/destino são texto
+  // livre, nunca tiveram lat/long). Precisa de pelo menos 2 pontos com geo
+  // pra fazer sentido desenhar um trajeto.
+  const comGeo = atuais.filter(s => s.latitude != null && s.longitude != null);
   const q = rtSecaoBusca.trim().toLowerCase();
   const candidatas = rtDados.secoesZona
     .filter(s => !atuaisIds.has(s.id) && (!q || `${s.numero} ${s.local_nome} ${s.municipio}`.toLowerCase().includes(q)))
@@ -298,6 +466,7 @@ function rtRenderParadas() {
 
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
+    ${comGeo.length >= 2 ? `<a href="https://www.google.com/maps/dir/?api=1&origin=${comGeo[0].latitude},${comGeo[0].longitude}&destination=${comGeo[comGeo.length - 1].latitude},${comGeo[comGeo.length - 1].longitude}${comGeo.length > 2 ? '&waypoints=' + comGeo.slice(1, -1).map(s => `${s.latitude},${s.longitude}`).join('|') : ''}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;display:inline-block;margin-bottom:8px;text-decoration:none">🗺️ Ver rota completa no mapa (${comGeo.length} de ${atuais.length} com geo)</a>` : ''}
     <div class="m-hist">
       ${atuais.length ? atuais.map(s => `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -316,6 +485,22 @@ function rtRenderParadas() {
     const el = document.getElementById('rt-secao-busca');
     if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
   }
+}
+
+// Copia as paradas da rota de ORIGEM pra rota nova, na ordem INVERTIDA —
+// chamada só uma vez, logo depois que a rota gerada por rtGerarRetorno() é
+// salva pela primeira vez. A rota gerada nasce sempre 'recolhimento_urna'
+// (nunca 'distribuicao'), então não é tipo legado — não mexe em
+// sime_secoes.rota_id/parada, só em sime_rota_secoes.
+async function rtCopiarParadasInvertidas(origemId, novaId) {
+  const sb = window.supabaseAtores;
+  const paradasOrigem = rtDados.secoesPorRota.get(origemId) || [];
+  if (!paradasOrigem.length) return;
+  const total = paradasOrigem.length;
+  const linhas = paradasOrigem.map((s, idx) => ({ rota_id: novaId, secao_id: s.id, parada: total - idx }));
+  const { error } = await sb.from('sime_rota_secoes').insert(linhas);
+  if (error) { showToast('⚠ Rota criada, mas falhou ao copiar as paradas: ' + error.message); return; }
+  await log('rota_paradas_copiadas_retorno', '', { rota_origem_id: origemId, rota_id: novaId, quantidade: linhas.length });
 }
 
 async function rtSalvarRota() {
@@ -342,15 +527,16 @@ async function rtSalvarRota() {
   if (!tipos.length) { showToast('⚠ Marque ao menos um tipo de rota'); return; }
 
   const zonaId = rtDados.zonaId;
+  const rotaOrigemId = isNovo ? rtGerandoRetornoDe : null;
   const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id };
   try {
     if (isNovo) {
-      const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true });
+      const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true, rota_origem_id: rotaOrigemId || null });
       if (error) {
         if (/duplicate key|unique constraint/i.test(error.message)) { showToast('⚠ Já existe uma rota com esse código nesta zona'); return; }
         showToast('⚠ ' + error.message); return;
       }
-      await log('rota_criada', '', { codigo, nome, tipos });
+      await log('rota_criada', '', { codigo, nome, tipos, rota_origem_id: rotaOrigemId });
       // Depois de criar, reabre o MESMO modal já em modo edição da rota
       // recém-criada — pedido direto: "quero poder cadastrar a rota...
       // devendo cadastrar cada um dos locais de votação", tudo num fluxo só,
@@ -360,7 +546,12 @@ async function rtSalvarRota() {
       await rtCarregar({ silencioso: true });
       const nova = rtDados.rotas.find(x => x.codigo === codigo);
       if (nova) {
-        showToast('✓ Rota criada — agora cadastre os locais de votação abaixo');
+        if (rotaOrigemId) {
+          await rtCopiarParadasInvertidas(rotaOrigemId, nova.id);
+          await rtCarregar({ silencioso: true }); // recarrega de novo pra já trazer as paradas recém-copiadas
+        }
+        showToast(rotaOrigemId ? '✓ Rota de recolhimento criada, com as paradas da origem invertidas' : '✓ Rota criada — agora cadastre os locais de votação abaixo');
+        rtGerandoRetornoDe = null;
         rtModalId = nova.id;
         rtRenderModalRota();
         render();
@@ -472,4 +663,60 @@ async function rtRecarregarParadas() {
   await rtCarregar({ silencioso: true });
   rtRenderParadas();
   render();
+}
+
+// ── Impressão da rota pro motorista (08/09/2026, melhoria própria) ──
+// Mesmo mecanismo sem popup já usado em Correspondência/Oficial de Justiça
+// (sime_correspondencia.js/sime_oficial_justica.js): um #print-area oculto
+// na tela, só visível via @media print, populado por innerHTML e
+// window.print() chamado direto — sem window.open(), que popup blocker
+// costuma barrar. Documento de apoio operacional (não uma peça oficial):
+// paradas em ordem, com número/local/coordenadas quando existem, e o
+// contato do responsável pra quem estiver na estrada poder ligar.
+function rtHtmlFicha(rota, paradas, responsavel) {
+  const hoje = new Date();
+  const dataEmissao = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
+  const linhas = paradas.map((s, i) => `
+    <tr>
+      <td class="rt-col-num">${i + 1}</td>
+      <td><b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}</td>
+      <td>${rtEsc(s.municipio)}</td>
+      <td>${s.latitude != null && s.longitude != null ? `${rtEsc(String(s.latitude))}, ${rtEsc(String(s.longitude))}` : '<span class="rt-sub">sem geo</span>'}</td>
+      <td class="rt-col-chegada"></td>
+    </tr>`).join('');
+  return `
+    <div class="rt-pagina-ficha">
+      <div class="rt-cabecalho">
+        <div class="rt-titulo">Ficha de Rota — ${rtEsc(rota.codigo)} — ${rtEsc(rota.nome)}</div>
+        <div class="rt-sub">${(rota.tipos || []).map(t => RT_TIPO_LABEL[t] || t).join(' · ')} · Emitida em ${dataEmissao} · ${paradas.length} local(is)</div>
+      </div>
+      <div class="rt-info">
+        <div><b>Partida:</b> ${rtEsc(rota.ponto_partida || '—')}${rota.horario_saida ? ` — ${rtEsc(rtFmtHora(rota.horario_saida))}` : ''}</div>
+        <div><b>Destino:</b> ${rtEsc(rota.destino || '—')}${rota.horario_chegada_previsto ? ` — previsão ${rtEsc(rtFmtHora(rota.horario_chegada_previsto))}` : ''}</div>
+        <div><b>Responsável:</b> ${responsavel ? `${rtEsc(responsavel.nome_completo)}${responsavel.telefone_whatsapp ? ` — ${rtEsc(fmtTelefone(responsavel.telefone_whatsapp))}` : ''}` : '—'}</div>
+        ${rota.municipios?.length ? `<div><b>Municípios:</b> ${rota.municipios.map(rtEsc).join(', ')}</div>` : ''}
+        ${rota.urnas_estimadas != null ? `<div><b>Urnas estimadas:</b> ${rota.urnas_estimadas}</div>` : ''}
+        ${rota.itinerario ? `<div><b>Observações:</b> ${rtEsc(rota.itinerario)}</div>` : ''}
+      </div>
+      <table class="rt-tabela">
+        <colgroup><col class="rt-col-num"><col class="rt-col-local"><col class="rt-col-mun"><col class="rt-col-geo"><col class="rt-col-chegada"></colgroup>
+        <thead><tr>
+          <th>Nº</th><th>Local</th><th>Município</th><th>Coordenadas</th><th>Chegada</th>
+        </tr></thead>
+        <tbody>${linhas || '<tr><td colspan="5" class="rt-sub">Nenhum local de votação vinculado ainda.</td></tr>'}</tbody>
+      </table>
+      <div class="rt-rodape">Documento de apoio operacional do SIME — em caso de dúvida ou imprevisto, contate o cartório.</div>
+    </div>`;
+}
+
+async function rtImprimirFicha(rotaId) {
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  if (!rota) return;
+  const paradas = rtDados.secoesPorRota.get(rotaId) || [];
+  const responsavel = rtAtor(rota.responsavel_ator_id);
+  const area = document.getElementById('print-area');
+  area.innerHTML = rtHtmlFicha(rota, paradas, responsavel);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_ficha_impressa', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
+  window.print();
 }

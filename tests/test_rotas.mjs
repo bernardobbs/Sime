@@ -109,6 +109,10 @@ async function abrir(ctx, m) {
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.addInitScript((x) => { window.__mock = x; }, m);
+  // window.print() abriria um diálogo real do navegador (trava o teste
+  // headless) — mesmo stub já usado em test_convocacao_mesarios.mjs, só
+  // conta as chamadas.
+  await p.addInitScript(() => { window.__printCalls = 0; window.print = () => { window.__printCalls++; }; });
   await p.route('**/vendor/supabase-js.esm.js**', (r) =>
     r.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_SUPABASE_JS }));
   await p.goto('http://localhost:8917/modules/SIME_rotas.html');
@@ -441,6 +445,190 @@ async function login(p) {
   check('seção COM latitude/longitude ganha o link "Ver no mapa"', await linkMapa.count() === 1);
   check('link aponta pro Google Maps com as coordenadas certas', (await linkMapa.getAttribute('href')) === 'https://www.google.com/maps?q=-4.83,-42.16', await linkMapa.getAttribute('href'));
   check('seção SEM latitude/longitude não ganha o link', await p.locator('.m-hist-item:has-text("31") a[title="Ver no mapa"]').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 11. Aviso de conflito de responsável — mesma pessoa escalada em duas
+// rotas ATIVAS com horário sobreposto ganha aviso; sem sobreposição, ou
+// rota inativa, não avisa. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_rotas.push(
+    { id: 'r5', zona_id: 'z7', codigo: '005', nome: 'Rota 005', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: '07:00', horario_chegada_previsto: '09:00', responsavel_ator_id: 'a1' },
+    { id: 'r6', zona_id: 'z7', codigo: '006', nome: 'Rota 006', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: '08:00', horario_chegada_previsto: '10:00', responsavel_ator_id: 'a1' },
+    { id: 'r7', zona_id: 'z7', codigo: '007', nome: 'Rota 007', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: '10:00', horario_chegada_previsto: '11:00', responsavel_ator_id: 'a1' },
+  );
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  // Comparado no texto da página inteira (não por card) — o próprio aviso
+  // de conflito de UM card cita o código do OUTRO, então filtrar cards por
+  // ".import-card:has-text('Rota 005')" colide com o card da Rota 006
+  // (que também menciona "Rota 005" no seu próprio aviso).
+  const txt = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('Rota 005 avisa conflito com a Rota 006 (07-09 x 08-10, mesmo responsável)', /Rota 005 — Rota 005[\s\S]*?também está escalado na Rota 006/.test(txt), txt.slice(0, 700));
+  check('Rota 007 (10-11, sem sobreposição) não entra em nenhum aviso de conflito', !/também está escalado na Rota 007/.test(txt), txt.slice(0, 700));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 12. Painel de seções sem rota, por tipo — só considera tipos com
+// alguma rota ATIVA já cadastrada (instalação, sem nenhuma rota no
+// fixture, nunca aparece). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  const txt = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('painel aparece com "Seções sem rota, por tipo"', /Seções sem rota, por tipo/.test(txt), txt.slice(0, 300));
+  check('recolhimento de mídia (r2, 0 seção vinculada): 3 sem rota', /Recolhimento de mídias: 3 seção/.test(txt), txt);
+  check('distribuição (r1, 2 de 3 seções vinculadas): 1 sem rota', /Distribuição de urnas: 1 seção/.test(txt), txt);
+  check('instalação (nenhuma rota cadastrada) NÃO aparece no painel', !/Instalação de seção: \d/.test(txt), txt);
+
+  await p.click(`div[onclick*="rtToggleOrfas('recolhimento_midia')"]`);
+  await p.waitForTimeout(100);
+  const aberto = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
+  check('expandir mostra a lista de seções órfãs', /63 — Escola B/.test(aberto), aberto.slice(0, 500));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 13. "Ver rota completa no mapa" — só aparece com pelo menos 2 paradas
+// com geo, com origin/destination/waypoints corretos. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+
+  const link = p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")');
+  check('link "Ver rota completa" aparece com as 2 paradas geolocalizadas', await link.count() === 1);
+  const href = await link.getAttribute('href');
+  check('URL usa a 1ª parada como origin e a última como destination', href.includes('origin=-4.83,-42.16') && href.includes('destination=-4.831,-42.161'), href);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 14. Gerador de rota de recolhimento a partir de uma rota de
+// distribuição — abre rascunho pré-preenchido (partida/destino invertidos),
+// e salvar copia as paradas da origem em ordem INVERTIDA. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.ponto_partida = 'Sede da 7ª Zona'; r1.destino = 'Escola A';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  check('Rota 001 (tipo distribuição) tem o botão de gerar recolhimento', await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("🔄 Gerar rota de recolhimento")').count() === 1);
+  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("🔄 Gerar rota de recolhimento")').click();
+  await p.waitForTimeout(100);
+
+  check('abre como "Nova rota", com o aviso de rascunho gerado', /Nova rota/.test(await p.locator('#modal-body .m-title').textContent()) && /Rascunho de recolhimento gerado a partir da Rota 001/.test(await p.locator('#modal-body').textContent()));
+  check('nome pré-preenchido referenciando a rota de origem', (await p.locator('#rt-nome').inputValue()) === 'Recolhimento — Rota 001');
+  check('partida/destino vêm INVERTIDOS (destino da origem vira partida, e vice-versa)', (await p.locator('#rt-partida').inputValue()) === 'Escola A' && (await p.locator('#rt-destino').inputValue()) === 'Sede da 7ª Zona');
+  check('tipo "recolhimento_urna" já vem marcado', await p.locator('.rt-tipo-check[value="recolhimento_urna"]').isChecked());
+
+  await p.fill('#rt-codigo', '099');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(200);
+
+  const insRota = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_rotas' && e.payload.codigo === '099'));
+  check('grava rota_origem_id apontando pra Rota 001 (r1)', insRota?.payload?.rota_origem_id === 'r1', JSON.stringify(insRota));
+
+  const insParadas = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'insert' && e.tabela === 'sime_rota_secoes' && Array.isArray(e.payload)));
+  check('copia as 2 paradas da origem em lote', insParadas?.payload?.length === 2, JSON.stringify(insParadas));
+  const paradaS1 = insParadas?.payload?.find(x => x.secao_id === 's1');
+  const paradaS2 = insParadas?.payload?.find(x => x.secao_id === 's2');
+  check('ordem INVERTIDA: s2 (última da origem) vira a 1ª parada do retorno, s1 vira a última', paradaS2?.parada === 1 && paradaS1?.parada === 2, JSON.stringify({ paradaS1, paradaS2 }));
+
+  check('modal reabre em modo edição da rota nova, já mostrando as 2 paradas copiadas', /Editar Rota 099/.test(await p.locator('#modal-body .m-title').textContent()) && /2 local\(is\) nesta rota/.test(await p.locator('#modal-body').textContent()));
+
+  // "Rota 001" sozinho agora casa com DOIS cards (o original e "Rota 099 —
+  // Recolhimento — Rota 001", que contém a mesma substring) — filtra pelo
+  // título completo do card original pra não colidir.
+  const cardOrigem = p.locator('.import-card:has-text("Rota 001 — Rota 001")');
+  check('card da Rota 001 passa a avisar que já tem recolhimento gerado', /Já tem recolhimento gerado: Rota 099/.test(await cardOrigem.textContent()));
+  check('e o botão de gerar some da Rota 001 (evita gerar duas vezes)', await cardOrigem.locator('button:has-text("🔄 Gerar rota de recolhimento")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 15. Impressão da rota pro motorista — ficha com paradas em ordem,
+// coordenadas (quando têm geo) e contato do responsável; sem popup
+// (window.print() direto), com log de auditoria. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.responsavel_ator_id = 'a1';
+  r1.ponto_partida = 'Sede da 7ª Zona'; r1.destino = 'Escola A';
+  r1.horario_saida = '06:30'; r1.horario_chegada_previsto = '08:00';
+  m.sime_atores.find(a => a.id === 'a1').telefone_whatsapp = '5586999998888';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  check('imprimir a ficha chama window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('ficha mostra código e nome da rota', /Ficha de Rota — 001 — Rota 001/.test(printHtml), printHtml.slice(0, 300));
+  check('ficha mostra partida/destino/horários', /Sede da 7ª Zona/.test(printHtml) && /06:30/.test(printHtml) && /Escola A/.test(printHtml) && /08:00/.test(printHtml), printHtml);
+  check('ficha mostra o responsável com telefone formatado', /JOAO MOTORISTA/.test(printHtml) && /\(86\) 99999-8888/.test(printHtml), printHtml);
+  check('ficha lista as 2 paradas em ordem, com coordenadas de quem tem geo', /Grupo Escolar A[\s\S]*?-4\.83, -42\.16[\s\S]*?Grupo Escolar A[\s\S]*?sem geo/.test(printHtml.replace(/\s+/g, ' ')), printHtml);
+
+  const logImpressao = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_ficha_impressa'));
+  check('grava log de auditoria da impressão', logImpressao?.payload?.rota_id === 'r1' && logImpressao?.payload?.codigo === '001' && logImpressao?.payload?.quantidade === 2, JSON.stringify(logImpressao));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 16. Status operacional de Dia D (sime_rotas_estado/sime_rotas_urnas,
+// gravado por Conferente/TV Distribuição) — só leitura, mostrado no card
+// quando existe uma linha pra rota+eleição ativa; rota sem estado nenhum
+// não mostra nada (nunca fabrica um "aguardando" que ninguém registrou). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_rotas_estado = [
+    { id: 're1', eleicao_id: 'el7', rota_id: 'r1', status: 'embarcando', conferente_nome: 'CARLOS CONFERENTE', ts_aberta: '2026-09-08T09:00:00.000Z', ts_pronta: null, ts_saiu: null, alerta: false },
+  ];
+  m.sime_rotas_urnas = [
+    { id: 'u1', rota_estado_id: 're1', secao_id: 's1', embarcada: true },
+    { id: 'u2', rota_estado_id: 're1', secao_id: 's2', embarcada: false },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  const cardR1 = await p.locator('.import-card:has-text("Rota 001 — Rota 001")').textContent();
+  check('Rota 001 mostra o status operacional (Embarcando)', /Embarcando/.test(cardR1), cardR1);
+  check('mostra contagem de embarque (1 de 2 seções)', /1\/2 embarcada\(s\)/.test(cardR1), cardR1);
+  check('mostra o nome do conferente', /Conferente: CARLOS CONFERENTE/.test(cardR1), cardR1);
+  check('mostra o marco "aberta HH:MM"', /aberta \d{2}:\d{2}/.test(cardR1), cardR1);
+
+  const cardR2 = await p.locator('.import-card:has-text("Rota 002")').textContent();
+  check('Rota 002 (sem sime_rotas_estado) não mostra status operacional nenhum', !/Dia D:/.test(cardR2), cardR2);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
