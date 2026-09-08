@@ -77,6 +77,32 @@ function rtFmtTs(ts) {
   try { return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return null; }
 }
 
+// Tempo total estimado do percurso (08/09/2026, pedido direto: "quero poder
+// estimar o tempo de parada para calcular o total do percurso da rota") —
+// `tempo_parada_min` é minutos médios parado em CADA local de votação;
+// multiplicado pelo número de paradas dá o tempo total parado. Não tenta
+// estimar deslocamento entre paradas (exigiria uma API paga de rotas, fora
+// do orçamento R$ 0,00/mês do projeto) — é só o tempo parado mesmo, somado
+// ao horário de saída como uma estimativa mínima (o percurso real é esse
+// tempo MAIS o deslocamento, que o cartório calcula por fora/no mapa).
+function rtTempoTotalParadasMin(rota, totalParadas) {
+  if (rota.tempo_parada_min == null || !totalParadas) return null;
+  return rota.tempo_parada_min * totalParadas;
+}
+function rtFmtMinutos(min) {
+  if (min == null) return null;
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h${m ? ` ${m}min` : ''}` : `${m}min`;
+}
+function rtSomarMinutos(horaStr, minutos) {
+  const h = rtFmtHora(horaStr);
+  if (!h || minutos == null) return null;
+  const [hh, mm] = h.split(':').map(Number);
+  const total = hh * 60 + mm + minutos;
+  const hFinal = Math.floor((total % (24 * 60)) / 60), mFinal = total % 60;
+  return `${String(hFinal).padStart(2, '0')}:${String(mFinal).padStart(2, '0')}`;
+}
+
 let rtDados = null; // { rotas:[...], secoesZona:[...], secoesPorRota: Map(rota_id -> [{...secao, parada}]), zonaId }
 let rtFiltroTipo = '';
 let rtBusca = '';
@@ -84,6 +110,7 @@ let rtBuscaTimer = null;
 let rtModalId = null; // null = fechado; '' = criando nova rota; id = editando
 let rtSecaoBusca = '';
 let rtSecaoBuscaTimer = null;
+let rtAdicionarAberto = false; // seção "Adicionar local de votação" (busca+lista), escondida atrás do botão "+" até o cartório clicar
 let rtOrfasAberto = null; // tipo (string) com a lista de seções órfãs expandida, ou null
 let rtGerandoRetornoDe = null; // id da rota de distribuição de origem, enquanto a "Nova rota" aberta é um rascunho de retorno gerado a partir dela
 
@@ -109,7 +136,7 @@ async function rtCarregar(opts = {}) {
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
   const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id').eq('zona_id', zonaId).order('codigo'),
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
@@ -304,6 +331,7 @@ function renderRotas() {
         ${r.itinerario ? `<div class="ic-sub" style="margin:6px 0 0">${rtEsc(r.itinerario)}</div>` : ''}
         ${(r.ponto_partida || r.destino) ? `<div class="ic-sub" style="margin:2px 0 0">📍 ${rtEsc(r.ponto_partida || '—')} → ${rtEsc(r.destino || '—')}</div>` : ''}
         ${(r.horario_saida || r.horario_chegada_previsto) ? `<div class="ic-sub" style="margin:2px 0 0">🕐 Sai ${rtFmtHora(r.horario_saida) || '—'} · chega (previsão) ${rtFmtHora(r.horario_chegada_previsto) || '—'}</div>` : ''}
+        ${r.tempo_parada_min != null && secoes.length ? `<div class="ic-sub" style="margin:2px 0 0">⏱️ ${secoes.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, secoes.length))} parado(a)${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, secoes.length))}` : ''}</div>` : ''}
         ${r.responsavel_ator_id ? `<div class="ic-sub" style="margin:2px 0 0">👤 Responsável: ${rtEsc(rtNomeAtor(r.responsavel_ator_id) || '—')}</div>` : ''}
         ${conflitos.length ? `<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">⚠️ ${rtEsc(rtNomeAtor(r.responsavel_ator_id))} também está escalado na Rota ${conflitos.map(c => rtEsc(c.codigo)).join(', ')} nesse horário</div>` : ''}
         ${r.urnas_estimadas != null ? `<div class="ic-sub" style="margin:2px 0 0">Urnas estimadas: ${r.urnas_estimadas}</div>` : ''}
@@ -328,13 +356,15 @@ function renderRotas() {
 }
 
 // ── Modal: nova/editar rota ──
-function rtAbrirNovo() { rtModalId = ''; rtRenderModalRota(); }
-function rtAbrirEditar(id) { rtModalId = id; rtRenderModalRota(); }
+function rtAbrirNovo() { rtModalId = ''; rtAdicionarAberto = false; rtSecaoBusca = ''; rtRenderModalRota(); }
+function rtAbrirEditar(id) { rtModalId = id; rtAdicionarAberto = false; rtSecaoBusca = ''; rtRenderModalRota(); }
 function rtFecharModal(e) {
   if (rtModalId === null) return;
   if (!e || e.target === document.getElementById('overlay')) {
     rtModalId = null;
     rtGerandoRetornoDe = null;
+    rtAdicionarAberto = false;
+    rtSecaoBusca = '';
     document.getElementById('overlay')?.classList.remove('open');
   }
 }
@@ -356,6 +386,36 @@ function rtGerarRetorno(rotaId) {
   rtModalId = '';
   rtRenderModalRota();
 }
+
+// "1º/último local da rota" — nome exibido pro local de uma parada (usado
+// tanto pra sugerir Partida/Destino quanto pra recalcular sob pedido).
+function rtNomeLocalParada(s) {
+  return s ? `${s.local_nome}, ${s.municipio}` : '';
+}
+// Partida/destino sugeridos a partir da lista de paradas (08/09/2026,
+// pedido direto: "acho melhor o ponto de partida ser o primeiro item da
+// rota, e o destino o ultimo, pegue dos locais (paradas)") — pré-preenche
+// os campos sozinho a partir do 1º/último local de votação da rota, mas
+// CONTINUAM sendo campos de texto livres, editáveis: uma rota de
+// distribuição de urnas, por exemplo, sai de verdade do Cartório Eleitoral
+// (não de um local de votação) — forçar sempre automático destruiria esse
+// valor real já em produção. `rtUsarSugestaoPartida`/`rtUsarSugestaoDestino`
+// deixam o cartório recalcular sob demanda (ex.: depois de reordenar as
+// paradas), sem sobrescrever nada sozinho.
+function rtUsarSugestaoPartida() {
+  const r = rtDados.rotas.find(x => x.id === rtModalId);
+  const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
+  if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
+  const el = document.getElementById('rt-partida');
+  if (el) el.value = rtNomeLocalParada(atuais[0]);
+}
+function rtUsarSugestaoDestino() {
+  const r = rtDados.rotas.find(x => x.id === rtModalId);
+  const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
+  if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
+  const el = document.getElementById('rt-destino');
+  if (el) el.value = rtNomeLocalParada(atuais[atuais.length - 1]);
+}
 function rtRenderModalRota() {
   const isNovo = rtModalId === '';
   const r = isNovo ? null : rtDados.rotas.find(x => x.id === rtModalId);
@@ -371,6 +431,14 @@ function rtRenderModalRota() {
     destino: origem.ponto_partida || '',
   } : null;
   const tiposAtuais = r?.tipos || pre?.tipos || [];
+  // Partida/destino sugeridos a partir das paradas já cadastradas (só existe
+  // pra rota já salva — "Nova rota" ainda não tem onde vincular local
+  // nenhum). Só entra como default quando a rota ainda não tem um valor
+  // próprio salvo (nem um rascunho pré-preenchido de rtGerarRetorno) — nunca
+  // sobrescreve um "Cartório Eleitoral" já digitado.
+  const paradasAtuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
+  const partidaSugerida = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[0]) : '';
+  const destinoSugerido = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[paradasAtuais.length - 1]) : '';
 
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
@@ -385,11 +453,10 @@ function rtRenderModalRota() {
         <input type="text" id="rt-nome" value="${rtEsc(r?.nome ?? pre?.nome ?? '')}" placeholder="ex.: Rota 036"></div>
       <div class="form-group"><label for="rt-municipios">Municípios (separados por vírgula)</label>
         <input type="text" id="rt-municipios" value="${rtEsc((r?.municipios || pre?.municipios || []).join(', '))}" placeholder="ex.: Campo Maior, Jatobá do Piauí"></div>
-      <div class="form-group"><label>Tipo (marque quantos precisar)</label>
-        ${RT_TIPOS.map(t => `
-        <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;margin-top:4px;cursor:pointer">
-          <input type="checkbox" class="rt-tipo-check" value="${t}" ${tiposAtuais.includes(t) ? 'checked' : ''}> ${RT_TIPO_LABEL[t]}
-        </label>`).join('')}
+      <div class="form-group"><label for="rt-tipos">Tipo (Ctrl/Cmd+clique pra marcar mais de um)</label>
+        <select id="rt-tipos" multiple size="${RT_TIPOS.length}" style="width:100%;padding:4px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.85rem;font-family:inherit">
+          ${RT_TIPOS.map(t => `<option value="${t}" ${tiposAtuais.includes(t) ? 'selected' : ''}>${RT_TIPO_LABEL[t]}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group"><label for="rt-itinerario">Itinerário (observações livres, opcional)</label>
         <textarea id="rt-itinerario" rows="2" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit" placeholder="ex.: vira à direita depois da ponte">${rtEsc(r?.itinerario || '')}</textarea></div>
@@ -401,16 +468,28 @@ function rtRenderModalRota() {
       </div>`}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:150px"><label for="rt-partida">Ponto de partida</label>
-          <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida ?? pre?.ponto_partida ?? '')}" placeholder="ex.: Sede da 7ª Zona"></div>
+          <div style="display:flex;gap:4px">
+            <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida ?? pre?.ponto_partida ?? partidaSugerida)}" placeholder="ex.: Cartório Eleitoral da 7ª Zona" style="flex:1">
+            ${!isNovo ? `<button type="button" id="rt-partida-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoPartida()" title="Usar o 1º local de votação da lista de paradas abaixo">↻</button>` : ''}
+          </div>
+        </div>
         <div class="form-group" style="flex:1;min-width:150px"><label for="rt-destino">Destino</label>
-          <input type="text" id="rt-destino" value="${rtEsc(r?.destino ?? pre?.destino ?? '')}" placeholder="ex.: Escola A"></div>
+          <div style="display:flex;gap:4px">
+            <input type="text" id="rt-destino" value="${rtEsc(r?.destino ?? pre?.destino ?? destinoSugerido)}" placeholder="ex.: Escola A" style="flex:1">
+            ${!isNovo ? `<button type="button" id="rt-destino-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoDestino()" title="Usar o último local de votação da lista de paradas abaixo">↻</button>` : ''}
+          </div>
+        </div>
       </div>
+      ${!isNovo && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">📍 Sugestão a partir das paradas: 1º = ${rtEsc(partidaSugerida)} · último = ${rtEsc(destinoSugerido)} — clique em ↻ pra usar, ou digite outro valor (ex.: um endereço que não é local de votação).</div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-saida">Horário de saída</label>
           <input type="time" id="rt-hora-saida" value="${rtFmtHora(r?.horario_saida) || ''}"></div>
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-chegada">Previsão de chegada</label>
           <input type="time" id="rt-hora-chegada" value="${rtFmtHora(r?.horario_chegada_previsto) || ''}"></div>
+        <div class="form-group" style="flex:1;min-width:120px"><label for="rt-tempo-parada">Tempo por parada (min)</label>
+          <input type="number" id="rt-tempo-parada" min="0" value="${r?.tempo_parada_min ?? ''}" placeholder="ex.: 10"></div>
       </div>
+      ${!isNovo && r?.tempo_parada_min != null && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">⏱️ Tempo total estimado parado: ${paradasAtuais.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, paradasAtuais.length))}${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, paradasAtuais.length))}` : ''}.</div>` : ''}
       <div class="form-group"><label for="rt-responsavel">Responsável pela rota (opcional)</label>
         <select id="rt-responsavel">
           <option value="">— sem responsável —</option>
@@ -441,6 +520,18 @@ function rtRenderModalRota() {
 // outros campos (código, nome, itinerário, horário...) — aqui a busca por
 // local de votação e os demais campos da rota convivem no mesmo modal, então
 // esse isolamento passou a importar de verdade.
+// Botão "+" que esconde/mostra a busca+lista de "Adicionar local de votação"
+// (08/09/2026, pedido direto: "substitua o Adicionar local de votação
+// somente por um botão de +, ai abre para selecionar os locais") — igual à
+// lista de paradas já vinculadas, fica fechado até o cartório precisar
+// adicionar mais um local; fechar de novo limpa a busca (rtSecaoBusca), pra
+// não reabrir com um texto de busca velho na próxima vez.
+function rtToggleAdicionar() {
+  rtAdicionarAberto = !rtAdicionarAberto;
+  if (!rtAdicionarAberto) rtSecaoBusca = '';
+  rtRenderParadas();
+}
+
 function rtRenderParadas() {
   const alvo = document.getElementById('rt-paradas-secao');
   if (!alvo) return; // modal fechado, ou é "nova rota" (ainda sem id pra vincular seção)
@@ -474,13 +565,20 @@ function rtRenderParadas() {
         <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>
       </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
     </div>
-    <label for="rt-secao-busca" style="font-size:.78rem;color:var(--text2);display:block;margin-top:8px">Adicionar local de votação</label>
-    <input type="text" id="rt-secao-busca" value="${rtEsc(rtSecaoBusca)}" oninput="rtOnSecaoBuscaInput(this.value)" placeholder="Buscar por número, local ou município…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-    <div class="m-hist">
-      ${candidatas.length ? candidatas.map(s => `
-      <div class="m-hist-item" style="cursor:pointer" onclick="rtAdicionarSecao('${r.id}','${s.id}')">➕ <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ' 📍' : ''}</div>`).join('')
-        : (q ? '<div class="ic-sub" style="margin:0">Nenhum local encontrado.</div>' : '')}
-    </div>`;
+    ${rtAdicionarAberto ? `
+    <div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label for="rt-secao-busca" style="font-size:.78rem;color:var(--text2)">Adicionar local de votação</label>
+        <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtToggleAdicionar()">✕ Fechar</button>
+      </div>
+      <input type="text" id="rt-secao-busca" value="${rtEsc(rtSecaoBusca)}" oninput="rtOnSecaoBuscaInput(this.value)" placeholder="Buscar por número, local ou município…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+      <div class="m-hist">
+        ${candidatas.length ? candidatas.map(s => `
+        <div class="m-hist-item" style="cursor:pointer" onclick="rtAdicionarSecao('${r.id}','${s.id}')">➕ <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ' 📍' : ''}</div>`).join('')
+          : (q ? '<div class="ic-sub" style="margin:0">Nenhum local encontrado.</div>' : '')}
+      </div>
+    </div>` : `
+    <button class="btn btn-out" style="font-size:.8rem;padding:6px 12px;margin-top:8px" onclick="rtToggleAdicionar()" title="Adicionar local de votação">+</button>`}`;
   if (buscaAtiva) {
     const el = document.getElementById('rt-secao-busca');
     if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
@@ -509,7 +607,7 @@ async function rtSalvarRota() {
   const nome = document.getElementById('rt-nome').value.trim();
   const municipiosRaw = document.getElementById('rt-municipios').value.trim();
   const municipios = municipiosRaw ? municipiosRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const tipos = [...document.querySelectorAll('.rt-tipo-check:checked')].map(el => el.value);
+  const tipos = [...document.getElementById('rt-tipos').selectedOptions].map(o => o.value);
   const itinerario = document.getElementById('rt-itinerario').value.trim() || null;
   const ponto_partida = document.getElementById('rt-partida').value.trim() || null;
   const destino = document.getElementById('rt-destino').value.trim() || null;
@@ -518,6 +616,8 @@ async function rtSalvarRota() {
   const responsavel_ator_id = document.getElementById('rt-responsavel').value || null;
   const urnasRaw = document.getElementById('rt-urnas').value.trim();
   const urnas_estimadas = urnasRaw ? parseInt(urnasRaw, 10) : null;
+  const tempoParadaRaw = document.getElementById('rt-tempo-parada').value.trim();
+  const tempo_parada_min = tempoParadaRaw ? parseInt(tempoParadaRaw, 10) : null;
   const isNovo = rtModalId === '';
   const ativoEl = document.getElementById('rt-ativo');
   const ativo = isNovo ? true : (ativoEl ? ativoEl.checked : true);
@@ -528,7 +628,7 @@ async function rtSalvarRota() {
 
   const zonaId = rtDados.zonaId;
   const rotaOrigemId = isNovo ? rtGerandoRetornoDe : null;
-  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id };
+  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, tempo_parada_min };
   try {
     if (isNovo) {
       const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true, rota_origem_id: rotaOrigemId || null });
@@ -696,6 +796,7 @@ function rtHtmlFicha(rota, paradas, responsavel) {
         <div><b>Responsável:</b> ${responsavel ? `${rtEsc(responsavel.nome_completo)}${responsavel.telefone_whatsapp ? ` — ${rtEsc(fmtTelefone(responsavel.telefone_whatsapp))}` : ''}` : '—'}</div>
         ${rota.municipios?.length ? `<div><b>Municípios:</b> ${rota.municipios.map(rtEsc).join(', ')}</div>` : ''}
         ${rota.urnas_estimadas != null ? `<div><b>Urnas estimadas:</b> ${rota.urnas_estimadas}</div>` : ''}
+        ${rota.tempo_parada_min != null && paradas.length ? `<div><b>Tempo estimado parado:</b> ${paradas.length} × ${rota.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(rota, paradas.length))} (sem contar deslocamento entre paradas)</div>` : ''}
         ${rota.itinerario ? `<div><b>Observações:</b> ${rtEsc(rota.itinerario)}</div>` : ''}
       </div>
       <table class="rt-tabela">

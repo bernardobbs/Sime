@@ -174,7 +174,7 @@ async function login(p) {
   await p.fill('#rt-codigo', '040');
   await p.fill('#rt-nome', 'Rota de Instalação Centro');
   await p.fill('#rt-municipios', 'Campo Maior, Jatobá do Piauí');
-  await p.check('.rt-tipo-check[value="instalacao"]');
+  await p.selectOption('#rt-tipos', ['instalacao']);
   await p.fill('#rt-itinerario', 'Escola X → Escola Y');
   await p.fill('#rt-urnas', '3');
   await p.click('#modal-body button:has-text("Salvar")');
@@ -229,9 +229,9 @@ async function login(p) {
   await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
   check('modal de editar mostra o código no título', /Editar Rota 002/.test(await p.locator('#modal-body .m-title').textContent()));
-  check('checkbox do tipo atual já vem marcado', await p.locator('.rt-tipo-check[value="recolhimento_midia"]').isChecked());
+  check('opção do tipo atual já vem selecionada na caixa de seleção', await p.locator('#rt-tipos option[value="recolhimento_midia"]').evaluate(el => el.selected));
 
-  await p.check('.rt-tipo-check[value="distribuicao"]');
+  await p.selectOption('#rt-tipos', ['recolhimento_midia', 'distribuicao']);
   await p.uncheck('#rt-ativo');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(150);
@@ -277,7 +277,17 @@ async function login(p) {
   check('modal mostra as 2 seções já vinculadas', /30/.test(modalTxt) && /31/.test(modalTxt) && /Grupo Escolar A/.test(modalTxt));
   check('avisa que esta rota também é usada por Motorista/Conferente/TV Distribuição', /também usada por Motorista\/Conferente\/TV Distribuição/.test(modalTxt));
 
-  // Adicionar a seção 63 (ainda sem rota nenhuma).
+  // "Adicionar local de votação" fica escondido atrás de um botão "+"
+  // até o cartório clicar (08/09/2026, pedido direto) — nem o rótulo nem
+  // a busca aparecem antes do clique.
+  check('busca de "adicionar local" começa escondida, só o botão "+" aparece', await p.locator('#rt-secao-busca').count() === 0 && await p.locator('#rt-paradas-secao button:has-text("+")').count() === 1);
+  check('rótulo "Adicionar local de votação" também some até abrir', !/Adicionar local de votação/.test(modalTxt), modalTxt);
+
+  // Adicionar a seção 63 (ainda sem rota nenhuma) — clicar no "+" abre a
+  // busca+lista.
+  await p.click('#rt-paradas-secao button:has-text("+")');
+  await p.waitForTimeout(100);
+  check('clicar no "+" abre a busca, com o rótulo e um botão de fechar', await p.locator('#rt-secao-busca').count() === 1 && /Adicionar local de votação/.test(await p.locator('#rt-paradas-secao').textContent()) && await p.locator('#rt-paradas-secao button:has-text("✕ Fechar")').count() === 1);
   await p.fill('#rt-secao-busca', '63');
   await p.waitForTimeout(350);
   await p.locator('.m-hist-item:has-text("63")').click();
@@ -325,6 +335,8 @@ async function login(p) {
   await p.waitForTimeout(100);
   check('não avisa nada sobre Motorista/Conferente (tipo sem consumidor legado)', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
+  await p.click('#rt-paradas-secao button:has-text("+")');
+  await p.waitForTimeout(100);
   await p.fill('#rt-secao-busca', '63');
   await p.waitForTimeout(350);
   await p.locator('.m-hist-item:has-text("63")').click();
@@ -351,6 +363,8 @@ async function login(p) {
 
   // s1 já está na Rota 001 (r1) — move pra Rota 003 (r3).
   await p.locator('.import-card:has-text("Rota 003")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("+")');
   await p.waitForTimeout(100);
   await p.fill('#rt-secao-busca', '30');
   await p.waitForTimeout(350);
@@ -380,6 +394,8 @@ async function login(p) {
   await p.waitForTimeout(100);
   check('rota só recolhimento_urna NÃO avisa nada sobre Motorista/Conferente', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
+  await p.click('#rt-paradas-secao button:has-text("+")');
+  await p.waitForTimeout(100);
   await p.fill('#rt-secao-busca', '63');
   await p.waitForTimeout(350);
   await p.locator('.m-hist-item:has-text("63")').click();
@@ -543,7 +559,7 @@ async function login(p) {
   check('abre como "Nova rota", com o aviso de rascunho gerado', /Nova rota/.test(await p.locator('#modal-body .m-title').textContent()) && /Rascunho de recolhimento gerado a partir da Rota 001/.test(await p.locator('#modal-body').textContent()));
   check('nome pré-preenchido referenciando a rota de origem', (await p.locator('#rt-nome').inputValue()) === 'Recolhimento — Rota 001');
   check('partida/destino vêm INVERTIDOS (destino da origem vira partida, e vice-versa)', (await p.locator('#rt-partida').inputValue()) === 'Escola A' && (await p.locator('#rt-destino').inputValue()) === 'Sede da 7ª Zona');
-  check('tipo "recolhimento_urna" já vem marcado', await p.locator('.rt-tipo-check[value="recolhimento_urna"]').isChecked());
+  check('tipo "recolhimento_urna" já vem selecionado na caixa de seleção', await p.locator('#rt-tipos option[value="recolhimento_urna"]').evaluate(el => el.selected));
 
   await p.fill('#rt-codigo', '099');
   await p.click('#modal-body button:has-text("Salvar")');
@@ -629,6 +645,79 @@ async function login(p) {
 
   const cardR2 = await p.locator('.import-card:has-text("Rota 002")').textContent();
   check('Rota 002 (sem sime_rotas_estado) não mostra status operacional nenhum', !/Dia D:/.test(cardR2), cardR2);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 17. Partida/destino sugeridos a partir das paradas (editável, nunca
+// forçado) + tempo estimado por parada, pro cálculo do percurso total
+// (08/09/2026, pedido direto). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Troca a 2ª parada da Rota 001 pra um local com nome diferente, pra dar
+  // pra distinguir claramente a sugestão de partida da de destino.
+  m.sime_rota_secoes.find(rs => rs.rota_id === 'r1' && rs.secao_id === 's2').secao_id = 's3';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+
+  check('Partida vem sugerida com o 1º local da lista de paradas', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
+  check('Destino vem sugerido com o último local da lista de paradas', (await p.locator('#rt-destino').inputValue()) === 'Escola B, Campo Maior');
+
+  // Cartório digita um valor próprio por cima da sugestão de partida (ex.:
+  // um endereço que não é local de votação nenhum) — a sugestão nunca é
+  // forçada; o destino fica intocado, herdando a sugestão mesmo assim.
+  await p.fill('#rt-partida', 'Cartório Eleitoral da 7ª Zona');
+  await p.fill('#rt-tempo-parada', '10');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1'));
+  check('grava o valor digitado, não a sugestão, pra partida', upd?.payload?.ponto_partida === 'Cartório Eleitoral da 7ª Zona', JSON.stringify(upd));
+  check('grava o valor sugerido (nunca editado) pro destino', upd?.payload?.destino === 'Escola B, Campo Maior', JSON.stringify(upd));
+  check('grava tempo_parada_min', upd?.payload?.tempo_parada_min === 10, JSON.stringify(upd));
+
+  // Reabre e confere o cálculo do tempo total (2 paradas × 10 min = 20min).
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('modal mostra o tempo total estimado (2 × 10 min = 20min)', /2 parada\(s\) × 10 min ≈ 20min/.test(modalTxt), modalTxt);
+  check('partida agora mostra o valor salvo (Cartório), não mais a sugestão', (await p.locator('#rt-partida').inputValue()) === 'Cartório Eleitoral da 7ª Zona');
+
+  const cardTxt = (await p.locator('.import-card:has-text("Rota 001 — Rota 001")').textContent()).replace(/\s+/g, ' ');
+  check('card mostra o tempo estimado também', /2 parada\(s\) × 10 min ≈ 20min/.test(cardTxt), cardTxt);
+
+  // Botão "↻" recalcula a sugestão sob demanda (ex.: cartório apagou o
+  // campo por engano), sem depender de reabrir o modal.
+  await p.fill('#rt-partida', '');
+  await p.click('#rt-partida-sugerir');
+  check('clicar em "↻" preenche de novo com a sugestão atual (1º local)', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 18. "Tipo" virou caixa de seleção múltipla (não mais checkboxes) —
+// confere que o elemento certo existe e aceita mais de um valor selecionado
+// ao mesmo tempo (08/09/2026, pedido direto). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.click('button:has-text("➕ Nova rota")');
+  await p.waitForTimeout(100);
+
+  check('"Tipo" é uma <select multiple>, não mais checkboxes', await p.locator('#rt-tipos').evaluate(el => el.tagName === 'SELECT' && el.multiple === true) && await p.locator('.rt-tipo-check').count() === 0);
+  await p.selectOption('#rt-tipos', ['distribuicao', 'recolhimento_urna']);
+  const selecionados = await p.locator('#rt-tipos').evaluate(el => [...el.selectedOptions].map(o => o.value));
+  check('aceita mais de um tipo selecionado ao mesmo tempo', JSON.stringify(selecionados.sort()) === JSON.stringify(['distribuicao', 'recolhimento_urna']), JSON.stringify(selecionados));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

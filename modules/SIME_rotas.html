@@ -45,6 +45,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:opacity .2s;}
 .overlay.open{opacity:1;pointer-events:all;}
 .modal{background:var(--card);border-radius:13px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+/* Modal responsivo (08/09/2026, pedido direto: "o modal deve ser
+   responsivo, tanto para celular, como para computador, sendo o modal de
+   computador maior") — abaixo de 700px (celular, a maioria dos tablets em
+   retrato) o comportamento continua exatamente o de antes; acima disso o
+   modal ganha mais largura (e altura útil), já que o formulário de rota
+   tem bastante campo lado a lado (partida/destino/horários/tempo por
+   parada) que só cabe numa linha só com mais espaço. Mesmo padrão já
+   aplicado em SIME_convocacao.html (.modal, 04/09/2026). */
+@media (min-width:700px){.modal{max-width:640px}}
+@media (min-width:1000px){.modal{max-width:820px;max-height:92vh}}
 .m-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
 .m-title{font-weight:800;font-size:.92rem;}
 .m-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}

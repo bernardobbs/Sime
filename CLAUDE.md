@@ -3395,6 +3395,71 @@ checks no total).
    criação — qualquer membro da equipe logado em Rotas já podia ler, só
    nunca tinha sido pedido.
 
+**Quatro ajustes no modal de rota (08/09/2026), pedido direto do cartório
+depois de usar o módulo:** "Tipo (marque quantos precisar), mude para uma
+caixa de seleção. o modal deve ser responsivo, tanto para celular, como
+para computador, sendo o modal de computador maior. onde tem ponto de
+partida e destino não ficou legal, acho melhor o ponto de partida ser o
+primeiro item da rota, e o destino o ultimo, pegue dos locais (paradas).
+quero poder estimar o tempo de parada para calcular o total do percurso da
+rota." Coberto por `tests/test_rotas.mjs` (blocos 17-18, 21 checks novos).
+
+- **"Tipo" virou `<select multiple>`** (`#rt-tipos`, `size` igual ao
+  número de tipos — mostra as 4 opções sem precisar abrir dropdown) — os
+  checkboxes (`.rt-tipo-check`) saíram de vez. `rtSalvarRota()` lê
+  `[...document.getElementById('rt-tipos').selectedOptions]` em vez de
+  `querySelectorAll('.rt-tipo-check:checked')`. Ctrl/Cmd+clique marca mais
+  de um, mesmo padrão nativo de qualquer `<select multiple>`.
+- **Modal responsivo, maior no desktop** — `.modal` ganhou dois
+  breakpoints (`@media (min-width:700px){max-width:640px}` e
+  `(min-width:1000px){max-width:820px;max-height:92vh}`), mesmo padrão já
+  usado em `SIME_convocacao.html` (04/09/2026). Abaixo de 700px (celular)
+  nada muda. Optou-se por só alargar o modal (não reorganizar em colunas
+  como o modal de "Contatar mesários" faz) — o formulário de rota é
+  essencialmente linear (código→nome→tipo→itinerário→paradas→partida/
+  destino/horários→responsável), diferente do modal de pessoa que tem
+  várias seções independentes; alargar já resolve o aperto real (campos
+  lado a lado como partida/destino/horário/tempo por parada cabendo numa
+  linha só) sem o risco de reorganizar um formulário sequencial em blocos
+  que quebram de forma estranha.
+- **Ponto de partida/destino SUGERIDOS a partir das paradas, mas continuam
+  editáveis** — decisão tomada via pergunta direta ao dono do projeto
+  antes de implementar (o pedido original, se levado ao pé da letra,
+  destruiria um dado real já em produção: várias rotas de distribuição têm
+  `ponto_partida='Cartório Eleitoral da 7ª Zona Eleitoral'`, que não é
+  nenhum local de votação e portanto nunca apareceria como "1º item da
+  rota"). Escolhida a opção "Automático, mas editável": ao abrir o modal
+  de uma rota já salva, se o campo ainda não tem valor próprio no banco
+  (nem um rascunho de `rtGerarRetorno`), ele já vem preenchido com
+  `rtNomeLocalParada()` do 1º/último local da lista de paradas
+  (`partidaSugerida`/`destinoSugerido` em `rtRenderModalRota()`) — mas
+  continua sendo um `<input type="text">` normal, editável por cima a
+  qualquer momento. Um botão **"↻"** ao lado de cada campo
+  (`rtUsarSugestaoPartida()`/`rtUsarSugestaoDestino()`, ids
+  `rt-partida-sugerir`/`rt-destino-sugerir`) recalcula sob demanda (ex.:
+  depois de reordenar as paradas) sem esperar reabrir o modal — só existe
+  em rota já salva (`!isNovo`), já que "Nova rota" ainda não tem onde
+  vincular parada nenhuma. Uma nota (`ic-sub`) abaixo dos campos mostra a
+  sugestão atual em texto, pra deixar claro que é só um ponto de partida
+  editável, não um valor travado.
+- **Tempo estimado por parada, pro cálculo do percurso total** —
+  `sime_rotas.tempo_parada_min` (novo, migração `sime_rotas_tempo_parada_min`,
+  minutos médios parado em CADA local de votação da rota). Campo
+  "Tempo por parada (min)" na mesma linha de Horário de saída/Previsão de
+  chegada. `rtTempoTotalParadasMin(rota, totalParadas)` multiplica pelo
+  número de paradas cadastradas; `rtFmtMinutos()` formata como "Xh Ymin"/
+  "Ymin"; quando `horario_saida` também está preenchido,
+  `rtSomarMinutos()` soma os minutos e mostra "libera por volta de HH:MM"
+  — só o tempo PARADO, nunca tenta estimar deslocamento entre paradas
+  (exigiria uma API paga de rotas/matriz de distância, fora do orçamento
+  R$ 0,00/mês do projeto; o texto deixa isso explícito: "sem contar
+  deslocamento"). Mostrado em três lugares que já reaproveitam a mesma
+  conta: dentro do modal (logo abaixo de partida/destino/horários), no
+  card da lista (linha "⏱️ N parada(s) × M min ≈ ..."), e na ficha impressa
+  (`rtHtmlFicha()`, linha "Tempo estimado parado"). Some sozinho quando
+  `tempo_parada_min` não está preenchido ou a rota ainda não tem paradas —
+  mesmo critério de "nunca fabrica dado" já usado no resto do módulo.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
