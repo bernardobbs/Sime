@@ -509,7 +509,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap, getRotasRecolhimentoMidia } from './sime_dados.js';
 import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias, subscribeHeartbeat } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
@@ -559,11 +559,10 @@ async function carregarDadosReais(){
   // (getRotas()) não serve pra isto: ele lê sime_secoes.rota_id, campo legado
   // que só é escrito por rota de tipo 'distribuicao' desde a correção do
   // módulo de Rotas (04/09/2026, ver CLAUDE.md — "recolhimento de urna é
-  // cadastro separado"). Precisa ir direto em sime_rota_secoes, mesma junção
-  // que SIME_rotas.html/sime_rotas_modulo.js já usa. Carregado uma vez (rota
-  // e paradas mudam pouco, e quando mudam é no módulo de Rotas, não aqui) —
-  // "↺ Atualizar" da aba Previsão refaz esta busca sob demanda.
-  if (secoesReais) await carregarRotasMidia(secoesReais);
+  // cadastro separado"). Carregado uma vez (rota e paradas mudam pouco, e
+  // quando mudam é no módulo de Rotas, não aqui) — "↺ Atualizar" da aba
+  // Previsão refaz esta busca sob demanda.
+  await carregarRotasMidia();
 
   // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
   // o login real via sime-admin-user, mas o roster exibido nunca lia
@@ -629,40 +628,14 @@ async function iniciarMesaEstadoReal(secoesReais){
   });
 }
 
-// Rotas de recolhimento de mídia + paradas, pra aba 🔮 Previsão — ver
-// comentário em carregarDadosReais() sobre por que não dá pra reaproveitar
-// window.ROTAS_REAIS aqui. Carregado uma vez; "↺ Atualizar" da própria aba
-// chama de novo sob demanda (ex.: depois de editar horário de chegada
-// previsto no módulo de Rotas, em outra aba do navegador).
-async function carregarRotasMidia(secoesReais){
-  // Numero SEMPRE com 4 dígitos (mesma convenção de window.SECTIONS/
-  // MESA_ESTADO_MAP/MIDIAS_MAP) — sem isto, r.secoes guardava o número cru
-  // (ex.: 100) e nunca batia com as chaves de MIDIAS_MAP (ex.: "0100"),
-  // fazendo toda rota aparecer com 0 mídias coletadas mesmo já tendo.
-  const numeroPorSecaoId = new Map(secoesReais.map(s => [s.id, String(s.numero).padStart(4, '0')]));
-  const { data: todasRotas, error: e1 } = await supabase.from('sime_rotas')
-    .select('id, codigo, nome, tipos, horario_chegada_previsto')
-    .eq('ativo', true)
-    .order('codigo');
-  if (e1 || !todasRotas) { window.ROTAS_MIDIA_REAIS = []; if (window.renderPrevisao) renderPrevisao(); return; }
-  // Filtro por tipo em JS (não .contains() na query) — mesmo critério já
-  // usado em sime_rotas_modulo.js pra RT_TIPOS_LEGADO, e evita depender de
-  // um operador de array específico do Postgres no stub de teste.
-  const rotas = todasRotas.filter((r) => Array.isArray(r.tipos) && r.tipos.includes('recolhimento_midia'));
-  const rotaIds = rotas.map(r => r.id);
-  const { data: rotaSecoes } = rotaIds.length
-    ? await supabase.from('sime_rota_secoes').select('rota_id, secao_id').in('rota_id', rotaIds)
-    : { data: [] };
-  window.ROTAS_MIDIA_REAIS = rotas.map(r => ({
-    id: r.id,
-    codigo: r.codigo,
-    nome: r.nome,
-    horario_chegada_previsto: r.horario_chegada_previsto || null,
-    secoes: (rotaSecoes || [])
-      .filter((rs) => rs.rota_id === r.id)
-      .map((rs) => numeroPorSecaoId.get(rs.secao_id))
-      .filter((n) => n != null),
-  }));
+// Rotas de recolhimento de mídia + paradas, pra aba 🔮 Previsão — extraído
+// pra sime_dados.js (getRotasRecolhimentoMidia, 08/09/2026) pra ser
+// reaproveitado também pelo mesmo painel na TV Dia, sem duplicar a query nos
+// dois lugares. Carregado uma vez; "↺ Atualizar" da própria aba chama de
+// novo sob demanda (ex.: depois de editar horário de chegada previsto no
+// módulo de Rotas, em outra aba do navegador).
+async function carregarRotasMidia(){
+  window.ROTAS_MIDIA_REAIS = await getRotasRecolhimentoMidia({ fallback: [] });
   if (window.renderPrevisao) renderPrevisao();
 }
 window.carregarRotasMidia = carregarRotasMidia;

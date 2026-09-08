@@ -244,6 +244,7 @@ body{display:flex;flex-direction:column;}
     <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
     <div class="t-clock" id="clock">--:--:--</div>
     <button class="gear-btn" id="mapa-rotas-btn" onclick="toggleMapaRotas()" title="Posição estimada dos veículos">🗺️</button>
+    <button class="gear-btn" id="previsao-btn" onclick="togglePrevisao()" title="Previsão de encerramento da zona">🔮</button>
     <button class="gear-btn" onclick="toggleSoundPanel()" title="Configurar sons de alerta">⚙️</button>
   </div>
 </div>
@@ -318,6 +319,35 @@ body{display:flex;flex-direction:column;}
     </div>
   </div>
 </div>
+
+<!-- PREVISÃO DE ENCERRAMENTO (08/09/2026) -->
+<div class="sound-overlay" id="prev-overlay" onclick="closePrevisaoIfOut(event)">
+  <div class="sound-panel" id="prev-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🔮 Previsão de encerramento</div>
+      <button class="sp-close" onclick="togglePrevisao()">✕</button>
+    </div>
+    <div class="sp-body">
+      <div class="map-hint">Estimativa — recalcula sozinha a cada nova fila ou mídia recolhida informada. Nunca substitui confirmação oficial nenhuma.</div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🏁</span> Fim da operação da zona</div>
+        <div id="prev-fim-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🗳️</span> Votação — previsão de encerramento</div>
+        <div id="prev-votacao-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🎞️</span> Recolhimento de mídia por rota</div>
+        <div id="prev-midia-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>⏳</span> Seções com fila após o encerramento</div>
+        <div id="prev-filas-tv" class="map-hint">Carregando…</div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="fase-bar">
   <button class="fase-btn active ab"  id="fase-ab"   onclick="setFase('ab')">🌅 Abertura</button>
   <button class="fase-btn enc"        id="fase-enc"  onclick="setFase('enc')">🏁 Encerramento</button>
@@ -351,7 +381,7 @@ body{display:flex;flex-direction:column;}
 <script src="./vendor/leaflet.js"></script>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow, getRotas, getZonaInfo, getRotasPosicaoMap } from './sime_dados.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow, getRotas, getZonaInfo, getRotasPosicaoMap, getRotasRecolhimentoMidia } from './sime_dados.js';
 import { subscribeMesaEstado, subscribeMidias, subscribeRotasEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
@@ -394,11 +424,15 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   // (localStorage) automaticamente, como antes.
   const secoesParaMesa = await getSecoes({ fallback: null });
   const numeroPorSecaoId = new Map((secoesParaMesa || []).map((s) => [s.id, s.numero]));
+  // Lista achatada {n, loc} — usada só pelo painel 🔮 Previsão (08/09/2026)
+  // pra achar "qual seção é a mais lenta"; window.SECTIONS não existe nesta
+  // TV (que usa CITIES, agrupado por cidade, formato diferente do Admin).
+  window.__secoesFlat = (secoesParaMesa || []).map((s) => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome }));
   const mesaInicial = await getMesaEstadoMap({ fallback: null });
   let rerenderTimer = null;
   function agendarRerender() {
     clearTimeout(rerenderTimer);
-    rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); }, 300);
+    rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); if (window.renderPrevisaoTv) renderPrevisaoTv(); }, 300);
   }
   // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
   // atualizado a cada segundo pelo <script> clássico) — sem ele a tela não
@@ -496,6 +530,16 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     const zona = await getZonaInfo({ fallback: null });
     if (zona && zona.lat != null && zona.lon != null) window.__centroMapaZona = [zona.lat, zona.lon];
   } catch (e) { /* mapa fica indisponível — o resto da TV segue normal */ }
+
+  // Previsão de encerramento (08/09/2026, mesmo cálculo da aba 🔮 Previsão do
+  // Admin — ver CLAUDE.md) — carregada uma vez (rota/ETA mudam pouco); o
+  // progresso REAL de coleta (window.__midiasRemota) já é Realtime pelos
+  // blocos acima, então a previsão recalcula sozinha a cada mídia nova sem
+  // precisar assinar mais nada aqui.
+  try {
+    window.__rotasMidiaTv = await getRotasRecolhimentoMidia({ fallback: [] });
+    if (window.renderPrevisaoTv) renderPrevisaoTv();
+  } catch (e) { /* previsão fica indisponível — o resto da TV segue normal */ }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -883,6 +927,125 @@ function toggleMapaRotas(){
 }
 function closeMapaRotasIfOut(e){
   if (e.target === document.getElementById('mapa-overlay')) toggleMapaRotas();
+}
+
+// ── PREVISÃO DE ENCERRAMENTO (08/09/2026) ───────────────────
+// Mesmo cálculo da aba 🔮 Previsão de SIME_admin.html (ver CLAUDE.md) —
+// duplicado aqui de propósito, não importado: os dois arquivos não
+// compartilham <script> clássico nenhum (só sime_dados.js/sime_realtime.js,
+// que são ES modules), mesmo padrão já usado noutros lugares do projeto pra
+// função pura pequena que não vale a pena promover a módulo compartilhado
+// (ex.: cmPersonalizarScript duplicado de personalizarMensagem). A fonte de
+// dado É compartilhada (getRotasRecolhimentoMidia() em sime_dados.js) — só a
+// matemática de exibição, que é específica de cada tela, é que se repete.
+function pvTvHojeComHora(horaStr){
+  if(!horaStr) return null;
+  const partes = String(horaStr).split(':').map(Number);
+  if(!partes.length || Number.isNaN(partes[0])) return null;
+  const d = new Date();
+  d.setHours(partes[0]||0, partes[1]||0, partes[2]||0, 0);
+  return d;
+}
+function pvTvFmtHora(ts){
+  if(ts == null) return '—';
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+function pvTvEstimativaSecao(mesa, horarioEnc, minPorEleitor, agora){
+  if(!mesa) return null;
+  if(mesa.enc) return { ts: mesa.ts, tipo:'real' };
+  if(!horarioEnc || agora.getTime() < horarioEnc.getTime()){
+    return { ts: horarioEnc ? horarioEnc.getTime() : null, tipo:'oficial' };
+  }
+  const fila = mesa.fila || 0;
+  if(fila <= 0) return { ts: agora.getTime(), tipo:'semFila' };
+  return { ts: agora.getTime() + fila*minPorEleitor*60000, tipo:'fila', fila };
+}
+function pvTvMidiaColetada(midia){
+  return !!midia && (midia.status === 'coletada' || midia.status === 'entregue_transmissao');
+}
+function renderPrevisaoTv(){
+  const elFim = document.getElementById('prev-fim-tv');
+  if(!elFim) return;
+  const elVotacao = document.getElementById('prev-votacao-tv');
+  const elMidia = document.getElementById('prev-midia-tv');
+  const elFilas = document.getElementById('prev-filas-tv');
+
+  const real = window.ELEICAO_ATIVA;
+  if(!real){
+    const semDado = '<span>Sem eleição ativa configurada</span>';
+    elFim.innerHTML = elVotacao.innerHTML = elMidia.innerHTML = elFilas.innerHTML = semDado;
+    return;
+  }
+
+  const minPorEleitor = Number(real.minutos_por_eleitor_fila) || 1;
+  const horarioEnc = pvTvHojeComHora(real.horario_enc);
+  const agora = new Date();
+  const secoes = window.__secoesFlat || [];
+  const mesaMap = window.__mesaRemota || {};
+
+  let piorVotacao = null;
+  const comFila = [];
+  for(const s of secoes){
+    const est = pvTvEstimativaSecao(mesaMap[s.n], horarioEnc, minPorEleitor, agora);
+    if(est && est.ts != null && (piorVotacao == null || est.ts > piorVotacao.ts)){
+      piorVotacao = { ts: est.ts, numero: s.n, loc: s.loc };
+    }
+    if(est && est.tipo === 'fila') comFila.push({ numero: s.n, loc: s.loc, fila: est.fila, ts: est.ts });
+  }
+  elVotacao.innerHTML = piorVotacao
+    ? `<b>${pvTvFmtHora(piorVotacao.ts)}</b> — seção mais lenta: ${piorVotacao.numero}${piorVotacao.loc ? ' — '+piorVotacao.loc : ''}`
+    : '<span>Sem seções cadastradas</span>';
+
+  comFila.sort((a,b) => b.fila - a.fila);
+  elFilas.innerHTML = comFila.length
+    ? comFila.map((c) => `<div>🔵 Seção ${c.numero}${c.loc ? ' — '+c.loc : ''} — ${c.fila} na fila · previsão ${pvTvFmtHora(c.ts)}</div>`).join('')
+    : '<span>Nenhuma seção com fila registrada além do horário de encerramento</span>';
+
+  const rotas = window.__rotasMidiaTv;
+  const midiasMap = window.__midiasRemota || {};
+  const rotasComputadas = (rotas || []).map((r) => {
+    const total = r.secoes.length;
+    const coletadas = r.secoes.filter((n) => pvTvMidiaColetada(midiasMap[n])).length;
+    const previsaoTs = r.horario_chegada_previsto ? pvTvHojeComHora(r.horario_chegada_previsto)?.getTime() ?? null : null;
+    return { ...r, total, coletadas, concluida: total > 0 && coletadas === total, previsaoTs };
+  });
+  if(rotas == null){
+    elMidia.innerHTML = '<span>Carregando rotas…</span>';
+  } else if(!rotas.length){
+    elMidia.innerHTML = '<span>Nenhuma rota de recolhimento de mídia cadastrada</span>';
+  } else {
+    elMidia.innerHTML = rotasComputadas.map((r) => `
+      <div style="margin-bottom:4px">
+        <b>${r.concluida ? '✅' : '🚚'} Rota ${r.codigo}${r.nome ? ' — '+r.nome : ''}</b> — ${r.coletadas}/${r.total}${
+          r.concluida ? ' (concluído)'
+            : (r.previsaoTs != null ? ' · previsão '+pvTvFmtHora(r.previsaoTs)
+                : ' · ⚠ sem previsão cadastrada')
+        }
+      </div>`).join('');
+  }
+
+  let piorGeral = piorVotacao ? piorVotacao.ts : null;
+  let faltaDado = false;
+  for(const r of rotasComputadas){
+    if(r.concluida) continue;
+    if(r.previsaoTs == null){ faltaDado = true; continue; }
+    if(piorGeral == null || r.previsaoTs > piorGeral) piorGeral = r.previsaoTs;
+  }
+  if(piorGeral == null){
+    elFim.innerHTML = '<span>Sem dado suficiente ainda pra estimar</span>';
+  } else {
+    elFim.innerHTML = `<div style="font-size:1.3rem;font-weight:800;color:var(--text)">${pvTvFmtHora(piorGeral)}</div>` +
+      (faltaDado ? '<div style="margin-top:2px">⚠ Previsão parcial — pelo menos uma rota de recolhimento ainda não tem horário de chegada previsto cadastrado</div>' : '');
+  }
+}
+window.renderPrevisaoTv = renderPrevisaoTv;
+function togglePrevisao(){
+  const ov = document.getElementById('prev-overlay');
+  ov.classList.toggle('open');
+  if (ov.classList.contains('open')) renderPrevisaoTv();
+}
+function closePrevisaoIfOut(e){
+  if (e.target === document.getElementById('prev-overlay')) togglePrevisao();
 }
 
 const alertEmit=new Set();

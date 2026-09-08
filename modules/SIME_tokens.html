@@ -166,6 +166,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <option value="instalador">🔧 Instalador (por rotas)</option>
         <option value="coord_acessibilidade">♿ Coord. de Acessibilidade (por local)</option>
         <option value="coletor_midias">📦 Coletor de Mídias (zona toda)</option>
+        <option value="tv">📺 Painel de TV (por painel)</option>
       </select>
     </div>
 
@@ -188,6 +189,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <label for="f-local">Local de votação</label>
       <select id="f-local">
         <option value="">— selecionar local —</option>
+      </select>
+    </div>
+
+    <!-- Token de TV não é vinculado a rota/seção/local — o escopo é a ZONA
+         inteira (a mesma RLS de qualquer outro perfil), o que muda é só QUAL
+         arquivo HTML o QR/URL aponta (ver TV_MODULOS/buildUrl mais abaixo).
+         PIN não é usado por TVs (sime-login pula essa checagem quando
+         tipo='tv', ver sql/SIME_schema.sql), então nasce fixo '0000'. -->
+    <div class="form-group" id="grp-tv-modulo" style="display:none">
+      <label for="f-tv-modulo">Qual painel de TV?</label>
+      <select id="f-tv-modulo">
+        <option value="">— selecionar painel —</option>
       </select>
     </div>
 
@@ -391,6 +404,11 @@ function nomeDerivadoToken(row) {
     case 'instalador':           return `Instalador — ${rota}`;
     case 'coord_acessibilidade': return `Acessibilidade — ${row.local_nome || '?'}`;
     case 'coletor_midias':       return 'Coletor de Mídias';
+    // row.local_nome guarda a chave de TV_MODULOS (ver #grp-tv-modulo) —
+    // window.TV_MODULOS só existe depois que o <script> clássico rodar, o que
+    // já aconteceu sempre que esta função é chamada (mesclarTokensRemotos()
+    // só roda depois do login, e o clássico é síncrono/não-deferido).
+    case 'tv':                   return `TV — ${window.TV_MODULOS?.[row.local_nome]?.label || row.local_nome || '?'}`;
     default:                     return `${row.tipo} — ${rota || row.local_nome || ''}`.trim();
   }
 }
@@ -410,10 +428,15 @@ function linhaParaToken(row) {
   };
 }
 
-// Puxa os tokens já gravados no Supabase (ex.: criados por script/SQL) pra que
-// apareçam na tela de impressão. Merge por id: NÃO sobrescreve o que já está no
-// localStorage (offline-first) — só adiciona os que faltam. Ignora tipo='tv'
-// (token de painel, provisionado à parte — não é um cartão QR de campo).
+// Puxa os tokens já gravados no Supabase (ex.: criados por script/SQL, ou pela
+// própria UI — inclusive token de TV, ver #grp-tv-modulo) pra que apareçam na
+// tela de impressão. Merge por id: NÃO sobrescreve o que já está no
+// localStorage (offline-first) — só adiciona os que faltam.
+//
+// Até 08/09/2026 tipo='tv' era ignorado aqui de propósito (não existia UI pra
+// criar esse tipo, só provisionamento manual via SQL) — agora que existe,
+// esconder da lista faria um token de TV recém-criado NESTA MESMA aba nunca
+// reaparecer depois de um reload.
 async function mesclarTokensRemotos() {
   if (!eleicaoId) return;
   const { data, error } = await supabase.from('sime_tokens')
@@ -423,7 +446,6 @@ async function mesclarTokensRemotos() {
   const locais = window.loadTokens ? window.loadTokens() : {};
   let novos = 0;
   for (const row of data) {
-    if (row.tipo === 'tv') continue;
     if (locais[row.token]) continue;
     locais[row.token] = linhaParaToken(row);
     novos++;
@@ -521,6 +543,20 @@ const LOCAIS_DISPONIVEIS = [
   'Esc. Mun. N.S. de Fátima',
 ];
 
+// Os 4 painéis de TV do sistema (ver ESTRUTURA DE ARQUIVOS no CLAUDE.md) —
+// token de TV não tem escopo geográfico (rota/seção/local), só decide qual
+// arquivo o QR/URL abre. Exposto em window pro <script type="module"> do
+// topo (nomeDerivadoToken, ao mesclar tokens já gravados no Supabase) —
+// referenciado só em tempo de CHAMADA, depois que este script já rodou (o
+// module script é deferido e sempre executa depois dos scripts clássicos).
+const TV_MODULOS = {
+  tv_preparacao:   { arquivo: 'SIME_tv_preparacao.html',   label: 'TV Preparação (D-X)' },
+  tv_vespera:      { arquivo: 'SIME_tv_vespera.html',      label: 'TV Véspera (D-1)' },
+  tv_distribuicao: { arquivo: 'SIME_tv_distribuicao.html', label: 'TV Distribuição (D-1)' },
+  tv_dia:          { arquivo: 'SIME_tv_dia.html',          label: 'TV Dia da Eleição' },
+};
+window.TV_MODULOS = TV_MODULOS;
+
 function rotasDisponiveis(){
   return window.ROTAS_REAIS?.length ? window.ROTAS_REAIS.map(r => 'Rota ' + r.codigo) : ROTAS_DISPONIVEIS;
 }
@@ -544,6 +580,14 @@ function buildLocalSelect(){
     locaisDisponiveis().map(l=>`<option value="${l}">${l}</option>`).join('');
 }
 buildLocalSelect();
+
+function buildTvModuloSelect(){
+  const el = document.getElementById('f-tv-modulo');
+  if(!el) return;
+  el.innerHTML = '<option value="">— selecionar painel —</option>' +
+    Object.entries(TV_MODULOS).map(([chave,m])=>`<option value="${chave}">${m.label}</option>`).join('');
+}
+buildTvModuloSelect();
 
 // Seção única (Mesário) — só faz sentido com dado real (sem fallback
 // hardcoded: gerar um token de mesário pra uma seção que talvez não exista
@@ -577,9 +621,11 @@ function onTipoChange(){
   const usaRotas = ['conferente','motorista','instalador'].includes(tipo);
   const usaLocal = tipo === 'coord_acessibilidade';
   const usaSecao = tipo === 'mesario';
+  const usaTvModulo = tipo === 'tv';
   document.getElementById('grp-rotas').style.display = usaRotas ? '' : 'none';
   document.getElementById('grp-local').style.display = usaLocal ? '' : 'none';
   document.getElementById('grp-secao-unica').style.display = usaSecao ? '' : 'none';
+  document.getElementById('grp-tv-modulo').style.display = usaTvModulo ? '' : 'none';
 }
 
 function onRotaChange(inp){
@@ -633,7 +679,9 @@ async function serverNow(){
 
 function criarTokenObj({nome, tipo, rotas=[], local=null, secoes=[], turno, zona, expira_em, criado_em}){
   return {
-    id: genId(), pin: genPIN(), nome, tipo, rotas, local, secoes,
+    // TV não usa PIN (sime-login pula a checagem quando tipo='tv') — placeholder
+    // fixo, mesmo valor de exemplo já documentado em sql/SIME_schema.sql.
+    id: genId(), pin: tipo === 'tv' ? '0000' : genPIN(), nome, tipo, rotas, local, secoes,
     turno:+turno, zona, criado_em: criado_em ?? Date.now(), expira_em, usado_em: null,
   };
 }
@@ -644,6 +692,7 @@ async function criarToken(){
   const rotas = getRotasSelecionadas();
   const local = document.getElementById('f-local').value;
   const secaoUnica = document.getElementById('f-secao')?.value || '';
+  const tvModulo = document.getElementById('f-tv-modulo')?.value || '';
   const turno = document.getElementById('f-turno').value;
   const zona  = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
 
@@ -653,14 +702,16 @@ async function criarToken(){
     if(!local){ showToast('⚠ Selecione o local de votação'); return; }
   } else if(tipo === 'mesario'){
     if(!secaoUnica){ showToast('⚠ Selecione a seção'); return; }
+  } else if(tipo === 'tv'){
+    if(!tvModulo){ showToast('⚠ Selecione qual painel de TV'); return; }
   } else if(!semEscopo){
     if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
   }
 
   const token = criarTokenObj({
     nome, tipo,
-    rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario' || semEscopo) ? [] : rotas,
-    local: tipo === 'coord_acessibilidade' ? local : null,
+    rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario' || tipo === 'tv' || semEscopo) ? [] : rotas,
+    local: tipo === 'coord_acessibilidade' ? local : (tipo === 'tv' ? tvModulo : null),
     secoes: tipo === 'mesario' ? [secaoUnica] : [],
     turno, zona, expira_em: calcularExpiracao(turno),
     criado_em: await serverNow(),
@@ -675,6 +726,7 @@ async function criarToken(){
   document.getElementById('f-nome').value = '';
   document.getElementById('f-local').value = '';
   if(document.getElementById('f-secao')) document.getElementById('f-secao').value = '';
+  if(document.getElementById('f-tv-modulo')) document.getElementById('f-tv-modulo').value = '';
   document.querySelectorAll('#rotas-check input').forEach(c=>{ c.checked=false; c.closest('label').classList.remove('checked'); });
   document.getElementById('todas-lbl').textContent = '☐ Selecionar todas as rotas';
 
@@ -774,8 +826,10 @@ const TIPO_LABEL = {
   instalador: { icon:'🔧', nome:'Instalador' },
   coord_acessibilidade: { icon:'♿', nome:'Acessibilidade' },
   coletor_midias: { icon:'📦', nome:'Coletor de Mídias' },
+  tv: { icon:'📺', nome:'Painel de TV' },
 };
 function scopeBadgeHtml(t){
+  if(t.tipo==='tv') return `<span class="tc-badge tcb-blue">📺 ${TV_MODULOS[t.local]?.label || 'Painel de TV'}</span>`;
   if(t.tipo==='coletor_midias') return '<span class="tc-badge tcb-blue">📦 Zona toda</span>';
   if(t.tipo==='coord_acessibilidade') return '<span class="tc-badge tcb-blue">♿ Acessibilidade</span>';
   if(t.tipo==='mesario') return `<span class="tc-badge tcb-blue">🗳️ Seção ${t.secoes?.[0]?parseInt(t.secoes[0]):'—'}</span>`;
@@ -783,6 +837,7 @@ function scopeBadgeHtml(t){
   return `<span class="tc-badge tcb-blue">${n} rota${n>1?'s':''}</span>`;
 }
 function scopeDetailHtml(t){
+  if(t.tipo==='tv') return 'Painel: <span>'+(TV_MODULOS[t.local]?.label || t.local || '—')+'</span>';
   if(t.tipo==='coletor_midias') return 'Escopo: <span>todas as seções da zona</span>';
   if(t.tipo==='coord_acessibilidade') return 'Local: <span>'+(t.local||'—')+'</span>';
   if(t.tipo==='mesario') return 'Seção: <span>'+(t.secoes?.[0]?parseInt(t.secoes[0]):'—')+'</span>';
@@ -811,7 +866,10 @@ function renderTokens(){
       const agora = Date.now();
       const expirado = t.expira_em && agora > t.expira_em;
       const iniciais = t.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-      const url = buildUrl(t.id, t.tipo);
+      const url = buildUrl(t.id, t.tipo, t.local);
+      // TV não usa PIN (sime-login pula a checagem) — mostrar "PIN: 0000"
+      // como se fosse um backup de verdade confundiria quem imprime o cartão.
+      const ehTv = t.tipo === 'tv';
 
       card.innerHTML = `
         <div class="tc-header">
@@ -822,7 +880,7 @@ function renderTokens(){
             <div class="tc-badges">
               <span class="tc-badge ${expirado?'tcb-warn':'tcb-ok'}">${expirado?'⚠ Expirado':'✓ Válido'}</span>
               ${scopeBadgeHtml(t)}
-              <span class="tc-badge tcb-off">PIN: ${t.pin}</span>
+              ${ehTv ? '' : `<span class="tc-badge tcb-off">PIN: ${t.pin}</span>`}
               ${t.usado_em ? '<span class="tc-badge tcb-off">Usado '+fmtDate(t.usado_em)+'</span>' : ''}
             </div>
           </div>
@@ -838,10 +896,12 @@ function renderTokens(){
           </div>
           <div class="tc-detail">
             <div class="tc-url">${url} <button class="copy-btn" onclick="copyUrl('${url}')">Copiar</button></div>
-            <div class="tc-pin-box">
+            ${ehTv
+              ? '<div style="font-size:.68rem;color:var(--text2);">📺 TVs autenticam só por QR Code/URL — sem PIN de backup.</div>'
+              : `<div class="tc-pin-box">
               <div class="pin-label">PIN backup:</div>
               <div class="pin-digits">${t.pin.split('').map(d=>`<div class="pin-digit">${d}</div>`).join('')}</div>
-            </div>
+            </div>`}
             <div class="tc-rotas">${scopeDetailHtml(t)}</div>
             ${t.expira_em ? `<div style="font-size:.68rem;color:var(--text2);margin-top:5px;">Expira: ${fmtDateTime(t.expira_em)}</div>` : ''}
           </div>
@@ -891,7 +951,21 @@ const MODULOS_POR_TIPO = {
 // Sem zona resolvida (offline, sessão ausente) cai na URL relativa de antes —
 // que continua válida em produção, então os cartões já impressos seguem
 // funcionando.
-function buildUrl(tokenId, tipo){
+//
+// Token de TV usa QUERY PARAM diferente (?tv_token=, não ?token=) — é o que
+// bootstrapTvSession() (sime_tv_auth.js) lê nos 4 módulos de TV; o módulo em
+// si vem de `tokenLocal` (o valor salvo em token.local ao criar, uma das
+// chaves de TV_MODULOS — ver #grp-tv-modulo), não de MODULOS_POR_TIPO (que
+// não tem 'tv': o mesmo tipo de token pode apontar pra qualquer um dos 4
+// painéis, então não há um módulo único por tipo aqui).
+function buildUrl(tokenId, tipo, tokenLocal){
+  if (tipo === 'tv') {
+    const moduloTv = TV_MODULOS[tokenLocal]?.arquivo || 'SIME_tv_dia.html';
+    const numeroZonaTv = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
+    if (numeroZonaTv) return `${window.location.origin}/z/${numeroZonaTv}/${moduloTv}?tv_token=${tokenId}`;
+    const baseTv = window.location.href.replace('SIME_tokens.html','').replace(/\?.*$/,'');
+    return baseTv + moduloTv + '?tv_token=' + tokenId;
+  }
   const modulo = MODULOS_POR_TIPO[tipo] || 'SIME_conferente.html';
   const numeroZona = (window.zonaSelecionadaNumero && window.zonaSelecionadaNumero()) || '';
   if (numeroZona) return `${window.location.origin}/z/${numeroZona}/${modulo}?token=${tokenId}`;

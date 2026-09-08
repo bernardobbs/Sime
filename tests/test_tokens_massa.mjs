@@ -154,9 +154,9 @@ async function login(p) {
   await login(p);
 
   const opcoesTipo = await p.evaluate(() => [...document.getElementById('f-tipo').options].map(o => o.value));
-  check('os 6 tipos de campo estão no dropdown',
+  check('os 6 tipos de campo + tv estão no dropdown',
     JSON.stringify([...opcoesTipo].sort()) === JSON.stringify(
-      ['coletor_midias','coord_acessibilidade','conferente','instalador','mesario','motorista'].sort()),
+      ['coletor_midias','coord_acessibilidade','conferente','instalador','mesario','motorista','tv'].sort()),
     opcoesTipo.join(','));
 
   await p.evaluate(() => window.gerarEmMassa());

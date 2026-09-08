@@ -3735,6 +3735,44 @@ previsão de Rotas, rota concluída sai do cálculo, rota sem previsão avisa,
 fim da operação é ditado pela mídia pendente quando é o pior caso; edição
 do parâmetro grava no banco e loga).
 
+**Também na TV Dia (08/09/2026, pedido direto: "Quer que eu adicione a
+previsão de encerramento na TV Dia também agora? sim").** Botão novo no
+topbar (🔮, ao lado do 🗺️ de posição dos veículos) abre um painel overlay
+(mesmo padrão do painel de sons) com os mesmos 4 blocos do Admin — fim da
+operação, votação, recolhimento de mídia por rota, seções com fila.
+
+**Mesmo cálculo, DUPLICADO de propósito (não importado)** — os dois
+arquivos não compartilham `<script>` clássico nenhum (só `sime_dados.js`/
+`sime_realtime.js`, que são ES modules); a matemática de exibição
+(`pvTvHojeComHora`/`pvTvFmtHora`/`pvTvEstimativaSecao`/`pvTvMidiaColetada`)
+é uma cópia pequena e pura, mesmo padrão já usado noutros lugares do
+projeto pra função específica de tela (ex.: `cmPersonalizarScript`
+duplicado de `personalizarMensagem()`). **A FONTE de dado É compartilhada**
+— `getRotasRecolhimentoMidia()` (nova, `sime_dados.js`) foi extraída da
+implementação que já existia inline em `carregarRotasMidia()` do Admin,
+exatamente pra não duplicar a QUERY (só a exibição) entre as duas telas;
+`carregarRotasMidia()` do Admin foi simplificada pra só chamar essa função
+nova.
+
+**Sem parâmetro editável na TV** — `minutos_por_eleitor_fila` só é editável
+no Admin (`salvarMinutosPorEleitor()`); a TV Dia é somente leitura, mesmo
+padrão de todo o resto da tela (só pagina, mostra sons locais e o mapa —
+nunca escreve no banco). O painel da TV lê o valor já salvo, com o mesmo
+default (1) se ninguém tiver ajustado ainda.
+
+**Fonte dos dados de seção** — `window.__secoesFlat` (novo,
+`{n, loc}[]`, achatado a partir de `getSecoes()`) — a TV Dia usa `CITIES`
+(agrupado por cidade) pro board principal, formato diferente do
+`window.SECTIONS` plano que o Admin usa; o painel de previsão precisava de
+uma lista simples pra achar "qual seção é a mais lenta" sem depender da
+estrutura de paginação da tela.
+
+Coberto por `tests/test_tv_dia_previsao.mjs` (12 checks): botão visível,
+horário oficial usado antes do encerramento, seção com fila aparece
+corretamente depois dele, recolhimento de mídia reaproveita a previsão do
+módulo de Rotas com aviso de previsão parcial, e mensagem amigável sem
+eleição ativa.
+
 ---
 
 ## POSIÇÃO ESTIMADA DOS VEÍCULOS NO MAPA (`SIME_tv_dia.html` → 🗺️, 08/09/2026)
@@ -3817,6 +3855,76 @@ rota com posição (marcador + legenda com horário); sem nenhuma posição
 informada, avisa em vez de inventar; evento Realtime atualiza o marcador
 sem recarregar a página; rota sem metadado conhecido (código/nome) é
 ignorada, sem quebrar.
+
+---
+
+## TOKEN DE TV PELA UI (`SIME_tokens.html`, 08/09/2026)
+
+Pedido direto, depois de investigar "onde vai ser gerado e conferido o TV
+Dia com token, além do TV Véspera?" — achado real: os 4 módulos de TV
+(Preparação/Véspera/Distribuição/Dia) já validam `tipo='tv'` igualmente,
+via `bootstrapTvSession()` (`sime_tv_auth.js`, troca `?tv_token=` por uma
+sessão JWT na Edge Function `sime-login`), mas **gerar** esse tipo de token
+nunca teve UI nenhuma — `sql/SIME_schema.sql` já documentava isso como TODO
+("rodar manualmente no SQL Editor até o Fase 4 trazer isso para
+SIME_tokens.html") desde a criação da tabela, e `SIME_tokens.html`
+explicitamente **ignorava** `tipo='tv'` ao mesclar tokens do Supabase
+(`mesclarTokensRemotos()`) — não por acidente, só porque não existia
+caminho nenhum pra criar um e mostrá-lo fazia menos sentido que escondê-lo.
+
+**Token de TV não tem escopo geográfico** (nem rota, nem seção, nem local) —
+`bootstrapTvSession()` só carrega `zona_id` da sessão; o que muda de um
+painel pro outro é só QUAL arquivo HTML abre com aquele token, uma decisão
+inteiramente de URL/QR, não de RLS. Por isso o novo grupo do formulário
+(`#grp-tv-modulo`, visível só quando `tipo==='tv'`) não é um escopo de
+verdade — é só "qual dos 4 vídeos" — mas o pedido foi explícito
+("escolhendo qual módulo"), então existe como campo próprio, com as 4
+opções (`TV_MODULOS`, chave→`{arquivo, label}`): TV Preparação (D-X), TV
+Véspera (D-1), TV Distribuição (D-1), TV Dia da Eleição. O valor escolhido
+é gravado em `sime_tokens.local_nome` — mesma coluna que `coord_acessibilidade`
+já usa pra guardar texto de escopo, reaproveitada aqui só como rótulo de
+apresentação (a chave, não o nome do arquivo, pra `TV_MODULOS` continuar
+sendo a única fonte de verdade de qual chave mapeia pra qual arquivo).
+
+**PIN nasce fixo `'0000'`** — token de TV nunca usa PIN (a função
+`sime-login` pula essa checagem quando `tipo='tv'`, já documentado no
+schema); gerar um PIN de verdade só criaria a falsa impressão de que existe
+um backup por PIN pra TV, que não existe. O cartão (`renderTokens()`)
+esconde a badge "PIN: ..." e a caixa de PIN backup pra esse tipo, trocando
+por uma nota ("📺 TVs autenticam só por QR Code/URL — sem PIN de backup.").
+
+**QR/URL usa `?tv_token=`, não `?token=`** — `buildUrl()` ganhou um branch
+próprio pra `tipo==='tv'`: resolve o arquivo a partir de `TV_MODULOS[local]`
+(cai em `SIME_tv_dia.html` se o valor não bater com nenhuma chave conhecida
+— nunca quebra, mesmo padrão "nunca adivinha, mas também nunca trava" do
+resto do sistema) e monta a URL com o parâmetro que `bootstrapTvSession()`
+de fato lê. Usar `?token=` por engano teria gerado um QR que a TV nunca
+reconheceria — o mesmo tipo de bug silencioso (funciona no formulário,
+falha só quando alguém escaneia de verdade) que este projeto tenta sempre
+capturar com teste de regressão, não só revisão visual.
+
+**`mesclarTokensRemotos()` não ignora mais `tipo='tv'`** — a exclusão
+explícita (`if (row.tipo === 'tv') continue;`) foi removida: agora que
+existe UI pra criar, escondê-lo faria um token de TV recém-criado NESTA
+MESMA aba sumir do próprio criador depois de um reload. Um token de TV
+provisionado manualmente ANTES desta feature (sem `local_nome`, pelo INSERT
+de exemplo do schema) ainda aparece — só degrada com honestidade ("TV — ?"
+no nome, `SIME_tv_dia.html` como destino padrão do QR) em vez de inventar
+qual painel era.
+
+**Geração em massa continua sem emitir token de TV** — mesmo critério já
+usado pro Coletor de Mídias: quantas TVs existem (e onde ficam fisicamente)
+é decisão de escala do cartório, não algo derivável de seções/rotas/locais;
+o tipo só sai pelo formulário individual, escolhendo "📺 Painel de TV".
+
+Coberto por `tests/test_tokens_tv.mjs` (25 checks: tipo no dropdown, grupo
+de módulo aparece só pra tv e esconde os demais grupos, validação bloqueia
+sem escolher painel, criação grava `tipo`/`local_nome`/PIN fixo corretos,
+URL usa `tv_token=` e o arquivo certo pros 4 painéis, cartão esconde PIN e
+mostra o aviso, formulário limpa depois de criar, massa não emite tv) +
+ajustes em `tests/test_tokens.mjs` (bloco 6, merge remoto agora inclui tv —
+com e sem `local_nome`) e `tests/test_tokens_massa.mjs` (dropdown passou a
+ter 7 tipos, não 6).
 
 ---
 

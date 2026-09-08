@@ -399,3 +399,46 @@ export async function refreshRotasPosicaoMap() {
   if (!_client) return null;
   try { return await fetchRotasPosicaoMap(_client); } catch (e) { return null; }
 }
+
+// -> [{id, codigo, nome, horario_chegada_previsto, secoes:[numero,...]}] —
+// rotas de tipo 'recolhimento_midia' com as seções atribuídas (número com 4
+// dígitos, via sime_rota_secoes). Extraído aqui (08/09/2026) pra ser
+// reaproveitado tanto pela aba 🔮 Previsão do Admin quanto pelo mesmo painel
+// na TV Dia, sem duplicar a query nos dois lugares — window.ROTAS_REAIS
+// (getRotas()) não serve pra isto, ele lê sime_secoes.rota_id, campo legado
+// que só é escrito por rota de tipo 'distribuicao' desde a correção do
+// módulo de Rotas (ver CLAUDE.md — "recolhimento de urna é cadastro
+// separado").
+async function fetchRotasRecolhimentoMidia(c) {
+  const secoes = await getSecoes({ fallback: null });
+  if (!secoes) throw new Error('sem seções pra mapear secao_id -> numero');
+  const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, String(s.numero).padStart(4, '0')]));
+
+  const { data: todasRotas, error } = await c.from('sime_rotas')
+    .select('id, codigo, nome, tipos, horario_chegada_previsto')
+    .eq('ativo', true)
+    .order('codigo');
+  if (error) throw error;
+  // Filtro por tipo em JS (não .contains() na query) — mesmo critério já
+  // usado em sime_rotas_modulo.js pra RT_TIPOS_LEGADO.
+  const rotas = (todasRotas || []).filter((r) => Array.isArray(r.tipos) && r.tipos.includes('recolhimento_midia'));
+  const rotaIds = rotas.map((r) => r.id);
+  const { data: rotaSecoes } = rotaIds.length
+    ? await c.from('sime_rota_secoes').select('rota_id, secao_id').in('rota_id', rotaIds)
+    : { data: [] };
+
+  return rotas.map((r) => ({
+    id: r.id,
+    codigo: r.codigo,
+    nome: r.nome,
+    horario_chegada_previsto: r.horario_chegada_previsto || null,
+    secoes: (rotaSecoes || [])
+      .filter((rs) => rs.rota_id === r.id)
+      .map((rs) => numeroPorSecaoId.get(rs.secao_id))
+      .filter((n) => n != null),
+  }));
+}
+
+export async function getRotasRecolhimentoMidia({ fallback = null } = {}) {
+  return withFallback('rotasRecolhimentoMidia', fetchRotasRecolhimentoMidia, fallback);
+}
