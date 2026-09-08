@@ -158,14 +158,21 @@ function rtChegadaEstimada(rota, paradas) {
 // 1) COORDENADA de verdade, quando o texto bate com uma parada já
 //    cadastrada (mesmo sem geo salva ainda — porNome cobre as duas
 //    coisas: se a parada tem lat/long, usa; nunca inventa uma).
-// 2) Texto, mas com ", {município}, PI" anexado — o Google geocodifica de
+// 2) Texto + ENDEREÇO REAL do Cartório (rua/bairro/CEP/município/UF já
+//    cadastrado em `sime_zonas`, mesmo dado usado pra etiqueta/AR de
+//    Correspondência — ver "Remetente é editável" no CLAUDE.md), quando o
+//    texto menciona "Cartório" — 08/09/2026, pergunta direta: "falta
+//    informação da coordenada do Cartório?". O SIME não tem (nunca teve)
+//    latitude/longitude do Cartório, só esse endereço postal — usado
+//    como texto de geocodificação, não como coordenada.
+// 3) Texto, mas com ", {município}, PI" anexado — o Google geocodifica de
 //    graça, e o contexto de cidade evita cair num homônimo em outro
 //    lugar. Município vem da PRÓPRIA parada batida (quando existe, ainda
 //    que sem geo) ou do 1º município cadastrado na rota, como último
 //    recurso.
-// 3) Coordenada da 1ª/última parada geolocalizada, quando o campo de
+// 4) Coordenada da 1ª/última parada geolocalizada, quando o campo de
 //    texto está vazio (comportamento de sempre).
-function rtMapsUrl(rota, paradas) {
+function rtMapsUrl(rota, paradas, zona) {
   const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
   const norm = s => (s || '').trim().toLowerCase();
   // Duas seções no mesmo prédio (mesmo local_nome+município, bem comum —
@@ -193,6 +200,15 @@ function rtMapsUrl(rota, paradas) {
         // (formato de rtNomeLocalParada) já inclui "{local}, {município}";
         // só falta o estado, pra não competir com homônimos de outros estados.
         return { valor: encodeURIComponent(`${texto}, PI`), parada: null };
+      }
+      // Menciona "Cartório" — usa o endereço postal REAL da zona (rua,
+      // bairro, CEP, município, UF), quando cadastrado, em vez do
+      // fallback genérico de município: contexto bem mais preciso pro
+      // geocodificador do Google (não é uma coordenada — o SIME nunca
+      // teve latitude/longitude do Cartório, só esse endereço).
+      if (/cart[oó]rio/i.test(texto) && zona?.remetente_endereco) {
+        const partes = [texto, zona.remetente_endereco, zona.remetente_bairro, zona.remetente_cep, zona.remetente_municipio, zona.remetente_uf].filter(Boolean);
+        return { valor: encodeURIComponent(partes.join(', ')), parada: null };
       }
       // Texto qualquer, sem bater com nenhuma parada cadastrada — o único
       // contexto que dá pra anexar é o(s) município(s) já preenchido(s) na
@@ -281,7 +297,7 @@ async function rtCarregar(opts = {}) {
 
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
-  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }] = await Promise.all([
+  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }] = await Promise.all([
     sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
@@ -298,9 +314,17 @@ async function rtCarregar(opts = {}) {
     eleicaoId
       ? sb.from('sime_rotas_estado').select('id, rota_id, status, conferente_nome, ts_aberta, ts_pronta, ts_saiu, alerta').eq('eleicao_id', eleicaoId)
       : Promise.resolve({ data: [], error: null }),
+    // Endereço real do Cartório (08/09/2026, pergunta direta: "falta
+    // informação da coordenada do Cartório Eleitoral?") — mesmos campos já
+    // usados por Correspondência (SIME_convocacao.html) pra etiqueta/AR. O
+    // SIME não tem (nem nunca teve) latitude/longitude do Cartório — só
+    // esse endereço postal, cadastrado pelo cartório. Usado como contexto
+    // de geocodificação no lugar do endereço, quando o texto de partida/
+    // destino menciona "Cartório" — ver rtMapsUrl.
+    sb.from('sime_zonas').select('remetente_endereco, remetente_bairro, remetente_cep, remetente_municipio, remetente_uf').eq('id', zonaId).maybeSingle(),
   ]);
-  if (e1 || e2 || e3 || e4 || e5) {
-    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4 || e5).message }; render(); }
+  if (e1 || e2 || e3 || e4 || e5 || e6) {
+    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4 || e5 || e6).message }; render(); }
     return;
   }
 
@@ -325,7 +349,7 @@ async function rtCarregar(opts = {}) {
   }
   for (const arr of porRota.values()) arr.sort((a, b) => (a.parada ?? 999) - (b.parada ?? 999) || a.numero - b.numero);
 
-  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], estadoPorRota, urnasPorEstado, zonaId };
+  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], estadoPorRota, urnasPorEstado, zonaId, zona: zonaRow || {} };
   if (!opts.silencioso) render();
 }
 
@@ -469,7 +493,7 @@ function renderRotas() {
         ].filter(Boolean).join(', ') : '';
         return `
       <div class="import-card" style="padding:12px 14px;${r.ativo ? '' : 'opacity:.6'}">
-        <div style="font-weight:800;font-size:.86rem">Rota ${rtEsc(r.codigo)} — ${rtEsc(r.nome)}</div>
+        <div style="font-weight:800;font-size:.86rem;cursor:pointer;color:var(--text)" onclick="rtAbrirEditar('${r.id}')" title="Clique pra editar">Rota ${rtEsc(r.codigo)} — ${rtEsc(r.nome)}</div>
         <div class="ic-sub" style="margin:2px 0 0">${(r.municipios || []).map(rtEsc).join(', ') || '—'} · ${secoes.length} seção(ões) vinculada(s)</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
           ${(r.tipos || []).map(t => `<span class="import-result ir-ok" style="margin:0;padding:3px 8px;font-size:.68rem">${RT_TIPO_LABEL[t] || t}</span>`).join('')}
@@ -486,7 +510,6 @@ function renderRotas() {
         ${estado ? `<div class="ic-sub" style="margin:2px 0 0${estado.alerta ? ';color:var(--red)' : ''}">${RT_STATUS_ESTADO_LABEL[estado.status] || estado.status}${estado.alerta ? ' ⚠️' : ''} — Dia D: ${embarcadas}/${secoes.length} embarcada(s)${estado.conferente_nome ? ` · Conferente: ${rtEsc(estado.conferente_nome)}` : ''}${marcos ? ` · ${marcos}` : ''}</div>` : ''}
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtAbrirEditar('${r.id}')">✏️ Editar</button>
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirFicha('${r.id}')" title="Imprime a ficha da rota (paradas em ordem, contato do responsável)">🖨️ Imprimir ficha</button>
           ${rtRotaTemTipoLegado(r) && !retornoGerado ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>
@@ -712,7 +735,7 @@ function rtRenderParadas() {
   const atuaisIds = new Set(atuais.map(s => s.id));
   // "Ver rota completa no mapa" (08/09/2026, melhoria própria, estendida no
   // mesmo dia pra incluir Partida/Destino digitados — ver rtMapsUrl).
-  const mapsUrl = rtMapsUrl(r, atuais);
+  const mapsUrl = rtMapsUrl(r, atuais, rtDados.zona);
   const q = rtSecaoBusca.trim().toLowerCase();
   const candidatas = rtDados.secoesZona
     .filter(s => !atuaisIds.has(s.id) && (!q || `${s.numero} ${s.local_nome} ${s.municipio}`.toLowerCase().includes(q)))
@@ -968,7 +991,7 @@ async function rtRecarregarParadas() {
 // costuma barrar. Documento de apoio operacional (não uma peça oficial):
 // paradas em ordem, com número/local/coordenadas quando existem, e o
 // contato do responsável pra quem estiver na estrada poder ligar.
-function rtHtmlFicha(rota, paradas, responsavel) {
+function rtHtmlFicha(rota, paradas, responsavel, zona) {
   const hoje = new Date();
   const dataEmissao = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
   const linhas = paradas.map((s, i) => `
@@ -988,7 +1011,7 @@ function rtHtmlFicha(rota, paradas, responsavel) {
   // mapa de rotas" — o destino digitado pode não ser nenhuma parada
   // geolocalizada, ex. "Cartório Eleitoral da 7ª Zona" numa rota de
   // distribuição; mostrar o texto aqui não depende de coordenada nenhuma).
-  const mapsUrl = rtMapsUrl(rota, paradas);
+  const mapsUrl = rtMapsUrl(rota, paradas, zona);
   const svgMapa = rtSvgMinimapa(paradas);
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
   const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
@@ -1049,11 +1072,11 @@ async function rtImprimirFicha(rotaId) {
   const paradas = rtDados.secoesPorRota.get(rotaId) || [];
   const responsavel = rtAtor(rota.responsavel_ator_id);
   const area = document.getElementById('print-area');
-  area.innerHTML = rtHtmlFicha(rota, paradas, responsavel);
+  area.innerHTML = rtHtmlFicha(rota, paradas, responsavel, rtDados.zona);
   // QR gerado à parte, depois do innerHTML — a mesma lib já vendorizada
   // (vendor/qrcode.min.js) que SIME_tokens.html usa pros QR de campo,
   // offline, sem custo. `new QRCode()` desenha sozinho (canvas), síncrono.
-  const mapsUrl = rtMapsUrl(rota, paradas);
+  const mapsUrl = rtMapsUrl(rota, paradas, rtDados.zona);
   const qrEl = document.getElementById('rt-ficha-qr');
   if (qrEl && mapsUrl && window.QRCode) {
     try {

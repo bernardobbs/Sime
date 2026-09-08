@@ -142,6 +142,16 @@ async function login(p) {
   check('Rota 002 mostra 0 seções vinculadas (só tem tipo recolhimento_midia, staging vazio)', /0 seção\(ões\) vinculada\(s\)/.test((await p.locator('.import-card:has-text("Rota 002")').textContent())));
   check('Rota 001 mostra urnas estimadas', /Urnas estimadas: 5/.test(txt));
 
+  // 08/09/2026, pedido direto: "vamos retirar o botão de editar e
+  // selecionar o nome da rota para abrir o modal" — o botão some, e
+  // clicar no título (código+nome) abre o mesmo modal de sempre.
+  check('botão "✏️ Editar" não existe mais em nenhum card', await p.locator('button:has-text("✏️ Editar")').count() === 0);
+  await p.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('clicar no nome da Rota 001 abre o modal de editar', /Editar Rota 001/.test(await p.locator('#modal-body .m-title').textContent()));
+  await p.click('#modal-body button:has-text("Cancelar")');
+  await p.waitForTimeout(100);
+
   await p.selectOption('#rt-filtro-tipo', 'recolhimento_midia');
   await p.waitForTimeout(100);
   const filtrado = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
@@ -226,7 +236,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   check('modal de editar mostra o código no título', /Editar Rota 002/.test(await p.locator('#modal-body .m-title').textContent()));
   check('opção do tipo atual já vem selecionada na caixa de seleção', await p.locator('#rt-tipos option[value="recolhimento_midia"]').evaluate(el => el.selected));
@@ -271,7 +281,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   const modalTxt = await p.locator('#modal-body').textContent();
   check('modal mostra as 2 seções já vinculadas', /30/.test(modalTxt) && /31/.test(modalTxt) && /Grupo Escolar A/.test(modalTxt));
@@ -339,7 +349,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   check('não avisa nada sobre Motorista/Conferente (tipo sem consumidor legado)', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
@@ -370,7 +380,7 @@ async function login(p) {
   await p.waitForTimeout(200);
 
   // s1 já está na Rota 001 (r1) — move pra Rota 003 (r3).
-  await p.locator('.import-card:has-text("Rota 003")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 003")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   await p.click('#rt-paradas-secao button:has-text("+")');
   await p.waitForTimeout(100);
@@ -398,7 +408,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 004")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 004")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   check('rota só recolhimento_urna NÃO avisa nada sobre Motorista/Conferente', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
@@ -426,7 +436,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   const opcoesResponsavel = await p.locator('#rt-responsavel').textContent();
@@ -462,7 +472,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   const linkMapa = p.locator('.m-hist-item:has-text("30") a[title="Ver no mapa"]');
@@ -536,7 +546,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   const link = p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")');
@@ -671,7 +681,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   check('Partida vem sugerida com o 1º local da lista de paradas', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
@@ -691,7 +701,7 @@ async function login(p) {
   check('grava tempo_parada_min', upd?.payload?.tempo_parada_min === 10, JSON.stringify(upd));
 
   // Reabre e confere o cálculo do tempo total (2 paradas × 10 min = 20min).
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
   check('modal mostra o tempo total estimado (2 × 10 min = 20min)', /2 parada\(s\) × 10 min ≈ 20min/.test(modalTxt), modalTxt);
@@ -756,7 +766,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
@@ -771,7 +781,7 @@ async function login(p) {
 
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(150);
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   const href3 = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
   check('local sem geo, mas cadastrado: usa o MUNICÍPIO DELE (Jatobá do Piauí), não o da rota', href3?.includes(`destination=${encodeURIComponent('Escola D, Jatobá do Piauí, PI')}`), href3);
@@ -799,7 +809,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
   // 2 paradas × 10min parado = 20min; deslocamento em linha reta entre as
@@ -817,7 +827,7 @@ async function login(p) {
   const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1'));
   check('grava o valor digitado, não a estimativa', upd?.payload?.horario_chegada_previsto === '08:00', JSON.stringify(upd));
 
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   check('reabrindo, mostra o valor salvo (não mais a sugestão)', (await p.locator('#rt-hora-chegada').inputValue()) === '08:00');
 
@@ -846,7 +856,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   check('sem geo em todas as paradas, o campo de chegada fica vazio (sem estimativa forçada)', (await p.locator('#rt-hora-chegada').inputValue()) === '');
   check('e não mostra a nota de estimativa nem o botão "↻" de recalcular', await p.locator('#rt-chegada-sugerir').count() === 0);
@@ -907,7 +917,7 @@ async function login(p) {
 
   // Rota 002 (só recolhimento_midia, sem consumidor legado) — precisa ter
   // 2 paradas pra testar reposicionar; adiciona a seção 63.
-  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
   await p.click('#rt-paradas-secao button:has-text("+")');
   await p.waitForTimeout(100);
@@ -945,7 +955,7 @@ async function login(p) {
   const { p: pLargo, erros: errosLargo } = await abrir(ctxLargo, mock());
   await login(pLargo);
   await pLargo.waitForTimeout(200);
-  await pLargo.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await pLargo.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
   await pLargo.waitForTimeout(100);
 
   const colCountLargo = await pLargo.locator('.m-body').evaluate(el => getComputedStyle(el).columnCount);
@@ -959,13 +969,62 @@ async function login(p) {
   const { p: pCel, erros: errosCel } = await abrir(ctxCelular, mock());
   await login(pCel);
   await pCel.waitForTimeout(200);
-  await pCel.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await pCel.locator('.import-card:has-text("Rota 001")').locator('div[title="Clique pra editar"]').click();
   await pCel.waitForTimeout(100);
 
   const colCountCel = await pCel.locator('.m-body').evaluate(el => getComputedStyle(el).columnCount);
   check('no celular (390px) continua em 1 coluna, sem mudança nenhuma', colCountCel === 'auto', colCountCel);
   check('zero erros JS (celular)', errosCel.length === 0, errosCel.join(' | '));
   await ctxCelular.close();
+}
+
+// ── 25. "Cartório" no texto de Partida/Destino usa o endereço REAL da zona
+// (rua/bairro/CEP/município/UF já cadastrado em sime_zonas pra Correspondência),
+// não só o município genérico (08/09/2026, pergunta direta: "falta
+// informação da coordenada do Cartório Eleitoral?" — o SIME nunca teve
+// latitude/longitude do Cartório, só esse endereço postal). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const zona = m.sime_zonas.find(z => z.id === 'z7');
+  zona.remetente_endereco = 'Rua Benjamin Constant, 948';
+  zona.remetente_bairro = 'Centro';
+  zona.remetente_cep = '64280-000';
+  zona.remetente_municipio = 'Campo Maior';
+  zona.remetente_uf = 'PI';
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
+  check('destino "Cartório" usa o endereço real da zona (rua/bairro/CEP/município/UF), não só o município', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona, Rua Benjamin Constant, 948, Centro, 64280-000, Campo Maior, PI')}`), href);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 26. Sem endereço cadastrado na zona (94ª, por exemplo), "Cartório" cai
+// pro fallback genérico de município — nunca quebra por falta de dado. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
+  check('sem endereço da zona cadastrado, cai pro fallback de município', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona, Campo Maior, PI')}`), href);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
 }
 
 await b.close();

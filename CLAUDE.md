@@ -3602,6 +3602,34 @@ com o ponto das rotas no google maps").**
 Coberto por `tests/test_rotas.mjs` (bloco 19 reescrito + ajustes no bloco
 22, 152 checks no total no arquivo inteiro).
 
+**Nome da rota abre o modal; endereço real do Cartório na geocodificação
+(08/09/2026, dois pedidos diretos).**
+
+- **"vamos retirar o botão de editar e selecionar o nome da rota para abrir
+  o modal"** — o botão "✏️ Editar" (card da lista) foi removido; clicar no
+  título da rota (código+nome, `cursor:pointer`, `title="Clique pra
+  editar"`) chama o mesmo `rtAbrirEditar()` de sempre. Nenhuma outra ação
+  do card mudou (Imprimir ficha, Gerar recolhimento, Desativar/Reativar
+  continuam onde estavam).
+- **"falta informação da coordenada do Cartório Eleitoral da 7ª Zona
+  Eleitoral??"** — resposta: sim, falta, e nunca existiu. O SIME não tem
+  (nem nunca teve) `latitude`/`longitude` do Cartório em lugar nenhum — só
+  o endereço POSTAL (`sime_zonas.remetente_endereco`/`bairro`/`cep`/
+  `municipio`/`uf`, cadastrado em 27/08/2026 pro módulo de Correspondência,
+  ver acima: "Rua Benjamin Constant, 948, Centro, 64280-000, Campo
+  Maior-PI"). Em vez de pedir uma coordenada nova (que exigiria o cartório
+  ir a campo com um GPS, ou confiar num pin solto no Google Maps — não é
+  dado que o sistema já tem), `rtMapsUrl()` passou a usar esse endereço
+  REAL como texto de geocodificação sempre que Partida/Destino menciona
+  "Cartório" (regex `/cart[oó]rio/i`) — muito mais preciso que o fallback
+  genérico de município (item 3 da lista acima), sem inventar coordenada
+  nenhuma. `rtCarregar()` busca esses 5 campos de `sime_zonas` junto do
+  resto (`rtDados.zona`); sem endereço cadastrado (94ª Zona, hoje) cai pro
+  fallback de município de sempre, sem quebrar.
+
+Coberto por `tests/test_rotas.mjs` (158 checks no total no arquivo
+inteiro).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
