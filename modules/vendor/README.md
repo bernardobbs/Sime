@@ -44,3 +44,28 @@ cp package/LICENSE        modules/vendor/qrcode.LICENSE
 - Expõe o global `QRCode` + `QRCode.CorrectLevel` — API usada pelo módulo.
 - Sem dependências (o `jquery.min.js` do pacote **não** é usado).
 - Licença MIT — ver `qrcode.LICENSE`.
+
+## leaflet.js / leaflet.css
+
+Biblioteca de mapa `leafletjs/leaflet` — desenha o mapa de posição estimada
+dos veículos na TV Dia (`SIME_tv_dia.html`, aba 🗺️ Rotas, 08/09/2026). Os
+marcadores usam `L.divIcon` (CSS puro, cor/emoji por rota) em vez do ícone
+padrão do Leaflet — por isso a pasta `images/` do pacote (marker-icon.png
+etc.) **não foi copiada**: nada no SIME usa o marcador default.
+
+**Como foi obtido** (reproduzir ao atualizar a versão):
+```bash
+npm pack leaflet@1.9.4
+tar xzf leaflet-1.9.4.tgz
+cp package/dist/leaflet.js  modules/vendor/leaflet.js
+cp package/dist/leaflet.css modules/vendor/leaflet.css
+cp package/LICENSE          modules/vendor/leaflet.LICENSE
+```
+
+- Versão empacotada: **leaflet 1.9.4**
+- Expõe o global `L` — API usada pelo módulo.
+- As TELHAS do mapa (imagens de satélite/ruas) continuam vindo por rede, do
+  OpenStreetMap (`tile.openstreetmap.org`, gratuito, sem chave) — isso não dá
+  pra vendorizar (seria a Terra inteira). A TV já depende de rede pro
+  Realtime do Supabase, então essa dependência não é nova, só mais uma.
+- Licença BSD-2-Clause — ver `leaflet.LICENSE`.

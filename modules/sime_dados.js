@@ -357,3 +357,45 @@ export async function refreshRotasEstadoMap() {
   if (!_client) return null;
   try { return await fetchRotasEstadoMap(_client); } catch (e) { return null; }
 }
+
+// -> {rotaId: {codigo, nome, lat, lng, ts}} — última posição conhecida de
+// cada rota (08/09/2026, "visão estimada do local no mapa em que está cada
+// veículo") — SEM inventar rastreamento contínuo: motorista_lat/lng/pos_ts
+// só existem quando o motorista já confirmou alguma ação (entrega,
+// recolhimento, chegada ao cartório — sime_rota_estado_upsert grava a
+// geolocalização do navegador nesse instante). Rota sem nenhum informe ainda
+// simplesmente não entra no mapa. Chaveado por rota_id (UUID), não pelo nome
+// "Rota 00X" como fetchRotasEstadoMap() — o payload de Realtime de
+// sime_rotas_estado só traz rota_id, e casar por ele evita mais uma consulta
+// pra resolver nome→id na hora de aplicar um evento.
+async function fetchRotasPosicaoMap(c) {
+  const rotas = await getRotas({ fallback: null });
+  if (!rotas) throw new Error('sem rotas pra resolver código/nome');
+  const metaPorRotaId = new Map(rotas.map((r) => [r.id, { codigo: r.codigo, nome: r.nome }]));
+
+  const { data: estados, error } = await c.from('sime_rotas_estado')
+    .select('rota_id, motorista_lat, motorista_lng, motorista_pos_ts')
+    .not('motorista_pos_ts', 'is', null);
+  if (error) throw error;
+
+  const map = {};
+  for (const row of estados) {
+    const meta = metaPorRotaId.get(row.rota_id);
+    if (!meta || row.motorista_lat == null || row.motorista_lng == null) continue;
+    map[row.rota_id] = {
+      codigo: meta.codigo, nome: meta.nome,
+      lat: row.motorista_lat, lng: row.motorista_lng,
+      ts: row.motorista_pos_ts ? new Date(row.motorista_pos_ts).getTime() : null,
+    };
+  }
+  return map;
+}
+
+export async function getRotasPosicaoMap({ fallback = null } = {}) {
+  return withFallback('rotasPosicaoMap', fetchRotasPosicaoMap, fallback);
+}
+
+export async function refreshRotasPosicaoMap() {
+  if (!_client) return null;
+  try { return await fetchRotasPosicaoMap(_client); } catch (e) { return null; }
+}

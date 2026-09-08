@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME TV Dia</title>
 <link rel="stylesheet" href="./sime_theme_purple.css">
+<link rel="stylesheet" href="./vendor/leaflet.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;}
@@ -181,6 +182,18 @@ body{display:flex;flex-direction:column;}
 .sp-title{font-size:.9rem;font-weight:800;}
 .sp-close{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
 .sp-body{padding:14px 16px;display:flex;flex-direction:column;gap:16px;}
+/* Mapa de posição dos veículos (08/09/2026) — mesmo padrão de overlay do
+   painel de sons acima, só mais largo (precisa caber um mapa de verdade). */
+.map-overlay{position:fixed;inset:0;background:rgba(30,27,46,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.map-overlay.open{opacity:1;pointer-events:all;}
+.map-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;width:min(880px,94vw);max-height:88vh;box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;}
+.map-body{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px;}
+.map-hint{font-size:.68rem;color:var(--text3);}
+#mapa-rotas{width:100%;height:min(64vh,560px);border-radius:10px;border:1px solid var(--border);background:var(--bg2);}
+.map-legenda{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.68rem;color:var(--text2);}
+.rt-pin{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--blue);color:#fff;font-size:.62rem;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);}
+.rt-pin span{transform:rotate(45deg);}
+.leaflet-popup-content{font-size:.78rem;}
 .sp-cat{display:flex;flex-direction:column;gap:8px;}
 .sp-cat-title{font-size:.72rem;font-weight:800;display:flex;align-items:center;gap:6px;}
 .sp-cat-sub{font-size:.65rem;color:var(--text2);}
@@ -230,6 +243,7 @@ body{display:flex;flex-direction:column;}
   <div class="t-right">
     <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
     <div class="t-clock" id="clock">--:--:--</div>
+    <button class="gear-btn" id="mapa-rotas-btn" onclick="toggleMapaRotas()" title="Posição estimada dos veículos">🗺️</button>
     <button class="gear-btn" onclick="toggleSoundPanel()" title="Configurar sons de alerta">⚙️</button>
   </div>
 </div>
@@ -289,6 +303,21 @@ body{display:flex;flex-direction:column;}
     </div>
   </div>
 </div>
+
+<!-- MAPA — posição estimada dos veículos (08/09/2026) -->
+<div class="map-overlay" id="mapa-overlay" onclick="closeMapaRotasIfOut(event)">
+  <div class="map-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🗺️ Posição estimada dos veículos</div>
+      <button class="sp-close" onclick="toggleMapaRotas()">✕</button>
+    </div>
+    <div class="map-body">
+      <div class="map-hint">Atualiza a cada confirmação do motorista (entrega, recolhimento, chegada ao cartório) — não é rastreamento contínuo, é a última posição informada.</div>
+      <div id="mapa-rotas"></div>
+      <div class="map-legenda" id="mapa-legenda"></div>
+    </div>
+  </div>
+</div>
 <div class="fase-bar">
   <button class="fase-btn active ab"  id="fase-ab"   onclick="setFase('ab')">🌅 Abertura</button>
   <button class="fase-btn enc"        id="fase-enc"  onclick="setFase('enc')">🏁 Encerramento</button>
@@ -319,10 +348,11 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="v-leg" id="v-leg"></div>
 </div>
+<script src="./vendor/leaflet.js"></script>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow } from './sime_dados.js';
-import { subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow, getRotas, getZonaInfo, getRotasPosicaoMap } from './sime_dados.js';
+import { subscribeMesaEstado, subscribeMidias, subscribeRotasEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
@@ -438,6 +468,34 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     }
     window.__contatosPorSecao = porSecao;
   } catch (e) { /* sem contatos — o modal simplesmente não mostra o botão */ }
+
+  // Mapa — posição estimada dos veículos (08/09/2026, ver comentário em
+  // sime_dados.js/getRotasPosicaoMap). Snapshot inicial + Realtime, mesmo
+  // padrão de sime_mesa_estado/sime_midias acima; window.__posicaoRotas fica
+  // exposto pro <script> clássico (toggleMapaRotas/renderMarcadoresMapa).
+  try {
+    const rotasMeta = await getRotas({ fallback: [] });
+    window.__metaPorRotaId = Object.fromEntries((rotasMeta || []).map((r) => [r.id, { codigo: r.codigo, nome: r.nome }]));
+    const posicaoInicial = await getRotasPosicaoMap({ fallback: {} });
+    window.__posicaoRotas = posicaoInicial || {};
+    if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+    subscribeRotasEstado(client, (row) => {
+      const meta = window.__metaPorRotaId?.[row.rota_id];
+      if (!meta) return;
+      if (row.motorista_lat == null || row.motorista_lng == null) return;
+      window.__posicaoRotas[row.rota_id] = {
+        codigo: meta.codigo, nome: meta.nome,
+        lat: row.motorista_lat, lng: row.motorista_lng,
+        ts: row.motorista_pos_ts ? new Date(row.motorista_pos_ts).getTime() : null,
+      };
+      if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+    });
+    // Centro padrão do mapa (sede da zona, sime_zonas.lat/lon) — só usado
+    // enquanto nenhum veículo ainda informou posição; com pelo menos um
+    // ponto, o mapa sempre enquadra os veículos, não a sede.
+    const zona = await getZonaInfo({ fallback: null });
+    if (zona && zona.lat != null && zona.lon != null) window.__centroMapaZona = [zona.lat, zona.lon];
+  } catch (e) { /* mapa fica indisponível — o resto da TV segue normal */ }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -756,6 +814,77 @@ function toggleSoundPanel(){
 function closeSoundPanelIfOut(e){
   if(e.target===document.getElementById('sound-overlay')) toggleSoundPanel();
 }
+
+// ── MAPA — posição estimada dos veículos (08/09/2026) ──────
+// window.__posicaoRotas ({rotaId:{codigo,nome,lat,lng,ts}}) e
+// window.__centroMapaZona são preenchidos pelo <script type="module"> acima
+// (getRotasPosicaoMap()/subscribeRotasEstado); este bloco só desenha.
+// L.map() exige o container já visível com tamanho > 0 — por isso o mapa só
+// é criado na primeira vez que o painel abre (garantirMapaLeaflet), nunca no
+// carregamento da página, e invalidateSize() roda logo depois de abrir pra
+// corrigir o tamanho que o Leaflet calculou errado com o painel ainda oculto.
+let mapaLeaflet = null;
+const marcadoresMapaRotas = new Map(); // rotaId -> L.marker
+const CORES_ROTA = ['#2d50a0','#1e7048','#5c3a98','#a0522d','#0891b2','#be123c','#7c3aed','#166534'];
+function corDaRota(codigo){
+  let h = 0; for (const c of String(codigo)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CORES_ROTA[h % CORES_ROTA.length];
+}
+function iconPinRota(codigo){
+  return L.divIcon({
+    className: '', html: `<div class="rt-pin" style="background:${corDaRota(codigo)}"><span>${codigo}</span></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28],
+  });
+}
+function fmtHoraPosicao(ts){
+  return ts ? new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+function garantirMapaLeaflet(){
+  if (mapaLeaflet || typeof L === 'undefined') return mapaLeaflet;
+  const centro = window.__centroMapaZona || [-4.8252, -42.1733]; // sede da 7ª Zona — só até o 1º ponto real chegar
+  mapaLeaflet = L.map('mapa-rotas', { attributionControl: false }).setView(centro, 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapaLeaflet);
+  L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(mapaLeaflet);
+  return mapaLeaflet;
+}
+function renderMarcadoresMapa(){
+  if (!mapaLeaflet) return;
+  const pontos = window.__posicaoRotas || {};
+  for (const [rotaId, marker] of [...marcadoresMapaRotas]) {
+    if (!pontos[rotaId]) { mapaLeaflet.removeLayer(marker); marcadoresMapaRotas.delete(rotaId); }
+  }
+  for (const [rotaId, p] of Object.entries(pontos)) {
+    const popup = `<b>Rota ${p.codigo}${p.nome ? ' — ' + p.nome : ''}</b><br>Última posição: ${fmtHoraPosicao(p.ts)}`;
+    if (marcadoresMapaRotas.has(rotaId)) {
+      marcadoresMapaRotas.get(rotaId).setLatLng([p.lat, p.lng]).setPopupContent(popup);
+    } else {
+      const m = L.marker([p.lat, p.lng], { icon: iconPinRota(p.codigo) }).addTo(mapaLeaflet).bindPopup(popup);
+      marcadoresMapaRotas.set(rotaId, m);
+    }
+  }
+  const legenda = document.getElementById('mapa-legenda');
+  const lista = Object.values(pontos);
+  if (legenda) {
+    legenda.innerHTML = lista.length
+      ? lista.map((p) => `<span>🚗 Rota ${p.codigo} — ${fmtHoraPosicao(p.ts)}</span>`).join('')
+      : '<span>Nenhum veículo informou posição ainda.</span>';
+  }
+  if (lista.length) mapaLeaflet.fitBounds(lista.map((p) => [p.lat, p.lng]), { padding: [30, 30], maxZoom: 14 });
+}
+window.renderMarcadoresMapa = renderMarcadoresMapa;
+function toggleMapaRotas(){
+  const ov = document.getElementById('mapa-overlay');
+  const vaiAbrir = !ov.classList.contains('open');
+  ov.classList.toggle('open');
+  if (vaiAbrir) {
+    garantirMapaLeaflet();
+    setTimeout(() => { if (mapaLeaflet) { mapaLeaflet.invalidateSize(); renderMarcadoresMapa(); } }, 60);
+  }
+}
+function closeMapaRotasIfOut(e){
+  if (e.target === document.getElementById('mapa-overlay')) toggleMapaRotas();
+}
+
 const alertEmit=new Set();
 function emitAlerta(key,fn){if(!alertEmit.has(key)){alertEmit.add(key);fn();}}
 function clearAlerta(key){alertEmit.delete(key);}

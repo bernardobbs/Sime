@@ -3737,6 +3737,89 @@ do parâmetro grava no banco e loga).
 
 ---
 
+## POSIÇÃO ESTIMADA DOS VEÍCULOS NO MAPA (`SIME_tv_dia.html` → 🗺️, 08/09/2026)
+
+Pedido direto: "conseguiríamos ter uma visão estimada do local no mapa em
+que esta cada veiculo?". Esclarecido via `AskUserQuestion` antes de
+implementar — três decisões:
+
+1. **Fonte da posição: "a cada informe ele atualiza a localização"** — nem
+   GPS contínuo em segundo plano, nem estimativa por tempo decorrido sem
+   nenhum sinal real. A cada vez que o motorista já ia confirmar uma ação
+   (entrega de urna, recolhimento, chegada ao cartório), o navegador captura
+   a geolocalização NESSE instante e grava junto — sem pedir nada extra da
+   pessoa, sem rodar em segundo plano gastando bateria.
+2. **Onde aparece: TV Dia.**
+3. **Escopo: D-1 (distribuição) também**, não só Dia D (recolhimento) —
+   embora hoje não haja nenhuma rota de `distribuicao` cadastrada em
+   produção (ver módulo 🗺️ Rotas), o código já cobre os dois casos desde o
+   início; quando existir rota de distribuição real, a mesma tela funciona
+   sem mudança nenhuma.
+
+**Schema** — `sql/SIME_rotas_estado_posicao.sql` (aplicado em produção):
+`sime_rotas_estado` ganha `motorista_lat`/`motorista_lng`/`motorista_pos_ts`
+— reaproveitando a tabela que já é "1 linha = estado atual da rota" (usada
+pelo Conferente pro embarque, ver módulo 🗺️ Rotas), já Realtime
+(`subscribeRotasEstado`), já com RPC de upsert. Criar uma tabela nova só
+pra posição duplicaria essa infraestrutura à toa. `sime_rota_estado_upsert`
+ganha `p_lat`/`p_lng` no FINAL da assinatura (`DEFAULT NULL`, nunca no meio
+— `CREATE OR REPLACE` só é seguro assim pros chamadores existentes do
+Conferente/`sime_rotas_modulo.js`, que nunca passam esses dois parâmetros
+novos).
+
+**`SIME_motorista.html`** — `atualizarPosicaoMotorista(rotaCodigo)`
+(exposta em `window.simeCampo.atualizarPosicao`) roda, melhor-esforço e
+**fire-and-forget** (nunca aguardada por quem chama), dentro dos três
+pontos que já existiam: `confirmarEntrega`, `confirmarRecolhimento`,
+`confirmarChegadaCartorio`. `navigator.geolocation.getCurrentPosition()`
+sem permissão/sem sinal simplesmente não grava nada — a confirmação da
+seção em si (`syncMesa`, RPC `sime_acao_mesa`) nunca fica bloqueada por
+isso, mesma filosofia "nunca bloquear" de sempre. **Não entra na fila
+offline** (`sincronizarOuEnfileirar`) — posição é dado de "agora", não uma
+ação que precise ser preservada até a rede voltar; se falhar, o próximo
+informe tenta de novo.
+
+**`sime_dados.js`** — `getRotasPosicaoMap()`/`refreshRotasPosicaoMap()`:
+`{rotaId: {codigo, nome, lat, lng, ts}}`, só rotas com
+`motorista_pos_ts IS NOT NULL` (`.not('motorista_pos_ts','is',null)`) —
+rota sem nenhum informe ainda **não aparece**, nunca um marcador inventado
+ou "aguardando" fabricado.
+
+**`SIME_tv_dia.html`** — botão novo no topbar (🗺️, ao lado do ⚙️ de sons)
+abre um painel overlay (mesmo padrão do painel de sons — `sound-overlay`)
+com um mapa Leaflet (`vendor/leaflet.js`/`leaflet.css`, vendorizado como o
+resto do projeto — ver `vendor/README.md`). Marcadores via `L.divIcon`
+(CSS puro, cor por rota + código dentro do pino) — **sem** o ícone padrão
+do Leaflet, então a pasta `images/` do pacote nem foi copiada. Snapshot
+inicial (`getRotasPosicaoMap`) + Realtime (`subscribeRotasEstado`) —
+qualquer novo informe do motorista, em qualquer aparelho, atualiza o mapa
+sem precisar reabrir o painel. `L.map()` só é criado na PRIMEIRA vez que o
+painel abre (nunca no carregamento da página — precisa do container já
+visível com tamanho > 0), com `invalidateSize()` logo depois de abrir.
+
+Centro padrão do mapa (só até o 1º veículo informar posição):
+`sime_zonas.lat/lon` (já cadastrado, sede da 7ª Zona — Campo Maior) via
+`getZonaInfo()`; com pelo menos 1 veículo, `fitBounds()` sempre enquadra os
+veículos, não a sede.
+
+**As telhas do mapa (imagens de satélite/ruas) continuam vindo por rede**,
+do OpenStreetMap — isso não dá pra vendorizar (seria a Terra inteira). A TV
+já depende de rede pro Realtime do Supabase, então não é uma dependência
+nova, só mais uma; se a rede cair, o mapa fica com telha cinza mas os
+marcadores continuam corretos (são desenhados independente da telha
+carregar).
+
+Coberto por `tests/test_veiculos_mapa.mjs` (23 checks): confirmar
+entrega/recolhimento/chegada captura geolocalização e chama
+`sime_rota_estado_upsert` com a rota e a eleição certas; geolocalização
+negada não bloqueia a confirmação da seção em si; painel do mapa mostra a
+rota com posição (marcador + legenda com horário); sem nenhuma posição
+informada, avisa em vez de inventar; evento Realtime atualiza o marcador
+sem recarregar a página; rota sem metadado conhecido (código/nome) é
+ignorada, sem quebrar.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
