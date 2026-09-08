@@ -147,26 +147,73 @@ function rtChegadaEstimada(rota, paradas) {
 // lugares.
 //
 // 08/09/2026, pedido direto: "o destino deve ser incluido no mapa de
-// rotas" — origem/destino SEMPRE priorizam o TEXTO digitado em "Ponto de
-// partida"/"Destino" (o Google geocodifica o endereço/nome sozinho, de
-// graça, ao abrir o link) — é o valor que reflete a intenção real da rota,
-// que pode não ser nenhuma parada geolocalizada (ex.: "Cartório Eleitoral
-// da 7ª Zona", numa rota de distribuição). Só cai pra coordenada da
-// 1ª/última parada quando o campo de texto correspondente está vazio.
+// rotas" — origem/destino priorizam o TEXTO digitado em "Ponto de
+// partida"/"Destino" (é o valor que reflete a intenção real da rota, que
+// pode não ser nenhuma parada geolocalizada, ex.: "Cartório Eleitoral da
+// 7ª Zona"). Revisado no mesmo dia, achado real testando em produção
+// (Rota 24): geocodificar o texto CRU, sem nenhum contexto de cidade,
+// mandou "Creche Tia Medeiros" pra um resultado em TERESINA e "Cartório
+// Eleitoral da 7ª Zona Eleitoral" pra uma "zona 63" errada — pedido
+// direto: "poderia criar o link com as coordenadas?". Prioridade agora:
+// 1) COORDENADA de verdade, quando o texto bate com uma parada já
+//    cadastrada (mesmo sem geo salva ainda — porNome cobre as duas
+//    coisas: se a parada tem lat/long, usa; nunca inventa uma).
+// 2) Texto, mas com ", {município}, PI" anexado — o Google geocodifica de
+//    graça, e o contexto de cidade evita cair num homônimo em outro
+//    lugar. Município vem da PRÓPRIA parada batida (quando existe, ainda
+//    que sem geo) ou do 1º município cadastrado na rota, como último
+//    recurso.
+// 3) Coordenada da 1ª/última parada geolocalizada, quando o campo de
+//    texto está vazio (comportamento de sempre).
 function rtMapsUrl(rota, paradas) {
   const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
-  const origemTexto = (rota.ponto_partida || '').trim();
-  const destinoTexto = (rota.destino || '').trim();
-  const origin = origemTexto ? encodeURIComponent(origemTexto) : (comGeo[0] ? `${comGeo[0].latitude},${comGeo[0].longitude}` : null);
-  const destination = destinoTexto ? encodeURIComponent(destinoTexto) : (comGeo.length ? `${comGeo[comGeo.length - 1].latitude},${comGeo[comGeo.length - 1].longitude}` : null);
-  if (!origin || !destination) return null;
+  const norm = s => (s || '').trim().toLowerCase();
+  // Duas seções no mesmo prédio (mesmo local_nome+município, bem comum —
+  // ver "G.E. Treze de Março" no CLAUDE.md, 7 seções no mesmo local) geram
+  // a MESMA chave de nome. Prioriza sempre a que TEM geo salva — usar a
+  // coordenada de uma seção-irmã do mesmo endereço é correto (é o mesmo
+  // prédio); nunca perder uma coordenada boa só por causa de outra seção
+  // do mesmo local ainda sem geo ter "ganhado" a chave por último.
+  const porNome = new Map();
+  for (const s of paradas) {
+    const chave = norm(rtNomeLocalParada(s));
+    const atual = porNome.get(chave);
+    if (!atual || (atual.latitude == null && s.latitude != null)) porNome.set(chave, s);
+  }
+
+  function resolverPonto(textoLivre, paradaFallback) {
+    const texto = (textoLivre || '').trim();
+    if (texto) {
+      const parada = porNome.get(norm(texto));
+      if (parada && parada.latitude != null && parada.longitude != null) {
+        return { valor: `${parada.latitude},${parada.longitude}`, parada };
+      }
+      if (parada) {
+        // Bate com uma parada já cadastrada, mas sem geo salva — o texto
+        // (formato de rtNomeLocalParada) já inclui "{local}, {município}";
+        // só falta o estado, pra não competir com homônimos de outros estados.
+        return { valor: encodeURIComponent(`${texto}, PI`), parada: null };
+      }
+      // Texto qualquer, sem bater com nenhuma parada cadastrada — o único
+      // contexto que dá pra anexar é o(s) município(s) já preenchido(s) na
+      // PRÓPRIA rota (não inventa cidade nenhuma).
+      const municipio = rota.municipios?.[0];
+      const textoComContexto = municipio ? `${texto}, ${municipio}, PI` : texto;
+      return { valor: encodeURIComponent(textoComContexto), parada: null };
+    }
+    if (paradaFallback) return { valor: `${paradaFallback.latitude},${paradaFallback.longitude}`, parada: paradaFallback };
+    return null;
+  }
+
+  const origemResolvida = resolverPonto(rota.ponto_partida, comGeo[0]);
+  const destinoResolvida = resolverPonto(rota.destino, comGeo[comGeo.length - 1]);
+  if (!origemResolvida || !destinoResolvida) return null;
+
   // Waypoints: as paradas geolocalizadas que não foram elas mesmas usadas
   // como origem/destino acima (evita repetir o mesmo ponto duas vezes).
-  let meio = comGeo;
-  if (!origemTexto && meio.length) meio = meio.slice(1);
-  if (!destinoTexto && meio.length) meio = meio.slice(0, -1);
+  const meio = comGeo.filter(s => s !== origemResolvida.parada && s !== destinoResolvida.parada);
   const waypoints = meio.length ? `&waypoints=${meio.map(s => `${s.latitude},${s.longitude}`).join('|')}` : '';
-  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${origemResolvida.valor}&destination=${destinoResolvida.valor}${waypoints}`;
 }
 
 // Mapa esquemático da rota, pra imprimir (08/09/2026, pedido direto: "em
@@ -945,6 +992,14 @@ function rtHtmlFicha(rota, paradas, responsavel) {
   const svgMapa = rtSvgMinimapa(paradas);
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
   const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
+  // Link de verdade impresso por extenso (08/09/2026, pedido direto:
+  // "traga o trajeto com o ponto das rotas no google maps") — o QR já
+  // levava pra lá, mas só servia pra quem escaneia com o celular; o link
+  // por extenso também funciona pra quem abre o PDF impresso no
+  // computador (clicável) ou precisa digitar/copiar à mão. É a rota REAL
+  // (ruas de verdade, seguindo estrada), com origem/destino/paradas como
+  // pontos — diferente do esquema em linha reta acima, que é só uma
+  // referência visual offline.
   const mapaHtml = (svgMapa || mapsUrl) ? `
       <div class="rt-mapa">
         <div class="rt-mapa-titulo">🗺️ Mapa esquemático da rota</div>
@@ -953,9 +1008,12 @@ function rtHtmlFicha(rota, paradas, responsavel) {
         ${mapsUrl ? `
         <div class="rt-mapa-qr">
           <div id="rt-ficha-qr"></div>
-          <div class="rt-sub">📱 Aponte a câmera pra abrir a rota completa no Google Maps</div>
+          <div class="rt-mapa-link">
+            <div class="rt-sub">📱 Aponte a câmera, ou abra o trajeto real (com todas as paradas) no link:</div>
+            <div class="rt-mapa-url">${rtEsc(mapsUrl)}</div>
+          </div>
         </div>` : ''}
-        <div class="rt-sub">Esquema em linha reta entre as coordenadas cadastradas — não segue estrada nenhuma. Pra navegação de verdade, use o QR/link.</div>
+        <div class="rt-sub">Esquema acima em linha reta entre as coordenadas cadastradas — não segue estrada nenhuma. O link/QR abre o trajeto de verdade, pelas ruas, no Google Maps.</div>
       </div>` : '';
 
   return `
@@ -973,7 +1031,6 @@ function rtHtmlFicha(rota, paradas, responsavel) {
         ${rota.tempo_parada_min != null && paradas.length ? `<div><b>Tempo estimado parado:</b> ${paradas.length} × ${rota.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(rota, paradas.length))} (sem contar deslocamento entre paradas)</div>` : ''}
         ${rota.itinerario ? `<div><b>Observações:</b> ${rtEsc(rota.itinerario)}</div>` : ''}
       </div>
-      ${mapaHtml}
       <table class="rt-tabela">
         <colgroup><col class="rt-col-num"><col class="rt-col-local"><col class="rt-col-mun"><col class="rt-col-geo"><col class="rt-col-chegada"></colgroup>
         <thead><tr>
@@ -981,6 +1038,7 @@ function rtHtmlFicha(rota, paradas, responsavel) {
         </tr></thead>
         <tbody>${linhas || '<tr><td colspan="5" class="rt-sub">Nenhum local de votação vinculado ainda.</td></tr>'}</tbody>
       </table>
+      ${mapaHtml}
       <div class="rt-rodape">Documento de apoio operacional do SIME — em caso de dúvida ou imprevisto, contate o cartório.</div>
     </div>`;
 }

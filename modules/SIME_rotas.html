@@ -107,11 +107,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      coordenadas (sem depender de rede/API paga) + QR pro Google Maps de
      verdade (vendor/qrcode.min.js, mesma lib offline dos QR de token de
      campo). page-break-inside:avoid pra não cortar o bloco entre 2 páginas. */
-  .rt-mapa{margin-bottom:4mm;page-break-inside:avoid;}
+  .rt-mapa{margin-top:4mm;page-break-inside:avoid;}
   .rt-mapa-titulo{font-weight:800;font-size:9.5pt;margin-bottom:2mm;}
   .rt-mapa-legenda{font-size:8pt;margin-top:2mm;}
-  .rt-mapa-qr{display:flex;align-items:center;gap:3mm;margin-top:2mm;}
-  .rt-mapa-qr .rt-sub{margin-top:0;max-width:110px;}
+  .rt-mapa-qr{display:flex;align-items:flex-start;gap:3mm;margin-top:2mm;}
+  .rt-mapa-link .rt-sub{margin-top:0;}
+  /* Link por extenso (08/09/2026, pedido direto: "traga o trajeto com o
+     ponto das rotas no google maps") — além do QR (só serve pra quem
+     escaneia com celular), o link completo também sai impresso por
+     extenso, clicável se o PDF for aberto no computador. word-break pra
+     não estourar a largura da página com uma URL longa (várias paradas
+     viram vários pares de coordenada na query string). */
+  .rt-mapa-url{font-size:7pt;color:#333;word-break:break-all;margin-top:1mm;}
   .rt-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
   .rt-tabela th,.rt-tabela td{border:1px solid #000;padding:2.5mm;vertical-align:top;text-align:left;}
   .rt-tabela th{background:#eee;font-size:8pt;}

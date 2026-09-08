@@ -3557,6 +3557,51 @@ módulo recém-lançado:
 Coberto por `tests/test_rotas.mjs` (blocos 19-24, 148 checks no total no
 arquivo inteiro).
 
+**Ficha revisada de novo no mesmo dia — mapa por último, e o link do
+Google Maps corrigido pra usar coordenada em vez de geocodificar texto cru
+(08/09/2026, pedido direto: "coloque o mapa por ultimo e traga o trajeto
+com o ponto das rotas no google maps").**
+
+- **Mapa (esquema + legenda + QR/link) movido pra depois da tabela de
+  paradas** — antes ficava entre os dados da rota e a tabela; agora é a
+  última seção antes do rodapé de sempre.
+- **Link por extenso, além do QR** — o QR só serve pra quem escaneia com o
+  celular; o mesmo link agora também sai IMPRESSO POR EXTENSO
+  (`.rt-mapa-url`, `word-break:break-all` pra não estourar a largura da
+  página), clicável se o PDF impresso for aberto no computador.
+- **Bug real, achado testando em produção (Rota 24) — geocodificar o TEXTO
+  cru levava pra lugar errado.** `origin=Creche%20Tia%20Medeiros` (sem
+  nenhum contexto de cidade) resolvia pra um resultado em TERESINA;
+  `destination=Cart%C3%B3rio%20Eleitoral%20da%207%C2%AA%20Zona%20Eleitoral`
+  caía numa "zona 63" sem relação nenhuma. Pedido direto: "poderia criar o
+  link com as coordenadas?". `rtMapsUrl()` reescrita com uma prioridade
+  clara:
+  1. **Coordenada de verdade**, quando o texto de Partida/Destino bate
+     (por nome normalizado) com uma parada já cadastrada NA ROTA — mesmo
+     que a suposta parada não tenha geo salva, tenta achar uma
+     seção-irmã do MESMO prédio (mesmo `local_nome`+`município` —
+     comum: uma seção sem geo e outra com, no mesmo endereço, ver "G.E.
+     Treze de Março" documentado acima) que tenha coordenada, e usa essa.
+     Nunca inventa uma coordenada — só reaproveita uma que já existe pro
+     mesmo lugar físico.
+  2. **Texto + contexto de cidade**, quando bate com uma parada cadastrada
+     mas NINGUÉM daquele prédio tem geo ainda — o texto (formato de
+     `rtNomeLocalParada()`) já vem como "{local}, {município}", então só
+     falta anexar ", PI" pra completar o endereço pro geocodificador do
+     Google.
+  3. **Texto + `{1º município da rota}` + "PI"**, quando o texto não bate
+     com NENHUMA parada cadastrada (ex.: "Cartório Eleitoral da 7ª Zona
+     Eleitoral", que não é local de votação) — o único contexto disponível
+     é o(s) município(s) já preenchido(s) no cadastro da própria rota.
+  4. Coordenada da 1ª/última parada geolocalizada, quando o campo de texto
+     está vazio (comportamento de sempre, sem mudança).
+  Nenhuma camada inventa geografia nova — só usa dado que já existe
+  (coordenada de uma seção-irmã, ou município já cadastrado) pra dar mais
+  contexto ao Google, em vez de mandar um nome de prédio pelado.
+
+Coberto por `tests/test_rotas.mjs` (bloco 19 reescrito + ajustes no bloco
+22, 152 checks no total no arquivo inteiro).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

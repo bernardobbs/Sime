@@ -731,14 +731,27 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 19. Link "Ver rota completa no mapa" inclui o Destino digitado (texto
-// livre, sem coordenada) — não só as paradas geolocalizadas (08/09/2026,
-// pedido direto: "o destino deve ser incluido no mapa de rotas"). ──
+// ── 19. Link "Ver rota completa no mapa" inclui o Destino digitado
+// (08/09/2026, pedido direto: "o destino deve ser incluido no mapa de
+// rotas") — revisado no mesmo dia, achado real testando em produção
+// (Rota 24): geocodificar o texto CRU jogou "Creche Tia Medeiros" pra um
+// resultado em Teresina e "Cartório Eleitoral..." pra uma "zona 63"
+// errada. Pedido direto: "poderia criar o link com as coordenadas?" —
+// agora prioriza coordenada quando o texto bate com uma parada
+// GEOLOCALIZADA; quando bate com uma parada SEM geo, anexa só ", PI" (o
+// texto já vem com o município embutido, formato de rtNomeLocalParada);
+// e quando não bate com nada, anexa ", {município da rota}, PI". ──
 {
   const ctx = await b.newContext();
   const m = mock();
+  // Local "Escola D" da rota, cadastrado mas SEM geo, num município
+  // diferente do da rota (Jatobá do Piauí vs. Campo Maior) — pra provar
+  // que o contexto usado é o do LOCAL batido, não um fallback genérico.
+  m.sime_secoes.push({ id: 's4', numero: 99, local_nome: 'Escola D', municipio: 'Jatobá do Piauí', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: null, longitude: null });
+  m.sime_rota_secoes.push({ id: 'rs4', rota_id: 'r1', secao_id: 's4', parada: 3 });
   const r1 = m.sime_rotas.find(r => r.id === 'r1');
-  r1.destino = 'Cartório Eleitoral da 7ª Zona'; // não é nenhuma parada geolocalizada
+  r1.destino = 'Cartório Eleitoral da 7ª Zona'; // não bate com nenhuma parada
+  r1.ponto_partida = 'Grupo Escolar A, Campo Maior'; // bate com s1, que TEM geo
   const { p, erros } = await abrir(ctx, m);
   await login(p);
   await p.waitForTimeout(200);
@@ -747,8 +760,21 @@ async function login(p) {
   await p.waitForTimeout(100);
 
   const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
-  check('URL usa a 1ª parada geolocalizada (s1) como origem, já que Partida está vazia', href?.includes('origin=-4.83,-42.16'), href);
-  check('URL usa o TEXTO do Destino, geocodificado pelo próprio Google — não uma coordenada', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona')}`), href);
+  check('Partida bate com uma parada geolocalizada (s1) — usa a COORDENADA dela, não o texto', href?.includes('origin=-4.83,-42.16') && !href?.includes('origin=Grupo'), href);
+  check('Destino não bate com nenhuma parada — texto ganha ", {município da rota}, PI" pra desambiguar', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona, Campo Maior, PI')}`), href);
+
+  // Agora troca o Destino pro local SEM geo (Escola D) — deve usar o
+  // MUNICÍPIO DELE (Jatobá do Piauí), não o da rota (Campo Maior).
+  await p.fill('#rt-destino', 'Escola D, Jatobá do Piauí');
+  const href2 = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
+  check('link não recalcula sozinho ao digitar (só ao reabrir/salvar) — segue mostrando o valor anterior', href2 === href);
+
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("✏️ Editar")').click();
+  await p.waitForTimeout(100);
+  const href3 = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
+  check('local sem geo, mas cadastrado: usa o MUNICÍPIO DELE (Jatobá do Piauí), não o da rota', href3?.includes(`destination=${encodeURIComponent('Escola D, Jatobá do Piauí, PI')}`), href3);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -856,6 +882,16 @@ async function login(p) {
 
   const qrCount = await p.locator('#rt-ficha-qr canvas, #rt-ficha-qr table').count();
   check('QR code é de fato gerado dentro do placeholder', qrCount === 1);
+
+  // 08/09/2026, pedido direto: "coloque o mapa por ultimo e traga o
+  // trajeto com o ponto das rotas no google maps" — mapa depois da tabela
+  // de paradas, e o link de verdade (rota pelas ruas, com as paradas como
+  // pontos) impresso por extenso, não só dentro do QR.
+  const idxTabela = printHtml.indexOf('rt-tabela');
+  const idxMapa = printHtml.indexOf('rt-mapa-titulo');
+  check('mapa vem DEPOIS da tabela de paradas (não mais entre os dados e a tabela)', idxTabela !== -1 && idxMapa !== -1 && idxTabela < idxMapa, `tabela@${idxTabela} mapa@${idxMapa}`);
+  const mapsUrlEsperada = 'https://www.google.com/maps/dir/?api=1&amp;origin=-4.83,-42.16&amp;destination=Cart%C3%B3rio%20Eleitoral%20da%207%C2%AA%20Zona%2C%20Campo%20Maior%2C%20PI&amp;waypoints=-4.831,-42.161';
+  check('link do trajeto real (com as paradas como pontos) sai impresso por extenso, não só no QR', printHtml.includes(mapsUrlEsperada), printHtml);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
