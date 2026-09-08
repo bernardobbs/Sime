@@ -180,7 +180,14 @@ async function login(p) {
   check('grava a nova rota com zona_id e tipos certos', ins?.payload?.codigo === '040' && JSON.stringify(ins?.payload?.tipos) === JSON.stringify(['instalacao']) && ins?.payload?.zona_id === 'z7', JSON.stringify(ins));
   check('grava os municípios como array (split por vírgula, trimado)', JSON.stringify(ins?.payload?.municipios) === JSON.stringify(['Campo Maior', 'Jatobá do Piauí']), JSON.stringify(ins?.payload?.municipios));
   check('nasce ativa', ins?.payload?.ativo === true);
-  check('salvar fecha o modal', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+  // 08/09/2026, pedido direto: "quero poder cadastrar a rota... devendo
+  // cadastrar cada um dos locais de votação" — salvar uma rota nova não
+  // fecha mais o modal, reabre o MESMO modal já em modo edição (com o
+  // título mudando pra "Editar Rota") pra já poder vincular os locais de
+  // votação sem precisar reabrir nada.
+  check('modal continua aberto, agora em modo edição', await p.evaluate(() => document.getElementById('overlay').classList.contains('open')));
+  check('título do modal muda pra "Editar Rota 040"', /Editar Rota 040/.test(await p.locator('#modal-body .m-title').textContent()));
+  check('seção de locais de votação já aparece, pronta pra usar', /Locais de votação/.test(await p.locator('#modal-body').textContent()));
 
   const txt = (await p.locator('.content').textContent()).replace(/\s+/g, ' ');
   check('a rota nova aparece na lista recarregada', /Rota de Instalação Centro/.test(txt) && /Instalação de seção/.test(txt), txt.slice(0, 500));
@@ -250,17 +257,17 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 5. Seções da rota — tipo COM consumidor legado (distribuição/
-// recolhimento de urna): adicionar/remover/reordenar espelha em
-// sime_secoes.rota_id/parada, pra Motorista/Conferente/TV Distribuição
-// continuarem enxergando a mudança. ──
+// ── 5. Locais de votação da rota (dentro do modal de Editar) — tipo COM
+// consumidor legado (distribuição/recolhimento de urna): adicionar/remover/
+// reordenar espelha em sime_secoes.rota_id/parada, pra Motorista/Conferente/
+// TV Distribuição continuarem enxergando a mudança. ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("👥 Seções")').click();
+  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
   const modalTxt = await p.locator('#modal-body').textContent();
   check('modal mostra as 2 seções já vinculadas', /30/.test(modalTxt) && /31/.test(modalTxt) && /Grupo Escolar A/.test(modalTxt));
@@ -310,7 +317,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("👥 Seções")').click();
+  await p.locator('.import-card:has-text("Rota 002")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
   check('não avisa nada sobre Motorista/Conferente (tipo sem consumidor legado)', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
@@ -339,7 +346,7 @@ async function login(p) {
   await p.waitForTimeout(200);
 
   // s1 já está na Rota 001 (r1) — move pra Rota 003 (r3).
-  await p.locator('.import-card:has-text("Rota 003")').locator('button:has-text("👥 Seções")').click();
+  await p.locator('.import-card:has-text("Rota 003")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
   await p.fill('#rt-secao-busca', '30');
   await p.waitForTimeout(350);
@@ -365,7 +372,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 004")').locator('button:has-text("👥 Seções")').click();
+  await p.locator('.import-card:has-text("Rota 004")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
   check('rota só recolhimento_urna NÃO avisa nada sobre Motorista/Conferente', !/também usada por Motorista/.test(await p.locator('#modal-body').textContent()));
 
@@ -427,7 +434,7 @@ async function login(p) {
   await login(p);
   await p.waitForTimeout(200);
 
-  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("👥 Seções")').click();
+  await p.locator('.import-card:has-text("Rota 001")').locator('button:has-text("✏️ Editar")').click();
   await p.waitForTimeout(100);
 
   const linkMapa = p.locator('.m-hist-item:has-text("30") a[title="Ver no mapa"]');

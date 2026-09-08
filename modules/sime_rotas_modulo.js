@@ -59,7 +59,6 @@ let rtFiltroTipo = '';
 let rtBusca = '';
 let rtBuscaTimer = null;
 let rtModalId = null; // null = fechado; '' = criando nova rota; id = editando
-let rtSecoesModalRotaId = null; // id da rota com o modal "Seções" aberto, ou null
 let rtSecaoBusca = '';
 let rtSecaoBuscaTimer = null;
 
@@ -185,7 +184,6 @@ function renderRotas() {
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtAbrirEditar('${r.id}')">✏️ Editar</button>
-          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtAbrirSecoes('${r.id}')">👥 Seções (${secoes.length})</button>
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>
         </div>
       </div>`;
@@ -231,8 +229,14 @@ function rtRenderModalRota() {
           <input type="checkbox" class="rt-tipo-check" value="${t}" ${tiposAtuais.includes(t) ? 'checked' : ''}> ${RT_TIPO_LABEL[t]}
         </label>`).join('')}
       </div>
-      <div class="form-group"><label for="rt-itinerario">Itinerário (descrição livre das paradas)</label>
-        <textarea id="rt-itinerario" rows="3" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit" placeholder="ex.: Escola A → Escola B → Sede da Zona">${rtEsc(r?.itinerario || '')}</textarea></div>
+      <div class="form-group"><label for="rt-itinerario">Itinerário (observações livres, opcional)</label>
+        <textarea id="rt-itinerario" rows="2" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit" placeholder="ex.: vira à direita depois da ponte">${rtEsc(r?.itinerario || '')}</textarea></div>
+      ${isNovo ? `
+      <div class="form-group"><div class="ic-sub" style="margin:0">📍 Salve a rota primeiro pra poder cadastrar os locais de votação (com geolocalização) abaixo.</div></div>` : `
+      <div class="form-group" style="margin-top:4px">
+        <label>📍 Locais de votação (paradas)</label>
+        <div id="rt-paradas-secao"></div>
+      </div>`}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:150px"><label for="rt-partida">Ponto de partida</label>
           <input type="text" id="rt-partida" value="${rtEsc(r?.ponto_partida || '')}" placeholder="ex.: Sede da 7ª Zona"></div>
@@ -263,6 +267,55 @@ function rtRenderModalRota() {
       <button class="btn btn-dark" onclick="rtSalvarRota()">💾 Salvar</button>
     </div>`;
   document.getElementById('overlay').classList.add('open');
+  if (!isNovo) rtRenderParadas();
+}
+
+// Renderiza só o conteúdo de "📍 Locais de votação (paradas)", dentro do
+// próprio modal de editar rota — escopado a #rt-paradas-secao, nunca ao
+// modal inteiro (rtRenderModalRota()). Mesma lição já aprendida em
+// cmSalvarTelefoneCard() (sime_contatar_mesarios.js): re-renderizar o modal
+// inteiro a cada tecla digitada na busca, ou a cada seção adicionada/
+// removida, perderia o que a pessoa estivesse editando ao mesmo tempo nos
+// outros campos (código, nome, itinerário, horário...) — aqui a busca por
+// local de votação e os demais campos da rota convivem no mesmo modal, então
+// esse isolamento passou a importar de verdade.
+function rtRenderParadas() {
+  const alvo = document.getElementById('rt-paradas-secao');
+  if (!alvo) return; // modal fechado, ou é "nova rota" (ainda sem id pra vincular seção)
+  const r = rtDados.rotas.find(x => x.id === rtModalId);
+  if (!r) return;
+  const atuais = rtDados.secoesPorRota.get(r.id) || [];
+  const atuaisIds = new Set(atuais.map(s => s.id));
+  const q = rtSecaoBusca.trim().toLowerCase();
+  const candidatas = rtDados.secoesZona
+    .filter(s => !atuaisIds.has(s.id) && (!q || `${s.numero} ${s.local_nome} ${s.municipio}`.toLowerCase().includes(q)))
+    .slice(0, 30);
+
+  const buscaEl = document.getElementById('rt-secao-busca');
+  const buscaAtiva = document.activeElement === buscaEl;
+  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
+  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
+
+  alvo.innerHTML = `
+    <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
+    <div class="m-hist">
+      ${atuais.length ? atuais.map(s => `
+      <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span><input type="number" value="${s.parada ?? ''}" min="1" style="width:48px;padding:3px 5px;border-radius:5px;border:1px solid var(--border2);background:var(--bg);color:var(--text)" onblur="rtSalvarParada('${r.id}','${s.id}',this.value)"> <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
+        <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>
+      </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
+    </div>
+    <label for="rt-secao-busca" style="font-size:.78rem;color:var(--text2);display:block;margin-top:8px">Adicionar local de votação</label>
+    <input type="text" id="rt-secao-busca" value="${rtEsc(rtSecaoBusca)}" oninput="rtOnSecaoBuscaInput(this.value)" placeholder="Buscar por número, local ou município…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+    <div class="m-hist">
+      ${candidatas.length ? candidatas.map(s => `
+      <div class="m-hist-item" style="cursor:pointer" onclick="rtAdicionarSecao('${r.id}','${s.id}')">➕ <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ' 📍' : ''}</div>`).join('')
+        : (q ? '<div class="ic-sub" style="margin:0">Nenhum local encontrado.</div>' : '')}
+    </div>`;
+  if (buscaAtiva) {
+    const el = document.getElementById('rt-secao-busca');
+    if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
+  }
 }
 
 async function rtSalvarRota() {
@@ -298,6 +351,21 @@ async function rtSalvarRota() {
         showToast('⚠ ' + error.message); return;
       }
       await log('rota_criada', '', { codigo, nome, tipos });
+      // Depois de criar, reabre o MESMO modal já em modo edição da rota
+      // recém-criada — pedido direto: "quero poder cadastrar a rota...
+      // devendo cadastrar cada um dos locais de votação", tudo num fluxo só,
+      // sem precisar fechar e reabrir pra achar onde vincular as seções.
+      // Casa por código (único por zona, já garantido pela constraint acima)
+      // porque o insert do Supabase aqui não devolve o id de volta.
+      await rtCarregar({ silencioso: true });
+      const nova = rtDados.rotas.find(x => x.codigo === codigo);
+      if (nova) {
+        showToast('✓ Rota criada — agora cadastre os locais de votação abaixo');
+        rtModalId = nova.id;
+        rtRenderModalRota();
+        render();
+        return;
+      }
       showToast('✓ Rota criada');
     } else {
       const { error } = await sb.from('sime_rotas').update({ ...payload, codigo, ativo }).eq('id', rtModalId);
@@ -326,65 +394,16 @@ async function rtToggleAtivo(id, ativo) {
   render();
 }
 
-// ── Modal: seções da rota ──
-function rtAbrirSecoes(rotaId) { rtSecoesModalRotaId = rotaId; rtSecaoBusca = ''; rtRenderModalSecoes(); }
-function rtFecharModalSecoes(e) {
-  if (rtSecoesModalRotaId === null) return;
-  if (!e || e.target === document.getElementById('overlay')) {
-    rtSecoesModalRotaId = null;
-    document.getElementById('overlay')?.classList.remove('open');
-  }
-}
+// ── Locais de votação (paradas) da rota — vive dentro do modal de editar
+// rota (rtRenderParadas() acima), não é mais modal próprio (04/09/2026,
+// depois pedido direto de 08/09/2026: "quero poder cadastrar a rota,
+// indicando o local de saída, e todos os pontos... devendo cadastrar cada
+// um dos locais de votação... georreferenciamento que já consta no
+// sistema" — juntar num fluxo só em vez de dois modais separados). ──
 function rtOnSecaoBuscaInput(v) {
   rtSecaoBusca = v;
   clearTimeout(rtSecaoBuscaTimer);
-  rtSecaoBuscaTimer = setTimeout(rtRenderModalSecoes, 250);
-}
-function rtRenderModalSecoes() {
-  const rota = rtDados.rotas.find(r => r.id === rtSecoesModalRotaId);
-  if (!rota) { rtSecoesModalRotaId = null; return; }
-  const atuais = rtDados.secoesPorRota.get(rota.id) || [];
-  const atuaisIds = new Set(atuais.map(s => s.id));
-  const q = rtSecaoBusca.trim().toLowerCase();
-  const candidatas = rtDados.secoesZona
-    .filter(s => !atuaisIds.has(s.id) && (!q || `${s.numero} ${s.local_nome} ${s.municipio}`.toLowerCase().includes(q)))
-    .slice(0, 30);
-
-  const buscaEl = document.getElementById('rt-secao-busca');
-  const buscaAtiva = document.activeElement === buscaEl;
-  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
-  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
-
-  document.getElementById('modal-body').innerHTML = `
-    <div class="m-hdr">
-      <div class="m-title">👥 Seções da Rota ${rtEsc(rota.codigo)}</div>
-      <button class="close-btn" aria-label="Fechar" onclick="rtFecharModalSecoes()">✕</button>
-    </div>
-    <div class="m-body">
-      <div class="ic-sub" style="margin:0">${atuais.length} seção(ões) nesta rota${rtRotaTemTipoLegado(rota) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
-      <div class="m-hist">
-        ${atuais.length ? atuais.map(s => `
-        <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span><input type="number" value="${s.parada ?? ''}" min="1" style="width:48px;padding:3px 5px;border-radius:5px;border:1px solid var(--border2);background:var(--bg);color:var(--text)" onblur="rtSalvarParada('${rota.id}','${s.id}',this.value)"> <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
-          <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${rota.id}','${s.id}')">✕</button>
-        </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhuma seção vinculada ainda.</div>'}
-      </div>
-      <div class="form-group"><label for="rt-secao-busca">Adicionar seção</label>
-        <input type="text" id="rt-secao-busca" value="${rtEsc(rtSecaoBusca)}" oninput="rtOnSecaoBuscaInput(this.value)" placeholder="Buscar por número, local ou município…"></div>
-      <div class="m-hist">
-        ${candidatas.length ? candidatas.map(s => `
-        <div class="m-hist-item" style="cursor:pointer" onclick="rtAdicionarSecao('${rota.id}','${s.id}')">➕ <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}</div>`).join('')
-          : (q ? '<div class="ic-sub" style="margin:0">Nenhuma seção encontrada.</div>' : '')}
-      </div>
-    </div>
-    <div class="m-foot">
-      <button class="btn btn-dark" onclick="rtFecharModalSecoes()">Fechar</button>
-    </div>`;
-  document.getElementById('overlay').classList.add('open');
-  if (buscaAtiva) {
-    const el = document.getElementById('rt-secao-busca');
-    if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
-  }
+  rtSecaoBuscaTimer = setTimeout(rtRenderParadas, 250);
 }
 
 async function rtAdicionarSecao(rotaId, secaoId) {
@@ -408,7 +427,7 @@ async function rtAdicionarSecao(rotaId, secaoId) {
   }
 
   await log('rota_secao_adicionada', '', { rota_id: rotaId, secao_id: secaoId, parada: proximaParada });
-  await rtRenderModalSecoesAposRecarregar(rotaId);
+  await rtRecarregarParadas();
 }
 
 async function rtRemoverSecao(rotaId, secaoId) {
@@ -424,7 +443,7 @@ async function rtRemoverSecao(rotaId, secaoId) {
   }
 
   await log('rota_secao_removida', '', { rota_id: rotaId, secao_id: secaoId });
-  await rtRenderModalSecoesAposRecarregar(rotaId);
+  await rtRecarregarParadas();
 }
 
 async function rtSalvarParada(rotaId, secaoId, valor) {
@@ -443,14 +462,14 @@ async function rtSalvarParada(rotaId, secaoId, valor) {
   showToast('✓ Ordem atualizada');
 }
 
-// rtCarregar({silencioso:true}) recarrega sem tocar na tela — o modal de
-// seções continua aberto (rtSecoesModalRotaId não muda) e precisa
-// re-renderizar ele mesmo em cima do dado novo, senão ele fecharia sozinho
-// ao perder rtDados; render() por fora redesenha a lista de rotas por trás
-// (contagem de seções nos cards muda também).
-async function rtRenderModalSecoesAposRecarregar(rotaId) {
+// rtCarregar({silencioso:true}) recarrega sem tocar na tela — rtModalId não
+// muda (o modal de editar rota continua aberto na mesma pessoa), só a
+// seção "📍 Locais de votação" dentro dele precisa se redesenhar em cima do
+// dado novo (rtRenderParadas() já é escopada a #rt-paradas-secao, não mexe
+// no resto do formulário); render() por fora redesenha a lista de rotas por
+// trás (contagem de locais nos cards muda também).
+async function rtRecarregarParadas() {
   await rtCarregar({ silencioso: true });
-  rtSecoesModalRotaId = rotaId;
-  rtRenderModalSecoes();
+  rtRenderParadas();
   render();
 }

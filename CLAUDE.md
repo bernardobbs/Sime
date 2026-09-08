@@ -3253,6 +3253,58 @@ houver, o padrão é: `ponto_partida='Cartório Eleitoral da 7ª Zona
 Eleitoral'` na ida, invertido na volta (`ponto_partida`=último local da
 ida, `destino='Cartório Eleitoral da 7ª Zona Eleitoral'`).
 
+**Cadastro de locais de votação (paradas) unificado no modal de Editar Rota
+(08/09/2026, pedido direto: "quero poder cadastrar a rota, indicando o
+local de saida, e todos os pontos, expectativa de hora de saida e chegada,
+devendo cadastrar cada um dos locais de votação... quero as informações de
+georeferenciamento que ja consta no sistema").** Até aqui, vincular seções
+a uma rota vivia num modal PRÓPRIO ("👥 Seções", separado do modal "✏️
+Editar Rota") — o cartório precisava abrir dois modais diferentes pra
+cadastrar uma rota por completo: um pros dados gerais (código, itinerário
+livre, partida/destino/horário), outro pros locais de votação de verdade.
+O pedido juntou os dois num fluxo só.
+
+- **"👥 Seções (N)" deixou de existir como botão/modal separado** — a seção
+  "📍 Locais de votação (paradas)" (busca + lista ordenada + link "📍 Ver no
+  mapa" pra quem já tem `latitude`/`longitude`, ver "Georreferência por
+  LOCAL de votação" acima) agora vive DENTRO do modal "✏️ Editar Rota",
+  logo abaixo do Itinerário. `rtAdicionarSecao`/`rtRemoverSecao`/
+  `rtSalvarParada` continuam exatamente as mesmas RPCs/updates de antes
+  (inclusive a escrita de mão-dupla em `sime_secoes.rota_id`/`parada` pra
+  rota de tipo `distribuicao`, ver acima) — só a apresentação mudou.
+- **Escopado a `#rt-paradas-secao`, nunca ao modal inteiro
+  (`rtRenderParadas()`, não `rtRenderModalRota()`).** Mesma lição já
+  aprendida em `cmSalvarTelefoneCard()` (`sime_contatar_mesarios.js`):
+  re-renderizar o formulário inteiro a cada tecla digitada na busca de
+  local, ou a cada seção adicionada/removida/reordenada, perderia o que a
+  pessoa estivesse editando ao mesmo tempo nos outros campos (código, nome,
+  itinerário, horário...) — agora que os dois convivem no mesmo modal, essa
+  separação passou a importar de verdade, e foi aplicada desde o início em
+  vez de esperar o bug acontecer de novo.
+- **"Nova rota" não tem onde vincular seção ainda** (não existe `rota.id`
+  até salvar) — em vez disso, mostra a nota "📍 Salve a rota primeiro pra
+  poder cadastrar os locais de votação (com geolocalização) abaixo". Salvar
+  uma rota nova **não fecha mais o modal** — recarrega e reabre o MESMO
+  modal já em modo edição da rota recém-criada (casando por `codigo`, único
+  por zona — o insert deste projeto não pede o id de volta), com a seção de
+  locais de votação já pronta pra usar. É o que faz "cadastrar a rota...
+  devendo cadastrar cada um dos locais de votação" ser um fluxo contínuo,
+  sem precisar fechar/reabrir pra achar onde vincular os locais.
+- **Itinerário (texto livre) continua existindo**, só com o rótulo ajustado
+  pra "observações livres, opcional" — ainda útil pra detalhe de trajeto
+  que não é um local de votação (ex.: "vira à direita depois da ponte"),
+  complementar à lista estruturada, não substituída por ela.
+- **Ponto de partida/destino/horário de saída/previsão de chegada não
+  mudaram** — já existiam no nível da rota (não por parada) desde
+  04/09/2026, ver "Estrutura de itinerário mais rica" acima; o pedido
+  citava "expectativa de hora de saida e chegada" mas isso já estava
+  coberto, o que faltava mesmo era o cadastro estruturado dos locais.
+
+Coberto por `tests/test_rotas.mjs` (abrir via "✏️ Editar" em vez de "👥
+Seções" em todos os blocos que testam locais de votação; bloco 2 ajustado
+pra esperar o modal continuar aberto em modo edição, com a seção de locais
+já visível, em vez de fechar).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
