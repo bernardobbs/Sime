@@ -3051,6 +3051,49 @@ pra OLIVIA e clicava direto no botão de PATRICIA sem reabrir a seção,
 porque o estado "vazava") — o teste foi ajustado pra expandir a seção de
 novo pra PATRICIA também, refletindo o comportamento certo agora.
 
+**Fim de linha esconde a seção inteira; SLA automático de 48h pros demais
+(08/09/2026, pedido direto: "ao final de linha não precisa mais contactar e
+não precisa mais data de proximo contato... os outros vamos estabelecer um
+prazo de 48h para o proximo contato a partir da ultima informação,
+podendo alterar para mais ou para menos").** Duas mudanças em
+`cmRenderModal()`/`cmConfirmarParticipacao()`/`cmRegistrarTentativaCore()`:
+
+- **`confirmacao==='confirmado'` esconde a seção "👤 Responsável e próximo
+  contato" inteira** (Assumir/Encaminhar/campo de data/Agendar) — mesmo
+  critério de "fim de linha" já documentado acima ("Confirmado ≠ Convocado,
+  Confirmado = fim de linha": só `confirmado` para o ciclo ativo de CRM;
+  `convocado`/`recusou`/`contato_incorreto` continuam precisando de
+  acompanhamento). `cmConfirmarParticipacao()` limpa
+  `proximo_contato_em`/`proximo_contato_nota` no mesmo update — sem isso, um
+  agendamento antigo ficaria como dado morto, sem UI pra mexer nele, e a
+  linha-resumo "Responsável" no topo do modal continuaria mostrando "📅
+  Próximo contato em..." de um agendamento que não faz mais sentido cobrar.
+- **`cmAtualizarPrazoAutomatico(p)`** (nova) — toda vez que uma tentativa é
+  registrada pra alguém que ainda NÃO é fim de linha (`➕ Registrar
+  tentativa` ou `🔗 Copiar link do WhatsApp`, os dois já passam por
+  `cmRegistrarTentativaCore()`), `proximo_contato_em` é gravado sozinho como
+  `sime_now() + 48h` — é a "última informação" mais recente que se tem sobre
+  a pessoa, e o relógio reinicia a cada tentativa nova, não só na primeira.
+  O campo continua 100% editável pelo `📅 Agendar` de sempre — clicar em
+  Agendar com outra data sobrescreve o automático sem nenhum aviso ou
+  bloqueio ("podendo alterar para mais ou para menos"), mesma filosofia de
+  "nunca bloquear por campo opcional" do resto do projeto. Melhor-esforço:
+  falha de rede aqui não derruba o registro da tentativa em si (já gravada
+  no log antes desta chamada) — só o prazo automático fica pra próxima.
+  Escopo desta v1, deliberado: só cobre eventos disparados pela própria tela
+  `SIME_convocacao.html` — uma resposta do mesário via Hermes/WhatsApp
+  (`api/hermes-mesarios.js`) não reinicia o prazo automaticamente, é
+  server-side e fora deste arquivo.
+- Quem nunca teve nenhuma tentativa registrada (🔴 "Nunca contactado") não
+  ganha prazo nenhum — não tem "última informação" pra contar 48h a partir
+  dela; o campo continua em branco até a primeira tentativa ou um
+  agendamento manual.
+
+Coberto por teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`
+(bloco "2.865" — seção ausente pra quem já é confirmado, presente pra quem
+está pendente, prazo automático de 48h a partir de `sime_now()` mockado,
+sobrescrita manual pra outra data, e limpeza do agendamento ao confirmar).
+
 ---
 
 ## MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 04/09/2026)

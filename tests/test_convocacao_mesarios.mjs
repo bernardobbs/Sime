@@ -1499,6 +1499,61 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.865 Fim de linha: "confirmado" esconde a seção inteira de Responsável/
+// próximo contato, e "Confirmado" limpa qualquer agendamento pendente
+// (03/09/2026, pedido direto: "ao final de linha não precisa mais contactar
+// e não precisa mais data de próximo contato"). Pra quem ainda está em
+// aberto, registrar uma tentativa estabelece sozinho um prazo padrão de 48h
+// a partir de agora ("os outros vamos estabelecer um prazo de 48h para o
+// proximo contato a partir da ultima informação"), mas o campo continua
+// editável pra mais ou pra menos pelo "📅 Agendar" de sempre. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // ANA (a1) já vem confirmada no fixture — a seção não deve nem existir no DOM.
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('confirmado: seção "Responsável e próximo contato" não aparece no modal', !/Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+  check('confirmado: nem o botão "Assumir pra mim" nem "📅 Agendar" existem', await p.locator('#modal-body button:has-text("Assumir pra mim")').count() === 0 && await p.locator('#modal-body button:has-text("📅 Agendar")').count() === 0);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(150);
+
+  // BRUNO (a2) está pendente — a seção existe, e registrar uma tentativa
+  // grava sozinho proximo_contato_em = sime_now() + 48h (mock de sime_now()
+  // fixo em 2026-08-20T15:30:00Z → 2026-08-22T15:30:00Z).
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  await cardBruno.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('pendente: seção "Responsável e próximo contato" aparece no modal', /Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+  await p.locator('#modal-body button:has-text("➕ Registrar tentativa")').click();
+  await p.waitForTimeout(250);
+  const updPrazo = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.proximo_contato_em).pop());
+  check('registrar tentativa estabelece prazo automático de 48h a partir de sime_now()', !!updPrazo && updPrazo.payload.proximo_contato_em === '2026-08-22T15:30:00.000Z', JSON.stringify(updPrazo));
+
+  // O cartório ainda pode mudar pra mais ou pra menos pelo campo de sempre —
+  // não fica travado no prazo automático.
+  await p.fill('#mm-proximo-contato-data', '2026-09-01');
+  await p.locator('#modal-body button:has-text("📅 Agendar")').click();
+  await p.waitForTimeout(200);
+  const updManual = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.proximo_contato_em).pop());
+  check('cartório pode sobrescrever o prazo automático manualmente (pra mais ou pra menos)', !!updManual && updManual.payload.proximo_contato_em === '2026-09-01', JSON.stringify(updManual));
+
+  // Confirmar participação, a partir daqui, limpa o agendamento — não faz
+  // mais sentido cobrar retorno de quem já é fim de linha.
+  await p.locator('#modal-body button:has-text("✅ Confirmado")').click();
+  await p.waitForTimeout(250);
+  const updConfirma = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.confirmacao === 'confirmado').pop());
+  check('confirmar participação limpa proximo_contato_em/nota no mesmo update', !!updConfirma && updConfirma.payload.proximo_contato_em === null && updConfirma.payload.proximo_contato_nota === null, JSON.stringify(updConfirma));
+  check('seção some do modal assim que confirma, sem precisar reabrir', !/Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.86 "Relato de terceiro pendente": flag gravada pelo Hermes
 // (acao='relatar_terceiro'), surfaced com badge/filtro/botão de resolver —
 // mesmo padrão de precisa_substituir (achado real 21/08/2026: sem isso, o

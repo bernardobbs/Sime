@@ -394,7 +394,13 @@ async function cmConfirmarParticipacao(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { data: ts } = await sb.rpc('sime_now');
-  const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts };
+  // Confirmado é fim de linha (03/09/2026, pedido direto: "ao final de
+  // linha não precisa mais contactar e não precisa mais data de próximo
+  // contato") — a seção inteira de Responsável/Próximo contato some do
+  // modal pra quem está confirmado (ver cmRenderModal()), então o
+  // agendamento que sobrar aqui ficaria só como dado morto, sem UI pra
+  // mexer nele. Limpo junto, no mesmo update.
+  const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts, proximo_contato_em: null, proximo_contato_nota: null };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
   Object.assign(p, patch);
@@ -890,8 +896,35 @@ async function cmRegistrarTentativaCore(id, meio, nota) {
     // Aproximado (hora local, não sime_now()) só pra decidir a bolinha 🟢
     // na hora — cmCarregar() traz o ts real do servidor na próxima releitura.
     p.ultimaTentativaTs = new Date().toISOString();
+    await cmAtualizarPrazoAutomatico(p);
     render();
   }
+}
+
+// SLA automático de 48h (03/09/2026, pedido direto: "os outros vamos
+// estabelecer um prazo de 48h para o proximo contato a partir da ultima
+// informação"). Toda vez que uma tentativa é registrada — inclusive por
+// "🔗 Copiar link do WhatsApp", que também passa por cmRegistrarTentativaCore
+// — pra alguém que ainda não é fim de linha (confirmado, ver
+// cmConfirmarParticipacao()), o prazo de "📅 Próximo contato" reinicia pra
+// 48h a partir de AGORA — é a última informação mais recente que temos
+// sobre a pessoa. Sempre sobrescreve um prazo anterior: é assim que "a
+// partir da última informação" funciona, o relógio reinicia a cada contato
+// novo — mas o cartório continua podendo mudar pra mais ou pra menos a
+// qualquer momento pelo campo "📅 Agendar" de sempre, inclusive logo
+// depois. Melhor-esforço: falha de rede aqui não deve travar o registro da
+// tentativa em si (já gravado no log acima), só o prazo automático fica
+// pra próxima tentativa.
+async function cmAtualizarPrazoAutomatico(p) {
+  if (!p || p.confirmacao === 'confirmado') return;
+  const sb = window.supabaseAtores;
+  const { data: agora } = await sb.rpc('sime_now');
+  if (!agora) return;
+  const prazo = new Date(new Date(agora).getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const patch = { proximo_contato_em: prazo };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', p.id);
+  if (error) return;
+  Object.assign(p, patch);
 }
 
 async function cmRegistrarTentativa(id) {
@@ -1388,6 +1421,7 @@ function cmRenderModal() {
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
       </div>
 
+      ${p.confirmacao === 'confirmado' ? '' : `
       <div class="m-section">
         <div class="m-section-hdr">👤 Responsável e próximo contato</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -1414,9 +1448,9 @@ function cmRenderModal() {
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nota (opcional)
             <input id="mm-proximo-contato-nota" type="text" value="${cmEsc(p.proximo_contato_nota || '')}" placeholder="ex.: ligar depois das 18h" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
           </label>
-          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarProximoContato('${p.id}')">📅 Agendar</button>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarProximoContato('${p.id}')" title="Prazo padrão: 48h a partir da última tentativa registrada. Pode adiantar ou adiar aqui.">📅 Agendar</button>
         </div>
-      </div>
+      </div>`}
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
