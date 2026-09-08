@@ -3632,6 +3632,111 @@ inteiro).
 
 ---
 
+## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)
+
+Pedido direto: "a ideia é a cada nova informação de demora na seção, nova
+informação de recolhimento das midias com a chegada do motorista, a
+informação depois de 17h de demora na fila a rota ser redefinida, com isso
+teriamos previsão mais real do fim da eleição". Esclarecido via
+`AskUserQuestion` ANTES de implementar (três perguntas, todas respondidas
+com a opção recomendada) — três decisões que mudam completamente o escopo:
+
+1. **"A rota ser redefinida" = recalcular uma PREVISÃO de horário, não
+   reordenar paradas de rota nenhuma.** Reordenar continua 100% manual, no
+   módulo 🗺️ Rotas (botões ▲/▼) — este painel é só leitura, nunca escreve
+   em `sime_rotas`/`sime_rota_secoes`/`sime_secoes.parada`.
+2. **O cartório sempre aprovaria uma reordenação** (se um dia essa opção for
+   escolhida) — moot nesta v1, já que não há reordenação nenhuma, mas fica
+   registrado pra não reabrir a mesma pergunta se o escopo crescer depois.
+3. **Precisa estar pronto pro Dia D** (04/10) — não é protótipo exploratório
+   sem prazo.
+
+**Onde mora**: `SIME_admin.html`, nova aba "🔮 Previsão" — não virou módulo
+próprio (`sime_previsao.js`) porque o padrão já usado pra painéis
+Realtime-driven, só leitura, sem CRUD complexo (ex.: aba 🤖 Hermes) já é
+inline no próprio arquivo; não duplicaria a mesma decisão arquitetural sem
+motivo.
+
+**Duas fontes de sinal, nenhuma inventada:**
+- **Fila pós-encerramento** — `sime_mesa_estado.fila` (já em produção,
+  gravado pelo mesário) × `sime_eleicoes.minutos_por_eleitor_fila`
+  (`sql/SIME_eleicoes_previsao_encerramento.sql`, novo, `NUMERIC DEFAULT 1`)
+  — minutos médios que UM eleitor na fila leva pra votar. **Deliberadamente
+  configurável pelo cartório, nunca cravado como fato** — mesmo critério já
+  usado em `RT_VELOCIDADE_MEDIA_KMH` no módulo de Rotas (a estimativa de
+  deslocamento por rota, 40km/h fixo mas assumido, não medido). Só entra em
+  jogo DEPOIS do horário oficial de encerramento (`sime_eleicoes.
+  horario_enc`) — antes dele, a única previsão honesta pra qualquer seção
+  ainda votando é o próprio horário oficial, não um cálculo sobre uma fila
+  que ainda pode subir ou zerar até lá.
+- **Recolhimento de mídia por rota** — reaproveita
+  `sime_rotas.horario_chegada_previsto` (o MESMO campo que o módulo 🗺️
+  Rotas já preenche, manual ou pela sugestão de linha reta + tempo por
+  parada, ver "🧭 Previsão de chegada ESTIMADA" acima) — **não recalcula
+  distância/velocidade de novo aqui**, pra não duplicar aquela lógica (e
+  divergir dela com o tempo). Progresso real vem de `sime_midias.status`
+  (`coletada`/`entregue_transmissao` conta como recolhida) — o "com a
+  chegada do motorista" do pedido. Rota sem `horario_chegada_previsto`
+  cadastrado aparece marcada "⚠ Sem horário de chegada previsto cadastrado
+  — defina no módulo 🗺️ Rotas", nunca escondida nem com um horário
+  inventado.
+
+**Recalcula sozinho, sem polling** — `renderPrevisao()` é chamado por
+`agendarRerenderMesaEstado()`/`agendarRerenderMidias()` (mesmos debounces
+de 250ms que já disparam `renderDash()`/`renderTable()`/`renderMidias()`
+via `subscribeMesaEstado`/`subscribeMidias`, ver "PADRÃO — REALTIME" acima)
+— toda vez que UMA seção grava fila/encerramento ou UMA mídia muda de
+status, em QUALQUER aparelho da operação, o painel recalcula. Também entra
+no `setInterval` de 10s que já existia pra `renderDash()` — só o RELÓGIO
+passar do horário de encerramento também muda a previsão (uma seção que
+tinha fila às 16:58 e ninguém tocou mais nela desde então só "conta" como
+atraso a partir das 17:00, sem precisar de nenhum evento novo do banco pra
+isso acontecer na tela).
+
+**Três painéis, mais o parâmetro**:
+- **🏁 Previsão — fim da operação da zona**: o PIOR horário entre "toda a
+  zona com votação encerrada" e "toda mídia pendente recolhida" — é a
+  resposta direta ao pedido ("previsão mais real do fim da eleição"). Mostra
+  "⚠ Previsão parcial" quando pelo menos uma rota de mídia ainda pendente
+  não tem `horario_chegada_previsto` — nunca finge uma previsão completa
+  quando falta dado.
+- **🗳️ Votação — previsão de encerramento**: a seção mais lenta da zona
+  (maior estimativa entre todas), com o número/local de qual seção é.
+- **🎞️ Recolhimento de mídia — previsão por rota**: uma linha por rota de
+  tipo `recolhimento_midia`, progresso `N/total`, previsão de conclusão ou
+  aviso de dado faltando; rota já 100% recolhida vira "✅ Recolhimento
+  concluído" e SAI do cálculo do "fim da operação" (não tem sentido uma
+  rota já pronta continuar "puxando" a previsão geral pra frente).
+- **⏳ Seções com fila após o horário de encerramento**: lista nominal, só
+  quem de fato ainda tem `fila > 0` passado o horário oficial — quem não
+  tem fila (`fila=0`) conta como "fecha a qualquer momento" na previsão de
+  votação, mas não polui esta lista (não é "demora", é só falta confirmar
+  o encerramento).
+
+**`minutos_por_eleitor_fila` editável na própria aba** (campo + "💾
+Salvar") — `salvarMinutosPorEleitor()` grava em `sime_eleicoes` e loga
+`previsao_minutos_por_eleitor_atualizado` em `sime_logs` (autoria implícita
+por quem está logado, mesmo padrão do resto do Admin). Nunca bloqueia nada
+— "nunca bloquear por campo opcional" de sempre: o valor default (1) já
+funciona sozinho, ajustar é só pra refinar a estimativa se a experiência
+real do cartório mostrar que o tempo médio é outro.
+
+**Escopo desta v1, deliberado**: só cobre `recolhimento_midia` — não há
+hoje nenhuma rota de `distribuicao`/`recolhimento_urna` cadastrada em
+produção (ver módulo 🗺️ Rotas), então não há dado real pra alimentar uma
+previsão de recolhimento de urna ainda; quando existir, o mesmo padrão
+(`horario_chegada_previsto` da rota + progresso real de
+`sime_mesa_estado.urna_recolhida`) dá pra estender sem redesenhar nada.
+
+Coberto por `tests/test_admin_previsao.mjs` (20 checks: seção ainda dentro
+do horário normal não conta fila; seção com fila/sem fila/já encerrada
+depois do horário de encerramento; recolhimento de mídia por rota — reusa
+previsão de Rotas, rota concluída sai do cálculo, rota sem previsão avisa,
+fim da operação é ditado pela mídia pendente quando é o pior caso; edição
+do parâmetro grava no banco e loga).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

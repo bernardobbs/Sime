@@ -252,6 +252,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
+  <button class="nav-tab"        onclick="goTab('previsao',this)">🔮 Previsão</button>
   <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
   <button class="nav-tab"        onclick="goTab('hermes',this)">🤖 Hermes</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
@@ -394,6 +395,47 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div id="midias-list"></div>
 </div>
 
+<!-- ══════ PREVISÃO ══════ -->
+<div id="tab-previsao" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">🔮 Previsão de encerramento da zona</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Recalcula sozinha a cada nova informação de fila, encerramento ou coleta de mídia — não muda nenhuma rota, só estima quando a operação termina.</div>
+    </div>
+    <button class="btn btn-out" onclick="renderPrevisao()">↺ Atualizar</button>
+  </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">
+    Toda previsão aqui é <b>estimativa</b>, nunca fato — seções ainda dentro do horário normal de votação contam pelo horário oficial de encerramento; depois dele, quem ainda tem fila é estimado pelos minutos por eleitor configurados abaixo. Rota de recolhimento sem previsão de chegada cadastrada (módulo 🗺️ Rotas) aparece marcada, não é ignorada nem inventada.
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">🏁 Previsão — fim da operação da zona</div>
+    <div id="prev-fim" class="hint">Carregando…</div>
+  </div>
+  <div class="grid2" style="gap:16px;margin-bottom:16px;">
+    <div class="card">
+      <div class="sec-title">🗳️ Votação — previsão de encerramento</div>
+      <div id="prev-votacao" class="hint">Carregando…</div>
+    </div>
+    <div class="card">
+      <div class="sec-title">🎞️ Recolhimento de mídia — previsão por rota</div>
+      <div id="prev-midia" class="hint">Carregando…</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">⏳ Seções com fila após o horário de encerramento</div>
+    <div id="prev-filas" class="hint">Carregando…</div>
+  </div>
+  <div class="card">
+    <div class="sec-title">⚙️ Parâmetro da estimativa</div>
+    <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;">Minutos médios que UM eleitor na fila leva pra votar — só usado depois do horário oficial de encerramento, pra estimar quanto tempo falta pra uma seção com fila fechar. Ajustável a qualquer momento, nunca trava nada.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="number" id="prev-min-eleitor" min="0.1" step="0.1" style="width:100px" placeholder="1">
+      <span style="font-size:.78rem;color:var(--text2)">min/eleitor</span>
+      <button class="btn btn-dark btn-sm" onclick="salvarMinutosPorEleitor()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════ ATORES ══════ -->
 <div id="tab-atores" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -513,6 +555,16 @@ async function carregarDadosReais(){
     return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
   };
 
+  // Rotas de tipo 'recolhimento_midia' (aba 🔮 Previsão) — window.ROTAS_REAIS
+  // (getRotas()) não serve pra isto: ele lê sime_secoes.rota_id, campo legado
+  // que só é escrito por rota de tipo 'distribuicao' desde a correção do
+  // módulo de Rotas (04/09/2026, ver CLAUDE.md — "recolhimento de urna é
+  // cadastro separado"). Precisa ir direto em sime_rota_secoes, mesma junção
+  // que SIME_rotas.html/sime_rotas_modulo.js já usa. Carregado uma vez (rota
+  // e paradas mudam pouco, e quando mudam é no módulo de Rotas, não aqui) —
+  // "↺ Atualizar" da aba Previsão refaz esta busca sob demanda.
+  if (secoesReais) await carregarRotasMidia(secoesReais);
+
   // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
   // o login real via sime-admin-user, mas o roster exibido nunca lia
   // sime_usuarios de volta. Cada navegador via uma lista diferente (a demo
@@ -535,12 +587,12 @@ let canalMesaAberto = false;
 let rerenderMesaTimer = null;
 function agendarRerenderMesaEstado(){
   clearTimeout(rerenderMesaTimer);
-  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); }, 250);
+  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); if (window.renderPrevisao) renderPrevisao(); }, 250);
 }
 let rerenderMidiasTimer = null;
 function agendarRerenderMidias(){
   clearTimeout(rerenderMidiasTimer);
-  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); }, 250);
+  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); if (window.renderPrevisao) renderPrevisao(); }, 250);
 }
 async function iniciarMesaEstadoReal(secoesReais){
   if (canalMesaAberto) return; // evita canal duplicado se carregarDadosReais() rodar de novo
@@ -576,6 +628,44 @@ async function iniciarMesaEstadoReal(secoesReais){
     agendarRerenderMidias();
   });
 }
+
+// Rotas de recolhimento de mídia + paradas, pra aba 🔮 Previsão — ver
+// comentário em carregarDadosReais() sobre por que não dá pra reaproveitar
+// window.ROTAS_REAIS aqui. Carregado uma vez; "↺ Atualizar" da própria aba
+// chama de novo sob demanda (ex.: depois de editar horário de chegada
+// previsto no módulo de Rotas, em outra aba do navegador).
+async function carregarRotasMidia(secoesReais){
+  // Numero SEMPRE com 4 dígitos (mesma convenção de window.SECTIONS/
+  // MESA_ESTADO_MAP/MIDIAS_MAP) — sem isto, r.secoes guardava o número cru
+  // (ex.: 100) e nunca batia com as chaves de MIDIAS_MAP (ex.: "0100"),
+  // fazendo toda rota aparecer com 0 mídias coletadas mesmo já tendo.
+  const numeroPorSecaoId = new Map(secoesReais.map(s => [s.id, String(s.numero).padStart(4, '0')]));
+  const { data: todasRotas, error: e1 } = await supabase.from('sime_rotas')
+    .select('id, codigo, nome, tipos, horario_chegada_previsto')
+    .eq('ativo', true)
+    .order('codigo');
+  if (e1 || !todasRotas) { window.ROTAS_MIDIA_REAIS = []; if (window.renderPrevisao) renderPrevisao(); return; }
+  // Filtro por tipo em JS (não .contains() na query) — mesmo critério já
+  // usado em sime_rotas_modulo.js pra RT_TIPOS_LEGADO, e evita depender de
+  // um operador de array específico do Postgres no stub de teste.
+  const rotas = todasRotas.filter((r) => Array.isArray(r.tipos) && r.tipos.includes('recolhimento_midia'));
+  const rotaIds = rotas.map(r => r.id);
+  const { data: rotaSecoes } = rotaIds.length
+    ? await supabase.from('sime_rota_secoes').select('rota_id, secao_id').in('rota_id', rotaIds)
+    : { data: [] };
+  window.ROTAS_MIDIA_REAIS = rotas.map(r => ({
+    id: r.id,
+    codigo: r.codigo,
+    nome: r.nome,
+    horario_chegada_previsto: r.horario_chegada_previsto || null,
+    secoes: (rotaSecoes || [])
+      .filter((rs) => rs.rota_id === r.id)
+      .map((rs) => numeroPorSecaoId.get(rs.secao_id))
+      .filter((n) => n != null),
+  }));
+  if (window.renderPrevisao) renderPrevisao();
+}
+window.carregarRotasMidia = carregarRotasMidia;
 
 // Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
 // e passa pro <script> clássico aplicar no cabeçalho — substitui a identidade
@@ -2197,6 +2287,7 @@ function goTab(id,btn){
   if(id==='equipe') renderTeam();
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
+  if(id==='previsao') renderPrevisao();
   if(id==='atores') renderAtores();
   if(id==='hermes') renderHermes();
 }
@@ -2286,7 +2377,174 @@ applyUser();
 renderDash();
 renderTable();
 renderConfig();
-setInterval(()=>{ renderDash(); },10000);
+setInterval(()=>{ renderDash(); if(window.renderPrevisao) renderPrevisao(); },10000);
+
+// ══════════════════════════════════════════════
+// PREVISÃO DE ENCERRAMENTO DA ZONA (08/09/2026)
+// ══════════════════════════════════════════════
+// Pedido direto: "a cada nova informação de demora na seção, nova
+// informação de recolhimento das midias com a chegada do motorista, a
+// informação depois de 17h de demora na fila a rota ser redefinida, com
+// isso teriamos previsão mais real do fim da eleição". Esclarecido via
+// AskUserQuestion antes de construir: "a rota ser redefinida" aqui é
+// RECALCULAR uma previsão de horário, não reordenar paradas de rota nenhuma
+// — reordenar continua manual, no módulo 🗺️ Rotas. Este painel é só
+// leitura: recalcula sozinho (chamado por agendarRerenderMesaEstado/
+// agendarRerenderMidias via Realtime, e a cada 10s pelo setInterval acima —
+// só o RELÓGIO passar das 17h também muda a previsão, sem nenhum dado novo
+// chegar do banco) e nunca escreve em sime_mesa_estado/sime_midias/rota
+// nenhuma.
+//
+// Toda estimativa é claramente rotulada como estimativa — nunca finge ser
+// fato. Duas fontes, nenhuma inventada:
+//  - Fila pós-encerramento: sime_mesa_estado.fila (MESA_ESTADO_MAP) × um
+//    "minutos por eleitor" CONFIGURÁVEL pelo cartório (sime_eleicoes.
+//    minutos_por_eleitor_fila, default 1 — mesmo critério de
+//    RT_VELOCIDADE_MEDIA_KMH no módulo de Rotas: um número editável, não
+//    cravado como fato).
+//  - Recolhimento de mídia: reaproveita sime_rotas.horario_chegada_previsto
+//    (o mesmo campo que o módulo 🗺️ Rotas já preenche, manual ou sugerido)
+//    — não recalcula distância/velocidade de novo aqui, pra não duplicar
+//    aquela lógica; rota sem esse campo aparece marcada "sem previsão
+//    cadastrada", nunca escondida nem inventada.
+function pvHojeComHora(horaStr){
+  if(!horaStr) return null;
+  const partes = String(horaStr).split(':').map(Number);
+  if(!partes.length || Number.isNaN(partes[0])) return null;
+  const d = new Date();
+  d.setHours(partes[0]||0, partes[1]||0, partes[2]||0, 0);
+  return d;
+}
+function pvFmtHora(ts){
+  if(ts == null) return '—';
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+// -> {ts, tipo} | null. null só quando a seção nunca reportou nada ainda
+// (sem sime_mesa_estado) — sem dado, sem previsão, não inventa um horário.
+function pvEstimativaSecao(mesa, horarioEnc, minPorEleitor, agora){
+  if(!mesa) return null;
+  if(mesa.enc) return { ts: mesa.ts, tipo:'real' };
+  if(!horarioEnc || agora.getTime() < horarioEnc.getTime()){
+    // Ainda dentro do horário normal de votação — sem informação de atraso
+    // ainda, a única previsão honesta é o próprio horário oficial.
+    return { ts: horarioEnc ? horarioEnc.getTime() : null, tipo:'oficial' };
+  }
+  const fila = mesa.fila || 0;
+  if(fila <= 0) return { ts: agora.getTime(), tipo:'semFila' };
+  return { ts: agora.getTime() + fila*minPorEleitor*60000, tipo:'fila', fila };
+}
+function pvMidiaColetada(midia){
+  return !!midia && (midia.status === 'coletada' || midia.status === 'entregue_transmissao');
+}
+function renderPrevisao(){
+  const elFim = document.getElementById('prev-fim');
+  if(!elFim) return; // aba ainda não montada nesta sessão
+  const elVotacao = document.getElementById('prev-votacao');
+  const elMidia = document.getElementById('prev-midia');
+  const elFilas = document.getElementById('prev-filas');
+  const elMin = document.getElementById('prev-min-eleitor');
+
+  const real = window.ELEICAO_ATIVA;
+  if(elMin && document.activeElement !== elMin){
+    elMin.value = real ? (real.minutos_por_eleitor_fila ?? 1) : '';
+  }
+  if(!real){
+    const semDado = '<span class="hint">Sem eleição ativa configurada</span>';
+    elFim.innerHTML = elVotacao.innerHTML = elMidia.innerHTML = elFilas.innerHTML = semDado;
+    return;
+  }
+
+  const minPorEleitor = Number(real.minutos_por_eleitor_fila) || 1;
+  const horarioEnc = pvHojeComHora(real.horario_enc);
+  const agora = new Date();
+  const secoes = window.SECTIONS || [];
+  const mesaMap = window.MESA_ESTADO_MAP || {};
+
+  // ---- Votação: pior previsão entre todas as seções ----
+  let piorVotacao = null;
+  const comFila = [];
+  for(const s of secoes){
+    const est = pvEstimativaSecao(mesaMap[s.n], horarioEnc, minPorEleitor, agora);
+    if(est && est.ts != null && (piorVotacao == null || est.ts > piorVotacao.ts)){
+      piorVotacao = { ts: est.ts, numero: s.n, loc: s.loc };
+    }
+    if(est && est.tipo === 'fila') comFila.push({ numero: s.n, loc: s.loc, fila: est.fila, ts: est.ts });
+  }
+  elVotacao.innerHTML = piorVotacao
+    ? `<div style="font-size:1.3rem;font-weight:800">${pvFmtHora(piorVotacao.ts)}</div>
+       <div style="font-size:.72rem;color:var(--text3);margin-top:2px">Seção mais lenta: ${piorVotacao.numero}${piorVotacao.loc ? ' — '+piorVotacao.loc : ''}</div>`
+    : '<span class="hint">Sem seções cadastradas</span>';
+
+  comFila.sort((a,b) => b.fila - a.fila);
+  elFilas.innerHTML = comFila.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">` + comFila.map(c => `
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:.8rem;border-bottom:1px solid var(--border);padding-bottom:6px">
+          <span><b>Seção ${c.numero}</b>${c.loc ? ' — '+c.loc : ''}</span>
+          <span>🔵 ${c.fila} na fila · previsão ${pvFmtHora(c.ts)}</span>
+        </div>`).join('') + `</div>`
+    : '<span class="hint">Nenhuma seção com fila registrada além do horário de encerramento</span>';
+
+  // ---- Recolhimento de mídia, por rota ----
+  const rotas = window.ROTAS_MIDIA_REAIS;
+  const midiasMap = window.MIDIAS_MAP || {};
+  const rotasComputadas = (rotas || []).map(r => {
+    const total = r.secoes.length;
+    const coletadas = r.secoes.filter(n => pvMidiaColetada(midiasMap[n])).length;
+    const previsaoTs = r.horario_chegada_previsto ? pvHojeComHora(r.horario_chegada_previsto)?.getTime() ?? null : null;
+    return { ...r, total, coletadas, concluida: total > 0 && coletadas === total, previsaoTs };
+  });
+  if(rotas == null){
+    elMidia.innerHTML = '<span class="hint">Carregando rotas…</span>';
+  } else if(!rotas.length){
+    elMidia.innerHTML = '<span class="hint">Nenhuma rota de recolhimento de mídia cadastrada — ver módulo 🗺️ Rotas</span>';
+  } else {
+    elMidia.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">` + rotasComputadas.map(r => `
+        <div style="border-bottom:1px solid var(--border);padding-bottom:8px">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:.82rem;font-weight:700">
+            <span>${r.concluida ? '✅' : '🚚'} Rota ${r.codigo}${r.nome ? ' — '+r.nome : ''}</span>
+            <span>${r.coletadas}/${r.total}</span>
+          </div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:2px">${
+            r.concluida ? 'Recolhimento concluído'
+              : (r.previsaoTs != null ? 'Previsão de conclusão: '+pvFmtHora(r.previsaoTs)
+                  : '⚠ Sem horário de chegada previsto cadastrado — defina no módulo 🗺️ Rotas')
+          }</div>
+        </div>`).join('') + `</div>`;
+  }
+
+  // ---- Fim da operação da zona: pior entre votação e recolhimento pendente ----
+  let piorGeral = piorVotacao ? piorVotacao.ts : null;
+  let faltaDado = false;
+  for(const r of rotasComputadas){
+    if(r.concluida) continue;
+    if(r.previsaoTs == null){ faltaDado = true; continue; }
+    if(piorGeral == null || r.previsaoTs > piorGeral) piorGeral = r.previsaoTs;
+  }
+  if(piorGeral == null){
+    elFim.innerHTML = '<span class="hint">Sem dado suficiente ainda pra estimar</span>';
+  } else {
+    elFim.innerHTML = `<div style="font-size:1.6rem;font-weight:800">${pvFmtHora(piorGeral)}</div>` +
+      (faltaDado ? `<div style="font-size:.74rem;color:#b58900;margin-top:4px">⚠ Previsão parcial — pelo menos uma rota de recolhimento ainda não tem horário de chegada previsto cadastrado</div>` : '');
+  }
+}
+window.renderPrevisao = renderPrevisao;
+
+async function salvarMinutosPorEleitor(){
+  const el = document.getElementById('prev-min-eleitor');
+  const v = Number(el.value);
+  if(!v || v <= 0){ showToast('⚠ Informe um número maior que zero'); return; }
+  if(!window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para salvar'); return; }
+  const { error } = await window.supabase.from('sime_eleicoes').update({ minutos_por_eleitor_fila: v }).eq('id', window.ELEICAO_ID);
+  if(error){ showToast('⚠ ' + mensagemErroAmigavel(error, 'Falha ao salvar')); return; }
+  if(window.ELEICAO_ATIVA) window.ELEICAO_ATIVA.minutos_por_eleitor_fila = v;
+  try{
+    const ts = await window.supabase.rpc('sime_now');
+    await window.supabase.from('sime_logs').insert({ acao:'previsao_minutos_por_eleitor_atualizado', modulo:'admin', eleicao_id: window.ELEICAO_ID, payload:{ minutos_por_eleitor_fila: v }, ts: ts.data });
+  }catch(e){ /* log é melhor-esforço — o parâmetro já foi salvo acima */ }
+  showToast('✓ Parâmetro salvo');
+  renderPrevisao();
+}
+window.salvarMinutosPorEleitor = salvarMinutosPorEleitor;
 
 // ══════════════════════════════════════════════
 // MÍDIAS
