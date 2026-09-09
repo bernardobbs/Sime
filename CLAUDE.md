@@ -3242,16 +3242,60 @@ ANTIGO, de antes do MaxLog (já documentado acima que "não veio no export
 desta vez e ficou intocada"), não segue o padrão de rota de mídia nenhum.
 Falta o cartório confirmar as duas antes de eu preencher algo ali.
 
-**Distribuição de urna e o retorno (recolhimento de urna), confirmados
-mas ainda sem dado real pra aplicar.** Regra: toda rota de distribuição
-começa no Cartório Eleitoral, termina em alguns locais de votação, na
-véspera da eleição; o recolhimento começa no ÚLTIMO ponto da rota de
-distribuição e volta ao Cartório, no Dia D após o encerramento da votação
-— mesma relação de "reverso, em outro dia" já documentada acima. Ainda
-não há nenhuma rota de distribuição cadastrada pra aplicar isso — quando
-houver, o padrão é: `ponto_partida='Cartório Eleitoral da 7ª Zona
-Eleitoral'` na ida, invertido na volta (`ponto_partida`=último local da
-ida, `destino='Cartório Eleitoral da 7ª Zona Eleitoral'`).
+**Distribuição de urna e o retorno (recolhimento de urna) — 12 rotas reais
+carregadas em produção (09/09/2026, pedido direto: planilha de 12 rotas
+colada, com a regra "a distribuição de urnas ocorre na véspera da eleição,
+a partir de 5 horas" e "o recolhimento começa após a eleição, após as
+17h").** Até aqui só existia UMA rota de distribuição de teste (`UR1`,
+"Rota Urnas 01" — Maroquinha/José Gomes de Oliveira/Mario Cazuza, batendo
+exatamente com a "ROTA 01" da planilha, o que confirmou que a numeração
+"ROTA 01..12" da planilha É a de distribuição de urna, não outra coisa).
+As outras 11 (`UR2`..`UR12`) foram criadas a partir do itinerário colado,
+casando cada local do texto com `sime_secoes.local_nome` por nome (nunca
+por município — a planilha às vezes atribui um município diferente do que
+já está cadastrado, e o nome já é único na zona) e por expansão de
+abreviação, mesmo critério do casamento de coordenadas do KML documentado
+acima (Esc./Escola→U.E./G.E., Semed→Sec. Mun. de Educação, etc.). Quando um
+local tem mais de uma seção (prédio com várias urnas), TODAS entram como
+paradas consecutivas, na ordem em que a planilha cita o prédio — é o mesmo
+padrão que já estava em `UR1` (2 seções de "G.E. Profª Maroquinha" como
+paradas 1 e 2).
+
+`ponto_partida='Cartório Eleitoral da 7ª Zona Eleitoral'` e
+`horario_saida='05:00:00'` em todas as 12 (`UR1` foi corrigida também —
+tinha `06:00` e "cartório" em minúsculo de um cadastro de teste anterior);
+`destino` fica em branco de propósito, pra usar a sugestão automática já
+existente (1º/último local das paradas) em vez de repetir manualmente.
+`tempo_parada_min=10` como default (ajustável depois, mesmo campo que já
+existe no módulo).
+
+**9 locais da planilha NÃO entraram — sem nome batendo com nenhuma seção
+da 7ª Zona, nunca adivinhado**: Escola Municipal (Povoado Brejinho, ROTA
+02); Escola Mun. Dr. Milton Soldani Afonso (Bairro Cidade Nova, ROTA 04);
+IATE e CEJA (centro, ROTA 06); Escola Municipal Varjota (Localidade
+Varjota, ROTA 11 — existe "Posto Saúde da Varjota" no cadastro, mas posto
+de saúde não é escola, então não foi tratado como o mesmo prédio); Escola
+Engenio Rodrigues Lima (Localidade Morada Nova, ROTA 11 — só bate por
+proximidade com "Igreja da Morada Nova", nome de prédio diferente, não
+foi assumido como a mesma coisa); Escola Josefa Lima (Povoado Bananeira),
+Escola do Riacho (Povoado Riacho) e Escola Agostinho R. de Carvalho
+(Povoado Mocambo do Pedro), as 3 da ROTA 12. Pendência real: falta o
+cartório confirmar se esses locais têm seção cadastrada sob outro nome, ou
+se nunca foram cadastrados em `sime_secoes`.
+
+**12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
+SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
+recolhimento" do módulo já faz um por vez): `rota_origem_id` apontando pra
+respectiva `UR#`, paradas na ordem EXATAMENTE invertida, `ponto_partida`
+= último local de cada distribuição (o texto, não coordenada — mesmo
+formato de `rtNomeLocalParada()`), `destino='Cartório Eleitoral da 7ª
+Zona Eleitoral'`, `horario_saida='17:00:00'` (após o encerramento oficial
+da votação). `tipos=['recolhimento_urna']` — tipo sem consumidor legado,
+então só grava em `sime_rota_secoes`, nunca em `sime_secoes.rota_id`
+(que já está ocupado pela respectiva rota de distribuição). `sime_rotas.codigo`
+precisou ser alargado de `VARCHAR(3)` pra `VARCHAR(10)` — os códigos
+`UR10`/`UR11`/`UR12`/`RU10`/`RU11`/`RU12` têm 4 caracteres, e o limite
+antigo só cobria os códigos numéricos de 3 dígitos do MaxLog (001-035).
 
 **Cadastro de locais de votação (paradas) unificado no modal de Editar Rota
 (08/09/2026, pedido direto: "quero poder cadastrar a rota, indicando o
