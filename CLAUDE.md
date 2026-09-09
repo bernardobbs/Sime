@@ -3269,19 +3269,38 @@ existente (1º/último local das paradas) em vez de repetir manualmente.
 `tempo_parada_min=10` como default (ajustável depois, mesmo campo que já
 existe no módulo).
 
-**9 locais da planilha NÃO entraram — sem nome batendo com nenhuma seção
-da 7ª Zona, nunca adivinhado**: Escola Municipal (Povoado Brejinho, ROTA
-02); Escola Mun. Dr. Milton Soldani Afonso (Bairro Cidade Nova, ROTA 04);
-IATE e CEJA (centro, ROTA 06); Escola Municipal Varjota (Localidade
-Varjota, ROTA 11 — existe "Posto Saúde da Varjota" no cadastro, mas posto
-de saúde não é escola, então não foi tratado como o mesmo prédio); Escola
-Engenio Rodrigues Lima (Localidade Morada Nova, ROTA 11 — só bate por
-proximidade com "Igreja da Morada Nova", nome de prédio diferente, não
-foi assumido como a mesma coisa); Escola Josefa Lima (Povoado Bananeira),
+**9 locais da planilha NÃO entraram na primeira carga — sem nome batendo
+com nenhuma seção da 7ª Zona, nunca adivinhado.** 3 confirmados pelo
+cartório no mesmo dia (pedido direto: "vlceja é o mulata lima", "Milton
+Soldani é agora a creche tia Medeiros", "escola municipal da varjota é o
+posto de saude") e já corrigidos em produção:
+- **CEJA (ROTA 06) = Centro Ed. JA Mulata Lima** — entrou como parada 28-36
+  de `UR6` (9 seções do mesmo prédio), no fim da rota (mesma posição do
+  texto: "...Escola Valdivino Tito – centro, e CEJA").
+- **Escola Mun. Dr. Milton Soldani Afonso (ROTA 04) = Creche Tia Medeiros**
+  — o prédio mudou de função/nome; entrou como parada 17-25 de `UR4` (9
+  seções), no fim da rota.
+- **Escola Municipal Varjota (ROTA 11) = Posto Saúde da Varjota** —
+  confirma o candidato que eu tinha descartado por precaução ("posto de
+  saúde não é escola"); como esse item era o PRIMEIRO da ROTA 11 no texto
+  original, entrou como parada 1 de `UR11`, empurrando as 8 paradas já
+  cadastradas uma posição pra baixo (2-9) — não só um append no fim.
+
+As 3 rotas de recolhimento correspondentes (`RU4`/`RU6`/`RU11`) foram
+regeneradas do zero (delete + reinsert invertido a partir da ordem atual
+de `UR4`/`UR6`/`UR11`) — pra `RU4`/`RU6`, o novo último local da ida
+(Creche Tia Medeiros / Centro Ed. JA Mulata Lima) passou a ser o
+`ponto_partida` do recolhimento; `RU11` manteve o mesmo `ponto_partida`
+(a Varjota entrou no INÍCIO da ida, não mudou qual é o ÚLTIMO local).
+
+**6 locais ainda ficam de fora, pendência real**: IATE (ROTA 06, centro);
+Escola Engenio Rodrigues Lima (ROTA 11, Localidade Morada Nova — só bate
+por proximidade com "Igreja da Morada Nova", nome de prédio diferente, não
+assumido como a mesma coisa); Escola Josefa Lima (Povoado Bananeira),
 Escola do Riacho (Povoado Riacho) e Escola Agostinho R. de Carvalho
-(Povoado Mocambo do Pedro), as 3 da ROTA 12. Pendência real: falta o
-cartório confirmar se esses locais têm seção cadastrada sob outro nome, ou
-se nunca foram cadastrados em `sime_secoes`.
+(Povoado Mocambo do Pedro), as 3 da ROTA 12. Falta o cartório confirmar se
+esses locais têm seção cadastrada sob outro nome, ou se nunca foram
+cadastrados em `sime_secoes`.
 
 **12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
 SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
