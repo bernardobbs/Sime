@@ -3293,14 +3293,20 @@ de `UR4`/`UR6`/`UR11`) — pra `RU4`/`RU6`, o novo último local da ida
 `ponto_partida` do recolhimento; `RU11` manteve o mesmo `ponto_partida`
 (a Varjota entrou no INÍCIO da ida, não mudou qual é o ÚLTIMO local).
 
-**6 locais ainda ficam de fora, pendência real**: IATE (ROTA 06, centro);
-Escola Engenio Rodrigues Lima (ROTA 11, Localidade Morada Nova — só bate
-por proximidade com "Igreja da Morada Nova", nome de prédio diferente, não
-assumido como a mesma coisa); Escola Josefa Lima (Povoado Bananeira),
-Escola do Riacho (Povoado Riacho) e Escola Agostinho R. de Carvalho
-(Povoado Mocambo do Pedro), as 3 da ROTA 12. Falta o cartório confirmar se
-esses locais têm seção cadastrada sob outro nome, ou se nunca foram
-cadastrados em `sime_secoes`.
+**IATE (ROTA 06) confirmado pelo cartório: "iate nao existe mais"** —
+diferente dos outros 3 casos resolvidos acima (nome trocado, mesmo
+prédio), este não é um problema de casamento de nome — o local em si foi
+desativado/não existe mais como ponto de votação, então não entra na rota
+de propósito, não é uma pendência de dado.
+
+**5 locais ainda ficam de fora, pendência real**: Escola Engenio Rodrigues
+Lima (ROTA 11, Localidade Morada Nova — só bate por proximidade com
+"Igreja da Morada Nova", nome de prédio diferente, não assumido como a
+mesma coisa); Escola Josefa Lima (Povoado Bananeira), Escola do Riacho
+(Povoado Riacho) e Escola Agostinho R. de Carvalho (Povoado Mocambo do
+Pedro), as 3 da ROTA 12. Falta o cartório confirmar se esses locais têm
+seção cadastrada sob outro nome, ou se nunca foram cadastrados em
+`sime_secoes`.
 
 **12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
 SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
