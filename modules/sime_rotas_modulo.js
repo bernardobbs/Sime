@@ -275,16 +275,28 @@ function rtSvgMinimapa(paradas) {
 // baixado agora já resolve isso, e é um "plano B" impresso muito melhor do
 // que linhas retas sem rua nenhuma.
 //
-// Imagem estática do OpenStreetMap (staticmap.openstreetmap.de — serviço
-// de terceiro gratuito, sem chave/custo, mesma base de tiles já usada pelo
-// mapa ao vivo da TV Dia). Sem SLA garantido — é por isso que a ficha
-// (rtHtmlFicha/rtFichaMapaFalhou) sempre mantém o esquema offline como
-// reserva, escondido, pronto pra aparecer se esta imagem não carregar.
-// Zoom calculado pra enquadrar todas as paradas (mesmo algoritmo de
-// fitBounds de mapas Mercator/256px), com ~15% de margem pra a rota não
+// Imagem estática do OpenStreetMap. Primeira versão apontava pro
+// staticmap.openstreetmap.de — testado em produção pelo dono do projeto no
+// mesmo dia: o domínio nem resolve mais (DNS falha), então a ficha real
+// nunca carregava, só caía direto no esquema de reserva. Trocado por
+// staticmap.maptoolkit.net (mesma base de tiles OSM, gratuito, sem chave) —
+// confirmado funcionando de verdade pelo dono do projeto testando no
+// navegador. **`path=`/`markers=` desse serviço não funcionam** (`path=`
+// devolve erro "invalid path" pra qualquer sintaxe testada — inclusive só
+// coordenadas cruas, sem cor/peso; `markers=` é aceito sem erro mas não
+// desenha pino nenhum na imagem, confirmado comparando a imagem com/sem o
+// parâmetro) — por isso os pinos NÃO vêm do serviço: `rtMarcadoresOverlayHTML()`
+// os desenha por cima da imagem com HTML/CSS puro, calculando a posição de
+// cada parada a partir do mesmo center/zoom da URL (projeção Web Mercator
+// padrão — a mesma matemática que qualquer biblioteca de mapa de tiles usa,
+// incluindo o Leaflet já vendorizado da TV Dia). Sem SLA garantido — é por
+// isso que a ficha (rtHtmlFicha/rtFichaMapaFalhou) sempre mantém o esquema
+// offline como reserva, escondido, pronto pra aparecer se esta imagem não
+// carregar. Zoom calculado pra enquadrar todas as paradas (mesmo algoritmo
+// de fitBounds de mapas Mercator/256px), com ~15% de margem pra a rota não
 // ficar colada na borda. Mesmo limiar de rtSvgMinimapa (>=2 paradas com
 // geo) — 1 ponto sozinho não forma mapa nenhum.
-function rtStaticMapUrl(paradas) {
+function rtStaticMapInfo(paradas) {
   const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
   if (comGeo.length < 2) return null;
   const W = 640, H = 420;
@@ -298,8 +310,41 @@ function rtStaticMapUrl(paradas) {
   const zoomPara = (pxTela, fracao) => fracao > 0 ? Math.floor(Math.log2((pxTela * 0.85) / 256 / fracao)) : 18;
   const zoom = Math.max(1, Math.min(zoomPara(H, latFrac), zoomPara(W, lonFrac), 17));
   const centerLat = (minLat + maxLat) / 2, centerLon = (minLon + maxLon) / 2;
-  const path = comGeo.map(s => `${s.latitude},${s.longitude}`).join('|');
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${centerLat},${centerLon}&zoom=${zoom}&size=${W}x${H}&maptype=mapnik&path=color:blue|weight:4|${path}`;
+  const url = `https://staticmap.maptoolkit.net/?center=${centerLat},${centerLon}&zoom=${zoom}&size=${W}x${H}`;
+  return { url, centerLat, centerLon, zoom, W, H, paradas: comGeo };
+}
+
+// Projeção Web Mercator padrão (EPSG:3857, a mesma de qualquer mapa de
+// tiles 256px) — pixel "de mundo" no zoom dado, antes de recortar pra
+// dentro da imagem. Usada só pra posicionar os pinos por cima da imagem
+// estática (ver rtStaticMapInfo — o serviço de mapa não desenha overlay
+// nenhum sozinho).
+function rtMercatorPixel(lat, lon, zoom) {
+  const escala = 256 * Math.pow(2, zoom);
+  const x = (lon + 180) / 360 * escala;
+  const latRad = lat * Math.PI / 180;
+  const y = (0.5 - Math.log(Math.tan(Math.PI / 4 + latRad / 2)) / (2 * Math.PI)) * escala;
+  return { x, y };
+}
+
+// Pinos numerados (mesma cor de sempre — 1º verde, último vermelho, meio
+// preto) desenhados por cima do mapa real com <div>s posicionados em
+// PERCENTUAL (não px cru) — se o navegador encolher a imagem pra caber na
+// página impressa (max-width:100% no <img>), os pinos encolhem junto com
+// ela, em vez de ficarem defasados. Parada fora do enquadramento (não
+// deveria acontecer, já que o zoom/center vêm do bounding box das próprias
+// paradas — mas nunca se sabe com arredondamento) simplesmente não desenha
+// pino nenhum pra ela, em vez de um pino fora da imagem.
+function rtMarcadoresOverlayHTML(info) {
+  const centro = rtMercatorPixel(info.centerLat, info.centerLon, info.zoom);
+  return info.paradas.map((s, i) => {
+    const p = rtMercatorPixel(s.latitude, s.longitude, info.zoom);
+    const leftPct = 50 + (p.x - centro.x) / info.W * 100;
+    const topPct = 50 + (p.y - centro.y) / info.H * 100;
+    if (leftPct < 0 || leftPct > 100 || topPct < 0 || topPct > 100) return '';
+    const cor = i === 0 ? '#1a7a3c' : (i === info.paradas.length - 1 ? '#b3261e' : '#2a2a2a');
+    return `<div style="position:absolute;left:${leftPct.toFixed(2)}%;top:${topPct.toFixed(2)}%;transform:translate(-50%,-50%);width:20px;height:20px;border-radius:50%;background:${cor};border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:16px;text-align:center;">${i + 1}</div>`;
+  }).join('');
 }
 
 // Chamada pelo onerror da <img> do mapa real (ver rtHtmlFicha) — sem
@@ -1061,7 +1106,8 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   // distribuição; mostrar o texto aqui não depende de coordenada nenhuma).
   const mapsUrl = rtMapsUrl(rota, paradas, zona);
   const svgMapa = rtSvgMinimapa(paradas);
-  const staticMapUrl = rtStaticMapUrl(paradas);
+  const staticMapInfo = rtStaticMapInfo(paradas);
+  const marcadoresOverlay = staticMapInfo ? rtMarcadoresOverlayHTML(staticMapInfo) : '';
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
   const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
   // Link de verdade impresso por extenso (08/09/2026, pedido direto:
@@ -1070,24 +1116,28 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   // por extenso também funciona pra quem abre o PDF impresso no
   // computador (clicável) ou precisa digitar/copiar à mão.
   //
-  // 09/09/2026 — mapa REAL (rtStaticMapUrl) virou o principal, o esquema
+  // 09/09/2026 — mapa REAL (rtStaticMapInfo) virou o principal, o esquema
   // (rtSvgMinimapa) virou reserva: os dois entram no HTML desde já, mas o
   // esquema fica com display:none até o onerror da <img> (rtFichaMapaFalhou)
-  // revelar ele — ver comentário de rtStaticMapUrl pro porquê da troca.
+  // revelar ele — ver comentário de rtStaticMapInfo pro porquê da troca (e
+  // pro porquê os pinos são um overlay de HTML/CSS, não vindos do serviço).
   // Sem NENHUMA parada geolocalizada, nenhum dos dois existe; sobra só o
   // aviso de "sem coordenadas" dentro do bloco do esquema (que aparece
   // visível de cara nesse caso, já que não há mapa real pra tentar).
-  const mapaHtml = (staticMapUrl || svgMapa || mapsUrl) ? `
+  const mapaHtml = (staticMapInfo || svgMapa || mapsUrl) ? `
       <div class="rt-mapa">
         <div class="rt-mapa-titulo">🗺️ Mapa da rota</div>
-        ${staticMapUrl ? `
+        ${staticMapInfo ? `
         <div id="rt-mapa-real-wrap">
-          <img id="rt-mapa-real-img" src="${rtEsc(staticMapUrl)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou()">
-          <div class="rt-sub">Mapa real (OpenStreetMap) — pontos das paradas sobre o mapa de verdade; a linha entre eles é reta, não segue estrada (isso quem faz é o link/QR do Google Maps abaixo).</div>
+          <div style="position:relative;display:inline-block;max-width:100%;">
+            <img id="rt-mapa-real-img" src="${rtEsc(staticMapInfo.url)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou()">
+            ${marcadoresOverlay}
+          </div>
+          <div class="rt-sub">Mapa real (OpenStreetMap) — pinos das paradas sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); pra seguir a rota pelas ruas de verdade, use o link/QR do Google Maps abaixo.</div>
         </div>` : ''}
-        <div id="rt-mapa-esquema-wrap" style="${staticMapUrl ? 'display:none' : ''}">
+        <div id="rt-mapa-esquema-wrap" style="${staticMapInfo ? 'display:none' : ''}">
           ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar um mapa — use o QR/link abaixo.</div>'}
-          ${staticMapUrl ? '<div class="rt-sub">⚠ Mapa real não carregou (provavelmente sem internet no momento da impressão) — esquema de apoio acima, em linha reta, sem seguir estrada.</div>' : ''}
+          ${staticMapInfo ? '<div class="rt-sub">⚠ Mapa real não carregou (provavelmente sem internet no momento da impressão) — esquema de apoio acima, em linha reta, sem seguir estrada.</div>' : ''}
         </div>
         <div class="rt-mapa-legenda">🟢 Partida: ${rtEsc(origemLabel)} &nbsp;·&nbsp; 🔴 Destino: ${rtEsc(destinoLabel)}</div>
         ${mapsUrl ? `

@@ -3681,12 +3681,72 @@ hora se `.complete` por estar em cache), com um timeout de 4s como rede de
 segurança — nunca trava a impressão numa rede lenta/sem resposta; se
 estourar, força o mesmo fallback do `onerror`.
 
-Coberto por `tests/test_rotas.mjs` (blocos 27-28, 169 checks no total no
-arquivo inteiro): URL do mapa real com os parâmetros corretos (center/
-zoom/size/maptype/path), esquema de reserva continua escondido quando o
-mapa real carrega com sucesso, e o inverso — imagem interceptada pra falhar
+Coberto por `tests/test_rotas.mjs` (blocos 27-28): URL do mapa real com os
+parâmetros corretos, esquema de reserva continua escondido quando o mapa
+real carrega com sucesso, e o inverso — imagem interceptada pra falhar
 (`page.route(...).abort()`) revela o esquema e mostra o aviso, sem travar
 a impressão.
+
+**Corrigido no mesmo dia — `staticmap.openstreetmap.de` estava com DNS
+morto, e o mapa real NUNCA carregava em produção.** Achado real: o dono do
+projeto testou a ficha impressa de verdade e mandou o PDF — o mapa sempre
+caía no esquema de reserva, com o aviso "⚠ Mapa real não carregou". Eu
+tinha escolhido esse domínio de memória, sem conseguir testar de verdade
+antes de subir (o sandbox onde rodo bloqueia acesso à internet externa pra
+praticamente qualquer host) — confirmado depois, testando o domínio
+diretamente: `ENOTFOUND`, falha de DNS de verdade, o host não existe mais
+(ou nunca existiu com esse endereço exato). Exatamente o tipo de
+"adivinhação" que este projeto tenta sempre evitar, e aqui deu errado.
+
+Corrigido com o dono do projeto testando ao vivo (eu sem acesso de rede
+pra verificar sozinho) — trocado pro host oficial documentado da
+**Maptoolkit** (`staticmap.maptoolkit.net`, confirmado por ele testando no
+navegador, e depois confirmado por uma doc oficial da Maptoolkit sobre
+acesso via RapidAPI que ele compartilhou, listando `staticmap.maptoolkit.net/`
+como o host nativo real da Static Maps API deles). **Duas descobertas
+importantes, também só possíveis testando ao vivo:**
+- **`path=`/`markers=` desse serviço não funcionam** — `path=` devolve erro
+  `"invalid path"` pra QUALQUER sintaxe testada (com cor/peso, só
+  coordenadas cruas, ordem lat/lon invertida, pipe `%7C` codificado —
+  nenhuma passou); `markers=` é aceito sem erro, mas a imagem devolvida não
+  tem nenhum pino desenhado (comparado lado a lado com a mesma imagem sem o
+  parâmetro — idênticas). A Maptoolkit é um produto comercial (planos
+  Basic/Pro/Ultra via RapidAPI, ou Enterprise com chave própria) — a
+  hipótese mais provável é que overlay (linha/pino desenhado pelo servidor)
+  seja um recurso pago, e o acesso sem chave que estamos usando seja uma
+  cortesia/nível não documentado que só serve o mapa base.
+- **Por isso os pinos viraram um overlay de HTML/CSS, não vêm da URL da
+  imagem** — `rtMercatorPixel()` (`sime_rotas_modulo.js`) calcula a posição
+  em pixel de cada parada usando a projeção Web Mercator padrão (a mesma
+  matemática de qualquer mapa de tiles 256px, incluindo o Leaflet já
+  vendorizado da TV Dia) a partir do MESMO `center`/`zoom` já escolhidos pra
+  montar a URL da imagem; `rtMarcadoresOverlayHTML()` desenha um `<div>`
+  circular numerado por parada (mesma cor de sempre — 1º verde, último
+  vermelho, meio preto), posicionado em **percentual** (não pixel cru) —
+  se o navegador encolher a imagem pra caber na página impressa
+  (`max-width:100%` no `<img>`), os pinos encolhem junto, em vez de ficarem
+  defasados. `rtStaticMapUrl()` virou `rtStaticMapInfo()`, que devolve
+  `{url, centerLat, centerLon, zoom, W, H, paradas}` em vez de só a string
+  da URL — a mesma info que monta a URL agora também alimenta o cálculo dos
+  pinos, sem duplicar a lógica de bounding-box/zoom.
+
+**Sem SLA garantido, mais do que nunca — mas isso já era o desenho desde o
+início.** A Maptoolkit não documenta nenhum nível gratuito/anônimo
+oficial; o acesso sem chave que funciona hoje pode ser cortado ou passar a
+exigir autenticação a qualquer momento, sem aviso — bem menos garantido
+que um script comunitário como o `staticmap.openstreetmap.de` (que,
+irônico, foi justamente o que morreu primeiro). Isso não muda nada no
+código: o esquema offline (`rtSvgMinimapa`) já era tratado como reserva
+automática desde o desenho original, exatamente pensando nesse tipo de
+cenário — se a Maptoolkit também parar de responder um dia, a ficha
+continua saindo com o esquema em linha reta, sem travar nem quebrar visualmente.
+
+Coberto por `tests/test_rotas.mjs` (blocos 27-28 revisados, 173 checks no
+total no arquivo inteiro): URL do mapa real aponta pro host novo sem
+`path=`/`markers=`; 2 pinos desenhados por cima da imagem (1 por parada
+geolocalizada), 1º verde/último vermelho, com a posição em percentual
+dentro de 0–100%; os demais comportamentos (fallback ao falhar, impressão
+esperando o carregamento) continuam cobertos como antes.
 
 ---
 

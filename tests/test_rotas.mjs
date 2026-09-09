@@ -888,13 +888,17 @@ async function login(p) {
   check('ficha inclui um mapa esquemático (SVG desenhado das coordenadas)', /<svg/.test(printHtml), printHtml.slice(0, 300));
   check('legenda do mapa sempre mostra o Destino, mesmo sem coordenada pra ele', /Destino: Cartório Eleitoral da 7ª Zona/.test(printHtml), printHtml);
   check('legenda também mostra a Partida (sugerida a partir da 1ª parada)', /Partida: Grupo Escolar A, Campo Maior/.test(printHtml), printHtml);
-  // 09/09/2026: o mapa real (staticmap.openstreetmap.de) virou o principal —
+  // 09/09/2026: o mapa real (staticmap.maptoolkit.net) virou o principal —
   // o esquema em linha reta agora é só o fallback, escondido por padrão
   // (ver rt-mapa-esquema-wrap) — a nota "não segue estrada" continua
   // presente, só que dentro do texto do mapa real (sempre visível) e do
-  // aviso do esquema (só visível se o real falhar ao carregar).
-  check('nota deixa claro que a linha entre paradas é reta, não segue estrada', /não segue estrada/.test(printHtml), printHtml);
-  check('mapa real (OpenStreetMap) é o principal, com URL de staticmap.openstreetmap.de', /staticmap\.openstreetmap\.de/.test(printHtml), printHtml.slice(0, 300));
+  // aviso do esquema (só visível se o real falhar ao carregar). Domínio
+  // trocado no mesmo dia — staticmap.openstreetmap.de nem resolvia mais
+  // (DNS morto, confirmado testando em produção); staticmap.maptoolkit.net
+  // é o host oficial documentado da Static Maps API deles (confirmado pelo
+  // dono do projeto testando ao vivo).
+  check('nota explica que pra seguir a rota de verdade é o link/QR do Google Maps', /link\/QR do Google Maps/.test(printHtml), printHtml);
+  check('mapa real é o principal, com URL de staticmap.maptoolkit.net', /staticmap\.maptoolkit\.net/.test(printHtml), printHtml.slice(0, 300));
 
   const qrCount = await p.locator('#rt-ficha-qr canvas, #rt-ficha-qr table').count();
   check('QR code é de fato gerado dentro do placeholder', qrCount === 1);
@@ -1033,12 +1037,18 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 27. Mapa real (staticmap.openstreetmap.de) na ficha impressa — nasceu
-// em 09/09/2026 a partir de uma correção de raciocínio: a impressão sempre
+// ── 27. Mapa real (staticmap.maptoolkit.net) na ficha impressa — nasceu em
+// 09/09/2026 a partir de uma correção de raciocínio: a impressão sempre
 // acontece no cartório, com internet (é o CAMPO que pode ficar sem sinal),
 // então um mapa real baixado na hora de imprimir é um "plano B" impresso
 // muito melhor que o esquema em linha reta — que virou só reserva, escondida,
-// pro caso do serviço de terceiro falhar (sem SLA garantido). ──
+// pro caso do serviço de terceiro falhar (sem SLA garantido). Domínio
+// original (staticmap.openstreetmap.de) tinha DNS morto — trocado no mesmo
+// dia pro host oficial da Maptoolkit; `path=`/`markers=` desse serviço não
+// funcionam (confirmado em produção — `path=` dá erro pra qualquer sintaxe,
+// `markers=` é aceito mas não desenha nada), então os pinos são um overlay
+// de <div>s posicionados por HTML/CSS (rtMarcadoresOverlayHTML), não vêm
+// da URL da imagem. ──
 {
   const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
   const ctx = await b.newContext();
@@ -1046,7 +1056,7 @@ async function login(p) {
   m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
   m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
   const { p, erros } = await abrir(ctx, m);
-  await p.route('**/staticmap.openstreetmap.de/**', (r) =>
+  await p.route('**/staticmap.maptoolkit.net/**', (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TINY_PNG_B64, 'base64') }));
   await login(p);
   await p.waitForTimeout(200);
@@ -1055,14 +1065,27 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const src = await p.locator('#rt-mapa-real-img').getAttribute('src');
-  check('URL do mapa real tem os parâmetros esperados (center/zoom/size/maptype/path)',
-    /staticmap\.openstreetmap\.de\/staticmap\.php\?center=-4\.8305[^&]*&zoom=\d+&size=640x420&maptype=mapnik&path=color:blue\|weight:4\|-4\.83,-42\.16\|-4\.831,-42\.161/.test(src || ''),
+  check('URL do mapa real tem os parâmetros esperados (center/zoom/size, sem path/markers)',
+    /staticmap\.maptoolkit\.net\/\?center=-4\.8305[^&]*&zoom=\d+&size=640x420/.test(src || ''),
     src);
+  check('URL NÃO tenta usar path= nem markers= (confirmado que o serviço não suporta)', !/[?&](path|markers)=/.test(src || ''), src);
 
   const esquemaDisplay = await p.locator('#rt-mapa-esquema-wrap').getAttribute('style');
   check('mapa real carregou com sucesso: esquema de reserva continua escondido', /display:\s*none/.test(esquemaDisplay || ''), esquemaDisplay);
   const realDisplay = await p.locator('#rt-mapa-real-wrap').evaluate(el => getComputedStyle(el).display);
   check('mapa real fica visível quando carrega com sucesso', realDisplay !== 'none', realDisplay);
+
+  // Pinos são um overlay próprio (HTML/CSS) por cima da <img> — 2 paradas
+  // geolocalizadas (s1/s2) devem virar 2 <div> posicionados, 1º verde
+  // (partida) e último vermelho (destino), nunca vindos do serviço.
+  const pinos = await p.locator('#rt-mapa-real-wrap > div > div[style*="border-radius:50%"]').all();
+  check('2 pinos desenhados por cima da imagem (1 por parada geolocalizada)', pinos.length === 2, String(pinos.length));
+  if (pinos.length === 2) {
+    const estiloPrimeiro = await pinos[0].getAttribute('style');
+    const estiloUltimo = await pinos[1].getAttribute('style');
+    check('1º pino (partida) é verde', /#1a7a3c/.test(estiloPrimeiro || ''), estiloPrimeiro);
+    check('último pino (destino) é vermelho', /#b3261e/.test(estiloUltimo || ''), estiloUltimo);
+  }
 
   check('impressão só dispara depois do mapa terminar de carregar (window.print chamado)', await p.evaluate(() => window.__printCalls) === 1);
 
@@ -1071,15 +1094,16 @@ async function login(p) {
 }
 
 // ── 28. Mapa real falha ao carregar (sem internet / serviço fora do ar) —
-// a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada e revela o
-// esquema offline, que já estava no HTML, só oculto. ──
+// a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada (e os pinos
+// junto, já que ficam dentro do mesmo wrapper) e revela o esquema offline,
+// que já estava no HTML, só oculto. ──
 {
   const ctx = await b.newContext();
   const m = mock();
   m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
   m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
   const { p, erros } = await abrir(ctx, m);
-  await p.route('**/staticmap.openstreetmap.de/**', (r) => r.abort('failed'));
+  await p.route('**/staticmap.maptoolkit.net/**', (r) => r.abort('failed'));
   await login(p);
   await p.waitForTimeout(200);
 
