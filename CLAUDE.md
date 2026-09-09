@@ -3630,6 +3630,64 @@ Coberto por `tests/test_rotas.mjs` (bloco 19 reescrito + ajustes no bloco
 Coberto por `tests/test_rotas.mjs` (158 checks no total no arquivo
 inteiro).
 
+**Mapa real (OpenStreetMap) virou o principal da ficha impressa; o esquema
+em linha reta agora é só reserva (09/09/2026) — correção de raciocínio, a
+partir de uma observação direta do dono do projeto sobre o próprio fluxo:
+"a impressão será feita antes, com Internet, o qrcode viria depois em um
+momento de dúvidas ou na saída, mas seria o mapa impresso um plano b".**
+
+A justificativa original pra `rtSvgMinimapa()` ser só um esquema em linha
+reta (documentada acima, 08/09/2026: "mapa estático de verdade... os
+gratuitos como staticmap.openstreetmap.de dependem de rede no ato de
+imprimir, incompatível com conectividade ruim no interior do Piauí")
+partia de uma premissa que não é como o fluxo real funciona: **a impressão
+sempre acontece no cartório, com internet** — é o CAMPO (a estrada, sem
+sinal) que pode ficar sem rede, nunca o momento de imprimir. Um mapa real
+baixado na hora de gerar a ficha resolve exatamente o problema que a
+decisão antiga achava impossível de resolver, e vira um "plano B" impresso
+muito mais útil do que linhas retas sem rua nenhuma — o QR/link do Google
+Maps continua existindo, mas pro uso que sempre foi dele: abrir navegação
+de verdade depois, em campo, quando tiver sinal.
+
+`rtStaticMapUrl(paradas)` (`sime_rotas_modulo.js`) monta uma URL de imagem
+estática do `staticmap.openstreetmap.de` (mesmo serviço gratuito
+considerado e descartado antes — descartado pelo motivo errado, não pelo
+serviço em si; mesma base de tiles que o mapa ao vivo da TV Dia já usa,
+sem chave/custo) — `center`/`zoom` calculados pra enquadrar todas as
+paradas geolocalizadas (mesmo algoritmo de `fitBounds` de mapas Mercator/
+256px, com ~15% de margem pra a rota não ficar colada na borda), `path=
+color:blue|weight:4|lat,lon|...` desenhando a linha reta entre elas (a
+linha continua reta — quem faz o trajeto de verdade pelas ruas é o QR/link
+do Google Maps, como sempre foi). Mesmo limiar de `rtSvgMinimapa` (≥2
+paradas com geo).
+
+**Sem SLA garantido — por isso o esquema offline nunca foi removido, só
+demovido a reserva.** `rtHtmlFicha()` sempre inclui os dois blocos no
+HTML: `#rt-mapa-real-wrap` (a imagem real, visível por padrão) e
+`#rt-mapa-esquema-wrap` (o SVG de sempre, `display:none` por padrão). A
+`<img>` tem `onerror="rtFichaMapaFalhou()"` — sem internet no momento da
+impressão (não deveria acontecer, mas nunca se sabe) ou o serviço de
+terceiro fora do ar, `rtFichaMapaFalhou()` esconde a imagem quebrada e
+revela o esquema no lugar, com um aviso explícito ("⚠ Mapa real não
+carregou..."). A ficha nunca fica sem NENHUM mapa.
+
+**`rtImprimirFicha()` espera a imagem terminar de carregar (ou falhar)
+antes de chamar `window.print()`** — diferente do QR (`QRCode()`, síncrono,
+desenha um `<canvas>`) e do SVG (string montada na hora), uma `<img
+src="https://...">` carrega de forma assíncrona; sem esperar,
+`window.print()` podia disparar com a imagem ainda em branco. Um
+`await new Promise(...)` escuta `load`/`error` da imagem (ou já resolve na
+hora se `.complete` por estar em cache), com um timeout de 4s como rede de
+segurança — nunca trava a impressão numa rede lenta/sem resposta; se
+estourar, força o mesmo fallback do `onerror`.
+
+Coberto por `tests/test_rotas.mjs` (blocos 27-28, 169 checks no total no
+arquivo inteiro): URL do mapa real com os parâmetros corretos (center/
+zoom/size/maptype/path), esquema de reserva continua escondido quando o
+mapa real carrega com sucesso, e o inverso — imagem interceptada pra falhar
+(`page.route(...).abort()`) revela o esquema e mostra o aviso, sem travar
+a impressão.
+
 ---
 
 ## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)

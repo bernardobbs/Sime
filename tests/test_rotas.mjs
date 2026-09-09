@@ -888,7 +888,13 @@ async function login(p) {
   check('ficha inclui um mapa esquemático (SVG desenhado das coordenadas)', /<svg/.test(printHtml), printHtml.slice(0, 300));
   check('legenda do mapa sempre mostra o Destino, mesmo sem coordenada pra ele', /Destino: Cartório Eleitoral da 7ª Zona/.test(printHtml), printHtml);
   check('legenda também mostra a Partida (sugerida a partir da 1ª parada)', /Partida: Grupo Escolar A, Campo Maior/.test(printHtml), printHtml);
-  check('nota deixa claro que o esquema é em linha reta, não segue estrada', /não segue estrada nenhuma/.test(printHtml), printHtml);
+  // 09/09/2026: o mapa real (staticmap.openstreetmap.de) virou o principal —
+  // o esquema em linha reta agora é só o fallback, escondido por padrão
+  // (ver rt-mapa-esquema-wrap) — a nota "não segue estrada" continua
+  // presente, só que dentro do texto do mapa real (sempre visível) e do
+  // aviso do esquema (só visível se o real falhar ao carregar).
+  check('nota deixa claro que a linha entre paradas é reta, não segue estrada', /não segue estrada/.test(printHtml), printHtml);
+  check('mapa real (OpenStreetMap) é o principal, com URL de staticmap.openstreetmap.de', /staticmap\.openstreetmap\.de/.test(printHtml), printHtml.slice(0, 300));
 
   const qrCount = await p.locator('#rt-ficha-qr canvas, #rt-ficha-qr table').count();
   check('QR code é de fato gerado dentro do placeholder', qrCount === 1);
@@ -1022,6 +1028,72 @@ async function login(p) {
   await p.waitForTimeout(100);
   const href = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
   check('sem endereço da zona cadastrado, cai pro fallback de município', href?.includes(`destination=${encodeURIComponent('Cartório Eleitoral da 7ª Zona, Campo Maior, PI')}`), href);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 27. Mapa real (staticmap.openstreetmap.de) na ficha impressa — nasceu
+// em 09/09/2026 a partir de uma correção de raciocínio: a impressão sempre
+// acontece no cartório, com internet (é o CAMPO que pode ficar sem sinal),
+// então um mapa real baixado na hora de imprimir é um "plano B" impresso
+// muito melhor que o esquema em linha reta — que virou só reserva, escondida,
+// pro caso do serviço de terceiro falhar (sem SLA garantido). ──
+{
+  const TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const { p, erros } = await abrir(ctx, m);
+  await p.route('**/staticmap.openstreetmap.de/**', (r) =>
+    r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TINY_PNG_B64, 'base64') }));
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(300);
+
+  const src = await p.locator('#rt-mapa-real-img').getAttribute('src');
+  check('URL do mapa real tem os parâmetros esperados (center/zoom/size/maptype/path)',
+    /staticmap\.openstreetmap\.de\/staticmap\.php\?center=-4\.8305[^&]*&zoom=\d+&size=640x420&maptype=mapnik&path=color:blue\|weight:4\|-4\.83,-42\.16\|-4\.831,-42\.161/.test(src || ''),
+    src);
+
+  const esquemaDisplay = await p.locator('#rt-mapa-esquema-wrap').getAttribute('style');
+  check('mapa real carregou com sucesso: esquema de reserva continua escondido', /display:\s*none/.test(esquemaDisplay || ''), esquemaDisplay);
+  const realDisplay = await p.locator('#rt-mapa-real-wrap').evaluate(el => getComputedStyle(el).display);
+  check('mapa real fica visível quando carrega com sucesso', realDisplay !== 'none', realDisplay);
+
+  check('impressão só dispara depois do mapa terminar de carregar (window.print chamado)', await p.evaluate(() => window.__printCalls) === 1);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 28. Mapa real falha ao carregar (sem internet / serviço fora do ar) —
+// a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada e revela o
+// esquema offline, que já estava no HTML, só oculto. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const { p, erros } = await abrir(ctx, m);
+  await p.route('**/staticmap.openstreetmap.de/**', (r) => r.abort('failed'));
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(300);
+
+  const realDisplay = await p.locator('#rt-mapa-real-wrap').evaluate(el => getComputedStyle(el).display);
+  check('imagem quebrada some da tela (onerror → rtFichaMapaFalhou)', realDisplay === 'none', realDisplay);
+  const esquemaDisplay = await p.locator('#rt-mapa-esquema-wrap').evaluate(el => getComputedStyle(el).display);
+  check('esquema offline (SVG) aparece no lugar', esquemaDisplay !== 'none', esquemaDisplay);
+  const esquemaTexto = await p.locator('#rt-mapa-esquema-wrap').textContent();
+  check('aviso explica que o mapa real não carregou', /não carregou/.test(esquemaTexto || ''), esquemaTexto);
+
+  check('mesmo com a falha, a impressão não fica travada esperando pra sempre', await p.evaluate(() => window.__printCalls) === 1);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

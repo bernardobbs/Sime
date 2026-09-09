@@ -265,6 +265,54 @@ function rtSvgMinimapa(paradas) {
   </svg>`;
 }
 
+// Mapa REAL da rota, pra imprimir (09/09/2026, pedido direto — reconsideração
+// do esquema acima: "a impressão será feita antes, com Internet, o qrcode
+// viria depois em um momento de dúvidas ou na saída, mas seria o mapa
+// impresso um plano b"). A razão original pra rtSvgMinimapa() ser só um
+// esquema em linha reta — "depende de rede no ato de imprimir" — parte de
+// uma premissa errada: a impressão SEMPRE acontece no cartório, com
+// internet (é o campo, na estrada, que pode ficar sem sinal); um mapa real
+// baixado agora já resolve isso, e é um "plano B" impresso muito melhor do
+// que linhas retas sem rua nenhuma.
+//
+// Imagem estática do OpenStreetMap (staticmap.openstreetmap.de — serviço
+// de terceiro gratuito, sem chave/custo, mesma base de tiles já usada pelo
+// mapa ao vivo da TV Dia). Sem SLA garantido — é por isso que a ficha
+// (rtHtmlFicha/rtFichaMapaFalhou) sempre mantém o esquema offline como
+// reserva, escondido, pronto pra aparecer se esta imagem não carregar.
+// Zoom calculado pra enquadrar todas as paradas (mesmo algoritmo de
+// fitBounds de mapas Mercator/256px), com ~15% de margem pra a rota não
+// ficar colada na borda. Mesmo limiar de rtSvgMinimapa (>=2 paradas com
+// geo) — 1 ponto sozinho não forma mapa nenhum.
+function rtStaticMapUrl(paradas) {
+  const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
+  if (comGeo.length < 2) return null;
+  const W = 640, H = 420;
+  const lats = comGeo.map(s => s.latitude), lons = comGeo.map(s => s.longitude);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const latRad = lat => { const s = Math.sin(lat * Math.PI / 180); return Math.log((1 + s) / (1 - s)) / 2; };
+  const latFrac = (latRad(maxLat) - latRad(minLat)) / Math.PI;
+  const lonDiffBruto = maxLon - minLon;
+  const lonFrac = (lonDiffBruto < 0 ? lonDiffBruto + 360 : lonDiffBruto) / 360;
+  const zoomPara = (pxTela, fracao) => fracao > 0 ? Math.floor(Math.log2((pxTela * 0.85) / 256 / fracao)) : 18;
+  const zoom = Math.max(1, Math.min(zoomPara(H, latFrac), zoomPara(W, lonFrac), 17));
+  const centerLat = (minLat + maxLat) / 2, centerLon = (minLon + maxLon) / 2;
+  const path = comGeo.map(s => `${s.latitude},${s.longitude}`).join('|');
+  return `https://staticmap.openstreetmap.de/staticmap.php?center=${centerLat},${centerLon}&zoom=${zoom}&size=${W}x${H}&maptype=mapnik&path=color:blue|weight:4|${path}`;
+}
+
+// Chamada pelo onerror da <img> do mapa real (ver rtHtmlFicha) — sem
+// internet no momento da impressão, ou o serviço de terceiro fora do ar,
+// a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada e revela o
+// esquema offline (sempre presente no HTML, só oculto até aqui) no lugar.
+function rtFichaMapaFalhou() {
+  const real = document.getElementById('rt-mapa-real-wrap');
+  const esquema = document.getElementById('rt-mapa-esquema-wrap');
+  if (real) real.style.display = 'none';
+  if (esquema) esquema.style.display = '';
+}
+
 let rtDados = null; // { rotas:[...], secoesZona:[...], secoesPorRota: Map(rota_id -> [{...secao, parada}]), zonaId }
 let rtFiltroTipo = '';
 let rtBusca = '';
@@ -1013,30 +1061,43 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   // distribuição; mostrar o texto aqui não depende de coordenada nenhuma).
   const mapsUrl = rtMapsUrl(rota, paradas, zona);
   const svgMapa = rtSvgMinimapa(paradas);
+  const staticMapUrl = rtStaticMapUrl(paradas);
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
   const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
   // Link de verdade impresso por extenso (08/09/2026, pedido direto:
   // "traga o trajeto com o ponto das rotas no google maps") — o QR já
   // levava pra lá, mas só servia pra quem escaneia com o celular; o link
   // por extenso também funciona pra quem abre o PDF impresso no
-  // computador (clicável) ou precisa digitar/copiar à mão. É a rota REAL
-  // (ruas de verdade, seguindo estrada), com origem/destino/paradas como
-  // pontos — diferente do esquema em linha reta acima, que é só uma
-  // referência visual offline.
-  const mapaHtml = (svgMapa || mapsUrl) ? `
+  // computador (clicável) ou precisa digitar/copiar à mão.
+  //
+  // 09/09/2026 — mapa REAL (rtStaticMapUrl) virou o principal, o esquema
+  // (rtSvgMinimapa) virou reserva: os dois entram no HTML desde já, mas o
+  // esquema fica com display:none até o onerror da <img> (rtFichaMapaFalhou)
+  // revelar ele — ver comentário de rtStaticMapUrl pro porquê da troca.
+  // Sem NENHUMA parada geolocalizada, nenhum dos dois existe; sobra só o
+  // aviso de "sem coordenadas" dentro do bloco do esquema (que aparece
+  // visível de cara nesse caso, já que não há mapa real pra tentar).
+  const mapaHtml = (staticMapUrl || svgMapa || mapsUrl) ? `
       <div class="rt-mapa">
-        <div class="rt-mapa-titulo">🗺️ Mapa esquemático da rota</div>
-        ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar o esquema — use o QR/link abaixo.</div>'}
+        <div class="rt-mapa-titulo">🗺️ Mapa da rota</div>
+        ${staticMapUrl ? `
+        <div id="rt-mapa-real-wrap">
+          <img id="rt-mapa-real-img" src="${rtEsc(staticMapUrl)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou()">
+          <div class="rt-sub">Mapa real (OpenStreetMap) — pontos das paradas sobre o mapa de verdade; a linha entre eles é reta, não segue estrada (isso quem faz é o link/QR do Google Maps abaixo).</div>
+        </div>` : ''}
+        <div id="rt-mapa-esquema-wrap" style="${staticMapUrl ? 'display:none' : ''}">
+          ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar um mapa — use o QR/link abaixo.</div>'}
+          ${staticMapUrl ? '<div class="rt-sub">⚠ Mapa real não carregou (provavelmente sem internet no momento da impressão) — esquema de apoio acima, em linha reta, sem seguir estrada.</div>' : ''}
+        </div>
         <div class="rt-mapa-legenda">🟢 Partida: ${rtEsc(origemLabel)} &nbsp;·&nbsp; 🔴 Destino: ${rtEsc(destinoLabel)}</div>
         ${mapsUrl ? `
         <div class="rt-mapa-qr">
           <div id="rt-ficha-qr"></div>
           <div class="rt-mapa-link">
-            <div class="rt-sub">📱 Aponte a câmera, ou abra o trajeto real (com todas as paradas) no link:</div>
+            <div class="rt-sub">📱 Pra usar em campo, na hora da dúvida ou da saída: aponte a câmera, ou abra o trajeto real (com todas as paradas, pelas ruas) no link:</div>
             <div class="rt-mapa-url">${rtEsc(mapsUrl)}</div>
           </div>
         </div>` : ''}
-        <div class="rt-sub">Esquema acima em linha reta entre as coordenadas cadastradas — não segue estrada nenhuma. O link/QR abre o trajeto de verdade, pelas ruas, no Google Maps.</div>
       </div>` : '';
 
   return `
@@ -1082,6 +1143,26 @@ async function rtImprimirFicha(rotaId) {
     try {
       new QRCode(qrEl, { text: mapsUrl, width: 96, height: 96, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
     } catch (e) { qrEl.innerHTML = ''; }
+  }
+  // Espera o mapa real carregar (ou falhar) antes de imprimir — sem isso,
+  // window.print() podia disparar com a <img> ainda em branco (a imagem vem
+  // de rede, ao contrário do QR/SVG acima, que são síncronos). Timeout de
+  // 4s pra nunca travar a impressão numa rede lenta/sem resposta: se
+  // estourar, força o mesmo fallback do onerror (rtFichaMapaFalhou) — nunca
+  // imprime uma imagem quebrada/pela metade.
+  const mapaImgEl = document.getElementById('rt-mapa-real-img');
+  if (mapaImgEl) {
+    await new Promise((resolve) => {
+      if (mapaImgEl.complete) {
+        if (mapaImgEl.naturalWidth === 0) rtFichaMapaFalhou();
+        return resolve();
+      }
+      let terminou = false;
+      const fim = () => { if (!terminou) { terminou = true; resolve(); } };
+      mapaImgEl.addEventListener('load', fim, { once: true });
+      mapaImgEl.addEventListener('error', fim, { once: true });
+      setTimeout(() => { if (!terminou) { rtFichaMapaFalhou(); fim(); } }, 4000);
+    });
   }
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_ficha_impressa', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
