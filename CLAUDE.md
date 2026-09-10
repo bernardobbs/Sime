@@ -3299,14 +3299,57 @@ prédio), este não é um problema de casamento de nome — o local em si foi
 desativado/não existe mais como ponto de votação, então não entra na rota
 de propósito, não é uma pendência de dado.
 
-**5 locais ainda ficam de fora, pendência real**: Escola Engenio Rodrigues
-Lima (ROTA 11, Localidade Morada Nova — só bate por proximidade com
-"Igreja da Morada Nova", nome de prédio diferente, não assumido como a
-mesma coisa); Escola Josefa Lima (Povoado Bananeira), Escola do Riacho
-(Povoado Riacho) e Escola Agostinho R. de Carvalho (Povoado Mocambo do
-Pedro), as 3 da ROTA 12. Falta o cartório confirmar se esses locais têm
-seção cadastrada sob outro nome, ou se nunca foram cadastrados em
-`sime_secoes`.
+**4 dos 5 locais pendentes, resolvidos em 10/09/2026 — confirmados pelo
+cartório com nome exato + coordenada, inseridos em UR11/UR12 e
+reotimizados.** Pedido direto, respondendo à pergunta "onde exatamente no
+texto original cada local entra?" (a resposta inicial tinha sido "vou
+informar a posição exata"): em vez de posição no texto, o cartório trouxe
+**lat/long reais** de cada local —
+"Igreja da Morada Nova (seções 221, 243) -4.7647851, -41.9635639",
+"Posto Saúde M. Sousa Dié (seções 160, 162, 258) -4.730326, -41.8415003",
+"Grupo Escolar (seção 139) -4.7858354, -41.8596112",
+"U.E. Jovino Josino Oliveira (seções 138, 231) -4.8047352, -41.7420495".
+Coordenada real muda a régua de "nunca adivinha": em vez de estimar POSIÇÃO
+no itinerário (o que exigiria o texto original), rodou-se o mesmo algoritmo
+de otimização (vizinho-mais-próximo + 2-opt, ver "🔀 OTIMIZAÇÃO DE ORDEM
+DAS PARADAS" acima) sobre a rota com as paradas novas incluídas — a MESMA
+ferramenta já validada e documentada pra decidir ordem geográfica, não uma
+adivinhação nova. `sime_secoes.latitude/longitude` das 8 seções foram
+gravadas com os valores exatos informados (bem próximos do que já havia
+casado pelo KML — nunca tinham entrado numa rota, só tinham geo).
+
+- **UR11** (Igreja da Morada Nova, 221/243) — 9→11 paradas, 34,09km→32,24km
+  reotimizados. As duas entraram entre "Esc. Mun. Mano Castelo Branco" e
+  "U.E. Francisco F.P. Oliveira" (posições 4-5 de 11) — geograficamente
+  entre os dois clusters. O ÚLTIMO local da rota mudou (de "U.E. Francisco
+  F.P. Oliveira" pra "U.E. Rafael Nogueira Passos"), então RU11 (o retorno)
+  foi regenerada por inversão da nova ordem e seu `ponto_partida` atualizado
+  pra acompanhar.
+- **UR12** (Posto Saúde M. Sousa Dié 160/162/258, Grupo Escolar 139, U.E.
+  Jovino Josino Oliveira 138/231) — 16→22 paradas, 62,68km→49,55km
+  reotimizados. Sousa Dié entrou perto do início (logo após "G.E. Prof.
+  Francisco Luis"); Grupo Escolar e U.E. Jovino Josino Oliveira (esta em
+  Sigefredo Pacheco, município diferente do resto da rota — mesma
+  discrepância planilha×cadastro já aceita alhures) entraram perto do fim,
+  junto de "Esc. Mun. A.F. Ribeiro Paz". O último local também mudou (de
+  "Esc. Mun. A.F. Ribeiro Paz" pra "U.E. Jovino Josino Oliveira"); RU12
+  regenerada e `ponto_partida` atualizado do mesmo jeito.
+
+Cada adição logada como `rota_secao_adicionada` (mesma ação de
+`rtAdicionarSecao`), a reotimização como `rota_ordem_otimizada` (payload
+`origem:'insercao_locais_confirmados_10-09-2026'`, pra distinguir do lote
+de 10/09 e de um clique futuro do cartório no botão), e a regeneração de
+RU11/RU12 como `rota_paradas_copiadas_retorno` (mesma ação de
+`rtCopiarParadasInvertidas`) — tudo rodado uma vez via MCP, replicando
+exatamente as mesmas ações/payloads que a UI já grava, não uma ação nova.
+
+**1 local ainda fica de fora, pendência real**: Escola Engenio Rodrigues
+Lima (ROTA 11, Localidade Morada Nova — só batia por proximidade com
+"Igreja da Morada Nova" antes, e o cartório confirmou coordenada só pra
+"Igreja da Morada Nova"; "Escola Engenio Rodrigues Lima" continua sendo um
+nome de prédio diferente, não assumido como a mesma coisa). Falta o
+cartório confirmar se esse local tem seção cadastrada sob outro nome, ou se
+nunca foi cadastrado em `sime_secoes`.
 
 **12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
 SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
