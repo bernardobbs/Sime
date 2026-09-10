@@ -4084,6 +4084,34 @@ arquivo inteiro): `rtQrSizePx()` isolada nos 5 degraus, e um teste ponta a
 ponta reproduzindo o cenário real (muitas paradas + endereço do Cartório
 como destino) confirmando que o `<canvas>` de fato sai maior que 96px.
 
+**Linha ligando as paradas, desenhada por cima do mapa real (10/09/2026,
+pedido direto: "não conseguimos desenhar a rota?").** Até aqui o mapa real
+da ficha só tinha os PINOS numerados sobre a imagem (`rtMarcadoresOverlayHTML`)
+— sem nada ligando eles, porque o serviço (`staticmap.maptoolkit.net`) não
+desenha `path=` (ver bloco acima, "path=/markers= desse serviço não
+funcionam"), então a impressão mostrava pontos soltos, não uma rota
+"desenhada" de verdade. `rtLinhaOverlaySVG(info)` (`sime_rotas_modulo.js`)
+resolve isso do mesmo jeito que os pinos já resolviam a falta de `markers=`:
+um `<svg>` desenhado no CLIENTE, nunca pelo serviço, com uma `<polyline>`
+ligando as paradas geolocalizadas NA ORDEM, usando a MESMA projeção Web
+Mercator (`rtMercatorPixel`, `center`/`zoom` da própria `rtStaticMapInfo`) já
+usada pros pinos — garante que a linha passa exatamente pelo centro de cada
+pino, não uma aproximação separada. Posicionado com `viewBox="0 0 100 100"`
++ `preserveAspectRatio="none"`, esticando igual ao container percentual dos
+pinos (que usam `left:X%/top:Y%`) — funciona mesmo a imagem não sendo
+quadrada, sem duplicar a lógica de bounding-box em unidades diferentes. Só
+desenha com 2+ paradas geolocalizadas (mesmo limiar de sempre — 1 ponto não
+forma trajeto); entra no HTML ANTES do overlay dos pinos, pra eles ficarem
+visualmente por cima da linha. **Continua sendo a ordem das paradas em
+linha reta, não o trajeto real pelas ruas** — isso nunca mudou, é só o
+mesmo esquema que `rtSvgMinimapa()` (a reserva offline) já desenhava,
+agora também em cima do mapa de verdade; o texto abaixo do mapa e o
+QR/link do Google Maps continuam sendo a única fonte de trajeto real.
+Coberto por `tests/test_rotas.mjs` (bloco 35, 224 checks no total no
+arquivo inteiro): linha liga todas as 10 paradas de uma rota com muitas
+paradas geolocalizadas, entra antes dos pinos no DOM, e nunca desenha com
+só 1 parada geolocalizada.
+
 ---
 
 ## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)

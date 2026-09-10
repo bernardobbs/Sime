@@ -1484,6 +1484,68 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 35. Linha ligando as paradas por cima do mapa real (10/09/2026, pedido
+// direto: "não conseguimos desenhar a rota?" — até aqui o mapa real só
+// mostrava os pinos numerados, sem nada ligando eles, então não lia como uma
+// rota desenhada, só pontos soltos. rtLinhaOverlaySVG() desenha um <svg>
+// (polyline, mesma projeção Mercator dos pinos) por cima da imagem, na ordem
+// das paradas geolocalizadas. Reaproveita o mesmo mock de "muitas paradas"
+// do bloco 34 (10 paradas geolocalizadas: s1+s2+8 extras) pra garantir que a
+// linha liga TODAS elas, não só as 2 de sempre. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  for (let i = 0; i < 8; i++) {
+    const id = `sq${i}`;
+    m.sime_secoes.push({ id, numero: 300 + i, local_nome: `Escola Extra ${i}`, municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83 - i * 0.01, longitude: -42.16 - i * 0.01 });
+    m.sime_rota_secoes.push({ id: `rsq${i}`, rota_id: 'r1', secao_id: id, parada: 3 + i });
+  }
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const pontos = await p.evaluate(() => {
+    const linha = document.querySelector('#rt-mapa-real-wrap svg polyline');
+    return linha ? linha.getAttribute('points').trim().split(/\s+/).length : null;
+  });
+  check('linha do trajeto desenhada sobre o mapa real, ligando todas as 10 paradas geolocalizadas', pontos === 10, `pontos=${pontos}`);
+
+  const ordem = await p.evaluate(() => {
+    const html = document.getElementById('rt-mapa-real-wrap').innerHTML;
+    return { idxLinha: html.indexOf('<svg'), idxPino: html.indexOf('border-radius:50%') };
+  });
+  check('svg da linha entra ANTES dos pinos no DOM (pinos aparecem por cima da linha)', ordem.idxLinha !== -1 && ordem.idxPino !== -1 && ordem.idxLinha < ordem.idxPino, JSON.stringify(ordem));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// Rota com só 1 parada geolocalizada nunca ganha linha (não há trajeto de 1
+// ponto só) — mesmo limiar de rtSvgMinimapa/rtStaticMapInfo (>=2), pra não
+// desenhar um polyline degenerado.
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // s1 já tem geo por padrão; s2 continua sem (null/null) — só 1 geo'd.
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const svgExiste = await p.evaluate(() => !!document.querySelector('#rt-mapa-real-wrap svg polyline'));
+  check('com só 1 parada geolocalizada, nenhuma linha é desenhada (sem trajeto de 1 ponto)', svgExiste === false);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

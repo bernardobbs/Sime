@@ -440,6 +440,33 @@ function rtMarcadoresOverlayHTML(info) {
   }).join('');
 }
 
+// Linha ligando as paradas por cima do mapa real, na ordem (10/09/2026,
+// pedido direto: "não conseguimos desenhar a rota?" — até aqui só os pinos
+// apareciam sobre a imagem, sem nada ligando eles, então não lia como uma
+// rota "desenhada", só pontos soltos). Mesma técnica dos pinos
+// (rtMarcadoresOverlayHTML): projeção Web Mercator no MESMO center/zoom da
+// imagem (nunca desenhada pelo serviço — path=/markers= não funcionam, ver
+// rtStaticMapInfo), só que como um <svg> com viewBox 0..100 e
+// preserveAspectRatio="none" — estica exatamente igual ao container
+// percentual dos pinos, então a linha passa certinho pelo centro de cada um,
+// mesmo a imagem não sendo quadrada. Não é o trajeto real pelas ruas (isso
+// continua sendo o QR/link do Google Maps) — é só a mesma linha reta, na
+// ordem das paradas, que o esquema de reserva (rtSvgMinimapa) já desenhava,
+// só que agora também em cima do mapa de verdade.
+function rtLinhaOverlaySVG(info) {
+  if (info.paradas.length < 2) return '';
+  const centro = rtMercatorPixel(info.centerLat, info.centerLon, info.zoom);
+  const pontos = info.paradas.map(s => {
+    const p = rtMercatorPixel(s.latitude, s.longitude, info.zoom);
+    const leftPct = 50 + (p.x - centro.x) / info.W * 100;
+    const topPct = 50 + (p.y - centro.y) / info.H * 100;
+    return `${leftPct.toFixed(2)},${topPct.toFixed(2)}`;
+  }).join(' ');
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;">
+    <polyline points="${pontos}" fill="none" stroke="#1a73e8" stroke-opacity="0.85" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 // Chamada pelo onerror da <img> do mapa real (ver rtHtmlFicha) — sem
 // internet no momento da impressão, ou o serviço de terceiro fora do ar,
 // a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada e revela o
@@ -1339,6 +1366,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   const svgMapa = rtSvgMinimapa(paradas);
   const staticMapInfo = rtStaticMapInfo(paradas);
   const marcadoresOverlay = staticMapInfo ? rtMarcadoresOverlayHTML(staticMapInfo) : '';
+  const linhaOverlay = staticMapInfo ? rtLinhaOverlaySVG(staticMapInfo) : '';
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
   const destinoLabel = rota.destino || (paradas.length ? rtNomeLocalParada(paradas[paradas.length - 1]) : '—');
   // Link de verdade impresso por extenso (08/09/2026, pedido direto:
@@ -1362,9 +1390,10 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
         <div id="rt-mapa-real-wrap">
           <div style="position:relative;display:inline-block;max-width:100%;">
             <img id="rt-mapa-real-img" src="${rtEsc(staticMapInfo.url)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou()">
+            ${linhaOverlay}
             ${marcadoresOverlay}
           </div>
-          <div class="rt-sub">Mapa real (OpenStreetMap) — pinos das paradas sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); pra seguir a rota pelas ruas de verdade, use o link/QR do Google Maps abaixo.</div>
+          <div class="rt-sub">Mapa real (OpenStreetMap) — linha e pinos das paradas desenhados sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); é a ordem das paradas em linha reta, não o trajeto real pelas ruas — pra isso, use o link/QR do Google Maps abaixo.</div>
         </div>` : ''}
         <div id="rt-mapa-esquema-wrap" style="${staticMapInfo ? 'display:none' : ''}">
           ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar um mapa — use o QR/link abaixo.</div>'}
