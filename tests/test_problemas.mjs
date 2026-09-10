@@ -80,7 +80,7 @@ function baseMock({ tipo = 'energia', responsavel = null, nivel = 0, externos = 
       { tipo:'pm', nome:'PM — 3º Pelotão Campo Maior', municipio:'Campo Maior', telefone:'8632223333', whatsapp:false, ativo:true },
     ] : [],
     sime_ocorrencias: [
-      { id:'oc-1', secao_id:SEC_63, tipo, status: responsavel ? 'assumida' : 'aberta',
+      { id:'oc-1', numero:7, secao_id:SEC_63, tipo, status: responsavel ? 'assumida' : 'aberta',
         descricao:null, responsavel_id: responsavel, aberta_em: new Date(Date.now()-14*60000).toISOString(),
         assumida_em: responsavel ? new Date().toISOString() : null, nivel_escalonamento: nivel, origem:'mesario' },
     ],
@@ -107,8 +107,17 @@ async function abrir(ctx, mock) {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, baseMock({ tipo:'energia' }));
   check('lista mostra o problema', await p.locator('.prob').count() === 1);
+
+  // Número de chamado — pedido direto: "cada problema pode receber um
+  // número tipo um chamado?" (sime_ocorrencias.numero, gerado no banco).
+  const cardTxt = await p.locator('.prob-sec').first().textContent();
+  check('card mostra o número do chamado (#007)', cardTxt.includes('#007'), cardTxt);
+
   await p.locator('.prob').first().click();
   await p.waitForTimeout(250);
+
+  const shTxt = await p.locator('.sh-t1').textContent();
+  check('detalhe também mostra o número do chamado', shTxt.includes('#007'), shTxt);
 
   const papeis = await p.locator('.ct-papel').allTextContents();
   check('energia: Equatorial é o primeiro contato', papeis[0] === 'Equatorial', papeis.join(' | '));
@@ -117,6 +126,10 @@ async function abrir(ctx, mock) {
   const destaque = await p.locator('.ct.destaque .ct-nome').textContent();
   check('energia: contato do município da seção vence o geral da zona',
     destaque.includes('Campo Maior'), destaque);
+
+  const linkMsg = await p.locator('.ct.destaque').getAttribute('href');
+  check('link de contato inclui o número do chamado na mensagem pré-pronta',
+    decodeURIComponent(linkMsg).includes('Chamado #007'), linkMsg);
 
   // Botões só-ícone sem aria-label (achado "baixo") + alvo de toque do fechar
   check('botão de fechar o detalhe tem aria-label', await p.locator('.sh-x[aria-label="Fechar"]').count() === 1);
@@ -474,6 +487,25 @@ async function abrir(ctx, mock) {
   check('contato mostra a auxiliar designada de verdade', nomes.some(n=>n.includes('Fabiana Reis')), nomes.join(' | '));
   check('não mostra mais o fallback do roster do TRE quando há designação real',
     !nomes.some(n=>n.includes('Pedro Técnico')), nomes.join(' | '));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 17. Ocorrência sem `numero` (dado de antes desta migração) nunca mostra
+// um prefixo quebrado tipo "#undefined" — só omite o chamado, mesmo critério
+// "nunca inventa" já usado no resto do sistema. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia' });
+  delete mock.sime_ocorrencias[0].numero;
+  const { p, erros } = await abrir(ctx, mock);
+  const cardTxt = await p.locator('.prob-sec').first().textContent();
+  check('sem numero: card não mostra "#" nenhum', !cardTxt.includes('#'), cardTxt);
+  check('sem numero: card ainda mostra a seção normalmente', cardTxt.includes('Seção 63'), cardTxt);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  const shTxt = await p.locator('.sh-t1').textContent();
+  check('sem numero: detalhe também não mostra "#" nenhum', !shTxt.includes('#'), shTxt);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

@@ -418,7 +418,7 @@ window.iniciar = iniciar;
 
 async function recarregar(){
   const { data } = await supabase.from('sime_ocorrencias')
-    .select('id,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem')
     .in('status',['aberta','assumida'])
     .order('aberta_em',{ascending:true});
 
@@ -436,6 +436,12 @@ window.recarregar = recarregar;
 // ══════════════════════════════════════════════════
 function minutosDe(iso){ return Math.max(0, Math.floor((Date.now()-Date.parse(iso))/60000)); }
 function idadeTxt(min){ return min < 60 ? `${min} min` : `${Math.floor(min/60)}h${String(min%60).padStart(2,'0')}`; }
+
+// Número de chamado — sequencial por zona (sime_ocorrencias.numero), gerado
+// no banco (sime_proximo_numero_ocorrencia). Ocorrência de antes desta
+// migração, ou dado de fallback, pode não ter — nunca inventa um número,
+// só omite o prefixo.
+function fmtChamado(n){ return n ? '#'+String(n).padStart(3,'0')+' · ' : ''; }
 
 function setFiltro(f){ FILTRO=f; aplicarFiltroUI(); renderLista(); }
 window.setFiltro = setFiltro;
@@ -499,7 +505,7 @@ function renderLista(){
       <div class="prob-top">
         <div class="prob-ico">${t.ico}</div>
         <div class="prob-tit">
-          <div class="prob-sec">Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
+          <div class="prob-sec">${fmtChamado(o.numero)}Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
           <div class="prob-loc">${sec.local_nome||''}</div>
         </div>
         <div class="prob-idade n${o.nivel_escalonamento}">${idadeTxt(min)}</div>
@@ -530,7 +536,7 @@ function abrirSheet(id){
 
   const cts = contatosPara(o);
   const ctHtml = cts.length ? cts.map((c,i)=>{
-    const msg = `SIME — Seção ${parseInt(o.secao_numero)}\n${t.nome}${sec.local_nome?'\n'+sec.local_nome:''}\n\nAqui é o cartório. Pode nos ajudar?`;
+    const msg = `SIME ${o.numero?'— Chamado #'+String(o.numero).padStart(3,'0')+' ':''}— Seção ${parseInt(o.secao_numero)}\n${t.nome}${sec.local_nome?'\n'+sec.local_nome:''}\n\nAqui é o cartório. Pode nos ajudar?`;
     const href = c.whatsapp === false
       ? 'tel:' + String(c.telefone).replace(/\D/g,'')
       : linkWhatsApp(c.telefone, msg);
@@ -551,7 +557,7 @@ function abrirSheet(id){
     <div class="sh-hdr">
       <div class="sh-ico">${t.ico}</div>
       <div class="sh-tit">
-        <div class="sh-t1">Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
+        <div class="sh-t1">${fmtChamado(o.numero)}Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
         <div class="sh-t2">${sec.local_nome||''}${sec.municipio?' · '+sec.municipio:''}</div>
         <div class="sh-t3">Aberta há ${idadeTxt(min)} · via ${o.origem}
           ${o.nivel_escalonamento?` · <b style="color:#dc2626">escalado ao ${o.nivel_escalonamento===1?'gestor':'chefe de cartório'}</b>`:''}</div>

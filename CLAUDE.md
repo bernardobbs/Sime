@@ -269,6 +269,35 @@ nem recarrega) — é só tentar de novo. Coberto por dois testes novos em
 exato em Resolver e em Assumir), sem regredir o teste existente que checava
 a mensagem de negócio do servidor aparecendo tal qual.
 
+**Número de chamado (10/09/2026, `sql/SIME_ocorrencias_numero.sql`), pedido
+direto: "cada problema pode receber um número tipo um chamado?"**
+`sime_ocorrencias.numero` — sequencial **por zona**, não global (mesma
+lógica de "Seção 0063": o número precisa fazer sentido falado por telefone/
+rádio dentro da zona de quem está operando, sem competir por posição com o
+que acontece na outra zona ao mesmo tempo). `sime_zonas.ocorrencias_contador`
+guarda o último número emitido; `sime_proximo_numero_ocorrencia(zona_id)`
+incrementa via `UPDATE ... RETURNING` — o próprio lock de linha do Postgres
+evita duas ocorrências da mesma zona saírem com o mesmo número em paralelo,
+sem precisar de advisory lock nem `SELECT FOR UPDATE` à parte. Emitido nos
+dois únicos pontos que inserem em `sime_ocorrencias`: o gatilho automático
+(`sime_sync_ocorrencias()`, pânico vindo do campo) e a abertura manual
+(`sime_ocorrencia_abrir()`, cartório soube por telefone) — nunca calculado
+no cliente. Backfill do que já existia numerou por zona na ordem de
+`aberta_em` (mesma ordem que o histórico/escalonamento já usa), mas em
+produção não havia nenhuma ocorrência real na hora da migração (zeradas
+pelo botão de reset de dados de teste do Admin) — as duas zonas começam
+do zero.
+
+Exibido como `#007` (3 dígitos, `fmtChamado()`) no card da lista, no
+cabeçalho do detalhe, e na mensagem de WhatsApp pré-pronta pro contato
+("SIME — Chamado #007 — Seção 63...") — referenciável por telefone junto
+da seção, sem precisar ditar um UUID. Ocorrência sem `numero` (dado de
+antes desta migração, ou fallback offline) nunca mostra um `#undefined`
+quebrado — `fmtChamado()` só omite o prefixo, mesmo critério "nunca
+inventa" de sempre. Coberto por `tests/test_problemas.mjs` (card, detalhe e
+mensagem de WhatsApp mostram o número; card/detalhe sem `numero` não
+mostram `#` nenhum).
+
 ### RPCs críticas
 ```sql
 sime_now()                    -- server timestamp — SEMPRE usar
