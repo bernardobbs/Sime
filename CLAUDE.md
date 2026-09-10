@@ -3884,6 +3884,105 @@ sugerido.
 
 ---
 
+## 🔀 OTIMIZAÇÃO DE ORDEM DAS PARADAS (`SIME_rotas.html`, 10/09/2026)
+
+Pedido direto, depois de uma pergunta exploratória ("como podemos otimizar
+a posição de cada rota?") respondida com a recomendação de um heurístico
+sem custo (a maioria dos locais já tem lat/lon cadastrada — ver
+"Georreferência por LOCAL de votação" acima) — "implemente, inclusive
+otimizando as rotas existentes".
+
+**Algoritmo: vizinho-mais-próximo + refino 2-opt, distância em linha reta
+(`rtHaversineKm`, a mesma já usada em `rtChegadaEstimada`), 1ª parada
+sempre FIXA.** Mesmo critério de sempre — nunca API paga de rotas
+(Google Directions/Distance Matrix, fora do orçamento R$ 0,00/mês). A 1ª
+parada não entra no reordenamento: é o que já alimenta a sugestão de Ponto
+de partida (`rtUsarSugestaoPartida`) e normalmente é a mais próxima da
+saída real (ex.: Cartório) — trocar sempre qual parada é a primeira
+surpreenderia o cartório sem necessidade nenhuma. `rtVizinhoMaisProximo()`
+monta uma rota gulosa a partir da 1ª parada; `rtDoisOpt()` refina por cima
+trocando trechos que reduzem a distância total — os dois juntos, sem
+heurística mais pesada, dão conta de rotas de até ~35 paradas (a maior da
+zona hoje) em milissegundos. `rtCalcularOrdemOtimizada()` só calcula com 3+
+paradas (com 0-2 só existe uma ordem possível) e com geo em TODAS as
+paradas (nunca estima distância pulando uma perna sem coordenada — mesmo
+critério de `rtChegadaEstimada`).
+
+**Botão "🔀 Otimizar ordem" — sugestão, nunca aplica sozinho**, mesmo
+padrão já usado em partida/destino/chegada estimada. Aparece em
+`rtRenderParadas()` (📍 Locais de votação) sempre que há 3+ paradas
+cadastradas; clicar calcula e guarda em `rtOtimizarSugestao` (nunca escreve
+no banco ainda), mostrando um preview: km antes → depois, % de redução, e a
+nova ordem sugerida das paradas (a 1ª nem aparece na lista — ela não muda).
+Dois botões no preview: **"✓ Aplicar nova ordem"** (`rtAplicarOrdemOtimizada`,
+mesmo loop de `rtMoverParada` — renumera 1..N, só escreve o que de fato
+muda de posição, espelha `sime_secoes.parada` só pra tipo legado
+`distribuicao`) e **"✕ Descartar"**. Quando a ordem já é a mais curta
+encontrada (nenhuma melhoria possível), o preview mostra "✓ A ordem atual
+já é a mais curta..." com só um botão "Fechar" — nunca oferece "Aplicar"
+pra um no-op.
+
+**A sugestão se autoinvalida se a lista de paradas mudar no meio-tempo** —
+`rtRenderParadas()` compara os ids das paradas usados no cálculo contra os
+atuais a cada render; se um add/remove/mover aconteceu depois de calcular
+(inclusive de outra aba/sessão), a sugestão some sozinha em vez de
+continuar oferecendo "Aplicar" em cima de um estado que não existe mais.
+`rtAplicarOrdemOtimizada()` faz a mesma checagem antes de gravar, como rede
+de segurança.
+
+**Faltando geo em alguma parada, avisa em vez de calcular errado** — nota
+fixa acima da lista ("⚠️ N parada(s) sem geolocalização...") sempre que o
+botão está visível mas alguma parada não tem coordenada; clicar no botão
+repete o mesmo aviso por toast, sem calcular nada.
+
+Coberto por `tests/test_rotas.mjs` (blocos 30-33, 214 checks no total no
+arquivo inteiro): sugestão com km antes/depois e nova ordem; aplicar grava
+a ordem certa em `sime_rota_secoes` e espelha `sime_secoes` só pra rota
+legado; log de auditoria (`rota_ordem_otimizada`) com km antes/depois e
+quantidade; descartar não grava nada; rota sem tipo legado não espelha;
+refino 2-opt corrige o vizinho-mais-próximo quando precisa (caso de
+cruzamento clássico); botão some com menos de 3 paradas; aviso de geo
+faltando; mensagem própria (sem "Aplicar") quando a ordem já é ótima.
+
+**"Inclusive otimizando as rotas existentes" — rodado uma vez em produção
+na 7ª Zona (10/09/2026), pelo MESMO algoritmo (replicado em Node, sem
+divergir do JS do app) contra as 42 rotas ativas com 3+ paradas e geo
+completa.** Só aplicou quando havia **redução real de distância**
+(`kmDepois < kmAntes`, com margem de 0.01km) — não bastava a sequência de
+`secao_id` ter mudado: prédios com 2+ seções na MESMA coordenada podem
+empatar e trocar de posição entre si sem nenhuma diferença de km real (é o
+mesmo prédio — a ordem entre as seções dele não importa pra quem dirige);
+escrever isso em produção seria mexer no cadastro sem ganho nenhum, mesmo
+critério "nunca escreve à toa" de `rtMoverParada`. Achado real durante essa
+checagem: a Rota UR11 batia como "mudou" pela sequência de ids mas com o
+MESMO km total — só um empate entre duas seções do mesmo prédio — e foi
+corretamente excluída do lote por esse motivo.
+
+**12 rotas otimizadas de verdade** (de 42 elegíveis) — 430,18km → 317,81km
+somados (~26% de redução nessas 12): `001`, `006`, `009`, `014`, `RU10`,
+`RU2`, `RU7`, `RU8`, `UR10`, `UR2`, `UR7`, `UR8`. As outras 30 já estavam
+na ordem ótima que o algoritmo encontra (nenhuma escrita foi feita nelas).
+Cada rota otimizada ganhou um `sime_logs.rota_ordem_otimizada`
+(`payload.origem='lote_10-09-2026'`, pra distinguir de uma otimização feita
+depois pelo cartório clicando no botão) com km antes/depois/quantidade.
+
+**Efeito colateral bom, achado ao rodar isto: a Rota 009 tinha uma seção
+com `parada=NULL`** (`6f7b3b91-f3b6-43a7-bbe3-465b4bebbc37` — vinculada à
+rota mas sem posição definida, uma inconsistência de dado anterior a esta
+feature). Como a aplicação sempre renumera 1..N do zero, essa seção ganhou
+uma posição válida (a última, por `ORDER BY parada` do SQL de origem
+colocar `NULL`s por último) sem precisar de correção manual à parte.
+
+**30 rotas não tocadas, sem regressão** — as 30 elegíveis restantes já
+estavam na ordem que o algoritmo considera ótima (a maioria são rotas
+pequenas de `recolhimento_midia` com poucas paradas concentradas, onde a
+ordem já cadastrada bate com o vizinho-mais-próximo). As rotas excluídas
+por falta de geo completa (`024`, `032`, `RU4`/`UR4`, `RU6`/`UR6`) ou com
+menos de 3 paradas continuam de fora, mesmo critério de sempre — otimizar
+com dado incompleto seria adivinhar.
+
+---
+
 ## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)
 
 Pedido direto: "a ideia é a cada nova informação de demora na seção, nova

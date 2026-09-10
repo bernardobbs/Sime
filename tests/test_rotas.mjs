@@ -1205,6 +1205,223 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 30. "🔀 Otimizar ordem" (10/09/2026, pedido direto: "como podemos
+// otimizar a posição de cada rota?" → "implemente") — sugere uma ordem
+// mais curta (vizinho-mais-próximo + 2-opt, distância em linha reta, 1ª
+// parada sempre fixa), nunca aplica sozinho, escreve com mão-dupla pra
+// sime_secoes só em rota de tipo legado (distribuicao), e some/aparece
+// corretamente conforme número de paradas e geolocalização disponível. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // r1 (tipos inclui 'distribuicao' — tipo legado) ganha geo completa +
+  // 1 parada nova, numa geometria simples em linha reta (mesma latitude,
+  // longitude variando) pra dar uma sugestão determinística: cadastrada
+  // como s1(x=0km) → s2(x=2km) → s5(x=1km); ordem ótima mantendo s1 fixo
+  // é s1→s5→s2 (mais curta e sem ambiguidade — vizinho-mais-próximo já
+  // acha o ótimo aqui, sem precisar do refino 2-opt).
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.83;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.14; // ~2km a leste de s1
+  m.sime_secoes.push({ id: 's5', numero: 77, local_nome: 'Escola X', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83, longitude: -42.15 }); // ~1km a leste de s1
+  m.sime_rota_secoes.push({ id: 'rs5', rota_id: 'r1', secao_id: 's5', parada: 3 });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  check('botão "Otimizar ordem" aparece com 3+ paradas', await p.locator('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")').count() === 1);
+
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(100);
+
+  const previewTxt = (await p.locator('#rt-paradas-secao .import-result.ir-ok').textContent()).replace(/\s+/g, ' ');
+  check('mostra a sugestão com km antes/depois e a lista na nova ordem', /Sugestão/.test(previewTxt) && /km/.test(previewTxt) && /Escola X, Campo Maior/.test(previewTxt), previewTxt);
+  const kms = previewTxt.match(/([\d.]+)km\s*→\s*([\d.]+)km/);
+  check('km depois é menor que km antes (linha reta ficou mais curta)', kms && parseFloat(kms[2]) < parseFloat(kms[1]), previewTxt);
+
+  const ordemLis = await p.locator('#rt-paradas-secao .import-result.ir-ok ol li').allTextContents();
+  check('nova ordem sugerida é s1(fixa, nem aparece na lista)→s5→s2, ou seja lista mostra Escola X antes de Grupo Escolar A', /Escola X/.test(ordemLis[0]) && /Grupo Escolar A/.test(ordemLis[1]), JSON.stringify(ordemLis));
+
+  await p.click('#rt-paradas-secao button:has-text("✓ Aplicar nova ordem")');
+  await p.waitForTimeout(150);
+
+  const updRota = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rota_secoes' && e.filtro.rota_id === 'r1'));
+  const updS5 = updRota.find(u => u.filtro.secao_id === 's5');
+  const updS2 = updRota.find(u => u.filtro.secao_id === 's2');
+  check('grava s5 na posição 2 (era 3)', updS5?.payload?.parada === 2, JSON.stringify(updS5));
+  check('grava s2 na posição 3 (era 2)', updS2?.payload?.parada === 3, JSON.stringify(updS2));
+
+  const updSecoesLegado = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_secoes' && (e.filtro.id === 's5' || e.filtro.id === 's2')));
+  check('espelha em sime_secoes.parada (rota tem tipo distribuicao, legado)', updSecoesLegado.length === 2, JSON.stringify(updSecoesLegado));
+
+  const logOtim = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_ordem_otimizada'));
+  check('grava log de auditoria com km antes/depois e quantidade', logOtim?.payload?.rota_id === 'r1' && logOtim?.payload?.quantidade === 3 && typeof logOtim?.payload?.km_antes === 'number' && typeof logOtim?.payload?.km_depois === 'number', JSON.stringify(logOtim));
+
+  check('sugestão some da tela depois de aplicar', await p.locator('#rt-paradas-secao .import-result.ir-ok:has-text("Sugestão")').count() === 0);
+  const listaFinal = (await p.locator('#rt-paradas-secao .m-hist-item').allTextContents()).join(' | ');
+  check('lista de paradas já reflete a nova ordem na tela (Escola X vira 2º, Grupo Escolar A vira 3º)', /2º.*77.*Escola X/.test(listaFinal.replace(/\s+/g, ' ')) && /3º.*31.*Grupo Escolar A/.test(listaFinal.replace(/\s+/g, ' ')), listaFinal);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 31. Otimizar ordem — descartar sugestão, rota sem tipo legado NÃO
+// espelha em sime_secoes, aviso quando falta geo, botão some com menos de
+// 3 paradas, e a sugestão desaparece sozinha se a lista de paradas mudar
+// no meio-tempo (add/remove/mover). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // r4 é só 'recolhimento_urna' (sem tipo legado) — 4 paradas em linha,
+  // cadastradas fora de ordem de propósito (x: 0,3,1,2), pra exercitar
+  // também o refino 2-opt (não só o vizinho-mais-próximo).
+  m.sime_secoes.push(
+    { id: 'q1', numero: 501, local_nome: 'Local Q1', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.20 },
+    { id: 'q2', numero: 502, local_nome: 'Local Q2', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.17 },
+    { id: 'q3', numero: 503, local_nome: 'Local Q3', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.19 },
+    { id: 'q4', numero: 504, local_nome: 'Local Q4', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.18 },
+  );
+  m.sime_rota_secoes.push(
+    { id: 'rq1', rota_id: 'r4', secao_id: 'q1', parada: 1 },
+    { id: 'rq2', rota_id: 'r4', secao_id: 'q2', parada: 2 },
+    { id: 'rq3', rota_id: 'r4', secao_id: 'q3', parada: 3 },
+    { id: 'rq4', rota_id: 'r4', secao_id: 'q4', parada: 4 },
+  );
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 004")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(100);
+  const ordemLis2 = await p.locator('#rt-paradas-secao .import-result.ir-ok ol li').allTextContents();
+  check('acha a ordem monotônica correta (Q3, Q4, Q2) mantendo Q1 fixa — prova que o 2-opt corrige o vizinho-mais-próximo quando precisa', /Local Q3/.test(ordemLis2[0]) && /Local Q4/.test(ordemLis2[1]) && /Local Q2/.test(ordemLis2[2]), JSON.stringify(ordemLis2));
+
+  // Descartar — some o preview, nada é gravado.
+  await p.click('#rt-paradas-secao button:has-text("✕ Descartar")');
+  await p.waitForTimeout(100);
+  check('descartar esconde o preview sem gravar nada', await p.locator('#rt-paradas-secao .import-result.ir-ok').count() === 0);
+  const escritasAntes = await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_rota_secoes' || e.tabela === 'sime_secoes').length);
+  check('descartar não grava nenhuma escrita', escritasAntes === 0, String(escritasAntes));
+
+  // Recalcula e aplica — como r4 não tem tipo legado, NÃO deve mexer em sime_secoes.
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("✓ Aplicar nova ordem")');
+  await p.waitForTimeout(150);
+  const updSecoesQ = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_secoes' && ['q1','q2','q3','q4'].includes(e.filtro.id)));
+  check('rota SEM tipo legado não espelha em sime_secoes', updSecoesQ.length === 0, JSON.stringify(updSecoesQ));
+  const updJuncaoQ = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rota_secoes' && e.filtro.rota_id === 'r4'));
+  check('mas grava normalmente em sime_rota_secoes', updJuncaoQ.length > 0, JSON.stringify(updJuncaoQ));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 31b. Otimizar ordem — avisa quantas paradas estão sem geolocalização
+// em vez de calcular errado (uma perna sem coordenada não pode entrar
+// numa distância em linha reta). Contexto próprio, com uma parada já sem
+// geo desde a carga — mutar o mock DEPOIS do boot não refletiria em
+// rtDados (que só recarrega em pontos específicos do fluxo, não a cada
+// leitura). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.push(
+    { id: 'w1', numero: 601, local_nome: 'Local W1', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.20 },
+    { id: 'w2', numero: 602, local_nome: 'Local W2', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: null, longitude: null },
+    { id: 'w3', numero: 603, local_nome: 'Local W3', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.90, longitude: -42.19 },
+  );
+  m.sime_rota_secoes.push(
+    { id: 'rw1', rota_id: 'r4', secao_id: 'w1', parada: 1 },
+    { id: 'rw2', rota_id: 'r4', secao_id: 'w2', parada: 2 },
+    { id: 'rw3', rota_id: 'r4', secao_id: 'w3', parada: 3 },
+  );
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 004")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('botão aparece mesmo faltando geo (o aviso só vem ao clicar)', await p.locator('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")').count() === 1);
+
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(100);
+  const toastGeo = await p.locator('#toast').textContent();
+  check('avisa quantas paradas estão sem geolocalização, em vez de calcular errado', /1 parada\(s\) sem geolocaliza/.test(toastGeo), toastGeo);
+  check('não mostra nenhum preview de sugestão quando falta geo', await p.locator('#rt-paradas-secao .import-result.ir-ok:has-text("Sugestão")').count() === 0);
+  const avisoFixo = await p.locator('#rt-paradas-secao').textContent();
+  check('aviso fixo (sem precisar clicar) também menciona a falta de geo', /1 parada\(s\) sem geolocaliza/.test(avisoFixo), avisoFixo);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 32. Otimizar ordem — botão some com menos de 3 paradas; sugestão já
+// ótima mostra mensagem própria sem botão de aplicar; sugestão de uma
+// rota some ao trocar pra outra rota (nunca vaza entre modais). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  // Rota 002 (r2) não tem paradas cadastradas no mock — 0 paradas, botão
+  // não deve aparecer.
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('botão "Otimizar ordem" NÃO aparece com menos de 3 paradas (aqui, 0)', await p.locator('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")').count() === 0);
+  await p.click('#modal-body button:has-text("Cancelar")');
+  await p.waitForTimeout(100);
+
+  // Rota 001 (r1) tem só 2 paradas no mock padrão — também deve ficar sem o botão.
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('botão "Otimizar ordem" NÃO aparece com 2 paradas', await p.locator('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")').count() === 0);
+
+  await ctx.close();
+}
+
+// ── 33. Otimizar ordem — quando a ordem já é a melhor possível, mostra
+// mensagem própria (sem oferecer "Aplicar" pra um no-op) e um botão só de
+// "Fechar". ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // 3 paradas JÁ na ordem ótima (linha reta, x crescente: s1=0, nova=1,
+  // s2=2) — o algoritmo deve devolver a mesma ordem, sem nada pra aplicar.
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.83;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.14; // x=2km
+  m.sime_secoes.push({ id: 's6', numero: 88, local_nome: 'Escola Y', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83, longitude: -42.15 }); // x=1km
+  m.sime_rota_secoes.push({ id: 'rs6', rota_id: 'r1', secao_id: 's6', parada: 2 }); // já entra na posição 2 (entre s1 e s2)
+  m.sime_rota_secoes.find(rs => rs.rota_id === 'r1' && rs.secao_id === 's2').parada = 3;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(100);
+
+  const previewTxt2 = (await p.locator('#rt-paradas-secao .import-result.ir-ok').textContent()).replace(/\s+/g, ' ');
+  check('avisa que a ordem já é a mais curta possível', /já é a mais curta/.test(previewTxt2), previewTxt2);
+  check('não oferece botão de Aplicar pra um no-op', await p.locator('#rt-paradas-secao button:has-text("✓ Aplicar nova ordem")').count() === 0);
+  check('oferece só Fechar', await p.locator('#rt-paradas-secao button:has-text("Fechar")').count() === 1);
+
+  await p.click('#rt-paradas-secao button:has-text("Fechar")');
+  await p.waitForTimeout(100);
+  check('Fechar esconde o preview', await p.locator('#rt-paradas-secao .import-result.ir-ok').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

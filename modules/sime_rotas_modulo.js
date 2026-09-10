@@ -162,6 +162,78 @@ function rtChegadaEstimada(rota, paradas) {
   return { horario, travelKm, travelMin, dwellMin };
 }
 
+// Otimização de ordem das paradas (10/09/2026, pedido direto: "como
+// podemos otimizar a posição de cada rota?" → "implemente, inclusive
+// otimizando as rotas existentes") — sem custo, mesmo critério de sempre
+// (nunca API paga de rotas): usa a MESMA distância em linha reta
+// (rtHaversineKm) já usada em rtChegadaEstimada, nunca a estrada real.
+// Isso é uma aproximação, não o Google/uma matriz de distância de verdade
+// — numa zona rural do Piauí a ordem sugerida pode divergir da melhor
+// ordem por estrada, então é sempre uma SUGESTÃO revisável antes de
+// aplicar (mesmo padrão de partida/destino/chegada estimada), nunca uma
+// gravação automática.
+//
+// A 1ª parada fica FIXA (não entra no reordenamento) — é o que já
+// alimenta a sugestão de Ponto de partida (rtUsarSugestaoPartida) e
+// normalmente é a mais próxima da saída real (ex.: Cartório); trocar
+// SEMPRE qual parada é a primeira surpreenderia o cartório sem necessidade
+// nenhuma. As demais paradas são reordenadas por vizinho-mais-próximo a
+// partir da 1ª, com um refino 2-opt por cima (troca de trechos que reduz a
+// distância total) — os dois sozinhos, sem heurística mais pesada, já dão
+// conta de rotas de até ~35 paradas (a maior da zona hoje) em milissegundos.
+function rtDistanciaTotal(ordem) {
+  let total = 0;
+  for (let i = 1; i < ordem.length; i++) total += rtHaversineKm(ordem[i - 1], ordem[i]);
+  return total;
+}
+function rtVizinhoMaisProximo(paradas) {
+  const restantes = paradas.slice(1);
+  const ordem = [paradas[0]];
+  let atual = paradas[0];
+  while (restantes.length) {
+    let melhorIdx = 0, melhorDist = Infinity;
+    for (let i = 0; i < restantes.length; i++) {
+      const d = rtHaversineKm(atual, restantes[i]);
+      if (d < melhorDist) { melhorDist = d; melhorIdx = i; }
+    }
+    atual = restantes[melhorIdx];
+    ordem.push(atual);
+    restantes.splice(melhorIdx, 1);
+  }
+  return ordem;
+}
+// 2-opt clássico, mantendo o índice 0 (1ª parada) sempre fixo — só troca
+// trechos dentro do restante da rota (índice 1 em diante).
+function rtDoisOpt(ordemInicial) {
+  let melhor = ordemInicial.slice();
+  let melhorou = true;
+  while (melhorou) {
+    melhorou = false;
+    for (let i = 1; i < melhor.length - 1; i++) {
+      for (let k = i + 1; k < melhor.length; k++) {
+        const candidata = melhor.slice(0, i).concat(melhor.slice(i, k + 1).reverse(), melhor.slice(k + 1));
+        if (rtDistanciaTotal(candidata) < rtDistanciaTotal(melhor) - 1e-9) {
+          melhor = candidata;
+          melhorou = true;
+        }
+      }
+    }
+  }
+  return melhor;
+}
+// Devolve null quando não há o que otimizar (menos de 3 paradas — com 0-2
+// só existe uma ordem possível) ou quando falta geo em alguma parada
+// (nunca estima distância pulando uma perna sem coordenada, mesmo
+// critério de rtChegadaEstimada).
+function rtCalcularOrdemOtimizada(paradas) {
+  if (paradas.length < 3) return null;
+  if (paradas.some(s => s.latitude == null || s.longitude == null)) return null;
+  const kmAntes = rtDistanciaTotal(paradas);
+  const ordem = rtDoisOpt(rtVizinhoMaisProximo(paradas));
+  const kmDepois = rtDistanciaTotal(ordem);
+  return { ordem, kmAntes, kmDepois };
+}
+
 // URL do Google Maps Directions (sem chave/custo) — usado tanto pro link
 // "Ver rota completa no mapa" (tela) quanto pro QR code da ficha impressa
 // (rtHtmlFicha). Extraído aqui pra não duplicar a lógica entre os dois
@@ -389,6 +461,16 @@ let rtSecaoBuscaTimer = null;
 let rtAdicionarAberto = false; // seção "Adicionar local de votação" (busca+lista), escondida atrás do botão "+" até o cartório clicar
 let rtOrfasAberto = null; // tipo (string) com a lista de seções órfãs expandida, ou null
 let rtGerandoRetornoDe = null; // id da rota de distribuição de origem, enquanto a "Nova rota" aberta é um rascunho de retorno gerado a partir dela
+// Sugestão de ordem otimizada (10/09/2026, pedido direto: "como podemos
+// otimizar a posição de cada rota?" → "implemente") — nunca aplica
+// sozinha, mesmo critério "sugestão, nunca força" de partida/destino/
+// chegada estimada: rtOtimizarOrdem() calcula e guarda aqui; só grava no
+// banco quando o cartório clica "✓ Aplicar nova ordem". Guarda o rotaId
+// junto pra nunca mostrar a sugestão de uma rota na tela de outra, e os
+// ids das paradas usadas no cálculo, pra detectar se a lista mudou (add/
+// remove/mover) entre calcular e aplicar — nesse caso descarta em vez de
+// aplicar em cima de um estado que não existe mais.
+let rtOtimizarSugestao = null; // { rotaId, idsOriginais:[...], ordemIds:[...], kmAntes, kmDepois }
 
 function rtEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -639,12 +721,13 @@ function renderRotas() {
 }
 
 // ── Modal: nova/editar rota ──
-function rtAbrirNovo() { rtModalId = ''; rtAdicionarAberto = false; rtSecaoBusca = ''; rtRenderModalRota(); }
-function rtAbrirEditar(id) { rtModalId = id; rtAdicionarAberto = false; rtSecaoBusca = ''; rtRenderModalRota(); }
+function rtAbrirNovo() { rtModalId = ''; rtAdicionarAberto = false; rtSecaoBusca = ''; rtOtimizarSugestao = null; rtRenderModalRota(); }
+function rtAbrirEditar(id) { rtModalId = id; rtAdicionarAberto = false; rtSecaoBusca = ''; rtOtimizarSugestao = null; rtRenderModalRota(); }
 function rtFecharModal(e) {
   if (rtModalId === null) return;
   if (!e || e.target === document.getElementById('overlay')) {
     rtModalId = null;
+    rtOtimizarSugestao = null;
     rtGerandoRetornoDe = null;
     rtAdicionarAberto = false;
     rtSecaoBusca = '';
@@ -895,9 +978,39 @@ function rtRenderParadas() {
   const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
   const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
 
+  // Sugestão de otimização (10/09/2026) — só mostra o preview quando é
+  // desta MESMA rota e a lista de paradas usada no cálculo ainda bate com
+  // a atual (senão descarta em silêncio: uma sugestão em cima de paradas
+  // que já mudaram — add/remove/mover — não deve reaparecer como se ainda
+  // valesse).
+  let sugestao = (rtOtimizarSugestao && rtOtimizarSugestao.rotaId === r.id) ? rtOtimizarSugestao : null;
+  if (sugestao) {
+    const idsAtuais = atuais.map(s => s.id);
+    const mesmoConjunto = idsAtuais.length === sugestao.idsOriginais.length && idsAtuais.every(id => sugestao.idsOriginais.includes(id));
+    if (!mesmoConjunto) { rtOtimizarSugestao = null; sugestao = null; }
+  }
+  const semGeoAgora = atuais.filter(s => s.latitude == null || s.longitude == null).length;
+  const jaIgual = sugestao && sugestao.ordem.every((s, idx) => s.id === atuais[idx]?.id);
+
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
-    ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;display:inline-block;margin-bottom:8px;text-decoration:none" title="Usa a Partida/Destino digitados, quando preenchidos, e as paradas geolocalizadas no meio">🗺️ Ver rota completa no mapa</a>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;text-decoration:none" title="Usa a Partida/Destino digitados, quando preenchidos, e as paradas geolocalizadas no meio">🗺️ Ver rota completa no mapa</a>` : ''}
+      ${atuais.length >= 3 ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtOtimizarOrdem('${r.id}')" title="Sugere uma ordem mais curta por distância em linha reta entre as paradas (não é a estrada real) — 1ª parada fica fixa">🔀 Otimizar ordem</button>` : ''}
+    </div>
+    ${sugestao ? (jaIgual ? `
+    <div class="import-result ir-ok">✓ A ordem atual já é a mais curta que encontramos por linha reta (nenhuma redução possível) — nada pra aplicar.
+      <div style="margin-top:6px"><button type="button" class="btn btn-out" style="font-size:.68rem;padding:3px 8px;font-weight:400" onclick="rtDescartarOtimizacao()">Fechar</button></div>
+    </div>` : `
+    <div class="import-result ir-ok">🔀 Sugestão (linha reta, ~${RT_VELOCIDADE_MEDIA_KMH}km/h — não é a estrada real): ${sugestao.kmAntes.toFixed(1)}km → ${sugestao.kmDepois.toFixed(1)}km (${Math.round((1 - sugestao.kmDepois / sugestao.kmAntes) * 100)}% menor). 1ª parada continua a mesma; nova ordem das demais:
+      <ol style="margin:6px 0 8px 18px;padding:0;font-weight:400">
+        ${sugestao.ordem.slice(1).map(s => `<li>${rtEsc(String(s.numero))} — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}</li>`).join('')}
+      </ol>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn btn-dark" style="font-size:.72rem;padding:4px 10px;font-weight:400" onclick="rtAplicarOrdemOtimizada('${r.id}')">✓ Aplicar nova ordem</button>
+        <button type="button" class="btn btn-out" style="font-size:.72rem;padding:4px 10px;font-weight:400" onclick="rtDescartarOtimizacao()">✕ Descartar</button>
+      </div>
+    </div>`) : (semGeoAgora && atuais.length >= 3 ? `<div class="ic-sub" style="margin:0 0 8px">⚠️ ${semGeoAgora} parada(s) sem geolocalização — "Otimizar ordem" avisa e não calcula enquanto isso.</div>` : '')}
     <div class="m-hist">
       ${atuais.length ? atuais.map((s, idx) => `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -1119,6 +1232,65 @@ async function rtMoverParada(rotaId, secaoId, direcao) {
   rtDados.secoesPorRota.set(rotaId, atuais);
   await log('rota_secao_reordenada', '', { rota_id: rotaId, secao_id: secaoId, direcao });
   showToast('✓ Ordem atualizada');
+  rtRenderParadas();
+  render();
+}
+
+// "🔀 Otimizar ordem" (10/09/2026, pedido direto: "como podemos otimizar a
+// posição de cada rota?" → "implemente"). Só CALCULA e guarda em
+// rtOtimizarSugestao — nunca escreve no banco sozinho, mesmo padrão de
+// "sugestão, nunca força" já usado em partida/destino/chegada estimada.
+// Ver rtCalcularOrdemOtimizada() acima pro algoritmo (vizinho-mais-próximo
+// + 2-opt, distância em linha reta, 1ª parada fixa).
+function rtOtimizarOrdem(rotaId) {
+  const atuais = rtDados.secoesPorRota.get(rotaId) || [];
+  if (atuais.length < 3) { showToast('⚠ Otimização de ordem só faz sentido com 3 ou mais paradas'); return; }
+  const semGeo = atuais.filter(s => s.latitude == null || s.longitude == null).length;
+  if (semGeo) { showToast(`⚠ ${semGeo} parada(s) sem geolocalização — otimização automática exige coordenadas em todas. Posicione manualmente com ▲/▼, ou complete a geo primeiro.`); return; }
+  const resultado = rtCalcularOrdemOtimizada(atuais);
+  if (!resultado) { showToast('⚠ Não foi possível calcular uma sugestão'); return; }
+  rtOtimizarSugestao = { rotaId, idsOriginais: atuais.map(s => s.id), ordem: resultado.ordem, kmAntes: resultado.kmAntes, kmDepois: resultado.kmDepois };
+  rtRenderParadas();
+}
+function rtDescartarOtimizacao() {
+  rtOtimizarSugestao = null;
+  rtRenderParadas();
+}
+// Grava a ordem sugerida — mesmo loop de rtMoverParada (renumera 1..N,
+// espelha sime_secoes.parada só pra tipo legado, pula escrita quando a
+// posição já está certa). Antes de gravar, confere se o CONJUNTO de
+// paradas ainda é o mesmo de quando a sugestão foi calculada — um
+// add/remove/mover no meio-tempo invalida a sugestão (nunca aplica em
+// cima de uma lista que já mudou).
+async function rtAplicarOrdemOtimizada(rotaId) {
+  const sb = window.supabaseAtores;
+  const sugestao = rtOtimizarSugestao;
+  if (!sugestao || sugestao.rotaId !== rotaId) return;
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  const atuais = rtDados.secoesPorRota.get(rotaId) || [];
+  const idsAtuais = atuais.map(s => s.id);
+  const mesmoConjunto = idsAtuais.length === sugestao.idsOriginais.length && idsAtuais.every(id => sugestao.idsOriginais.includes(id));
+  if (!mesmoConjunto) {
+    showToast('⚠ A lista de paradas mudou desde que a sugestão foi calculada — clique em "Otimizar ordem" de novo');
+    rtOtimizarSugestao = null;
+    rtRenderParadas();
+    return;
+  }
+  const ordem = sugestao.ordem;
+  for (let i = 0; i < ordem.length; i++) {
+    const novaParada = i + 1;
+    if (ordem[i].parada === novaParada) continue; // já está certo, evita escrita à toa
+    const { error } = await sb.from('sime_rota_secoes').update({ parada: novaParada }).eq('rota_id', rotaId).eq('secao_id', ordem[i].id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+    if (rtRotaTemTipoLegado(rota)) {
+      await sb.from('sime_secoes').update({ parada: novaParada }).eq('id', ordem[i].id).eq('rota_id', rotaId);
+    }
+    ordem[i] = { ...ordem[i], parada: novaParada };
+  }
+  rtDados.secoesPorRota.set(rotaId, ordem);
+  await log('rota_ordem_otimizada', '', { rota_id: rotaId, codigo: rota?.codigo, km_antes: Number(sugestao.kmAntes.toFixed(2)), km_depois: Number(sugestao.kmDepois.toFixed(2)), quantidade: ordem.length });
+  showToast(`✓ Ordem otimizada aplicada (${sugestao.kmAntes.toFixed(1)}km → ${sugestao.kmDepois.toFixed(1)}km)`);
+  rtOtimizarSugestao = null;
   rtRenderParadas();
   render();
 }
