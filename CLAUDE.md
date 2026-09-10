@@ -3343,13 +3343,18 @@ RU11/RU12 como `rota_paradas_copiadas_retorno` (mesma ação de
 `rtCopiarParadasInvertidas`) — tudo rodado uma vez via MCP, replicando
 exatamente as mesmas ações/payloads que a UI já grava, não uma ação nova.
 
-**1 local ainda fica de fora, pendência real**: Escola Engenio Rodrigues
-Lima (ROTA 11, Localidade Morada Nova — só batia por proximidade com
-"Igreja da Morada Nova" antes, e o cartório confirmou coordenada só pra
-"Igreja da Morada Nova"; "Escola Engenio Rodrigues Lima" continua sendo um
-nome de prédio diferente, não assumido como a mesma coisa). Falta o
-cartório confirmar se esse local tem seção cadastrada sob outro nome, ou se
-nunca foi cadastrado em `sime_secoes`.
+**Escola Engenio Rodrigues Lima confirmada como INEXISTENTE (10/09/2026,
+pedido direto: "não existe local de votação Escola Engenio Rodrigues Lima.
+existe alguma seção atribuida a esse local?").** Checado direto no banco
+(nome, "Engenio", "Rodrigues Lima" — nenhuma variação bateu com seção
+nenhuma da 7ª Zona, só "Igreja da Morada Nova" por proximidade textual, o
+mesmo candidato descartado desde 09/09/2026). Confirmado pelo cartório que
+o local em si nunca existiu/nunca foi cadastrado — mesmo caso do IATE
+(ROTA 06, "não existe mais"), não uma pendência de nome-diferente pra
+resolver. Pendência fechada: nenhuma das 5 menções órfãs da carga original
+de UR/RU (ver "9 locais da planilha... 3 confirmados") fica de fora por
+falta de investigação — as outras 4 foram inseridas em 10/09/2026 (ver
+acima), esta é a única que de fato não corresponde a nenhum local real.
 
 **12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
 SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
