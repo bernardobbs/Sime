@@ -17,6 +17,13 @@ class QB {
   eq(c,v){ this.f[c]=v; return this; }
   in(c,v){ this.f['__in_'+c]=v; return this; }
   contains(c,v){ this.f['__contains_'+c]=v; return this; }
+  not(c, op, v){
+    // Só os dois usos que existem no projeto: .not(col,'in','(a,b,c)') e
+    // .not(col,'is',null) — mesma sintaxe crua do supabase-js real.
+    if(op==='in'){ this.f['__notin_'+c]=String(v).replace(/^\(|\)$/g,'').split(','); }
+    else if(op==='is' && v===null){ this.f['__notnull_'+c]=true; }
+    return this;
+  }
   order(){ return this; }
   limit(){ return this; }
   single(){ return this.maybeSingle(); }
@@ -42,6 +49,8 @@ class QB {
         return Array.isArray(arr) && arr.some(item => v.every(want => Object.entries(want).every(([kk,vv]) => item[kk]===vv)));
       }
       if(k.includes('->>')){ const [col,key]=k.split('->>'); return String(x[col]?.[key] ?? '')===String(v); }
+      if(k.startsWith('__notin_')) return !v.includes(x[k.slice(8)]);
+      if(k.startsWith('__notnull_')) return x[k.slice(10)] != null;
       return x[k]===v;
     });
   }

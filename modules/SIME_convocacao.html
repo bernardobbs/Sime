@@ -277,6 +277,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
     <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
     <div class="tab" id="tab-turmas-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('turmas',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🎓 Treinamento</div>
+    <div class="tab" id="tab-pendencias-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('pendencias',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🚦 Pendências de Convocação</div>
     <div class="tab" id="tab-relatorio-elo-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('relatorio-elo',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📄 Relatório ELO</div>
     <div class="tab" id="tab-sync-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('sync',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🔄 Sincronizar</div>
     <div class="tab" id="tab-historico-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('historico',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📜 Histórico</div>
@@ -299,6 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_contatar_mesarios.js"></script>
 <script src="./sime_historico_sync.js"></script>
 <script src="./sime_relatorio_elo.js"></script>
+<script src="./sime_pendencias_convocacao.js"></script>
 <script src="./sime_correspondencia.js"></script>
 <script src="./sime_voluntarios.js"></script>
 <script src="./sime_turmas.js"></script>
@@ -434,6 +436,7 @@ function goTab(tab, btn) {
   if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
   if (tab === 'oficial-justica' && typeof ojDados !== 'undefined') ojDados = null;
   if (tab === 'turmas' && typeof tuDados !== 'undefined') tuDados = null;
+  if (tab === 'pendencias' && typeof pcDados !== 'undefined') pcDados = null;
   render();
 }
 function render() {
@@ -446,6 +449,7 @@ function render() {
   if (curTab === 'voluntarios') { renderVoluntarios(); return; }
   if (curTab === 'oficial-justica') { renderOficialJustica(); return; }
   if (curTab === 'turmas') { renderTurmas(); return; }
+  if (curTab === 'pendencias') { renderPendenciasConvocacao(); return; }
 }
 window.render = render;
 </script>

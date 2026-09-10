@@ -3096,6 +3096,67 @@ sobrescrita manual pra outra data, e limpeza do agendamento ao confirmar).
 
 ---
 
+## 🚦 PENDÊNCIAS DE CONVOCAÇÃO — aba órfã, ligada em 10/09/2026
+
+`modules/sime_pendencias_convocacao.js` (211 linhas) foi escrito numa sessão
+anterior — pedido direto de 03/09/2026: "quero um relatorio para saber
+todos que estão como convocados no elo e ainda não estão convocados ou
+confirmados no sime" → "pode fazer isso um relatorio do sime convocações?
+permanente? por exemplo, os mesários que copiamos o link e nunca foram
+marcados como convocados ou confirmados" — mas nunca chegou a ser ligado:
+sem `<script src>` em `SIME_convocacao.html`, sem aba, sem entrada em
+`goTab()`/`render()`. Achado ao investigar por que o stop-hook do git
+continuava reclamando de um arquivo não rastreado a cada turno desta sessão
+— em vez de só commitar um script órfão (que nenhuma página carrega, logo
+não faz nada), a integração foi concluída de verdade.
+
+**"Convocado no ELO" = está ativo no roster sincronizado** — `sime_atores`
+JÁ É o roster (nenhuma consulta extra ao staging é necessária). "Ainda não
+avançou no SIME" = `confirmacao NOT IN ('convocado','confirmado',
+'substituido')` — inclui pendente/contato_incorreto/recusou; `substituido`
+fica de fora de propósito (desfecho já resolvido, vaga preenchida por outra
+pessoa, não é pendência de contato). Duas situações, mesmo critério de
+tentativas já usado em `sime_contatar_mesarios.js` (campanha
+'enviado'/'aguardando_resposta' + `sime_logs.mesario_tentativa_contato`,
+que inclui "copiou o link do WhatsApp pra confirmar contato"): 🔴 nunca
+contactado / 🟡 já contactado, mas nunca virou Convocado/Confirmado — é
+literalmente o exemplo do pedido original.
+
+**Ligado como nova aba "🚦 Pendências de Convocação"**, entre 🎓 Treinamento
+e 📄 Relatório ELO (mesmo grupo de "relatório", perto do Relatório ELO, que
+é o mais parecido em espírito) — `<script src="./sime_pendencias_convocacao.js">`
+adicionado depois de `sime_relatorio_elo.js`; `goTab()` zera `pcDados` ao
+entrar na aba (mesmo padrão de recarregar do banco a cada entrada, evita
+mostrar dado velho depois de sincronizar/mudar status noutra aba);
+`render()` ganha `if (curTab === 'pendencias') { renderPendenciasConvocacao(); return; }`.
+Reaproveita `cmRotuloFuncao`/`cmBadge`/`CM_FUNCAO_FILTRO`/`cmAbrirModal`
+(de `sime_contatar_mesarios.js`, carregado antes) e `fmtTelefone`
+(`sime_ui_utils.js`) — nenhuma duplicação, script já era desenhado pra isso
+desde que foi escrito, só faltava a integração.
+
+Filtros por situação/função/município + busca por nome/título de eleitor,
+exportação CSV, e clicar no nome abre o MESMO modal de "Contatar mesários"
+— zero UI nova pra edição, é um relatório de leitura sobre o mesmo dado.
+
+Coberto por `tests/test_convocacao_pendencias.mjs` (23 checks, arquivo
+novo, mesmo padrão de stub/mock isolado já usado por
+`test_convocacao_voluntarios.mjs`): lista só quem ainda não avançou (nunca
+os já convocados/confirmados/substituídos), contagem e badges 🔴/🟡, os
+três filtros, busca, painel de destaque clicável, exportar CSV, e o nome
+abrindo o modal compartilhado. **Achado escrevendo o teste**: o painel de
+destaque amarelo ("já tiveram alguma tentativa...") sempre cita os nomes de
+quem tem tentativa, independente do filtro de situação ativo (mesmo padrão
+de "Contatar mesários") — os testes de filtro precisaram escopar a
+asserção à lista de pessoas (`.cm-lista-pessoas`), não ao `#content`
+inteiro, senão davam falso negativo mesmo com o filtro funcionando certo.
+A stub do Supabase usada pelos testes de `SIME_convocacao.html` (QB mock em
+`test_convocacao_mesarios.mjs` e a cópia própria em
+`test_convocacao_pendencias.mjs`) ganhou `.not(coluna,'in',...)`/
+`.not(coluna,'is',null)` — não existia ainda porque nenhuma aba anterior
+desta página usava `.not()` no supabase-js real.
+
+---
+
 ## MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 04/09/2026)
 
 Pedido direto: "vamos fazer um modulo de rotas precisa ser rota poder
