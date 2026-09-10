@@ -574,6 +574,18 @@ async function carregarDadosReais(){
   window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
   if (window.renderTeam) window.renderTeam();
 
+  // Locais atribuídos a cada Auxiliar de Eleição (sime_auxiliar_locais) —
+  // buscados em lote pra o card da equipe mostrar sem esperar clique em
+  // nenhum membro (RLS já escopa pra zona, sem precisar filtrar por id
+  // aqui). renderTeam() já rodou acima com dado antigo/vazio; chamado de
+  // novo assim que este lote chega, mesmo padrão de todo o resto do boot.
+  const { data: auxLocais } = await supabase.from('sime_auxiliar_locais').select('usuario_id,local_nome,municipio');
+  window.AUX_LOCAIS_POR_USUARIO = {};
+  (auxLocais || []).forEach(l => {
+    (window.AUX_LOCAIS_POR_USUARIO[l.usuario_id] ||= []).push({ local_nome: l.local_nome, municipio: l.municipio });
+  });
+  if (window.renderTeam) window.renderTeam();
+
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
 }
 
@@ -652,6 +664,15 @@ async function carregarIdentidade(){
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
   window.MEU_USUARIO_ID = meuUsuario.id || null;
+  // Escopo 'locais' (Auxiliar de Eleição) precisa dos locais atribuídos pra
+  // secoesDoUsuario()/escopoLabel() funcionarem na SESSÃO REAL — diferente
+  // do fallback demo (loadTeam()), que guarda escopo em localStorage, este
+  // é o único perfil cujo escopo é sempre buscado do banco, nunca do cache.
+  if (meuUsuario.perfil === 'auxiliar_eleicao') {
+    const { data: locais } = await supabase.from('sime_auxiliar_locais')
+      .select('local_nome,municipio').eq('usuario_id', meuUsuario.id);
+    window.SIME_IDENTIDADE.locais = locais || [];
+  }
   if (meuUsuario.perfil === 'super_admin') {
     const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
       supabase.from('sime_zonas').select('*').order('numero'),
@@ -838,8 +859,9 @@ const TX_STATUS_BADGE = {
 const TEAM_KEY = 'sime_equipe_v1';
 const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
 const PERMS_LABELS = {ver_secoes:'Ver seções',editar_secoes:'Editar seções',resolver_panico:'Resolver pânico',lancar_telefone:'Lançar por telefone',gestao_dist:'Distribuição',config_equipe:'Config equipe'};
-// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'empresa' (seções das
-//         rotas da empresa) | 'midias' (seções designadas de coleta)
+// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'locais' (vários
+//         locais, ver sime_auxiliar_locais) | 'empresa' (seções das rotas
+//         da empresa) | 'midias' (seções designadas de coleta)
 const PERFIS = {
   super_admin: {label:'Super Admin',color:'#1a1a22',perms:PERMS_ALL,escopo:'tudo'},
   coordenador: {label:'Coordenador Geral',color:'#2a2a2a',perms:PERMS_ALL,escopo:'tudo'},
@@ -851,6 +873,10 @@ const PERFIS = {
   coord_motoristas:     {label:'Coord. de Motoristas',    color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'empresa'},
   coord_acessibilidade: {label:'Coord. de Acessibilidade',color:'#6040a0',perms:['ver_secoes','resolver_panico'],escopo:'local'},
   coletor_midias:       {label:'Coletor de Mídias',       color:'#15803d',perms:['ver_secoes'],escopo:'midias'},
+  // Auxiliar de Eleição, locais predeterminados (10/09/2026) — ver
+  // sql/SIME_auxiliares_locais.sql. 'ver_secoes' basta pro escopo (a página
+  // de Problemas escopa por conta própria; ver dentroDoEscopo() lá).
+  auxiliar_eleicao:     {label:'Auxiliar de Eleição',     color:'#b8860b',perms:['ver_secoes'],escopo:'locais'},
 };
 
 // ── ESCOPO DO USUÁRIO ──────────────────────────────────────
@@ -862,9 +888,14 @@ function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
 // offline (sem empresas cadastradas ainda). 'midias' (Coletor de Mídias)
 // permanece sempre manual por design: não existe agrupamento real (rota/
 // local) do qual derivar as seções designadas a um coletor específico.
+// 'locais' (Auxiliar de Eleição) vem de sime_auxiliar_locais, carregado em
+// curUser.locais por carregarIdentidade()/aplicarIdentidade() — diferente
+// de 'local' (Coord. de Acessibilidade), aceita vários locais ao mesmo
+// tempo (decisão confirmada com o cartório).
 function secoesDoUsuario(){
   const esc = userEscopo();
   if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
+  if(esc==='locais' && curUser.locais?.length) return SECTIONS.filter(s=>curUser.locais.some(l=>l.local_nome===s.loc && l.municipio===s.city));
   if(esc==='empresa'&& curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
   if(esc==='midias' && curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
   return SECTIONS;
@@ -872,6 +903,7 @@ function secoesDoUsuario(){
 function escopoLabel(){
   const esc = userEscopo();
   if(esc==='local'   && curUser.local)  return `Local: ${curUser.local}`;
+  if(esc==='locais'  && curUser.locais?.length) return `Locais: ${curUser.locais.map(l=>l.local_nome).join(', ')}`;
   if(esc==='empresa' && curUser.empresa)return `Empresa: ${curUser.empresa}`;
   if(esc==='midias')                    return `Coleta de mídias designada`;
   return null;
@@ -951,7 +983,7 @@ window.aplicarIdentidade = function(){
   const id = window.SIME_IDENTIDADE;
   if (!id) return;
   const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
-  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
+  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a', locais: id.locais || [] };
   applyUser();
   renderDash(); renderTable();
   const btnSair = document.getElementById('btn-logout');
@@ -1484,6 +1516,7 @@ function renderTeam(){
           <div class="tc-name">${m.nome}</div>
           <div class="tc-role">${perfil.label}</div>
           ${m.local?`<div class="tc-scope">📍 ${m.local}</div>`:''}
+          ${(perfil.escopo==='locais')?`<div class="tc-scope">📍 ${(window.AUX_LOCAIS_POR_USUARIO?.[m.id]||[]).map(l=>l.local_nome).join(', ')||'nenhum local atribuído ainda'}</div>`:''}
           ${m.empresa?`<div class="tc-scope">🏢 ${m.empresa}${m.secoes?.length?` · ${m.secoes.length} seç.`:''}</div>`:''}
           ${(perfil.escopo==='midias'&&m.secoes?.length)?`<div class="tc-scope">📦 ${m.secoes.length} seç. de coleta</div>`:''}
           ${m.substituto?`<div class="tc-scope">🔄 Substituto: ${m.substituto}</div>`:''}
@@ -1577,6 +1610,28 @@ function showMemberModal(m){
         </select>
       </div>
 
+      <!-- Escopo: Locais de votação (Auxiliar de Eleição) — N-pra-N, ver
+           sime_auxiliar_locais/salvarLocaisAuxiliar(). Diferente do "Local"
+           único do Coord. de Acessibilidade acima: um auxiliar pode cobrir
+           vários locais ao mesmo tempo (decisão confirmada com o cartório,
+           10/09/2026). Problema de urna num desses locais cai na página
+           deste auxiliar (SIME_problemas.html) e dispara alerta imediato de
+           WhatsApp, além da escalada de sempre. -->
+      <div class="form-group" id="grp-locais" style="display:none">
+        <label for="m-locais">Locais de votação atribuídos (Ctrl/Cmd+clique marca vários)</label>
+        <select id="m-locais" multiple size="8">
+          ${[...new Map(SECTIONS.map(s=>[`${s.loc}|||${s.city}`,s])).values()]
+            .sort((a,b)=>a.loc.localeCompare(b.loc))
+            .map(s=>{
+              const v = `${s.loc}|||${s.city}`;
+              const meusLocais = m ? (window.AUX_LOCAIS_POR_USUARIO?.[m.id]||[]) : [];
+              const sel = meusLocais.some(l=>l.local_nome===s.loc && l.municipio===s.city);
+              return `<option value="${v}" ${sel?'selected':''}>${s.loc} — ${s.city}</option>`;
+            }).join('')}
+        </select>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Opcional — sem nenhum local marcado, este auxiliar não recebe nenhum alerta de urna ainda.</div>
+      </div>
+
       <!-- Escopo: Empresa (Coord. de Motoristas) — dropdown real (sime_empresas)
            quando disponível; cai no texto livre se offline/sem empresas cadastradas -->
       <div class="form-group" id="grp-empresa" style="display:none">
@@ -1642,6 +1697,7 @@ function onPerfilChange(){
       : (isNew ? 'Opcional — se preenchido, as credenciais de acesso são enviadas por WhatsApp assim que a conta for criada.' : '');
   }
   show('grp-local',      esc==='local');
+  show('grp-locais',     esc==='locais');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
   // empresa (sime_empresas.rotas) — não precisa mais digitar à mão. Sem
@@ -1669,11 +1725,52 @@ function parseSecoes(str){
     .filter(x=>SECTIONS.some(s=>s.n===x));
 }
 
+// Lê a seleção do <select multiple> ANTES de qualquer coisa assíncrona
+// rodar — chamada logo no topo de saveMember(), nunca depois. Achado real
+// testando isto: criar um login novo troca o #modal-body inteiro pra tela
+// de "senha temporária" (mostrarSenhaTemporaria()) assim que a Edge
+// Function responde — se a leitura de #m-locais acontecesse só no fim de
+// saveMember() (como fazia a 1ª versão), o elemento já nem existia mais no
+// DOM, e a atribuição de locais nunca era gravada, em silêncio.
+function lerLocaisSelecionados(){
+  const sel = document.getElementById('m-locais');
+  if(!sel) return null;
+  return [...sel.selectedOptions].map(o=>{
+    const [local_nome, municipio] = o.value.split('|||');
+    return { local_nome, municipio };
+  });
+}
+
+// Grava a atribuição de locais de um Auxiliar de Eleição — delete+reinsert
+// (mesmo padrão usado noutros lugares do projeto pra editar um N-pra-N
+// inteiro de uma vez, ex.: sime_rota_secoes) em vez de tentar diffar
+// individualmente. Só chamada quando existe um sime_usuarios.id de
+// verdade — sem login (membro "só visível no painel"), não há em que FK
+// gravar, e login é o próprio ponto desta feature (acesso por e-mail/senha).
+async function salvarLocaisAuxiliar(usuarioId, zonaId, locaisSelecionados){
+  if(!zonaId || !locaisSelecionados) return;
+  const locais = locaisSelecionados.map(l=>({ usuario_id: usuarioId, zona_id: zonaId, local_nome: l.local_nome, municipio: l.municipio }));
+  const { error: delErr } = await supabase.from('sime_auxiliar_locais').delete().eq('usuario_id', usuarioId);
+  if(delErr){ trackSync(false); showToast('⚠ Locais não sincronizaram: '+mensagemErroAmigavel(delErr,'tente novamente')); return; }
+  if(locais.length){
+    const { error: insErr } = await supabase.from('sime_auxiliar_locais').insert(locais);
+    if(insErr){ trackSync(false); showToast('⚠ Locais não sincronizaram: '+mensagemErroAmigavel(insErr,'tente novamente')); return; }
+  }
+  trackSync(true);
+  window.AUX_LOCAIS_POR_USUARIO = window.AUX_LOCAIS_POR_USUARIO || {};
+  window.AUX_LOCAIS_POR_USUARIO[usuarioId] = locais.map(l=>({local_nome:l.local_nome, municipio:l.municipio}));
+  renderTeam();
+}
+
 async function saveMember(id){
   const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
   const email=(document.getElementById('m-email')?.value||'').trim().toLowerCase();
   const perfil=document.getElementById('m-perfil').value;
   const esc=PERFIS[perfil]?.escopo||'tudo';
+  // Lidos AGORA, antes de qualquer await — ver comentário de
+  // lerLocaisSelecionados() logo abaixo pro porquê disso importar.
+  const locaisSelecionados = esc==='locais' ? lerLocaisSelecionados() : null;
+  const zonaAlvoLocais = document.getElementById('m-zona')?.value || window.MINHA_ZONA_ID;
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   if(usaEmpresaReal && !document.getElementById('m-empresa-sel')?.value){ showToast('⚠ Selecione a empresa'); return; }
   const empresaSelecionada = usaEmpresaReal ? window.EMPRESAS.find(e=>e.id===document.getElementById('m-empresa-sel').value) : null;
@@ -1809,6 +1906,19 @@ async function saveMember(id){
     team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
   saveTeam(team); renderTeam();
+
+  // Locais atribuídos (Auxiliar de Eleição) — só grava com um
+  // sime_usuarios.id real (id ao editar gente já loga da equipe, ou
+  // base.usuario_id quando o login acabou de ser criado acima); zona é a
+  // que foi escolhida no formulário (super_admin) ou a de quem está
+  // logado, mesmo par já usado pra enfileirar as credenciais por WhatsApp.
+  // locaisSelecionados/zonaAlvoLocais foram lidos no TOPO da função — ver
+  // lerLocaisSelecionados().
+  if(perfil==='auxiliar_eleicao'){
+    const realId = id || base.usuario_id;
+    if(realId) await salvarLocaisAuxiliar(realId, zonaAlvoLocais, locaisSelecionados);
+  }
+
   // Se o usuário atual foi editado, reaplica o escopo
   if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
   // Bug real corrigido em 28/08/2026, achado ao adicionar a nota de envio por

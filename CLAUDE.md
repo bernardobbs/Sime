@@ -134,6 +134,14 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Gestor de Distribuição** | Rotas | Ver + controlar embarque |
 | **Observador** | Tudo | Somente leitura |
 | **Coord. de Motoristas (Preposto)** | `empresa_id` do usuário | Só rotas da empresa dele |
+| **Auxiliar de Eleição** (10/09/2026) | `sime_auxiliar_locais` do usuário (N locais) | Ver + resolver problema de urna nesses locais |
+
+> ⚠️ **Duas coisas diferentes com o mesmo nome** — a linha acima
+> (`sime_usuarios.perfil='auxiliar_eleicao'`, login e-mail/senha, ver seção
+> própria "AUXILIAR DE ELEIÇÃO — LOCAIS PREDETERMINADOS" mais abaixo) não é
+> a mesma coisa que a linha "Auxiliar de Eleição" da tabela Camada Campo
+> logo abaixo (`sime_atores.funcao='auxiliar_eleicao'`, roster do TRE,
+> convocação) — cadastros paralelos, deliberadamente desacoplados.
 
 ### Camada Campo (acesso via QR Code + PIN)
 
@@ -211,6 +219,7 @@ sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
 sime_contatos_externos  -- Equatorial e afins, por zona/município
 sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
 sime_voluntarios    -- cadastro paralelo de mesários voluntários (não é sime_atores/roster do TRE)
+sime_auxiliar_locais -- locais de votação atribuídos a um Auxiliar de Eleição (perfil admin, N-pra-N)
 ```
 
 ### Painel de Problemas (`SIME_problemas.html`)
@@ -4499,6 +4508,171 @@ mostra o aviso, formulário limpa depois de criar, massa não emite tv) +
 ajustes em `tests/test_tokens.mjs` (bloco 6, merge remoto agora inclui tv —
 com e sem `local_nome`) e `tests/test_tokens_massa.mjs` (dropdown passou a
 ter 7 tipos, não 6).
+
+---
+
+## AUXILIAR DE ELEIÇÃO — LOCAIS PREDETERMINADOS (`SIME_admin.html`/`SIME_problemas.html`, 10/09/2026)
+
+Pedido direto: "os auxiliares deverão ficar responsaveis por alguns locais
+de votação predeterminados, então o problema com urnas devem cair na
+pagina deles e nos whatsapp, somente daquelas urnas predeterminadas".
+Esclarecido via `AskUserQuestion` antes de implementar — três decisões:
+
+1. **Acesso: login próprio (e-mail/senha)** — mesmo padrão admin-escopado
+   já usado por Coord. de Motoristas/Coord. de Acessibilidade/Coletor de
+   Mídias em `SIME_admin.html`, não QR+PIN de campo.
+2. **Vários locais por auxiliar** — um auxiliar pode cobrir mais de um
+   local de votação ao mesmo tempo, então precisa de uma atribuição N-pra-N
+   própria, diferente do campo único "Local" que Coord. de Acessibilidade
+   já usa.
+3. **WhatsApp: alerta imediato ao auxiliar designado, ALÉM da escalada de
+   sempre** (10min→Gestor de Problemas, 30min→Chefe de Cartório) — não em
+   vez dela.
+
+> **Duas coisas diferentes chamadas "Auxiliar de Eleição" no sistema —
+> deliberadamente desacopladas, mesmo padrão já usado por
+> `sime_voluntarios` (cadastro paralelo, não o roster oficial).** A linha
+> "Auxiliar de Eleição" na tabela "Camada Campo" no topo deste arquivo é o
+> `sime_atores.funcao='auxiliar_eleicao'` — gente do roster do TRE,
+> convocada, sem local de trabalho confiável (o TRE quase nunca traz esse
+> dado pra essa função, ver "Auxiliar de Eleição virou contagem por
+> PESSOA" na seção de Convocação). O perfil novo descrito aqui
+> (`sime_usuarios.perfil='auxiliar_eleicao'`, escopo `'locais'`) é uma
+> conta de EQUIPE do cartório, atribuída manualmente a locais de votação
+> específicos — pode ou não ser a mesma pessoa do roster, o sistema nunca
+> tenta casar os dois automaticamente.
+
+### Schema — `sql/SIME_auxiliares_locais.sql`
+
+- **`auxiliar_eleicao` entra no CHECK de `sime_usuarios.perfil`** (mesma
+  lista já estendida quando `coord_motoristas`/`coord_acessibilidade`/
+  `coletor_midias` foram criados).
+- **`sime_auxiliar_locais`** (nova, N-pra-N): `usuario_id` (FK
+  `sime_usuarios`), `zona_id`, `local_nome`, `municipio` — mesmo par
+  `local_nome`+`municipio` usado em todo o resto do sistema pra agrupar
+  seções por prédio (não existe tabela própria de "locais"). RLS por zona
+  (`sime_zona_visivel`), `UNIQUE(usuario_id, local_nome, municipio)`.
+- **`sime_notificar_auxiliares_urna(p_secao_id, p_zona_id)`** — resolve
+  quem avisar (nome+telefone já prontos, filtrando `perfil='auxiliar_eleicao'`
+  e `ativo`/`telefone_whatsapp` preenchido — nunca avisa alguém que deixou
+  de ser auxiliar mas cuja atribuição antiga não foi limpa) e enfileira em
+  `sime_notificacoes` com `evento='panico_urna_auxiliar'` e `destinatarios`
+  já preenchido — diferente do escalonamento de sempre
+  (`sime_escalonar_ocorrencias()`), que sempre insere `destinatarios='[]'`
+  e deixa o Hermes resolver por role. Sem ninguém designado pro local (a
+  maioria, hoje), não enfileira nada — não é erro.
+- **`sime_sync_ocorrencias()` (trigger de `sime_mesa_estado`) substituída
+  por inteiro** — Postgres não faz patch parcial de função — com um bloco
+  novo dentro do "urna": chama a função acima só na TRANSIÇÃO pra
+  `panico_urna=true` (`TG_OP='INSERT' OR OLD.panico_urna IS DISTINCT FROM
+  true`), nunca em toda outra escrita na mesma seção enquanto o pânico
+  segue ativo (o trigger é `AFTER INSERT OR UPDATE` sem filtro de coluna —
+  sem o guard, cada `fila`/`votacao` gravado durante o pânico reenfileiraria
+  o mesmo alerta a cada clique, mesmo raciocínio já usado em
+  `sime_chamar_hermes_notificar()` pro Z-API/Hermes original). Best-effort
+  (`BEGIN/EXCEPTION`): uma falha aqui nunca desfaz a abertura da ocorrência.
+
+### `api/hermes-notificacoes.js` — `destinatarios` agora é devolvido
+
+A coluna já existia desde a criação de `sime_notificacoes`
+(`SIME_whatsapp_schema.sql`) mas **nunca foi lida nem devolvida** por este
+endpoint — todo evento de pânico (energia/urna/sos/escalonamento) sempre
+gravou `'[]'::jsonb` ali, e quem de fato decidia o destinatário sempre foi
+o `index.js` do Hermes (`ADMIN_NUMBERS`), sem olhar essa coluna. `pendentes`
+agora inclui `destinatarios` no `select` e devolve no JSON de cada
+notificação — pro evento novo (`panico_urna_auxiliar`), já vem preenchido.
+
+> **Pendência real, mesmo padrão já documentado pra `sime_escalonamento`:
+> o lado SIME está pronto, o lado Hermes (repositório separado
+> `bernardobbs/hermes`, fora do escopo desta sessão) ainda não lê
+> `destinatarios` nem manda a mensagem de verdade pro auxiliar.** O
+> `index.js` precisa, ao processar `panico_urna_auxiliar`, mandar
+> `sock.sendMessage` pra cada telefone de `destinatarios` (além do fluxo de
+> escalonamento normal, que continua indo pros `ADMIN_NUMBERS`) — sem essa
+> mudança no outro repositório, a fila enfileira mas ninguém recebe o
+> WhatsApp ainda.
+
+### `SIME_admin.html` — perfil `auxiliar_eleicao`, escopo `'locais'`
+
+`PERFIS.auxiliar_eleicao` (`escopo:'locais'`, `perms:['ver_secoes']`).
+`secoesDoUsuario()`/`escopoLabel()` ganham o caso `'locais'` — filtra
+`SECTIONS` por `curUser.locais.some(l => l.local_nome===s.loc &&
+l.municipio===s.city)`, plural, diferente do `'local'` (Coord. de
+Acessibilidade, um valor só).
+
+**Bug real corrigido no caminho, antes mesmo de existir uso — a sessão
+autenticada de VERDADE nunca carregava escopo nenhum pros perfis
+escopados.** Investigando como propagar `curUser.locais` pra sessão real,
+achei que `window.aplicarIdentidade()` (chamada quando
+`carregarIdentidade()` resolve a sessão de verdade) só define `{id, nome,
+iniciais, perfil, cor}` — nunca `.local`/`.secoes`/`.empresa`. Esses campos
+só existiam no caminho DEMO (`switchUser()`, que lê do cache
+`sime_equipe_v1` em localStorage) — ou seja, um Coord. de
+Acessibilidade/Coord. de Motoristas/Coletor de Mídias logado de verdade
+(e-mail/senha) sempre via `secoesDoUsuario()` cair no `return SECTIONS`
+(zona inteira), porque `curUser.local`/`.secoes` da sessão real sempre
+vinham vazios. Não corrigido para os perfis antigos nesta sessão (fora do
+pedido, e cada um teria uma fonte diferente — `local_id`/`sime_empresas`/
+manual) — só para `auxiliar_eleicao`, que é o que motivou a investigação:
+`carregarIdentidade()` agora busca `sime_auxiliar_locais` do próprio
+usuário quando `perfil==='auxiliar_eleicao'` e anexa em
+`window.SIME_IDENTIDADE.locais`; `aplicarIdentidade()` propaga pra
+`curUser.locais`.
+
+**Atribuição de locais no formulário "+ Novo membro"/editar** — `<select
+multiple size="8">` (`#grp-locais`, mesmo padrão `<select multiple>` já
+usado em Rotas pro campo Tipo) com todos os locais distintos da zona
+(`local_nome`+`municipio`, deduplicados a partir de `SECTIONS`). Salvar
+grava em `sime_auxiliar_locais` por delete+reinsert do conjunto inteiro
+(`salvarLocaisAuxiliar()`, mesmo padrão de qualquer N-pra-N editado de uma
+vez neste projeto) — só quando existe um `sime_usuarios.id` real (editando
+gente já com login, ou o `usuario_id` que acabou de sair da Edge Function
+ao criar um login novo); membro sem login (perfil "só visível no painel")
+não tem onde gravar a FK, e login é o próprio ponto desta feature.
+
+**Bug real, achado testando o fluxo de criação:** a primeira versão lia
+`#m-locais` só no FIM de `saveMember()` — mas criar um login novo troca o
+`#modal-body` inteiro pra tela de senha temporária
+(`mostrarSenhaTemporaria()`) assim que a Edge Function responde, e por essa
+altura `#m-locais` já não existe mais no DOM — a atribuição nunca era
+gravada, em silêncio, sem toast nenhum de erro. Corrigido lendo a seleção
+(`lerLocaisSelecionados()`) logo no TOPO de `saveMember()`, antes de
+qualquer `await`, e passando o array já lido adiante — não relendo o DOM
+depois.
+
+Card da equipe mostra os locais atribuídos (`📍 Escola A, Escola B`) ou
+avisa "nenhum local atribuído ainda" — busca em lote
+(`window.AUX_LOCAIS_POR_USUARIO`, uma consulta só no boot, não por
+membro), mesmo padrão de todo o resto da aba Equipe.
+
+### `SIME_problemas.html` — a lista escopa pra quem é auxiliar_eleicao
+
+`dentroDoEscopo(oc)`: `EU.perfil!=='auxiliar_eleicao'` sempre `true` (não
+afeta ninguém mais); pra um auxiliar, só `tipo==='urna'` **e** a seção
+estar em `MEUS_LOCAIS` (carregado de `sime_auxiliar_locais` na carga da
+tela). Composto com o filtro Meus/Todos de sempre, não substituído por ele
+— "Todos" pra um auxiliar quer dizer "toda urna nos MEUS locais", não a
+zona inteira.
+
+**`contatosPara()` (branch 'auxiliar') passa a preferir a atribuição real
+de `sime_auxiliar_locais` sobre o fallback do roster do TRE** (`AUX_POR_LOCAL`,
+mapa `local_nome|||municipio` → `[{nome,telefone}]`, montado pra QUALQUER
+perfil que abrir a tela, não só o auxiliar) — o roster quase nunca traz
+`secao_id` pra essa função (documentado desde a Convocação: 0/30 na 7ª
+Zona), então `atoresDaSecao()` sozinho raramente achava alguém; a nova
+atribuição por login é o dado de verdade. Mostra TODOS os designados ao
+local (pode ser mais de um), não só o primeiro — são justamente quem vai
+receber o alerta de WhatsApp desta urna. Sem designação real, cai no
+fallback antigo (rótulo "Auxiliar de eleição (TRE)"), sem regressão.
+
+Coberto por `tests/test_admin_auxiliar_locais.mjs` (21 checks: seletor de
+locais aparece só pro perfil certo, sem se sobrepor ao "Local" único;
+criar grava delete+insert com `usuario_id`/`zona_id` corretos; editar
+pré-seleciona e regrava só o novo conjunto; card mostra/avisa; sessão REAL
+— não o seletor demo — escopa `secoesDoUsuario()`/`escopoLabel()` de
+verdade) e blocos novos em `tests/test_problemas.mjs` (auxiliar vê só urna
+do próprio local; qualquer outro perfil continua sem recorte; contato
+prefere a atribuição real sobre o fallback do TRE).
 
 ---
 

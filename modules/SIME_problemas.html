@@ -222,6 +222,13 @@ let EU=null, ZONA=null, ELEICAO=null;
 let OCORRENCIAS=[], SECOES={}, ATORES=[], EXTERNOS=[], EQUIPE=[];
 let NUM_POR_SECAO_ID={};   // uuid -> '0063', montado uma vez na carga
 let FILTRO='todos', ABERTA=null;
+// Auxiliar de Eleição, locais predeterminados (10/09/2026, sime_auxiliar_locais):
+// MEUS_LOCAIS — só preenchido quando EU.perfil==='auxiliar_eleicao', usado por
+// dentroDoEscopo() pra restringir a própria lista a urna nos locais dele.
+// AUX_POR_LOCAL — todo mundo (qualquer perfil), "local_nome|||municipio" ->
+// [{nome,telefone}], usado por contatosPara() pra oferecer o auxiliar de
+// verdade designado ao local, não só o que porventura exista em sime_atores.
+let MEUS_LOCAIS=[], AUX_POR_LOCAL={};
 
 const TIPOS = {
   energia:          { ico:'⚡',  nome:'Falta de energia' },
@@ -289,8 +296,19 @@ function contatosPara(oc){
       if(lista[0]) out.push({ papel: lista[0].funcao_mesa || 'Mesário', nome: lista[0].nome, telefone: lista[0].telefone, ico:'🗳️' });
     }
     else if(chave === 'auxiliar'){
-      const a = atoresDaSecao(secNum,'auxiliar_eleicao',true)[0];
-      if(a) out.push({ papel:'Auxiliar de eleição (TRE)', nome:a.nome, telefone:a.telefone, ico:'🔧' });
+      // Prioriza sime_auxiliar_locais (atribuição real, por login, ver
+      // 10/09/2026) — o roster do TRE quase nunca traz secao_id pra essa
+      // função (documentado no CLAUDE.md), então atoresDaSecao() sozinho
+      // raramente achava alguém. Mostra TODOS os auxiliares designados ao
+      // local (pode ser mais de um), não só o primeiro — é quem de fato vai
+      // receber o alerta de WhatsApp desta urna.
+      const designados = AUX_POR_LOCAL[`${sec?.local_nome}|||${sec?.municipio}`] || [];
+      if(designados.length){
+        designados.forEach(a => out.push({ papel:'Auxiliar de eleição (designado)', nome:a.nome, telefone:a.telefone, ico:'🔧' }));
+      } else {
+        const a = atoresDaSecao(secNum,'auxiliar_eleicao',true)[0];
+        if(a) out.push({ papel:'Auxiliar de eleição (TRE)', nome:a.nome, telefone:a.telefone, ico:'🔧' });
+      }
     }
     else if(chave === 'acessibilidade'){
       const a = atoresDaSecao(secNum,'coord_acessibilidade',true)[0];
@@ -338,11 +356,15 @@ async function iniciar(){
     .select('id,zona_id,turno,ativa').eq('ativa',true).limit(1);
   ELEICAO = el?.[0] || null;
 
-  const [secoes, atores, externos, equipe] = await Promise.all([
+  const [secoes, atores, externos, equipe, auxLocais, auxUsuarios] = await Promise.all([
     supabase.from('sime_secoes').select('id,numero,local_nome,municipio'),
     supabase.from('sime_atores').select('nome_completo,telefone_whatsapp,funcao,funcao_mesa,secao_id,ativo'),
     supabase.from('sime_contatos_externos').select('tipo,nome,municipio,telefone,whatsapp').eq('ativo',true),
     supabase.from('sime_usuarios').select('id,nome,perfil').eq('ativo',true),
+    // Locais predeterminados de cada Auxiliar de Eleição (sime_auxiliar_locais,
+    // 10/09/2026) — RLS já escopa pra zona, sem precisar filtrar aqui.
+    supabase.from('sime_auxiliar_locais').select('usuario_id,local_nome,municipio'),
+    supabase.from('sime_usuarios').select('id,nome,telefone_whatsapp').eq('perfil','auxiliar_eleicao').eq('ativo',true),
   ]);
 
   const numPorId = {};
@@ -360,6 +382,22 @@ async function iniciar(){
   // Tokens de TV entram em sime_usuarios como 'observador' — não são gente
   // pra quem se delega um problema.
   EQUIPE = (equipe.data||[]).filter(u=>u.perfil!=='observador');
+
+  // Auxiliar de Eleição, locais predeterminados — monta o mapa local→
+  // auxiliares (usado por contatosPara(), pra QUALQUER perfil que abrir um
+  // problema de urna) e, se EU mesmo for auxiliar_eleicao, a lista dos
+  // PRÓPRIOS locais (usada por dentroDoEscopo() pra escopar a lista inteira).
+  const auxPorUsuario = Object.fromEntries((auxUsuarios.data||[]).map(u=>[u.id,u]));
+  AUX_POR_LOCAL = {};
+  (auxLocais.data||[]).forEach(l=>{
+    const u = auxPorUsuario[l.usuario_id];
+    if(!u || !u.telefone_whatsapp) return; // usuario inativo/sem telefone: nada pra oferecer
+    const chave = `${l.local_nome}|||${l.municipio}`;
+    (AUX_POR_LOCAL[chave] ||= []).push({ nome:u.nome, telefone:u.telefone_whatsapp });
+  });
+  MEUS_LOCAIS = (EU?.perfil==='auxiliar_eleicao')
+    ? (auxLocais.data||[]).filter(l=>l.usuario_id===EU.id).map(l=>({local_nome:l.local_nome, municipio:l.municipio}))
+    : [];
 
   // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
   // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
@@ -407,12 +445,27 @@ function aplicarFiltroUI(){
   document.getElementById('f-todos').classList.toggle('on', FILTRO==='todos');
 }
 
+// Auxiliar de Eleição só vê urna nos locais predeterminados dele — pedido
+// direto: "o problema com urnas devem cair na pagina deles... somente
+// daquelas urnas predeterminadas". Qualquer outro perfil (coordenador,
+// gestor, etc.) continua vendo a zona inteira, sem esse recorte — é só
+// EU.perfil==='auxiliar_eleicao' que ganha esta lente. Sempre `true` pra
+// quem não é auxiliar, então compõe sem efeito nenhum no resto da tela.
+function dentroDoEscopo(oc){
+  if(EU?.perfil !== 'auxiliar_eleicao') return true;
+  if(oc.tipo !== 'urna') return false;
+  const sec = SECOES[oc.secao_numero];
+  if(!sec) return false;
+  return MEUS_LOCAIS.some(l => l.local_nome===sec.local_nome && l.municipio===sec.municipio);
+}
+
 function visiveis(){
-  if(FILTRO!=='meus') return OCORRENCIAS;
+  const base = OCORRENCIAS.filter(dentroDoEscopo);
+  if(FILTRO!=='meus') return base;
   // "Meus" inclui as sem dono de propósito: problema órfão é o que não pode
   // passar despercebido, e esconder dele quem está trabalhando seria o
   // caminho mais curto pra ninguém pegar.
-  return OCORRENCIAS.filter(o => o.responsavel_id === EU?.id || !o.responsavel_id);
+  return base.filter(o => o.responsavel_id === EU?.id || !o.responsavel_id);
 }
 
 function renderLista(){

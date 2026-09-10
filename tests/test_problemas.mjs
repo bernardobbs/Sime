@@ -418,6 +418,66 @@ async function abrir(ctx, mock) {
   await ctx.close();
 }
 
+// ── 14. Auxiliar de Eleição só vê URNA nos locais predeterminados
+// (10/09/2026, pedido direto: "os auxiliares deverão ficar responsaveis por
+// alguns locais de votação predeterminados, então o problema com urnas
+// devem cair na pagina deles... somente daquelas urnas predeterminadas").
+// Maria vira auxiliar_eleicao, atribuída só ao local da seção 63/99
+// (G.E. Treze de Março); um problema de urna FORA desse local e um problema
+// de ENERGIA dentro dele são os dois casos que precisam sumir da lista. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna' });
+  mock.sime_usuarios[0].perfil = 'auxiliar_eleicao';
+  mock.sime_secoes.push({ id:'sec-77', numero:77, local_nome:'Escola Fora', municipio:'Jatobá do Piauí' });
+  mock.sime_ocorrencias.push(
+    { id:'oc-2', secao_id:'sec-77', tipo:'urna', status:'aberta', descricao:null, responsavel_id:null,
+      aberta_em:new Date(Date.now()-5*60000).toISOString(), assumida_em:null, nivel_escalonamento:0, origem:'mesario' },
+    { id:'oc-3', secao_id:SEC_63, tipo:'energia', status:'aberta', descricao:null, responsavel_id:null,
+      aberta_em:new Date(Date.now()-5*60000).toISOString(), assumida_em:null, nivel_escalonamento:0, origem:'mesario' },
+  );
+  mock.sime_auxiliar_locais = [{ usuario_id:'u-maria', local_nome:'G.E. Treze de Março', municipio:'Campo Maior' }];
+  const { p, erros } = await abrir(ctx, mock);
+  check('auxiliar vê só 1 card (a urna do próprio local)', await p.locator('.prob').count() === 1);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 15. Qualquer outro perfil continua vendo a zona inteira, sem recorte —
+// o escopo por locais é exclusivo de auxiliar_eleicao. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna' }); // Maria continua coordenadora
+  mock.sime_secoes.push({ id:'sec-77', numero:77, local_nome:'Escola Fora', municipio:'Jatobá do Piauí' });
+  mock.sime_ocorrencias.push(
+    { id:'oc-2', secao_id:'sec-77', tipo:'urna', status:'aberta', descricao:null, responsavel_id:null,
+      aberta_em:new Date(Date.now()-5*60000).toISOString(), assumida_em:null, nivel_escalonamento:0, origem:'mesario' },
+  );
+  const { p, erros } = await abrir(ctx, mock);
+  check('coordenador continua vendo todos os problemas (2 cards)', await p.locator('.prob').count() === 2);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 16. Auxiliar DESIGNADO de verdade (sime_auxiliar_locais) vence o roster
+// do TRE no cartão de contato — o roster quase nunca traz secao_id pra essa
+// função, então a atribuição real precisa ganhar quando existir. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna', auxiliar:true }); // Pedro Técnico (TRE) segue cadastrado, mesmo local
+  mock.sime_usuarios.push({ id:'u-fabiana', nome:'Fabiana Reis', perfil:'auxiliar_eleicao', zona_id:'z7', ativo:true, telefone_whatsapp:'5586977776666' });
+  mock.sime_auxiliar_locais = [{ usuario_id:'u-fabiana', local_nome:'G.E. Treze de Março', municipio:'Campo Maior' }];
+  const { p, erros } = await abrir(ctx, mock);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  const nomes = await p.locator('.ct-nome').allTextContents();
+  check('contato mostra a auxiliar designada de verdade', nomes.some(n=>n.includes('Fabiana Reis')), nomes.join(' | '));
+  check('não mostra mais o fallback do roster do TRE quando há designação real',
+    !nomes.some(n=>n.includes('Pedro Técnico')), nomes.join(' | '));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;
