@@ -272,7 +272,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_user_menu.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas } from './sime_dados.js';
+import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas, getRotaSecoesMap } from './sime_dados.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
 // — a anon key não é segredo, só a service_role é).
@@ -374,6 +374,7 @@ async function carregarDadosDaZona(zonaId) {
   window.SECOES_REAIS = secoes || [];
   const rotas = await getRotas({ fallback: null });
   window.ROTAS_REAIS = rotas || [];
+  window.ROTA_SECOES_MAP = await getRotaSecoesMap({ fallback: {} });
 }
 
 async function resolverEscopo() {
@@ -387,6 +388,7 @@ async function resolverEscopo() {
   if (secoes) window.SECOES_REAIS = secoes;
   const rotas = await getRotas({ fallback: null });
   if (rotas) window.ROTAS_REAIS = rotas;
+  window.ROTA_SECOES_MAP = await getRotaSecoesMap({ fallback: {} });
   if (window.atualizarDadosReaisTokens) window.atualizarDadosReaisTokens();
   await mesclarTokensRemotos();
 }
@@ -557,22 +559,50 @@ const TV_MODULOS = {
 };
 window.TV_MODULOS = TV_MODULOS;
 
-function rotasDisponiveis(){
-  return window.ROTAS_REAIS?.length ? window.ROTAS_REAIS.map(r => 'Rota ' + r.codigo) : ROTAS_DISPONIVEIS;
+// tipoRota filtra por sime_rotas.tipos (ex.: 'instalacao' pro token de
+// Instalador) — só entra em vigor com dado real (window.ROTAS_REAIS traz
+// `tipos`; o fallback hardcoded não distingue tipo nenhum, então nesse caso
+// a lista sai sem filtro, igual sempre foi). Sem tipoRota (conferente/
+// motorista), a lista continua exatamente como antes — sem filtro.
+function rotasDisponiveis(tipoRota){
+  if(!window.ROTAS_REAIS?.length) return ROTAS_DISPONIVEIS;
+  const rotas = tipoRota
+    ? window.ROTAS_REAIS.filter(r => (r.tipos||[]).includes(tipoRota))
+    : window.ROTAS_REAIS;
+  return rotas.map(r => 'Rota ' + r.codigo);
 }
 function locaisDisponiveis(){
   return window.SECOES_REAIS?.length ? [...new Set(window.SECOES_REAIS.map(s=>s.local_nome))].sort() : LOCAIS_DISPONIVEIS;
 }
 
-function buildRotasCheck(){
+function buildRotasCheck(tipoRota){
   const el = document.getElementById('rotas-check');
-  el.innerHTML = rotasDisponiveis().map(r=>`
+  const opcoes = rotasDisponiveis(tipoRota);
+  el.innerHTML = opcoes.length ? opcoes.map(r=>`
     <label class="rota-ck" id="ck-${r.replace(' ','')}">
       <input type="checkbox" value="${r}" onchange="onRotaChange(this)">
       ${r}
-    </label>`).join('');
+    </label>`).join('') : '<div class="ic-sub" style="grid-column:1/-1;">Nenhuma rota desse tipo cadastrada ainda — ver módulo 🗺️ Rotas.</div>';
 }
 buildRotasCheck();
+
+// Seções (números) de uma lista de rótulos "Rota XXX", via ROTA_SECOES_MAP
+// (fonte real, `sime_rota_secoes` — cobre qualquer tipo de rota, ao contrário
+// de ROTAS_REAIS[].paradas, que só existe pra rota tipo 'distribuicao'). É o
+// que dá escopo de verdade a um token de Instalador, que só lê `secoes`
+// (nunca `rotas`) — ver SIME_instalador.html/resolverEscopo().
+function secoesDasRotas(rotulos){
+  if(!rotulos?.length || !window.ROTAS_REAIS?.length) return [];
+  const map = window.ROTA_SECOES_MAP || {};
+  const numeros = new Set();
+  for(const rotulo of rotulos){
+    const codigo = (/(\d+)/.exec(rotulo)?.[1] || '').padStart(3, '0');
+    const rota = window.ROTAS_REAIS.find(r => r.codigo === codigo);
+    if(!rota) continue;
+    for(const n of (map[rota.id] || [])) numeros.add(n);
+  }
+  return [...numeros].sort((a,b)=>a-b).map(n => String(n).padStart(4,'0'));
+}
 
 function buildLocalSelect(){
   const el = document.getElementById('f-local');
@@ -605,10 +635,9 @@ buildSecaoSelect();
 // reconstrói os seletores (antes populados só com o fallback hardcoded) e
 // reaplica a visibilidade de grupo conforme o tipo já selecionado.
 window.atualizarDadosReaisTokens = function(){
-  buildRotasCheck();
   buildLocalSelect();
   buildSecaoSelect();
-  onTipoChange();
+  onTipoChange(); // já reconstrói o checkbox de rotas, filtrado pelo tipo atual
 };
 
 // Alterna os campos conforme o tipo de acesso escolhido.
@@ -616,6 +645,13 @@ window.atualizarDadosReaisTokens = function(){
 // coletor_midias não aparece em nenhum grupo de propósito: o SIME_midias.html
 // não filtra por seção/rota/local — ele enxerga a zona inteira (é a RLS que
 // delimita). Pedir um escopo aqui seria pedir um dado que ninguém lê.
+// Só Instalador filtra a lista de rotas por tipo ('instalacao') — Conferente/
+// Motorista continuam vendo todas (domínio deles já é implicitamente
+// distribuição/recolhimento de urna, via o espelho legado que getRotas().paradas
+// resolve; filtrar os dois também não foi pedido e mudaria comportamento já
+// testado sem necessidade).
+const ROTA_TIPO_POR_TOKEN = { instalador: 'instalacao' };
+
 function onTipoChange(){
   const tipo = document.getElementById('f-tipo').value;
   const usaRotas = ['conferente','motorista','instalador'].includes(tipo);
@@ -626,6 +662,7 @@ function onTipoChange(){
   document.getElementById('grp-local').style.display = usaLocal ? '' : 'none';
   document.getElementById('grp-secao-unica').style.display = usaSecao ? '' : 'none';
   document.getElementById('grp-tv-modulo').style.display = usaTvModulo ? '' : 'none';
+  if(usaRotas) buildRotasCheck(ROTA_TIPO_POR_TOKEN[tipo]);
 }
 
 function onRotaChange(inp){
@@ -708,14 +745,24 @@ async function criarToken(){
     if(!rotas.length){ showToast('⚠ Selecione ao menos uma rota'); return; }
   }
 
+  // Instalador só lê `secoes` da sessão (nunca `rotas` — diferente de
+  // Conferente/Motorista, que resolvem a própria rota por código); sem isso
+  // populado, o token nasce sem nenhuma seção de trabalho, mesmo com a rota
+  // marcada aqui. Resolvido a partir de `sime_rota_secoes` (todas as rotas
+  // escolhidas, deduplicado) — nunca da rota_id legada, que só existe pra
+  // rota tipo 'distribuicao'.
   const token = criarTokenObj({
     nome, tipo,
     rotas: (tipo === 'coord_acessibilidade' || tipo === 'mesario' || tipo === 'tv' || semEscopo) ? [] : rotas,
     local: tipo === 'coord_acessibilidade' ? local : (tipo === 'tv' ? tvModulo : null),
-    secoes: tipo === 'mesario' ? [secaoUnica] : [],
+    secoes: tipo === 'mesario' ? [secaoUnica] : (tipo === 'instalador' ? secoesDasRotas(rotas) : []),
     turno, zona, expira_em: calcularExpiracao(turno),
     criado_em: await serverNow(),
   });
+
+  if(tipo === 'instalador' && rotas.length && !token.secoes.length){
+    showToast('⚠ Token criado, mas a(s) rota(s) escolhida(s) ainda não têm local de votação cadastrado — sem seções, o instalador não verá nada. Cadastre as paradas no módulo 🗺️ Rotas.');
+  }
 
   const tokens = loadTokens();
   tokens[token.id] = token;
@@ -792,10 +839,25 @@ async function gerarEmMassa(){
 
     window.ROTAS_REAIS.forEach(r=>{
       const rotaLabel = 'Rota ' + r.codigo;
-      [['conferente','Conferente'],['motorista','Motorista'],['instalador','Instalador']].forEach(([tipo,label])=>{
+      [['conferente','Conferente'],['motorista','Motorista']].forEach(([tipo,label])=>{
         if(jaExiste(tipo, rotaLabel)) return;
         novos.push(criarTokenObj({ nome:`${label} — ${rotaLabel}`, tipo, rotas:[rotaLabel], turno, zona, expira_em, criado_em }));
       });
+    });
+
+    // Instalador só entra pra rota de tipo 'instalacao' (diferente de
+    // Conferente/Motorista acima, que continuam pra toda rota — domínio deles
+    // já é implicitamente distribuição/recolhimento de urna) — e sempre com
+    // `secoes` resolvida de `sime_rota_secoes`, senão o token nasceria sem
+    // nenhuma seção de trabalho (ver criarToken() acima, mesmo motivo).
+    window.ROTAS_REAIS.filter(r => (r.tipos||[]).includes('instalacao')).forEach(r=>{
+      const rotaLabel = 'Rota ' + r.codigo;
+      if(jaExiste('instalador', rotaLabel)) return;
+      novos.push(criarTokenObj({
+        nome:`Instalador — ${rotaLabel}`, tipo:'instalador', rotas:[rotaLabel],
+        secoes: secoesDasRotas([rotaLabel]),
+        turno, zona, expira_em, criado_em,
+      }));
     });
 
     [...new Set(window.SECOES_REAIS.map(s=>s.local_nome))].forEach(local=>{

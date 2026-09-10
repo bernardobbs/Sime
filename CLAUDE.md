@@ -4511,6 +4511,80 @@ ter 7 tipos, não 6).
 
 ---
 
+## TOKEN DE INSTALADOR SEM ESCOPO REAL — bug corrigido (`SIME_tokens.html`, 10/09/2026)
+
+Pergunta direta: "o TV Dia não serve para nada, então como vamos configurar
+as rotas de instalação?" — a observação sobre a TV estava certa (é só o
+painel de status ao vivo do Dia D, nunca teve nem deveria ter cadastro de
+rota nenhum); cadastrar rota de instalação é no módulo 🗺️ Rotas
+(`SIME_rotas.html`, tipo "Instalação" no `<select multiple>`, ver seção
+própria acima). Mas investigar a pergunta até o fim (gerar o token de
+Instalador a partir dessa rota) achou um bug real, não só uma dúvida de
+onde clicar: **até hoje, nenhum token de Instalador — nem pelo formulário
+individual, nem pela geração em massa — de fato dava acesso a seção
+nenhuma**, mesmo com a rota corretamente cadastrada com paradas.
+
+**Causa raiz, em cadeia:**
+- `SIME_instalador.html` (`resolverEscopo()`) só lê `secoes` da sessão —
+  nunca `rotas` (diferente de Conferente/Motorista, que resolvem a própria
+  rota por código e derivam as paradas sozinhos). Documentado desde sempre
+  no comentário do código ("secoesToken vem da sessão... é a rota real
+  atribuída a este instalador"), só nunca tinha sido de fato preenchido.
+- `SIME_tokens.html` (`criarTokenObj()`) só populava `secoes` pra
+  `tipo==='mesario'` — Instalador (como Conferente/Motorista) só gravava
+  `rotas`, deixando `secoes:[]` (`null` no banco). Isso valia tanto pro
+  formulário individual quanto pra geração em massa (`gerarEmMassa()`).
+- `getRotas()` (`sime_dados.js`, usada pra popular o checkbox de rotas do
+  formulário) resolve `paradas` só a partir do espelho legado
+  `sime_secoes.rota_id`/`parada` — que, desde a correção de "recolhimento de
+  urna é cadastro separado" (ver módulo 🗺️ Rotas), só é escrito pra rota de
+  tipo `distribuicao` (`RT_TIPOS_LEGADO` em `sime_rotas_modulo.js`). Uma
+  rota de tipo `instalacao` (como a `VIS1`) nunca aparece com paradas ali,
+  mesmo tendo seções de verdade em `sime_rota_secoes`.
+- O checkbox de rotas do formulário (`rotasDisponiveis()`) também nunca
+  filtrava por tipo — Instalador via a MESMA lista de Conferente/Motorista,
+  misturando rota de distribuição/recolhimento de mídia com rota de
+  instalação, sem distinção nenhuma.
+
+**Corrigido em três frentes**, sem tocar no comportamento de Conferente/
+Motorista/TV Distribuição (que continuam lendo o espelho legado do jeito
+que sempre foi — fora do escopo desta correção, não comprovadamente
+quebrado):
+- **`getRotas()` (`sime_dados.js`)** passou a expor `tipos` (campo aditivo,
+  `sime_rotas.tipos`) em cada rota retornada — nenhuma mudança na resolução
+  de `paradas`, que continua vindo do espelho legado (mesmo comportamento
+  de sempre pra quem já consome essa função).
+- **`getRotaSecoesMap()` (nova, `sime_dados.js`)** — `{rotaId: [numero,...]}`
+  lido direto de `sime_rota_secoes` (join com `sime_secoes` pro número), a
+  fonte de verdade pra QUALQUER tipo de rota, ao contrário de
+  `getRotas().paradas`. É o que dá a `SIME_tokens.html` como resolver as
+  seções reais de uma rota de instalação.
+- **`SIME_tokens.html`**: o checkbox de rotas passou a filtrar por tipo
+  quando `f-tipo==='instalador'` (`rotasDisponiveis('instalacao')`/
+  `buildRotasCheck()`, chamado de novo em `onTipoChange()` — só filtra
+  quando há dado real, mesmo critério "nunca adivinha, nunca trava" de
+  sempre) — Conferente/Motorista continuam vendo a lista inteira, sem
+  filtro (não era o problema reportado, e filtrar os dois também mudaria
+  comportamento já testado sem necessidade). Tanto `criarToken()` (uma rota
+  de cada vez, formulário) quanto `gerarEmMassa()` (que também passou a só
+  gerar Instalador pra rota `tipos.includes('instalacao')`, não mais pra
+  TODA rota) agora resolvem `secoes` via `secoesDasRotas()` (nova, soma as
+  seções de todas as rotas marcadas, via `getRotaSecoesMap()`) antes de
+  gravar o token — se a rota escolhida ainda não tem nenhuma parada
+  cadastrada (ex.: instalação criada mas sem seção vinculada ainda), o
+  token ainda é criado (nunca bloqueia por campo op­cional), mas com um
+  toast avisando que ele nasceu sem seção nenhuma pra trabalhar.
+
+Coberto por `tests/test_tokens_massa.mjs` (bloco 2b, novo: checkbox filtra
+só rota tipo `instalacao`, token individual grava `secoes` resolvidas de
+`sime_rota_secoes`; bloco 3 ajustado — a rota 002, sem tipo `instalacao`,
+não gera mais token de Instalador na massa, e o que sobra já vem com
+`secoes` preenchidas) — suíte completa (`test_sime_dados.mjs`,
+`test_tokens.mjs`, `test_tokens_tv.mjs`, `test_rotas.mjs`, entre outras que
+tocam `getRotas()`) sem regressão.
+
+---
+
 ## AUXILIAR DE ELEIÇÃO — LOCAIS PREDETERMINADOS (`SIME_admin.html`/`SIME_problemas.html`, 10/09/2026)
 
 Pedido direto: "os auxiliares deverão ficar responsaveis por alguns locais
