@@ -1408,6 +1408,28 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
     </div>`;
 }
 
+// Tamanho do QR escalado pelo tamanho do link (10/09/2026, achado real: QR
+// da rota VIS1 — 10 paradas + endereço do Cartório como origem — saiu
+// ilegível na impressão). A lib desenha o QR SEMPRE dentro do canvas de
+// width/height pedido (`f = b.width / moduleCount` em vendor/qrcode.min.js)
+// — uma rota com muitas paradas (ou destino/origem que caem no fallback de
+// texto/endereço, mais longo que uma coordenada) gera uma URL de Directions
+// bem maior, exigindo uma matriz QR mais densa (mais módulos); no 96px fixo
+// de sempre (bom pro link curto de um token, ver SIME_tokens.html), cada
+// módulo vira menos de 1px e a impressão borra tudo. Sem trocar de
+// biblioteca nem reimplementar a tabela de capacidade da lib, o tamanho do
+// texto já é um proxy direto de quantos módulos vão ser necessários —
+// tiers generosos (a ficha é uma página inteira, sobra espaço) mantêm o
+// módulo em ~3px ou mais mesmo pro link mais longo já visto em produção.
+function rtQrSizePx(texto) {
+  const n = (texto || '').length;
+  if (n <= 60) return 96;
+  if (n <= 150) return 140;
+  if (n <= 260) return 190;
+  if (n <= 400) return 250;
+  return 320;
+}
+
 async function rtImprimirFicha(rotaId) {
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   if (!rota) return;
@@ -1422,7 +1444,8 @@ async function rtImprimirFicha(rotaId) {
   const qrEl = document.getElementById('rt-ficha-qr');
   if (qrEl && mapsUrl && window.QRCode) {
     try {
-      new QRCode(qrEl, { text: mapsUrl, width: 96, height: 96, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      const qrPx = rtQrSizePx(mapsUrl);
+      new QRCode(qrEl, { text: mapsUrl, width: qrPx, height: qrPx, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
     } catch (e) { qrEl.innerHTML = ''; }
   }
   // Espera o mapa real carregar (ou falhar) antes de imprimir — sem isso,

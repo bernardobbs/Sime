@@ -1422,6 +1422,68 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 34. QR da ficha impressa escala com o tamanho do link (10/09/2026,
+// achado real: rota "VIS1" — 10 paradas + endereço do Cartório como origem
+// — saiu com QR ilegível na impressão, porque a lib sempre desenha dentro
+// do canvas de width/height pedido, não importa quantos módulos a matriz
+// precise; num link longo, o 96px de sempre (bom pro link curto de um
+// token) vira módulo de menos de 1px). `rtQrSizePx()` escala o canvas pelo
+// tamanho do texto — mesma lógica usada em `rtImprimirFicha()`. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.waitForTimeout(200);
+
+  const tiers = await p.evaluate(() => ([
+    window.rtQrSizePx('x'.repeat(30)),
+    window.rtQrSizePx('x'.repeat(100)),
+    window.rtQrSizePx('x'.repeat(200)),
+    window.rtQrSizePx('x'.repeat(350)),
+    window.rtQrSizePx('x'.repeat(500)),
+  ]));
+  check('link curto (token/2 paradas) continua no tamanho de sempre (96px)', tiers[0] === 96, JSON.stringify(tiers));
+  check('tamanho cresce em degraus conforme o link fica mais longo, nunca encolhe', tiers.every((v, i) => i === 0 || v >= tiers[i - 1]) && tiers[4] > tiers[0], JSON.stringify(tiers));
+  check('link bem longo (equivalente a uma rota com várias paradas + endereço do Cartório) usa o maior tier (320px)', tiers[4] === 320, JSON.stringify(tiers));
+
+  await ctx.close();
+}
+
+// Ponta a ponta: uma rota com MUITAS paradas geolocalizadas (+ destino que
+// cai no texto do endereço do Cartório, não numa coordenada — mesmo padrão
+// real da VIS1) gera uma URL de Directions longa o bastante pra sair do
+// tier de 96px na ficha de verdade, não só na função isolada acima.
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const zona = m.sime_zonas.find(z => z.id === 'z7');
+  zona.remetente_endereco = 'Rua Benjamin Constant, 948';
+  zona.remetente_bairro = 'Centro';
+  zona.remetente_cep = '64280-000';
+  zona.remetente_municipio = 'Campo Maior';
+  zona.remetente_uf = 'PI';
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831; m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  for (let i = 0; i < 8; i++) {
+    const id = `sq${i}`;
+    m.sime_secoes.push({ id, numero: 300 + i, local_nome: `Escola Extra ${i}`, municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83 - i * 0.01, longitude: -42.16 - i * 0.01 });
+    m.sime_rota_secoes.push({ id: `rsq${i}`, rota_id: 'r1', secao_id: id, parada: 3 + i });
+  }
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona Eleitoral'; // cai no fallback de endereço postal, bem mais longo que uma coordenada
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const largura = await p.locator('#rt-ficha-qr canvas').getAttribute('width');
+  check('rota com muitas paradas + endereço do Cartório: QR sai maior que os 96px de sempre', Number(largura) > 96, `width=${largura}`);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

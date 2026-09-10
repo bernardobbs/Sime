@@ -4029,6 +4029,61 @@ por falta de geo completa (`024`, `032`, `RU4`/`UR4`, `RU6`/`UR6`) ou com
 menos de 3 paradas continuam de fora, mesmo critério de sempre — otimizar
 com dado incompleto seria adivinhar.
 
+**Rota VIS1 — "Rota Vistoria 01" criada em 10/09/2026, pedido direto**:
+"crie uma rota saindo de campo maior, para vistoria, para as seções de
+sigefredo pacheco. mocambo do pedro, barro vermelho, olhos dagua, canto do
+pau darco, santo antonio do campo verde e cancela do brasão". Dois pontos
+esclarecidos ANTES de criar (`AskUserQuestion` + pergunta direta em texto,
+nenhum dos dois dava pra resolver adivinhando):
+- **Tipo "vistoria" não existe** — `sime_rotas.tipos` só aceita os 4
+  valores já documentados (`distribuicao`/`recolhimento_urna`/
+  `recolhimento_midia`/`instalacao`, CHECK no banco). Perguntado se criava
+  um tipo novo de verdade ou reaproveitava `instalacao` — resposta:
+  reaproveitar `instalacao` (recomendado, evita mexer em schema pra uma
+  única rota; pode virar tipo próprio depois se aparecerem mais rotas
+  assim).
+- **As 6 localidades não batem com nenhum `local_nome` cadastrado** —
+  "Mocambo do Pedro", "Barro Vermelho" etc. são nomes de povoado/
+  localidade, não de prédio, e nem `sime_secoes` nem o staging do TRE
+  (`sime_mesarios_raw`, campo `bairro_local_trabalho`) guardam essa
+  informação (só "ZONA RURAL"/"CENTRO"). Listei os 14 locais de votação já
+  cadastrados em Sigefredo Pacheco e pedi pro cartório mapear cada
+  localidade pro prédio certo — resposta confirmou as 6 correspondências
+  (ex.: Mocambo do Pedro = U.E. Jovino Josino Oliveira, Cancela do Brasão =
+  U.E. Manoel Rodrigues Melo).
+Rota criada com as 10 seções dos 6 prédios (algumas seções por prédio),
+saindo do "Cartório Eleitoral da 7ª Zona Eleitoral", e já reotimizada na
+hora (pedido explícito: "ao final otimize a rota") — mesmo algoritmo de
+sempre, 150,21km → 78,16km (~48% de redução). Cada passo (criação, adição
+de seção, reotimização) logado com a mesma ação/payload que a UI grava.
+
+**Bug real, achado imprimindo a ficha da VIS1 — QR ilegível na
+impressão.** `new QRCode()` (`vendor/qrcode.min.js`) sempre desenha a
+matriz inteira dentro do canvas de `width`/`height` pedido, não importa
+quantos módulos a matriz precise (`cellSize = width / moduleCount`, visto
+no código da lib) — o tamanho fixo de 96px (bom pro link curto de um token
+de campo, ver `SIME_tokens.html`) nunca tinha sido um problema porque
+nenhuma rota anterior gerava uma URL de Directions tão longa. A VIS1 tem
+10 paradas **e** um destino que caiu no fallback de texto (endereço postal
+completo do Cartório, bem mais longo que uma coordenada — ver `rtMapsUrl`
+acima), somando ~9 waypoints + endereço → URL de ~440 caracteres → matriz
+QR bem mais densa (~versão 20+) espremida nos mesmos 96px → módulo com
+menos de 1px, ilegível depois de impresso.
+
+Corrigido com `rtQrSizePx(texto)` (`sime_rotas_modulo.js`) — escala o
+canvas do QR em degraus conforme o tamanho do link (96/140/190/250/320px),
+usado em `rtImprimirFicha()` no lugar do 96 fixo de antes. Não reimplementa
+a tabela de capacidade da própria lib (overkill pra este caso) — o
+tamanho do texto já é um proxy direto e suficiente de quantos módulos vão
+ser necessários, e a ficha é uma página inteira, então sobra espaço pra
+um QR bem maior sem prejudicar o resto do layout. `#rt-ficha-qr{flex:none}`
+adicionado no CSS de impressão como rede de segurança, pra o QR maior
+nunca ser espremido pelo flex da linha ao lado do link por extenso.
+Coberto por `tests/test_rotas.mjs` (bloco 34, 219 checks no total no
+arquivo inteiro): `rtQrSizePx()` isolada nos 5 degraus, e um teste ponta a
+ponta reproduzindo o cenário real (muitas paradas + endereço do Cartório
+como destino) confirmando que o `<canvas>` de fato sai maior que 96px.
+
 ---
 
 ## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)
