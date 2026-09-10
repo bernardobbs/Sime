@@ -371,6 +371,53 @@ async function abrir(ctx, mock) {
   await ctx.close();
 }
 
+// ── 13. Falha de rede ao resolver mostra mensagem amigável, não o erro cru
+// (bug real reportado: "ao resolver o problema aparece ⚠ TypeError: Failed
+// to fetch" — o toast mostrava o texto do erro JS puro, direto do fetch que
+// falhou, em vez de um aviso legível pra quem está no cartório. Mesmo padrão
+// de mensagemErroAmigavel() já usado em SIME_admin.html). O card continua na
+// lista (nada é fechado/recarregado à toa) — é só tentar de novo. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia', responsavel:'u-maria' });
+  mock.rpcErros = { sime_ocorrencia_resolver: 'TypeError: Failed to fetch' };
+  const { p, erros } = await abrir(ctx, mock);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  await p.locator('button:has-text("Resolvido")').click();
+  await p.waitForTimeout(200);
+  await p.locator('button:has-text("Confirmar resolução")').click();
+  await p.waitForTimeout(250);
+
+  const toast = await p.locator('#toast').textContent();
+  check('falha de rede vira mensagem amigável, sem "TypeError" na tela',
+    toast.includes('Sem conexão com o servidor') && !/TypeError/i.test(toast), toast);
+  const badgeCls = await p.locator('#sync-badge').getAttribute('class');
+  check('badge de sync vira 🔴 na falha de rede', badgeCls.includes('sync-fail'), badgeCls);
+  check('card continua na lista (nada fechou/recarregou de propósito)',
+    await p.locator('.prob').count() === 1);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// Mesmo tratamento em Assumir — a mesma classe de falha não deve mostrar o
+// erro cru ali também.
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna' });
+  mock.rpcErros = { sime_ocorrencia_assumir: 'TypeError: Failed to fetch' };
+  const { p, erros } = await abrir(ctx, mock);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  await p.locator('button:has-text("Assumir")').click();
+  await p.waitForTimeout(300);
+  const toast = await p.locator('#toast').textContent();
+  check('Assumir: falha de rede também vira mensagem amigável',
+    toast.includes('Sem conexão com o servidor') && !/TypeError/i.test(toast), toast);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

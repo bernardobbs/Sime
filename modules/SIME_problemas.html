@@ -560,9 +560,30 @@ function trackSync(ok){
   else  { el.className = 'sync-badge sync-fail'; el.textContent = '🔴 Falhou salvar'; }
 }
 
+// Traduz erro cru do Postgres/Supabase pra algo que faz sentido pra quem não
+// é dev (mesmo padrão de SIME_admin.html/mensagemErroAmigavel — achado real
+// nesta tela: "ao resolver o problema aparece ⚠ TypeError: Failed to fetch",
+// uma falha de rede transitória mostrando o texto cru do erro JS em vez de
+// um aviso legível; o card continua na lista pra tentar de novo, só o texto
+// que era assustador sem necessidade).
+// Diferente de SIME_admin.html (onde o fallback genérico vence — os erros lá
+// são quase sempre constraint cru do Postgres, sem valor pra quem lê): aqui
+// as RPCs (`sime_ocorrencia_assumir` etc.) levantam RAISE EXCEPTION com texto
+// pensado pro operador ("Ocorrência já tem responsável ou não está aberta")
+// — isso precisa continuar aparecendo tal qual. Só os padrões técnicos
+// (rede/sessão/permissão), que não fazem sentido nenhum pra quem está no
+// cartório, é que são traduzidos; o resto do texto passa direto.
+function mensagemErroAmigavel(error, fallback){
+  const msg = error?.message || '';
+  if(/permission denied|row-level security|RLS/i.test(msg)) return 'Sem permissão para esta ação';
+  if(/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — entre novamente';
+  if(/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor — verifique a rede e tente de novo';
+  return msg || fallback || 'Falha. Tente novamente';
+}
+
 async function assumir(id){
   const { error } = await supabase.rpc('sime_ocorrencia_assumir', { p_id:id });
-  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Não foi possível assumir')); await recarregar(); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + mensagemErroAmigavel(error, 'Não foi possível assumir')); await recarregar(); return; }
   trackSync(true);
   showToast('✋ Você assumiu este problema');
   await recarregar();
@@ -588,7 +609,7 @@ async function confirmarDelegar(id){
   const motivo = document.getElementById('del-motivo').value.trim();
   if(!motivo){ showToast('⚠ Informe o motivo'); return; }
   const { error } = await supabase.rpc('sime_ocorrencia_delegar', { p_id:id, p_para:para, p_motivo:motivo });
-  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + mensagemErroAmigavel(error, 'Falhou')); return; }
   trackSync(true);
   showToast('↪ Delegado');
   await recarregar();
@@ -608,7 +629,7 @@ window.abrirResolver = abrirResolver;
 async function confirmarResolver(id){
   const txt = document.getElementById('res-txt')?.value || '';
   const { error } = await supabase.rpc('sime_ocorrencia_resolver', { p_id:id, p_resolucao:txt });
-  if(error){ trackSync(false); showToast('⚠ ' + (error.message||'Falhou')); return; }
+  if(error){ trackSync(false); showToast('⚠ ' + mensagemErroAmigavel(error, 'Falhou')); return; }
   trackSync(true);
   showToast('✓ Problema resolvido');
   fecharSheet(null, true);

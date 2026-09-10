@@ -229,6 +229,37 @@ pelo Realtime.
 Escalonamento conta de `aberta_em`, não de `assumida_em` — senão a forma mais
 fácil de não ser escalado seria clicar em "Assumir" e esquecer.
 
+**Bug real corrigido em 10/09/2026, reportado pelo cartório: "ao resolver o
+problema aparece ⚠ TypeError: Failed to fetch".** Investigado direto no
+Supabase (projeto saudável, `sime_ocorrencia_resolver` existe e está
+correta, e nenhuma requisição sequer chegou aos edge logs no horário) — a
+falha foi de rede no NAVEGADOR de quem clicou (sinal instável no cartório/
+campo, o mesmo cenário que a filosofia offline-first do projeto já assume
+como normal), não um defeito no código ou no banco. Mas o toast mostrava o
+texto cru do erro JS (`error.message`) direto na tela — assustador e sem
+sentido pra quem não é dev, e nada nesta tela tinha o mesmo tratamento
+"erro amigável" que `mensagemErroAmigavel()` já dá em `SIME_admin.html`
+desde a auditoria de UI/UX (achado "médio": "7 pontos expunham error.message
+puro na tela") — `SIME_problemas.html` tinha ficado de fora daquela
+varredura. Corrigida com a mesma função, replicada aqui (não importada —
+os dois arquivos não compartilham `<script>` clássico), nos 3 pontos que
+mostram toast de erro (`assumir`/`confirmarDelegar`/`confirmarResolver`):
+`Failed to fetch`/`NetworkError` vira "Sem conexão com o servidor —
+verifique a rede e tente de novo"; permissão/RLS e sessão expirada também
+ganham tradução. **Diferente da versão do Admin** (que sempre prefere o
+fallback genérico sobre a mensagem crua — lá os erros são principalmente
+constraint do Postgres, sem valor pro operador): aqui as RPCs
+(`sime_ocorrencia_assumir` etc.) levantam `RAISE EXCEPTION` com texto
+pensado pro operador ("Ocorrência já tem responsável ou não está aberta") —
+raw `error.message` continua vencendo o fallback nesta tela, só os padrões
+técnicos (rede/sessão/permissão) são substituídos. `registrarContato()` não
+mostra toast nenhum (só o badge de sync) — não precisou de tradução. O card
+continua na lista de qualquer forma (nenhum caminho de erro fecha a folha
+nem recarrega) — é só tentar de novo. Coberto por dois testes novos em
+`tests/test_problemas.mjs` (reproduzindo o `TypeError: Failed to fetch`
+exato em Resolver e em Assumir), sem regredir o teste existente que checava
+a mensagem de negócio do servidor aparecendo tal qual.
+
 ### RPCs críticas
 ```sql
 sime_now()                    -- server timestamp — SEMPRE usar
