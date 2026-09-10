@@ -54,6 +54,27 @@ const RT_TIPOS = Object.keys(RT_TIPO_LABEL);
 // distribuição de origem, quando gerada como retorno de uma).
 const RT_TIPOS_LEGADO = ['distribuicao'];
 
+// Locais finais conhecidos (10/09/2026, pedido direto: "em todas as rotas
+// quero poder escolher o local final a partir da lista, seja o cartório
+// eleitoral ou um ponto de transmissão") — mesmos 4 "pontos de transmissão
+// fixos" já documentados no CLAUDE.md desde 04/09/2026 (preenchimento de
+// Partida/Destino das rotas de mídia). Vale pra QUALQUER tipo de rota (o
+// pedido foi "em todas as rotas"), não só recolhimento_midia — é o mesmo
+// campo de texto único no formulário, sem distinção por tipo.
+// Checado contra produção antes de fixar a lista (SQL direto, 7ª Zona): os
+// valores reais de `destino` hoje são só esses 4 (Cartório em 36 rotas,
+// Monsenhor Mateus e Creche Mamãe Lima em 4 cada) + 2 valores avulsos
+// diferentes ("U.E. Miguel Rocha, Sigefredo Pacheco" e "Creche Mamãe Lima
+// M. Oliveira") — por isso o campo continua aceitando texto livre via
+// "Outro (digitar)", nunca travado só nesta lista fixa.
+const RT_DESTINOS_CONHECIDOS = [
+  'Cartório Eleitoral da 7ª Zona Eleitoral',
+  'Creche Mamãe Lima (Jatobá)',
+  'Escola Monsenhor Mateus (Sigefredo Pacheco)',
+  'Escola da Baixinha (Sigefredo Pacheco)',
+];
+const RT_DESTINO_OUTRO = '__outro__';
+
 // Status operacional de Dia D/D-1 (08/09/2026, melhoria própria) — quem
 // grava é o Conferente (SIME_conferente.html, embarque de urna) e quem
 // mostra em telão é a TV Distribuição; sime_rotas_estado/sime_rotas_urnas
@@ -671,12 +692,35 @@ function rtUsarSugestaoPartida() {
   const el = document.getElementById('rt-partida');
   if (el) el.value = rtNomeLocalParada(atuais[0]);
 }
+// Destino virou <select> dos locais conhecidos + "Outro" com campo de texto
+// (ver RT_DESTINOS_CONHECIDOS) — a sugestão (nome do último local de
+// votação da rota) quase nunca bate com um dos 4 pontos fixos, então cai
+// direto em "Outro" com o valor sugerido já preenchido no campo de texto.
+function rtSetDestinoValor(valor) {
+  const select = document.getElementById('rt-destino-select');
+  const outroWrap = document.getElementById('rt-destino-outro-wrap');
+  const outroInput = document.getElementById('rt-destino-outro');
+  if (!select) return;
+  if (valor && RT_DESTINOS_CONHECIDOS.includes(valor)) {
+    select.value = valor;
+    if (outroWrap) outroWrap.style.display = 'none';
+  } else {
+    select.value = RT_DESTINO_OUTRO;
+    if (outroWrap) outroWrap.style.display = '';
+    if (outroInput) outroInput.value = valor || '';
+  }
+}
+function rtToggleDestinoOutro() {
+  const select = document.getElementById('rt-destino-select');
+  const outroWrap = document.getElementById('rt-destino-outro-wrap');
+  if (!select || !outroWrap) return;
+  outroWrap.style.display = select.value === RT_DESTINO_OUTRO ? '' : 'none';
+}
 function rtUsarSugestaoDestino() {
   const r = rtDados.rotas.find(x => x.id === rtModalId);
   const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
   if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
-  const el = document.getElementById('rt-destino');
-  if (el) el.value = rtNomeLocalParada(atuais[atuais.length - 1]);
+  rtSetDestinoValor(rtNomeLocalParada(atuais[atuais.length - 1]));
 }
 // Recalcula a previsão de chegada ESTIMADA sob demanda (mesmo padrão de
 // rtUsarSugestaoPartida/Destino) — lê horário de saída/tempo por parada
@@ -755,11 +799,23 @@ function rtRenderModalRota() {
             ${!isNovo ? `<button type="button" id="rt-partida-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoPartida()" title="Usar o 1º local de votação da lista de paradas abaixo">↻</button>` : ''}
           </div>
         </div>
-        <div class="form-group" style="flex:1;min-width:150px"><label for="rt-destino">Destino</label>
+        <div class="form-group" style="flex:1;min-width:150px"><label for="rt-destino-select">Destino</label>
+          ${(() => {
+            const destinoAtual = r?.destino ?? pre?.destino ?? destinoSugerido;
+            const ehConhecido = destinoAtual && RT_DESTINOS_CONHECIDOS.includes(destinoAtual);
+            return `
           <div style="display:flex;gap:4px">
-            <input type="text" id="rt-destino" value="${rtEsc(r?.destino ?? pre?.destino ?? destinoSugerido)}" placeholder="ex.: Escola A" style="flex:1">
+            <select id="rt-destino-select" onchange="rtToggleDestinoOutro()" style="flex:1">
+              <option value="">— selecione —</option>
+              ${RT_DESTINOS_CONHECIDOS.map(d => `<option value="${rtEsc(d)}" ${destinoAtual === d ? 'selected' : ''}>${rtEsc(d)}</option>`).join('')}
+              <option value="${RT_DESTINO_OUTRO}" ${destinoAtual && !ehConhecido ? 'selected' : ''}>Outro (digitar)</option>
+            </select>
             ${!isNovo ? `<button type="button" id="rt-destino-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoDestino()" title="Usar o último local de votação da lista de paradas abaixo">↻</button>` : ''}
           </div>
+          <div id="rt-destino-outro-wrap" style="margin-top:4px;display:${destinoAtual && !ehConhecido ? '' : 'none'}">
+            <input type="text" id="rt-destino-outro" value="${rtEsc(destinoAtual && !ehConhecido ? destinoAtual : '')}" placeholder="ex.: Escola A" style="width:100%">
+          </div>`;
+          })()}
         </div>
       </div>
       ${!isNovo && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">📍 Sugestão a partir das paradas: 1º = ${rtEsc(partidaSugerida)} · último = ${rtEsc(destinoSugerido)} — clique em ↻ pra usar, ou digite outro valor (ex.: um endereço que não é local de votação).</div>` : ''}
@@ -900,7 +956,10 @@ async function rtSalvarRota() {
   const tipos = [...document.getElementById('rt-tipos').selectedOptions].map(o => o.value);
   const itinerario = document.getElementById('rt-itinerario').value.trim() || null;
   const ponto_partida = document.getElementById('rt-partida').value.trim() || null;
-  const destino = document.getElementById('rt-destino').value.trim() || null;
+  const destinoSelecionado = document.getElementById('rt-destino-select').value;
+  const destino = destinoSelecionado === RT_DESTINO_OUTRO
+    ? (document.getElementById('rt-destino-outro')?.value.trim() || null)
+    : (destinoSelecionado || null);
   const horario_saida = document.getElementById('rt-hora-saida').value || null;
   const horario_chegada_previsto = document.getElementById('rt-hora-chegada').value || null;
   const responsavel_ator_id = document.getElementById('rt-responsavel').value || null;

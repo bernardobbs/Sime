@@ -3817,6 +3817,71 @@ geolocalizada), 1º verde/último vermelho, com a posição em percentual
 dentro de 0–100%; os demais comportamentos (fallback ao falhar, impressão
 esperando o carregamento) continuam cobertos como antes.
 
+**Destino virou `<select>` de locais conhecidos + "Outro (digitar)"
+(10/09/2026, pedido direto: "em todas as rotas quero poder escolher o local
+final a partir da lista, seja o cartório eleitoral ou um ponto de
+transmissão").** Até aqui "Destino" era um `<input type="text">` livre — o
+cartório digitava o nome à mão toda vez, mesmo o valor real sendo quase
+sempre um dos mesmos 4 lugares fixos (os "pontos de transmissão" já
+documentados acima em "Ponto de partida/destino das 35 rotas de mídia...",
+04/09/2026). **Vale pra TODAS as rotas** (o pedido foi explícito — "em
+todas as rotas"), não só recolhimento de mídia: é o mesmo campo, no mesmo
+modal, compartilhado por qualquer tipo de rota (distribuição, recolhimento
+de urna, recolhimento de mídia, instalação) — nenhuma ramificação por tipo
+foi necessária, já que sempre foi um único campo de texto no formulário.
+
+`RT_DESTINOS_CONHECIDOS` (`sime_rotas_modulo.js`) — checado contra
+produção ANTES de fixar a lista (SQL direto na 7ª Zona, nunca inventado):
+"Cartório Eleitoral da 7ª Zona Eleitoral" (36 rotas), "Escola Monsenhor
+Mateus (Sigefredo Pacheco)" e "Creche Mamãe Lima (Jatobá)" (4 cada) — os
+mesmos 3 dos 4 pontos fixos já documentados que têm rota real hoje ("Escola
+da Baixinha" continua sem nenhuma rota apontando pra ela, mas fica na lista
+como ponto válido, mesmo critério de quando foi documentado). A mesma
+consulta também achou **2 valores customizados** já em produção ("U.E.
+Miguel Rocha, Sigefredo Pacheco" e "Creche Mamãe Lima M. Oliveira") — nem
+erro de dado nem pendência, só locais que não são um dos 4 pontos fixos. Um
+`<select>` travado só na lista fixa destruiria esses dois valores reais
+(ou pior, exigiria adivinhar em qual dos 4 encaixá-los) — por isso o
+`<select>` sempre tem uma opção final **"Outro (digitar)"**, que revela um
+`<input type="text">` companheiro (`#rt-destino-outro`) só quando
+selecionada.
+
+`rtRenderModalRota()`: ao abrir o modal, se `r?.destino` (ou `pre?.destino`
+no rascunho de `rtGerarRetorno()`, ou `destinoSugerido` das paradas) bate
+**exatamente** com um dos 4 pontos fixos, o `<select>` já vem com ele
+selecionado e o campo "Outro" fica escondido; qualquer outro valor (custom,
+ou vazio) cai em "Outro", com o campo de texto visível e pré-preenchido
+(quando havia valor). `rtToggleDestinoOutro()` (novo `onchange` do
+`<select>`) só troca a visibilidade do campo de texto — não apaga nem
+recalcula nada. `rtSetDestinoValor()` (nova, usada por
+`rtUsarSugestaoDestino()`) encapsula a mesma lógica de decidir
+select-vs-outro, pra não duplicar o critério em dois lugares.
+
+**A sugestão (↻) quase sempre cai em "Outro"** — `rtUsarSugestaoDestino()`
+continua exatamente a mesma ideia de sempre (nome do 1º/último local de
+votação da lista de paradas), só que agora escreve via
+`rtSetDestinoValor()` em vez de `el.value` direto num `<input>` — como um
+nome de local de votação quase nunca é literalmente um dos 4 pontos fixos,
+a sugestão tipicamente seleciona "Outro" com o nome do local já preenchido
+no campo de texto, pronto pra usar ou ajustar.
+
+`rtSalvarRota()`: `destino` é lido do `<select>` (`#rt-destino-select`)
+quando o valor não é o marcador `Outro` (`RT_DESTINO_OUTRO`); quando é,
+lê o campo de texto `#rt-destino-outro` — mesmo comportamento de antes
+(string vazia vira `null`), só a fonte do valor que mudou. `Ponto de
+partida` **não foi tocado** — o pedido foi especificamente sobre "local
+final"; o campo de partida continua sendo texto livre, com a mesma
+sugestão/↻ de sempre.
+
+Coberto por `tests/test_rotas.mjs` (bloco 29, 185 checks no total no
+arquivo inteiro): dropdown lista os 4 pontos fixos + "Outro"; valor salvo
+batendo com um ponto fixo vem pré-selecionado, com o campo de texto
+escondido; salvar com um ponto fixo selecionado grava o texto exato dele;
+escolher "Outro" e digitar salva o texto customizado; reabrir com um valor
+customizado (não batendo com nenhum ponto fixo) cai em "Outro" com o texto
+preservado; clicar na sugestão (↻) cai em "Outro" com o nome do local
+sugerido.
+
 ---
 
 ## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)

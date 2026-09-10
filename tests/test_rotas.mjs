@@ -126,6 +126,25 @@ async function login(p) {
   await p.waitForTimeout(400);
 }
 
+// Destino virou <select> de locais conhecidos + "Outro (digitar)" com
+// campo de texto (10/09/2026) — helpers pra escrever/ler o valor efetivo
+// sem repetir a lógica de qual dos dois elementos está em jogo em cada
+// teste.
+async function preencherDestino(p, valor) {
+  const conhecido = await p.locator(`#rt-destino-select option[value="${valor.replace(/"/g, '\\"')}"]`).count() === 1;
+  if (conhecido) {
+    await p.selectOption('#rt-destino-select', valor);
+  } else {
+    await p.selectOption('#rt-destino-select', '__outro__');
+    await p.fill('#rt-destino-outro', valor);
+  }
+}
+async function lerDestino(p) {
+  const sel = await p.locator('#rt-destino-select').inputValue();
+  if (sel === '__outro__') return await p.locator('#rt-destino-outro').inputValue();
+  return sel;
+}
+
 // ── 1. Login + lista de rotas (tipos, contagem de seções, filtro, busca) ──
 {
   const ctx = await b.newContext();
@@ -443,7 +462,7 @@ async function login(p) {
   check('select de responsável lista os atores da zona', /JOAO MOTORISTA/.test(opcoesResponsavel) && /MARIA COORDENADORA/.test(opcoesResponsavel), opcoesResponsavel);
 
   await p.fill('#rt-partida', 'Sede da 7ª Zona');
-  await p.fill('#rt-destino', 'Escola B');
+  await preencherDestino(p, 'Escola B');
   await p.fill('#rt-hora-saida', '06:30');
   await p.fill('#rt-hora-chegada', '08:00');
   await p.selectOption('#rt-responsavel', 'a1');
@@ -576,7 +595,7 @@ async function login(p) {
 
   check('abre como "Nova rota", com o aviso de rascunho gerado', /Nova rota/.test(await p.locator('#modal-body .m-title').textContent()) && /Rascunho de recolhimento gerado a partir da Rota 001/.test(await p.locator('#modal-body').textContent()));
   check('nome pré-preenchido referenciando a rota de origem', (await p.locator('#rt-nome').inputValue()) === 'Recolhimento — Rota 001');
-  check('partida/destino vêm INVERTIDOS (destino da origem vira partida, e vice-versa)', (await p.locator('#rt-partida').inputValue()) === 'Escola A' && (await p.locator('#rt-destino').inputValue()) === 'Sede da 7ª Zona');
+  check('partida/destino vêm INVERTIDOS (destino da origem vira partida, e vice-versa)', (await p.locator('#rt-partida').inputValue()) === 'Escola A' && (await lerDestino(p)) === 'Sede da 7ª Zona');
   check('tipo "recolhimento_urna" já vem selecionado na caixa de seleção', await p.locator('#rt-tipos option[value="recolhimento_urna"]').evaluate(el => el.selected));
 
   await p.fill('#rt-codigo', '099');
@@ -685,7 +704,7 @@ async function login(p) {
   await p.waitForTimeout(100);
 
   check('Partida vem sugerida com o 1º local da lista de paradas', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
-  check('Destino vem sugerido com o último local da lista de paradas', (await p.locator('#rt-destino').inputValue()) === 'Escola B, Campo Maior');
+  check('Destino vem sugerido com o último local da lista de paradas', (await lerDestino(p)) === 'Escola B, Campo Maior');
 
   // Cartório digita um valor próprio por cima da sugestão de partida (ex.:
   // um endereço que não é local de votação nenhum) — a sugestão nunca é
@@ -775,7 +794,7 @@ async function login(p) {
 
   // Agora troca o Destino pro local SEM geo (Escola D) — deve usar o
   // MUNICÍPIO DELE (Jatobá do Piauí), não o da rota (Campo Maior).
-  await p.fill('#rt-destino', 'Escola D, Jatobá do Piauí');
+  await preencherDestino(p, 'Escola D, Jatobá do Piauí');
   const href2 = await p.locator('#rt-paradas-secao a:has-text("Ver rota completa no mapa")').getAttribute('href');
   check('link não recalcula sozinho ao digitar (só ao reabrir/salvar) — segue mostrando o valor anterior', href2 === href);
 
@@ -1118,6 +1137,69 @@ async function login(p) {
   check('aviso explica que o mapa real não carregou', /não carregou/.test(esquemaTexto || ''), esquemaTexto);
 
   check('mesmo com a falha, a impressão não fica travada esperando pra sempre', await p.evaluate(() => window.__printCalls) === 1);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 29. Destino virou <select> de locais conhecidos + "Outro (digitar)"
+// (10/09/2026, pedido direto: "em todas as rotas quero poder escolher o
+// local final a partir da lista, seja o cartório eleitoral ou um ponto de
+// transmissão") — dropdown mostra os 4 pontos fixos, pré-seleciona quando o
+// valor salvo bate com um deles, cai em "Outro" com o texto preenchido
+// quando não bate (preserva valor customizado já em produção), salva
+// corretamente nos dois casos, e a sugestão (↻) — que quase nunca bate com
+// um ponto fixo — cai em "Outro" com o nome do local sugerido. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.destino = 'Cartório Eleitoral da 7ª Zona Eleitoral';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  const opcoes = await p.locator('#rt-destino-select option').allTextContents();
+  check('dropdown lista os 4 pontos fixos conhecidos', ['Cartório Eleitoral da 7ª Zona Eleitoral', 'Creche Mamãe Lima (Jatobá)', 'Escola Monsenhor Mateus (Sigefredo Pacheco)', 'Escola da Baixinha (Sigefredo Pacheco)'].every(d => opcoes.includes(d)), opcoes.join(' | '));
+  check('dropdown também tem a opção "Outro (digitar)"', opcoes.includes('Outro (digitar)'), opcoes.join(' | '));
+
+  check('valor salvo batendo com um ponto fixo vem pré-selecionado no <select>', (await p.locator('#rt-destino-select').inputValue()) === 'Cartório Eleitoral da 7ª Zona Eleitoral');
+  check('campo "Outro" fica escondido quando o valor bate com um ponto fixo', await p.locator('#rt-destino-outro-wrap').evaluate(el => getComputedStyle(el).display) === 'none');
+
+  // Troca pra outro ponto fixo e salva.
+  await p.selectOption('#rt-destino-select', 'Creche Mamãe Lima (Jatobá)');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+  let upd = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1').pop());
+  check('salvar com um ponto fixo selecionado grava o texto exato dele', upd?.payload?.destino === 'Creche Mamãe Lima (Jatobá)', JSON.stringify(upd));
+
+  // Reabre, escolhe "Outro" e digita um valor customizado (preserva o caso
+  // real de produção — "U.E. Miguel Rocha, Sigefredo Pacheco"/"Creche Mamãe
+  // Lima M. Oliveira" — que não bate com nenhum dos 4 pontos fixos).
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  await preencherDestino(p, 'U.E. Miguel Rocha, Sigefredo Pacheco');
+  await p.click('#modal-body button:has-text("Salvar")');
+  await p.waitForTimeout(150);
+  upd = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1').pop());
+  check('salvar com "Outro" grava o texto customizado digitado', upd?.payload?.destino === 'U.E. Miguel Rocha, Sigefredo Pacheco', JSON.stringify(upd));
+
+  // Reabre — o valor customizado (não bate com nenhum ponto fixo) precisa
+  // cair em "Outro", com o texto já preenchido no campo — nunca se perde.
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('valor customizado (não bate com ponto fixo) cai em "Outro"', (await p.locator('#rt-destino-select').inputValue()) === '__outro__');
+  check('campo de texto "Outro" mostra o valor customizado salvo', (await p.locator('#rt-destino-outro').inputValue()) === 'U.E. Miguel Rocha, Sigefredo Pacheco');
+  check('campo "Outro" fica visível quando o valor não bate com ponto fixo', await p.locator('#rt-destino-outro-wrap').evaluate(el => getComputedStyle(el).display) !== 'none');
+
+  // Sugestão (↻) — nome do local de votação quase nunca bate com um dos 4
+  // pontos fixos, então deve cair em "Outro" com o nome sugerido já preenchido.
+  await p.click('#rt-destino-sugerir');
+  check('sugestão (↻) cai em "Outro" (nome de local de votação não é ponto fixo)', (await p.locator('#rt-destino-select').inputValue()) === '__outro__');
+  check('campo "Outro" mostra o local sugerido (1º/último da lista de paradas)', (await p.locator('#rt-destino-outro').inputValue()) === 'Grupo Escolar A, Campo Maior');
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
