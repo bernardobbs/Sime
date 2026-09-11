@@ -5025,6 +5025,67 @@ cadastrada); QR desenhado em resolução generosa; token TV sem PIN; e o
 
 ---
 
+## BUG GRAVE — PÂNICO NUNCA CHEGAVA EM PROBLEMAS (`sime_acao_mesa`, 11/09/2026)
+
+Reportado direto: "Quando cadastro um problema
+[`SIME_mesario.html?token=Z556SUFF`, Seção 1, 7ª Zona] com o devido pin não
+aparece em problema". Investigado direto no banco (Supabase MCP): 0 linhas
+em `sime_mesa_estado` pra toda a 7ª Zona — nenhum pânico estava sendo
+gravado de verdade, não só "esse caso específico".
+
+**Causa raiz: `sime_acao_mesa()`/`sime_rota_estado_upsert()` tinham DUAS
+sobrecargas coexistindo no banco, sem ninguém perceber.** As migrações de
+"🟡 Sendo atendido" (11/09/2026, ver seção própria acima,
+`sql/SIME_mesa_estado_assumido.sql`) e "Posição estimada dos veículos"
+(08/09/2026, `sql/SIME_rotas_estado_posicao.sql`) usaram `CREATE OR REPLACE
+FUNCTION` adicionando parâmetros novos no FIM da assinatura — prática já
+documentada nas duas seções como segura ("`CREATE OR REPLACE` só é seguro
+assim pros chamadores existentes"). O que não tinha sido percebido: o
+Postgres só SUBSTITUI uma função quando a assinatura (nº/tipo de
+parâmetros) é IDÊNTICA — como as duas ganharam parâmetros extras, cada
+`CREATE OR REPLACE` criou uma SOBRECARGA nova, deixando a versão ANTIGA
+viva no banco ao lado da nova, sem erro nem aviso nenhum na hora de aplicar
+a migração.
+
+Quando um chamador antigo (`SIME_mesario.html`, `SIME_motorista.html`,
+`SIME_instalador.html`, `SIME_acessibilidade.html`) chama a RPC só com os
+parâmetros de sempre (todos opcionais nas DUAS versões), o PostgREST não
+consegue decidir sozinho qual sobrecarga usar —
+`PGRST203: Could not choose the best candidate function` — e a escrita
+falha. Do lado do navegador isso cai no mesmo tratamento de qualquer falha
+de rede (fila offline, badge 🟡, retry a cada 30s, ver "PADRÃO DE CÓDIGO —
+OFFLINE-FIRST" acima) — só que esse erro NUNCA se resolve sozinho (não é
+intermitência, é ambiguidade permanente): a ação fica pra sempre "tentando
+sincronizar", sem o operador ter como perceber que não é só demora.
+
+Corrigido em `sql/SIME_fix_overload_ambiguo_acao_mesa.sql` — `DROP
+FUNCTION` das duas versões ANTIGAS (assinatura menor); as versões novas já
+são um superset 100% compatível (parâmetros extras sempre `DEFAULT NULL`)
+e já tinham `GRANT EXECUTE` pra `anon`/`authenticated`/`service_role`,
+então nenhum chamador precisou mudar uma linha.
+
+**Verificado ao vivo, na mesma sessão da correção**: o celular do próprio
+cartório (token `Z556SUFF`) tinha um pânico "energia" preso na fila
+offline desde antes da correção — assim que a ambiguidade foi removida, o
+retry automático do navegador sincronizou sozinho (sem o cartório precisar
+fazer nada) e a ocorrência apareceu em `SIME_problemas.html`, sendo
+inclusive resolvida pelo próprio cartório em seguida, ainda durante a
+investigação — confirmação de ponta a ponta, não só teórica.
+
+> **Lição pro futuro, pra não se repetir na próxima vez que uma RPC ganhar
+> parâmetro novo**: depois de qualquer `CREATE OR REPLACE FUNCTION` que
+> adiciona parâmetro a uma função já chamada pelo frontend, checar
+> `select proname, count(*) from pg_proc where proname='<nome>' group by
+> proname having count(*) > 1` — se vier mais de uma linha, sobrou
+> sobrecarga fantasma pra derrubar. `CREATE OR REPLACE` nunca avisa quando,
+> na prática, criou uma função nova em vez de substituir a existente. Os
+> mocks de Supabase usados nos testes Playwright deste projeto (QB
+> simplificada, sem PostgREST de verdade) não pegam esse tipo de bug —
+> só existe contra o Postgres real, daí ter passado batido nas duas
+> migrações que o causaram.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
