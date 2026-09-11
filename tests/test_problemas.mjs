@@ -8,6 +8,13 @@
 //   2. Quem assume cuida até o fim — assumir o que já tem dono não pode
 //      trocar o responsável em silêncio; para isso existe delegar, com motivo.
 //   3. Filtro Meus/Todos, com as órfãs sempre visíveis nos dois.
+//   4. Prioridade declarada manda na ordem de exibição, editável a
+//      qualquer momento — não só "na abertura" (a maioria nasce pelo
+//      gatilho automático do campo, sem nenhum humano no instante).
+//   5. "Aguardando terceiro" distingue quem está trabalhando de quem só
+//      espera resposta de fora, sem virar um status novo.
+//   6. Chamado resolvido continua consultável pela busca dedicada, mesmo
+//      tendo saído da lista principal de ativos.
 import pw from 'playwright';
 const { chromium } = pw;
 
@@ -506,6 +513,166 @@ async function abrir(ctx, mock) {
   await p.waitForTimeout(250);
   const shTxt = await p.locator('.sh-t1').textContent();
   check('sem numero: detalhe também não mostra "#" nenhum', !shTxt.includes('#'), shTxt);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 18. Prioridade declarada (item 1) — manda na ordem de exibição, na
+// frente do relógio de escalonamento: um problema recém-aberto marcado
+// "Alta" fica no topo, sem esperar os 10/30 min do escalonamento
+// automático. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia' });
+  mock.sime_ocorrencias = [
+    { id:'oc-1', numero:1, secao_id:SEC_63, tipo:'energia', status:'aberta', responsavel_id:null,
+      aberta_em:new Date(Date.now()-5*60000).toISOString(), nivel_escalonamento:0, origem:'mesario', prioridade:'normal' },
+    { id:'oc-2', numero:2, secao_id:SEC_99, tipo:'mesa_incompleta', status:'aberta', responsavel_id:null,
+      aberta_em:new Date(Date.now()-1*60000).toISOString(), nivel_escalonamento:0, origem:'mesario', prioridade:'alta' },
+  ];
+  const { p, erros } = await abrir(ctx, mock);
+
+  const primeiroTxt = await p.locator('.prob-sec').first().textContent();
+  check('prioridade Alta vai pro topo mesmo sendo o mais recente (não é a idade que manda)',
+    primeiroTxt.includes('#002'), primeiroTxt);
+  const badges = await p.locator('.prob').first().locator('.pill.bad').allTextContents();
+  check('card mostra o badge de alta prioridade', badges.some(t => t.includes('alta prioridade')), badges.join(' | '));
+
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  check('botão "Alta" vem destacado no detalhe', await p.locator('.prio-btn.prio-alta.on').count() === 1);
+
+  await p.locator('.prio-btn.prio-baixa').click();
+  await p.waitForTimeout(250);
+  const chamadas = (await p.evaluate(() => window.__mock.rpcCalls)).filter(c => c.nome === 'sime_ocorrencia_definir_prioridade');
+  check('clicar em Baixa chama a RPC de prioridade', chamadas.length === 1, JSON.stringify(chamadas));
+  check('com o id e a prioridade certos no payload',
+    chamadas[0]?.params?.p_id === 'oc-2' && chamadas[0]?.params?.p_prioridade === 'baixa', JSON.stringify(chamadas[0]));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 18b. Sem prioridade no dado (ocorrência de antes desta migração) cai
+// em "Normal" por padrão — nunca nenhum botão destacado, nunca badge
+// poluindo o card (mesmo critério "nunca inventa" de sempre). ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia' });
+  delete mock.sime_ocorrencias[0].prioridade;
+  const { p, erros } = await abrir(ctx, mock);
+  check('sem prioridade no card: nenhum badge de prioridade',
+    await p.locator('.prob .pill.bad, .prob .pill.low').count() === 0);
+
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  check('sem prioridade no dado: "Normal" vem destacado por padrão',
+    await p.locator('.prio-btn.prio-normal.on').count() === 1);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 19. "Aguardando terceiro" (item 2) — só existe pra quem já foi
+// assumida (pressupõe dono cuidando, só esperando resposta de fora); flag
+// própria, não um status novo, pra não mexer em nenhum lugar que já lê
+// status IN ('aberta','assumida') como "em aberto". ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'urna' })); // sem dono ainda
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  check('sem dono: não oferece "Aguardando terceiro"',
+    await p.locator('button:has-text("Aguardando terceiro")').count() === 0);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'urna', responsavel:'u-maria' }));
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  check('com dono: oferece "Aguardando terceiro"',
+    await p.locator('button:has-text("Aguardando terceiro")').count() === 1);
+
+  await p.locator('button:has-text("Aguardando terceiro")').click();
+  await p.waitForTimeout(250);
+  const chamadas = (await p.evaluate(() => window.__mock.rpcCalls)).filter(c => c.nome === 'sime_ocorrencia_toggle_aguardando_terceiro');
+  check('clique chama a RPC de toggle com o id certo',
+    chamadas.length === 1 && chamadas[0]?.params?.p_id === 'oc-1', JSON.stringify(chamadas));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 19b. Badge de "aguardando terceiro" aparece no card e no detalhe
+// (mostra o estado já marcado, "Terceiro respondeu" pra desmarcar). ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna', responsavel:'u-maria' });
+  mock.sime_ocorrencias[0].aguardando_terceiro = true;
+  const { p, erros } = await abrir(ctx, mock);
+  const cardTxt = await p.locator('.prob-rod').first().textContent();
+  check('card mostra badge de aguardando terceiro', cardTxt.includes('aguardando terceiro'), cardTxt);
+
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  check('detalhe mostra "Terceiro respondeu" (já marcado)',
+    await p.locator('button:has-text("Terceiro respondeu")').count() === 1);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 20. Busca em chamados resolvidos (item 5) — recarregar() só busca
+// aberta/assumida de propósito; a busca dedicada é o único jeito de reabrir
+// um chamado já resolvido pra consulta ("o que foi feito no chamado
+// #012?"). ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia' }); // oc-1, #007, continua aberta
+  mock.sime_ocorrencias.push(
+    { id:'oc-resolvida', numero:12, secao_id:SEC_63, tipo:'urna', status:'resolvida', responsavel_id:'u-maria',
+      aberta_em:new Date(Date.now()-3600000).toISOString(), assumida_em:new Date(Date.now()-3500000).toISOString(),
+      resolvida_em:new Date(Date.now()-3000000).toISOString(), resolucao:'Trocada a urna',
+      nivel_escalonamento:0, origem:'mesario', prioridade:'normal' },
+  );
+  const { p, erros } = await abrir(ctx, mock);
+
+  check('resolvido não aparece na lista principal', await p.locator('.prob').count() === 1);
+  check('painel de busca começa recolhido', await p.locator('#busca-painel').isHidden());
+
+  await p.locator('#busca-toggle').click();
+  await p.waitForTimeout(150);
+  check('painel de busca abre ao clicar', await p.locator('#busca-painel').isVisible());
+
+  await p.fill('#busca-input', '012');
+  await p.locator('#busca-submit').click();
+  await p.waitForTimeout(300);
+
+  const resTxt = await p.locator('#busca-resultados').textContent();
+  check('busca por número de chamado acha o resolvido', resTxt.includes('#012'), resTxt);
+
+  await p.locator('#busca-resultados .prob').first().click();
+  await p.waitForTimeout(250);
+  const shTxt = await p.locator('.sh-t1').textContent();
+  check('abre o detalhe do chamado resolvido', shTxt.includes('#012'), shTxt);
+  check('detalhe do resolvido não oferece Assumir/Delegar/Resolvido (é histórico, não se edita)',
+    await p.locator('.sh-foot button').count() === 0);
+  const corpo = await p.locator('.sh-body').textContent();
+  check('mostra a resolução registrada', corpo.includes('Trocada a urna'), corpo);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 20b. Busca sem resultado avisa com clareza, sem parecer travada ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'energia' }));
+  await p.locator('#busca-toggle').click();
+  await p.waitForTimeout(150);
+  await p.fill('#busca-input', '999');
+  await p.locator('#busca-submit').click();
+  await p.waitForTimeout(300);
+  const resTxt = await p.locator('#busca-resultados').textContent();
+  check('sem achado: avisa em vez de ficar em branco', resTxt.includes('Nenhum chamado resolvido'), resTxt);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

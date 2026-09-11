@@ -298,6 +298,103 @@ inventa" de sempre. Coberto por `tests/test_problemas.mjs` (card, detalhe e
 mensagem de WhatsApp mostram o número; card/detalhe sem `numero` não
 mostram `#` nenhum).
 
+**Prioridade declarada, "aguardando terceiro" e busca em resolvidos
+(11/09/2026, `sql/SIME_ocorrencias_prioridade_aguardando_busca.sql`).**
+Pedido direto, a partir de um brainstorm sobre o que faltaria pra este
+painel virar um sistema de tickets/helpdesk de verdade — "vamos
+implementar os itens 1, 2 e 5" da lista levantada.
+
+- **Prioridade (item 1)** — `sime_ocorrencias.prioridade`
+  (`'baixa'|'normal'|'alta'`, default `'normal'`), editável a qualquer
+  momento, **não só "na abertura".** Investigado antes de desenhar: das
+  duas formas de uma ocorrência nascer, só `sime_sync_ocorrencias()`
+  (gatilho automático do pânico de campo) de fato roda em produção —
+  `sime_ocorrencia_abrir()` (a RPC pensada pro cartório "abrir manualmente,
+  soube por telefone") **não tem nenhum caller no frontend**, é código só
+  de schema desde que foi criada. Travar a escolha de prioridade num
+  formulário de abertura que não existe deixaria de fora praticamente todo
+  o volume real — por isso virou uma linha de 3 botões
+  (🟢 Baixa / 🔵 Normal / 🔴 Alta, mesmo padrão de toque único já usado em
+  "Contatar mesários" pro trio Confirmado/Convocado/Substituir) dentro da
+  folha de detalhe, trocável quantas vezes precisar enquanto o chamado
+  segue aberto. RPC `sime_ocorrencia_definir_prioridade(p_id,p_prioridade)`
+  (`SECURITY DEFINER`, só grava com `status IN ('aberta','assumida')`, loga
+  `prioridade_definida` em `sime_ocorrencia_eventos`).
+
+  **Nunca substitui `nivel_escalonamento`** — os dois sinais respondem
+  perguntas diferentes: escalonamento é o cronômetro (10/30 min desde
+  `aberta_em`, ninguém edita), prioridade é o julgamento humano de quão
+  grave aquilo é, declarado por quem está olhando o caso. A lista principal
+  passou a **ordenar por prioridade primeiro** (`ordenarPorPrioridade()`,
+  peso alta=2/normal=1/baixa=0), e só depois pela idade de sempre — um
+  problema marcado Alta sobe pro topo mesmo recém-aberto, sem precisar
+  esperar o relógio do escalonamento automático chegar lá. Card ganha badge
+  vermelho/verde só pra alta/baixa — Normal (o default, a maioria dos
+  casos) não polui a lista com um badge que não diz nada de novo.
+
+- **"Aguardando terceiro" (item 2)** — `sime_ocorrencias.aguardando_terceiro`
+  (boolean, default `false`), **flag própria, não um status novo** — mesmo
+  espírito de `sime_atores.precisa_substituir` (já documentado nesta
+  seção): um valor novo em `status` exigiria caçar e atualizar todo lugar
+  que já lê `status IN ('aberta','assumida')` como "ainda em aberto"
+  (`recarregar()`, `sime_escalonar_ocorrencias()`, o índice único que
+  impede pânico duplicado) — uma flag ao lado de nenhum desses quebra.
+  Distingue "estou trabalhando nisso agora" de "já fiz minha parte, só
+  esperando a Equatorial/oficial de justiça ligar de volta", situação hoje
+  visualmente idêntica a qualquer outra ocorrência assumida. Botão
+  "🕓 Aguardando terceiro" no rodapé da folha, **só aparece depois de
+  assumida** (RPC `sime_ocorrencia_toggle_aguardando_terceiro` exige
+  `responsavel_id IS NOT NULL` — não faz sentido "esperar terceiro" numa
+  ocorrência que ainda nem tem dono); vira "✓ Terceiro respondeu" quando já
+  marcada. Card e detalhe ganham um badge/pill âmbar
+  "🕓 aguardando terceiro" enquanto ativa.
+
+  **Não muda o comportamento do escalonamento automático** — decisão
+  deliberada, não esquecimento: o relógio de `aberta_em` já é documentado
+  como propositalmente imune a "clicar em Assumir e esquecer"; deixar esta
+  flag pausar o escalonamento reabriria a mesma brecha por outra porta. Uma
+  ocorrência aguardando terceiro continua escalando normalmente se
+  ninguém voltar a mexer nela.
+
+- **Busca em chamados resolvidos (item 5)** — `recarregar()` só busca
+  `status IN ('aberta','assumida')` de propósito (mantém a lista principal
+  rápida e focada no que precisa de ação); um chamado resolvido some dessa
+  lista pra sempre, sem nenhum jeito de reabrir pra consulta ("o que foi
+  feito no chamado #012?"). Painel novo, recolhido por padrão
+  (`toggleBusca()`, `#busca-painel`), com campo de texto que casa por
+  **número do chamado, número da seção, ou nome do tipo** — busca em lote
+  (`.in('status',['resolvida','cancelada'])`, limite de 300, filtro no
+  cliente) em vez de uma query server-side mais elaborada: a escala da
+  tabela (uma zona, algumas centenas de ocorrências no máximo até o fim da
+  operação) não justifica a complexidade extra.
+
+  **`renderSheetFor(o)`** — a folha de detalhe foi refatorada pra um ponto
+  único de renderização, chamado tanto por `abrirSheet(id)` (card da lista
+  de ativos, busca em `OCORRENCIAS`) quanto por `abrirSheetResolvida(id)`
+  (resultado da busca, busca em `BUSCA_RESULTADOS`) — evita duplicar o
+  template HTML inteiro só pra trocar de onde vem o dado. Pra um chamado
+  fora de `('aberta','assumida')`, os botões de ação (Assumir/Delegar/
+  Aguardando terceiro/Resolvido) **somem** — é histórico, não se edita — e
+  em vez deles a folha mostra um bloco "Desfecho" com a resolução
+  registrada e a data.
+
+  **`ABERTA_ORIGEM` ('lista'|'busca')** — `recarregar()` (chamado pelo
+  Realtime e pelo `setInterval` de reidade) só reabre/fecha a folha
+  sozinho quando ela veio da lista de ativos; um chamado resolvido aberto
+  pela busca nunca está em `OCORRENCIAS`, então sem essa distinção
+  `recarregar()` o fecharia sozinho a cada evento Realtime, achando que
+  "sumiu da lista".
+
+Coberto por `tests/test_problemas.mjs` (blocos 18-20b): prioridade Alta
+sobe pro topo da lista mesmo mais recente que uma Normal mais antiga;
+badge no card só pra alta/baixa; botão de prioridade certo destacado no
+detalhe (inclusive o fallback "Normal" quando o dado é antigo e não tem a
+coluna preenchida); clique chama a RPC com id/prioridade certos;
+"Aguardando terceiro" só aparece com dono; clique chama o toggle certo;
+badge aparece no card e no detalhe; busca acha um chamado resolvido fora
+da lista principal, abre o detalhe sem os botões de ação, mostra a
+resolução registrada; busca sem resultado avisa em vez de ficar em branco.
+
 ### RPCs críticas
 ```sql
 sime_now()                    -- server timestamp — SEMPRE usar

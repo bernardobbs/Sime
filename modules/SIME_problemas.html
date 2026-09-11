@@ -74,6 +74,26 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
    mais urgente da tela, então cor sólida em vez do estilo discreto do resto. */
 .pill{display:inline-flex;align-items:center;font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:99px;white-space:nowrap;}
 .pill.bad{background:#dc2626;color:#fff;}
+.pill.warn{background:#f59e0b;color:#fff;}
+.pill.low{background:#16a34a;color:#fff;}
+
+/* Busca em chamados resolvidos (item 5) — fica recolhida por padrão, não
+   compete com a lista de problemas ativos que é o foco desta tela. */
+.busca-wrap{margin-bottom:10px;}
+.busca-toggle{width:100%;padding:10px;border:1px dashed var(--border);border-radius:10px;background:var(--card);
+  color:var(--text2);font-weight:700;font-size:.8rem;cursor:pointer;text-align:center;}
+.busca-painel{margin-top:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;}
+
+/* Prioridade declarada (item 1) — linha de 3 botões, mesmo padrão de toque
+   único já usado em outras telas do projeto (Confirmado/Convocado/
+   Substituir em "Contatar mesários"). */
+.prio-row{display:flex;gap:6px;margin-bottom:4px;}
+.prio-btn{flex:1;padding:9px 4px;border:1px solid var(--border);border-radius:9px;background:var(--bg2);
+  color:var(--text2);font-weight:800;font-size:.76rem;cursor:pointer;text-align:center;}
+.prio-btn.on{color:#fff;border-color:transparent;}
+.prio-btn.prio-baixa.on{background:#16a34a;}
+.prio-btn.prio-normal.on{background:#2a2a2a;}
+.prio-btn.prio-alta.on{background:#dc2626;}
 
 .vazio{text-align:center;padding:46px 20px;color:var(--text3);}
 .vazio .ico{font-size:2.6rem;margin-bottom:8px;}
@@ -153,6 +173,20 @@ select.campo{margin-bottom:8px;}
     <div class="filtro on" id="f-todos" tabindex="0" role="button" onclick="setFiltro('todos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📋 Todos <span class="n" id="n-todos">0</span></div>
   </div>
   <div id="aviso-orfas"></div>
+
+  <div class="busca-wrap">
+    <button class="busca-toggle" id="busca-toggle" onclick="toggleBusca()">🔍 Consultar chamados já concluídos</button>
+    <div class="busca-painel" id="busca-painel" style="display:none">
+      <div style="display:flex;gap:7px;margin-bottom:8px">
+        <label for="busca-input" class="sr-only">Consultar chamados já concluídos</label>
+        <input class="campo" id="busca-input" placeholder="Nº do chamado, seção ou tipo" style="flex:1"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();buscarResolvidos();}">
+        <button class="btn btn-assumir" id="busca-submit" style="padding:10px 14px" onclick="buscarResolvidos()">Buscar</button>
+      </div>
+      <div id="busca-resultados"></div>
+    </div>
+  </div>
+
   <div id="lista"></div>
 </div>
 
@@ -222,6 +256,13 @@ let EU=null, ZONA=null, ELEICAO=null;
 let OCORRENCIAS=[], SECOES={}, ATORES=[], EXTERNOS=[], EQUIPE=[];
 let NUM_POR_SECAO_ID={};   // uuid -> '0063', montado uma vez na carga
 let FILTRO='todos', ABERTA=null;
+// 'lista' (padrão) ou 'busca' — de onde a folha de detalhe foi aberta.
+// recarregar() só reabre/fecha a folha sozinho quando ABERTA veio da lista
+// de ativos (que ele mantém em OCORRENCIAS); um chamado resolvido aberto
+// pela busca nunca está em OCORRENCIAS, então recarregar() o fecharia por
+// engano se não soubesse distinguir a origem.
+let ABERTA_ORIGEM='lista';
+let BUSCA_RESULTADOS=[];
 // Auxiliar de Eleição, locais predeterminados (10/09/2026, sime_auxiliar_locais):
 // MEUS_LOCAIS — só preenchido quando EU.perfil==='auxiliar_eleicao', usado por
 // dentroDoEscopo() pra restringir a própria lista a urna nos locais dele.
@@ -418,13 +459,13 @@ window.iniciar = iniciar;
 
 async function recarregar(){
   const { data } = await supabase.from('sime_ocorrencias')
-    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem,prioridade,aguardando_terceiro')
     .in('status',['aberta','assumida'])
     .order('aberta_em',{ascending:true});
 
   OCORRENCIAS = (data||[]).map(o=>({ ...o, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' }));
   renderLista();
-  if(ABERTA){
+  if(ABERTA && ABERTA_ORIGEM==='lista'){
     const atual = OCORRENCIAS.find(o=>o.id===ABERTA.id);
     if(atual) abrirSheet(atual.id); else fecharSheet(null,true);
   }
@@ -474,6 +515,18 @@ function visiveis(){
   return base.filter(o => o.responsavel_id === EU?.id || !o.responsavel_id);
 }
 
+// Prioridade declarada (item 1) manda na ordem de exibição — um problema
+// marcado "Alta" fica no topo mesmo que tenha acabado de abrir, sem
+// precisar esperar o relógio do escalonamento automático chegar lá.
+// Dentro da mesma prioridade, mantém a ordem de sempre (mais antigo
+// primeiro).
+const PRIO_PESO = { alta:2, normal:1, baixa:0 };
+function ordenarPorPrioridade(itens){
+  return itens.slice().sort((a,b) =>
+    (PRIO_PESO[b.prioridade] ?? 1) - (PRIO_PESO[a.prioridade] ?? 1)
+    || Date.parse(a.aberta_em) - Date.parse(b.aberta_em));
+}
+
 function renderLista(){
   const lista = document.getElementById('lista');
   // Bate com visiveis(): "Meus" inclui as órfãs de propósito — o contador
@@ -487,7 +540,7 @@ function renderLista(){
   document.getElementById('aviso-orfas').innerHTML = orfas
     ? `<div class="aviso-orfas">⚠ ${orfas} problema${orfas>1?'s':''} sem responsável — ninguém assumiu ainda</div>` : '';
 
-  const itens = visiveis();
+  const itens = ordenarPorPrioridade(visiveis());
   if(!itens.length){
     lista.innerHTML = `<div class="vazio"><div class="ico">✅</div>
       <div style="font-weight:800;color:var(--text2)">${FILTRO==='meus'?'Nada com você agora':'Nenhum problema aberto'}</div></div>`;
@@ -514,6 +567,9 @@ function renderLista(){
         ${resp ? `<span class="dono">👤 <b>${resp.nome}</b></span>`
                : `<span class="sem-dono">— sem responsável —</span>`}
         <span class="sp"></span>
+        ${o.prioridade==='alta'?'<span class="pill bad">🔴 alta prioridade</span>':''}
+        ${o.prioridade==='baixa'?'<span class="pill low">🟢 baixa prioridade</span>':''}
+        ${o.aguardando_terceiro?'<span class="pill warn">🕓 aguardando terceiro</span>':''}
         ${o.nivel_escalonamento===1?'<span class="pill bad">escalado ao gestor</span>':''}
         ${o.nivel_escalonamento===2?'<span class="pill bad">escalado ao chefe</span>':''}
       </div>
@@ -524,15 +580,20 @@ function renderLista(){
 // ══════════════════════════════════════════════════
 // DETALHE
 // ══════════════════════════════════════════════════
-function abrirSheet(id){
-  const o = OCORRENCIAS.find(x=>x.id===id);
-  if(!o) return;
-  ABERTA = o;
+// Ponto único de origem para a folha de detalhe — chamada tanto por quem
+// clica num card da lista de ativos quanto por quem clica num resultado da
+// busca de resolvidos (item 5). abrirSheet()/abrirSheetResolvida() são só
+// wrappers finos que resolvem o objeto certo e marcam ABERTA_ORIGEM.
+function renderSheetFor(o){
   const t = TIPOS[o.tipo]||TIPOS.outro;
   const sec = SECOES[o.secao_numero]||{};
   const min = minutosDe(o.aberta_em);
   const resp = EQUIPE.find(u=>u.id===o.responsavel_id);
   const souEu = o.responsavel_id === EU?.id;
+  // Botões de ação (Assumir/Delegar/Aguardando terceiro/Resolvido) e a
+  // linha de prioridade editável só fazem sentido enquanto o chamado ainda
+  // está em aberto — um resolvido/cancelado é histórico, não se edita.
+  const aberto = o.status==='aberta' || o.status==='assumida';
 
   const cts = contatosPara(o);
   const ctHtml = cts.length ? cts.map((c,i)=>{
@@ -559,7 +620,7 @@ function abrirSheet(id){
       <div class="sh-tit">
         <div class="sh-t1">${fmtChamado(o.numero)}Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
         <div class="sh-t2">${sec.local_nome||''}${sec.municipio?' · '+sec.municipio:''}</div>
-        <div class="sh-t3">Aberta há ${idadeTxt(min)} · via ${o.origem}
+        <div class="sh-t3">${aberto?'Aberta há '+idadeTxt(min):(o.status==='cancelada'?'Cancelada':'Resolvida')+(o.resolvida_em?' em '+fmtTs(o.resolvida_em):'')} · via ${o.origem}
           ${o.nivel_escalonamento?` · <b style="color:#dc2626">escalado ao ${o.nivel_escalonamento===1?'gestor':'chefe de cartório'}</b>`:''}</div>
       </div>
       <button class="sh-x" aria-label="Fechar" onclick="fecharSheet()">✕</button>
@@ -572,27 +633,67 @@ function abrirSheet(id){
       <div class="sh-lbl">Responsável</div>
       ${resp ? `<div style="font-size:.85rem">👤 <b>${resp.nome}</b>${souEu?' (você)':''}</div>`
              : `<div class="sem-dono">Ninguém assumiu ainda</div>`}
+      ${aberto && o.aguardando_terceiro ? `<div style="margin-top:6px"><span class="pill warn">🕓 Aguardando resposta de terceiro</span></div>` : ''}
+
+      <div class="sh-lbl">Prioridade</div>
+      ${aberto ? `
+      <div class="prio-row">
+        <button class="prio-btn prio-baixa${o.prioridade==='baixa'?' on':''}" onclick="definirPrioridade('${o.id}','baixa')">🟢 Baixa</button>
+        <button class="prio-btn prio-normal${(!o.prioridade||o.prioridade==='normal')?' on':''}" onclick="definirPrioridade('${o.id}','normal')">🔵 Normal</button>
+        <button class="prio-btn prio-alta${o.prioridade==='alta'?' on':''}" onclick="definirPrioridade('${o.id}','alta')">🔴 Alta</button>
+      </div>` : `<div style="font-size:.85rem">${PRIO_LABEL[o.prioridade||'normal']}</div>`}
+
+      ${!aberto ? `
+      <div class="sh-lbl">Desfecho</div>
+      <div style="font-size:.85rem">${o.status==='cancelada'?'✕ Cancelada':'✓ Resolvida'}${o.resolvida_em?' em '+fmtTs(o.resolvida_em):''}${o.resolucao?'<br>'+o.resolucao:''}</div>
+      ` : ''}
 
       <div id="hist-box"></div>
     </div>
 
     <div class="sh-foot">
-      ${!o.responsavel_id
+      ${aberto && !o.responsavel_id
         ? `<button class="btn btn-assumir" onclick="assumir('${o.id}')">✋ Assumir</button>`
         : ''}
-      ${o.responsavel_id ? `<button class="btn btn-delegar" onclick="abrirDelegar('${o.id}')">↪ Delegar</button>` : ''}
-      <button class="btn btn-verde" onclick="abrirResolver('${o.id}')">✓ Resolvido</button>
+      ${aberto && o.responsavel_id ? `<button class="btn btn-delegar" onclick="abrirDelegar('${o.id}')">↪ Delegar</button>` : ''}
+      ${aberto && o.responsavel_id ? `<button class="btn btn-delegar" onclick="toggleAguardandoTerceiro('${o.id}')">${o.aguardando_terceiro?'✓ Terceiro respondeu':'🕓 Aguardando terceiro'}</button>` : ''}
+      ${aberto ? `<button class="btn btn-verde" onclick="abrirResolver('${o.id}')">✓ Resolvido</button>` : ''}
     </div>`;
 
   document.getElementById('sheet-bg').classList.add('open');
   carregarHistorico(o.id);
 }
+
+// Prioridade e a linha de desfecho leem este rótulo — declarado fora do
+// template pra não recriar o objeto a cada render.
+const PRIO_LABEL = { baixa:'🟢 Baixa', normal:'🔵 Normal', alta:'🔴 Alta' };
+
+// Clique num card da LISTA DE ATIVOS — o caminho de sempre.
+function abrirSheet(id){
+  const o = OCORRENCIAS.find(x=>x.id===id);
+  if(!o) return;
+  ABERTA = o;
+  ABERTA_ORIGEM = 'lista';
+  renderSheetFor(o);
+}
 window.abrirSheet = abrirSheet;
+
+// Clique num resultado da BUSCA de resolvidos (item 5) — mesma folha,
+// mesmo histórico, só sem os botões de ação (já é um chamado fechado).
+function abrirSheetResolvida(id){
+  const o = BUSCA_RESULTADOS.find(x=>x.id===id);
+  if(!o) return;
+  ABERTA = o;
+  ABERTA_ORIGEM = 'busca';
+  renderSheetFor(o);
+}
+window.abrirSheetResolvida = abrirSheetResolvida;
 
 function fecharSheet(e, forcar){
   if(!forcar && e && e.target !== document.getElementById('sheet-bg')) return;
   document.getElementById('sheet-bg').classList.remove('open');
   ABERTA = null;
+  ABERTA_ORIGEM = 'lista';
 }
 window.fecharSheet = fecharSheet;
 
@@ -601,7 +702,7 @@ async function carregarHistorico(id){
     .select('acao,detalhe,autor_id,criado_em').eq('ocorrencia_id',id).order('criado_em');
   const box = document.getElementById('hist-box');
   if(!box || !data?.length) return;
-  const ACAO = { abriu:'Aberta', assumiu:'Assumiu', delegou:'Delegou para', contatou:'Contatou', resolveu:'Resolveu', escalou:'Escalou para' };
+  const ACAO = { abriu:'Aberta', assumiu:'Assumiu', delegou:'Delegou para', contatou:'Contatou', resolveu:'Resolveu', escalou:'Escalou para', prioridade_definida:'Prioridade definida', aguardando_terceiro:'Aguardando terceiro' };
   box.innerHTML = `<div class="sh-lbl">Histórico</div><div class="hist">` + data.map(ev=>{
     const quem = EQUIPE.find(u=>u.id===ev.autor_id);
     return `<div><span class="h-h">${fmtTs(ev.criado_em)}</span> — ${ACAO[ev.acao]||ev.acao}${ev.detalhe?': '+ev.detalhe:''}${quem?` <span class="h-h">(${quem.nome})</span>`:''}</div>`;
@@ -702,6 +803,93 @@ function registrarContato(id, quem){
   supabase.rpc('sime_ocorrencia_contatou', { p_id:id, p_quem:quem }).then(() => trackSync(true), () => trackSync(false));
 }
 window.registrarContato = registrarContato;
+
+// Prioridade declarada (item 1) — toque único, editável a qualquer momento
+// enquanto o chamado estiver aberto, nunca só "na abertura" (a maioria das
+// ocorrências nasce pelo gatilho automático do campo, sem passar por
+// nenhum humano no momento em que é criada).
+async function definirPrioridade(id, prioridade){
+  const { error } = await supabase.rpc('sime_ocorrencia_definir_prioridade', { p_id:id, p_prioridade:prioridade });
+  if(error){ trackSync(false); showToast('⚠ ' + mensagemErroAmigavel(error, 'Não foi possível definir a prioridade')); return; }
+  trackSync(true);
+  await recarregar();
+}
+window.definirPrioridade = definirPrioridade;
+
+// "Aguardando terceiro" (item 2) — distingue "estou trabalhando nisso" de
+// "já fiz minha parte, só esperando a Equatorial/oficial de justiça/etc.
+// responder". Flag própria (não um status novo), pra não mexer em nenhum
+// dos lugares que já leem status IN ('aberta','assumida') como "em aberto".
+async function toggleAguardandoTerceiro(id){
+  const { error } = await supabase.rpc('sime_ocorrencia_toggle_aguardando_terceiro', { p_id:id });
+  if(error){ trackSync(false); showToast('⚠ ' + mensagemErroAmigavel(error, 'Não foi possível atualizar')); return; }
+  trackSync(true);
+  await recarregar();
+}
+window.toggleAguardandoTerceiro = toggleAguardandoTerceiro;
+
+// ══════════════════════════════════════════════════
+// BUSCA EM RESOLVIDOS (item 5)
+// ══════════════════════════════════════════════════
+// recarregar() só busca status IN ('aberta','assumida') de propósito — é o
+// que mantém a lista principal rápida e focada no que ainda precisa de
+// ação. Um chamado resolvido nunca aparece ali de novo; esta é a única
+// forma de reabrir um pra consulta ("o que foi feito no chamado #012?").
+function toggleBusca(){
+  const painel = document.getElementById('busca-painel');
+  if(!painel) return;
+  const abrir = painel.style.display === 'none';
+  painel.style.display = abrir ? '' : 'none';
+  if(abrir) document.getElementById('busca-input')?.focus();
+}
+window.toggleBusca = toggleBusca;
+
+async function buscarResolvidos(){
+  const box = document.getElementById('busca-resultados');
+  const q = (document.getElementById('busca-input')?.value || '').trim();
+  if(!box) return;
+  if(!q){ box.innerHTML = `<div class="ct-vazio">Digite o número do chamado, a seção ou o tipo de problema.</div>`; return; }
+
+  box.innerHTML = `<div class="ct-vazio">Buscando…</div>`;
+  const { data, error } = await supabase.from('sime_ocorrencias')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,resolvida_em,resolucao,nivel_escalonamento,origem,prioridade,aguardando_terceiro')
+    .in('status',['resolvida','cancelada'])
+    .order('aberta_em',{ascending:false})
+    .limit(300);
+  if(error){ box.innerHTML = `<div class="ct-vazio">⚠ ${mensagemErroAmigavel(error,'Falha ao buscar')}</div>`; return; }
+
+  const qDigitos = q.replace(/\D/g,'');
+  const qMin = q.toLowerCase();
+  const achados = (data||[]).map(o=>({ ...o, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' })).filter(o=>{
+    const t = TIPOS[o.tipo]||TIPOS.outro;
+    const casaNumero = qDigitos && o.numero && String(o.numero).padStart(3,'0').includes(qDigitos);
+    const casaSecao = qDigitos && o.secao_numero && String(parseInt(o.secao_numero)||'').includes(qDigitos);
+    const casaTipo = t.nome.toLowerCase().includes(qMin);
+    return casaNumero || casaSecao || casaTipo;
+  }).slice(0,30);
+
+  BUSCA_RESULTADOS = achados;
+  if(!achados.length){ box.innerHTML = `<div class="ct-vazio">Nenhum chamado resolvido encontrado.</div>`; return; }
+
+  box.innerHTML = achados.map(o=>{
+    const t = TIPOS[o.tipo]||TIPOS.outro;
+    const sec = SECOES[o.secao_numero]||{};
+    const desfecho = o.status==='cancelada' ? 'Cancelada' : 'Resolvida';
+    const quando = o.resolvida_em ? ' ' + fmtTs(o.resolvida_em) : '';
+    return `<div class="prob t-${o.tipo}" tabindex="0" onclick="abrirSheetResolvida('${o.id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <div class="prob-top">
+        <div class="prob-ico">${t.ico}</div>
+        <div class="prob-tit">
+          <div class="prob-sec">${fmtChamado(o.numero)}Seção ${parseInt(o.secao_numero)||'—'} · ${t.nome}</div>
+          <div class="prob-loc">${sec.local_nome||''}</div>
+        </div>
+        <div class="prob-idade">${desfecho}${quando}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+window.buscarResolvidos = buscarResolvidos;
 </script>
 </body>
 </html>
