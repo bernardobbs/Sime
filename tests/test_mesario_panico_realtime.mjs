@@ -344,6 +344,164 @@ const estadoPanico = (id) => ({
   await ctx.close();
 }
 
+// ── 8. "Sendo atendido" — pedido direto: "como o mesário vai saber que o
+// chamado já esta sendo resolvido?". O cartório clica "Assumir" (sem
+// resolver ainda) — sime_ocorrencia_assumir espelha isso em sime_mesa_
+// estado (sql/SIME_mesa_estado_assumido.sql), e o mesário recebe pelo
+// MESMO canal Realtime que já assina, sem assinatura nova. ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  const { p, erros } = await abrirLogado(ctx, cfg);
+
+  await p.click('#btn-energia');           // mesário aciona o pânico
+  await p.waitForTimeout(200);
+  check('antes de assumido: botão continua vermelho',
+    (await p.locator('#btn-energia').getAttribute('class')).includes('c-panic-active'));
+
+  // Cartório clica "Assumir" em Problemas (sem resolver ainda).
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: true, panico_urna: false,
+           panico_energia_resolvido: false, panico_urna_resolvido: false,
+           panico_energia_assumido: true, panico_energia_responsavel_nome: 'Maria Gomes' },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(300);
+
+  const cls = await p.locator('#btn-energia').getAttribute('class');
+  check('assumido: botão vira "sendo atendido" (amber), não resolvido nem mais vermelho',
+    cls.includes('c-panic-assumido') && !cls.includes('c-panic-active') && !cls.includes('c-panic-resolved'), cls);
+  check('assumido: badge vira 🟡', (await p.locator('#badge-energia').textContent()) === '🟡');
+  check('assumido: subtítulo mostra o nome de quem assumiu',
+    (await p.locator('#sub-energia').textContent()).includes('Maria Gomes'));
+  check('assumido: toast avisa quem está cuidando',
+    (await p.locator('#toast').textContent()).includes('Maria Gomes'));
+  check('estado interno acompanha',
+    await p.evaluate(() => S.panico_assumido.energia === true && S.panico_responsavel.energia === 'Maria Gomes'));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 9. Chip resumo do topo também vira amber quando o único pânico ativo
+// já está assumido — não fica vermelho escondendo que alguém já cuida. ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  const { p, erros } = await abrirLogado(ctx, cfg);
+
+  await p.click('#btn-energia');
+  await p.waitForTimeout(200);
+  check('chip resumo: vermelho antes de assumido',
+    (await p.locator('#dc-panico').textContent()).includes('Pânico ativo'));
+
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: true, panico_urna: false,
+           panico_energia_resolvido: false, panico_urna_resolvido: false,
+           panico_energia_assumido: true, panico_energia_responsavel_nome: 'João Silva' },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(300);
+
+  const chipTxt = await p.locator('#dc-panico').textContent();
+  check('chip resumo: vira "Sendo atendido" quando o único ativo já foi assumido',
+    chipTxt.includes('Sendo atendido'), chipTxt);
+  const chipCls = await p.locator('#dc-panico').getAttribute('class');
+  check('chip resumo: classe amber (dc warn), não mais err', chipCls.includes('warn') && !chipCls.includes('err'), chipCls);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 10. Delegação — troca de responsável atualiza o nome mostrado, sem
+// voltar pro vermelho no meio do caminho. ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  const { p, erros } = await abrirLogado(ctx, cfg);
+
+  await p.click('#btn-urna-prob');
+  await p.waitForTimeout(200);
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: true,
+           panico_energia_resolvido: false, panico_urna_resolvido: false,
+           panico_urna_assumido: true, panico_urna_responsavel_nome: 'Carlos Coord' },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(300);
+  check('assumido pela 1ª pessoa', (await p.locator('#sub-urnaprob').textContent()).includes('Carlos Coord'));
+
+  // Delegado pra outra pessoa — sime_ocorrencia_delegar espelha o nome novo.
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: true,
+           panico_energia_resolvido: false, panico_urna_resolvido: false,
+           panico_urna_assumido: true, panico_urna_responsavel_nome: 'Ana Paula' },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(300);
+  const sub = await p.locator('#sub-urnaprob').textContent();
+  check('delegado: subtítulo troca pro novo responsável', sub.includes('Ana Paula') && !sub.includes('Carlos Coord'), sub);
+  const cls = await p.locator('#btn-urna-prob').getAttribute('class');
+  check('delegado: continua amber (nunca volta a vermelho de propósito)', cls.includes('c-panic-assumido'), cls);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 11. Resolver depois de assumido — o verde de "Resolvido" vence o
+// amber de "sendo atendido" (mesmo bloco de resolver de sempre, sql/
+// SIME_ocorrencias.sql já limpa panico_*_assumido/responsavel junto). ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  const { p, erros } = await abrirLogado(ctx, cfg);
+
+  await p.click('#btn-energia');
+  await p.waitForTimeout(200);
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: true, panico_urna: false,
+           panico_energia_resolvido: false, panico_urna_resolvido: false,
+           panico_energia_assumido: true, panico_energia_responsavel_nome: 'Maria Gomes' },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(200);
+
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
+    new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
+           panico_energia_resolvido: true, panico_urna_resolvido: false,
+           panico_energia_assumido: false, panico_energia_responsavel_nome: null },
+    eventType: 'UPDATE',
+  }));
+  await p.waitForTimeout(300);
+
+  const cls = await p.locator('#btn-energia').getAttribute('class');
+  check('resolvido depois de assumido: vira verde, não amber',
+    cls.includes('c-panic-resolved') && !cls.includes('c-panic-assumido'), cls);
+  check('resolvido depois de assumido: toast de resolução (não o de assumir)',
+    (await p.locator('#toast').textContent()).includes('resolvido pela equipe'));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 12. Leitura inicial: app reaberto já mostra "sendo atendido" (não só
+// o Realtime ao vivo) — mesmo caso do bloco 6, agora pro assumido. ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig({
+    secao_id: 'sec-uuid-63', eleicao_id: 'ele-uuid-1',
+    panico_energia: true, panico_urna: false,
+    panico_energia_resolvido: false, panico_urna_resolvido: false,
+    panico_energia_assumido: true, panico_energia_responsavel_nome: 'João Silva',
+  });
+  const { p, erros } = await abrirLogado(ctx, cfg);
+  await p.waitForTimeout(300);
+
+  const cls = await p.locator('#btn-energia').getAttribute('class');
+  check('reabrir com assumido já no servidor: botão nasce amber',
+    cls.includes('c-panic-assumido'), cls);
+  check('reabrir: nome do responsável aparece de cara',
+    (await p.locator('#sub-energia').textContent()).includes('João Silva'));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

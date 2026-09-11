@@ -121,6 +121,12 @@ html,body{min-height:100%;width:100%;background:var(--body-bg);display:flex;just
 /* panico resolvido */
 .c-panic-resolved{background:linear-gradient(160deg,#0d2218,#081610)!important;box-shadow:0 5px 0 var(--green-s),0 7px 14px var(--btn-shadow)!important;}
 
+/* panico assumido — alguém do cartório já está cuidando, mas ainda não
+   resolveu; pulso mais lento que o vermelho (que é urgência de verdade),
+   só pra não parecer uma tela morta. */
+.c-panic-assumido{background:linear-gradient(160deg,#3d2c0a,#2a1e06)!important;box-shadow:0 5px 0 var(--yellow-s),0 7px 14px var(--btn-shadow)!important;animation:pulse-assumido 2.4s infinite;}
+@keyframes pulse-assumido{0%,100%{box-shadow:0 5px 0 var(--yellow-s),0 0 0 0 rgba(245,158,11,0)}50%{box-shadow:0 5px 0 var(--yellow-s),0 0 0 6px rgba(245,158,11,0.18);}}
+
 /* ── GRIDS ── */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
@@ -504,7 +510,7 @@ async function lerPanicoAtual() {
   try {
     let q = campoClient
       .from('sime_mesa_estado')
-      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido, panico_sos, panico_sos_resolvido')
+      .select('panico_energia, panico_urna, panico_energia_resolvido, panico_urna_resolvido, panico_sos, panico_sos_resolvido, panico_energia_assumido, panico_urna_assumido, panico_sos_assumido, panico_energia_responsavel_nome, panico_urna_responsavel_nome, panico_sos_responsavel_nome')
       .eq('secao_id', secaoId);
     if (eleicaoId) q = q.eq('eleicao_id', eleicaoId);
     const { data, error } = await q.maybeSingle();
@@ -632,6 +638,12 @@ const S = {
   zero:false, vot:false, enc:false, bu:false, mat:false, urna:false, fila:null,
   panico: { energia:false, urnaprob:false, sos:false },
   panico_resolved: { energia:false, urnaprob:false, sos:false },
+  // "Sendo atendido" — pedido direto: "como o mesário... vai saber que o
+  // chamado já esta sendo resolvido?". Espelhado do cartório (sime_
+  // ocorrencia_assumir/delegar em sql/SIME_mesa_estado_assumido.sql), nunca
+  // escrito por este aparelho.
+  panico_assumido: { energia:false, urnaprob:false, sos:false },
+  panico_responsavel: { energia:null, urnaprob:null, sos:null },
 };
 
 const MESA_CFG = {
@@ -862,13 +874,18 @@ function togglePanico(id) {
 function updatePanicoChip() {
   const chip = document.getElementById('dc-panico');
   if(!chip) return;
-  const ativo = Object.values(S.panico).some(Boolean);
-  if(ativo) {
-    chip.style.display = '';
+  const ativos = Object.keys(S.panico).filter(id => S.panico[id]);
+  if(!ativos.length) { chip.style.display = 'none'; return; }
+  chip.style.display = '';
+  // Se TODO pânico ativo já tem alguém cuidando, o chip resumo acompanha —
+  // senão fica vermelho mesmo com um deles já assumido (o que ainda falta
+  // é o que importa mostrar primeiro).
+  if(ativos.every(id => S.panico_assumido[id])) {
+    chip.textContent = '🟡 Sendo atendido';
+    chip.className = 'dc warn';
+  } else {
     chip.textContent = '🔴 Pânico ativo';
     chip.className = 'dc err';
-  } else {
-    chip.style.display = 'none';
   }
 }
 
@@ -880,7 +897,13 @@ function applyPanico(id, state) {
   const sub   = document.getElementById('sub-' + id);
   const badge = document.getElementById('badge-' + id);
 
-  if(state === 'active') {
+  if(state === 'active' && S.panico_assumido[id]) {
+    const nome = S.panico_responsavel[id];
+    btn.className = 'rbtn wide c-panic-assumido';
+    lbl.style.color = 'var(--yellow)';
+    badge.textContent = '🟡';
+    sub.textContent = (nome ? `Sendo atendido por ${nome}` : 'Sendo atendido pelo cartório') + ' — toque 2x se já resolveu';
+  } else if(state === 'active') {
     btn.className = 'rbtn c-red wide c-panic-active';
     lbl.style.color = 'var(--red)';
     badge.textContent = '🔴';
@@ -907,15 +930,29 @@ window.aplicarPanicoRemoto = function(row) {
   const remoto = {
     panico: { energia: !!row.panico_energia, urnaprob: !!row.panico_urna, sos: !!row.panico_sos },
     resolvido: { energia: !!row.panico_energia_resolvido, urnaprob: !!row.panico_urna_resolvido, sos: !!row.panico_sos_resolvido },
+    // "Sendo atendido" (pedido direto: "como o mesário vai saber que o
+    // chamado já está sendo resolvido?") — espelhado por sime_ocorrencia_
+    // assumir/delegar, ver sql/SIME_mesa_estado_assumido.sql.
+    assumido: { energia: !!row.panico_energia_assumido, urnaprob: !!row.panico_urna_assumido, sos: !!row.panico_sos_assumido },
+    responsavel: { energia: row.panico_energia_responsavel_nome || null, urnaprob: row.panico_urna_responsavel_nome || null, sos: row.panico_sos_responsavel_nome || null },
   };
 
   let mudou = false;
   let resolvidoDeFora = false;
+  let assumidoDeFora = false;
+  let nomeAssumido = null;
   Object.keys(S.panico).forEach(id => {
-    if(S.panico[id] === remoto.panico[id] && S.panico_resolved[id] === remoto.resolvido[id]) return;
+    const igual = S.panico[id] === remoto.panico[id]
+      && S.panico_resolved[id] === remoto.resolvido[id]
+      && S.panico_assumido[id] === remoto.assumido[id]
+      && S.panico_responsavel[id] === remoto.responsavel[id];
+    if(igual) return;
     if(S.panico[id] && !remoto.panico[id] && remoto.resolvido[id]) resolvidoDeFora = true;
+    if(remoto.panico[id] && remoto.assumido[id] && !S.panico_assumido[id]) { assumidoDeFora = true; nomeAssumido = remoto.responsavel[id]; }
     S.panico[id] = remoto.panico[id];
     S.panico_resolved[id] = remoto.resolvido[id];
+    S.panico_assumido[id] = remoto.assumido[id];
+    S.panico_responsavel[id] = remoto.responsavel[id];
     applyPanico(id, remoto.panico[id] ? 'active' : (remoto.resolvido[id] ? 'resolved' : 'idle'));
     mudou = true;
   });
@@ -925,6 +962,7 @@ window.aplicarPanicoRemoto = function(row) {
   // o snapshot devolveria o que acabou de chegar.
   saveLocal();
   if(resolvidoDeFora) { showToast('✓ Problema resolvido pela equipe'); vib([60,30,60]); }
+  else if(assumidoDeFora) { showToast(nomeAssumido ? `🟡 ${nomeAssumido} está cuidando do problema` : '🟡 Alguém já está cuidando do problema'); vib(40); }
 };
 
 // ─── PERSISTÊNCIA ──────────────────────────────────────────
@@ -985,6 +1023,8 @@ function saveLocal() {
       mat: S.mat, urna: S.urna, fila: S.fila,
       panico: { ...S.panico },
       panico_resolved: { ...S.panico_resolved },
+      panico_assumido: { ...S.panico_assumido },
+      panico_responsavel: { ...S.panico_responsavel },
       ts: Date.now(),
     };
     localStorage.setItem(MESA_KEY, JSON.stringify(all));
@@ -1008,6 +1048,8 @@ function loadState() {
     S.fila = d.fila ?? null;
     if(d.panico) Object.assign(S.panico, d.panico);
     if(d.panico_resolved) Object.assign(S.panico_resolved, d.panico_resolved);
+    if(d.panico_assumido) Object.assign(S.panico_assumido, d.panico_assumido);
+    if(d.panico_responsavel) Object.assign(S.panico_responsavel, d.panico_responsavel);
   } catch(e) {}
 }
 

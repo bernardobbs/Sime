@@ -4876,6 +4876,94 @@ prefere a atribuição real sobre o fallback do TRE).
 
 ---
 
+## 🟡 "SENDO ATENDIDO" NO PAINEL DO MESÁRIO (`SIME_mesario.html`, 11/09/2026)
+
+Pergunta direta: "como o mesário que irá indicar no site da seção o problema
+vai saber que o chamado já esta sendo resolvido e verificar atualizações?" —
+até aqui o aparelho do mesário só enxergava um sinal **binário**: chip
+vermelho "🔴 Pânico ativo" enquanto o pânico está aberto, que some (com toast
+"✓ Problema resolvido pela equipe") só quando o cartório clica "Resolvido"
+em `SIME_problemas.html`. Não havia meio-termo — nenhum jeito de saber que
+"alguém já assumiu isso" antes da resolução final. Duas opções levantadas
+(espelhar só "assumida" vs. expor número do chamado + timeline completa no
+aparelho); pedido explícito do dono do projeto: **"implemente só o chip
+'sendo atendido'"** — a opção mínima, sem número de chamado nem timeline.
+
+**Espelha o mesmo padrão que `sime_ocorrencia_resolver()` já usava pra
+"resolvido"** — aquela RPC já chamava `sime_acao_mesa()` de dentro de si
+mesma pra baixar o pânico na seção quando o cartório resolve pelo Painel de
+Problemas, e é isso que o Realtime já existente do mesário
+(`subscribeMesaEstadoSecao`) capta de graça. A mesma ideia foi estendida pra
+"assumida": `sql/SIME_mesa_estado_assumido.sql` (aplicado em produção) —
+
+- **`sime_mesa_estado`** ganha 6 colunas: `panico_energia_assumido`/
+  `panico_urna_assumido`/`panico_sos_assumido` (boolean, default `false`) e
+  `panico_energia_responsavel_nome`/`panico_urna_responsavel_nome`/
+  `panico_sos_responsavel_nome` (texto) — só os 3 tipos de pânico do mesário
+  (`energia`/`urna`/`sos`), nunca `problema_instalacao` (isso é acionado por
+  outra tela de D-1, não pelo mesário).
+- **`sime_acao_mesa()`** ganha 6 parâmetros novos no FIM da assinatura
+  (`DEFAULT NULL`), mesmo padrão já documentado pro resto da RPC — `NULL`
+  = não mexe, valor = grava, `''` (só nos campos de nome) = limpa.
+- **`sime_ocorrencia_assumir(p_id)`** — depois do UPDATE de sempre
+  (`status='assumida'`), um bloco best-effort (`BEGIN/EXCEPTION WHEN OTHERS
+  THEN NULL`) chama `sime_acao_mesa()` com `p_panico_<tipo>_assumido=true` e
+  `p_panico_<tipo>_responsavel=<nome de quem assumiu, de sime_usuarios>` —
+  só quando `v_row.tipo IN ('energia','urna','sos')`. Uma falha aqui nunca
+  desfaz o "Assumir" em si (a ocorrência já está marcada, o espelho é só um
+  reforço visual pro campo).
+- **`sime_ocorrencia_delegar(p_id, p_para, p_motivo)`** — mesmo bloco, só que
+  com o nome de QUEM RECEBEU (`v_nome_novo`, resolvido de `p_para`) — trocar
+  de responsável atualiza o nome no aparelho do mesário também, sem nunca
+  voltar pro vermelho.
+- **`sime_ocorrencia_resolver(p_id, p_resolucao)`** — os `PERFORM
+  sime_acao_mesa(...)` que já existiam (pra energia/urna/sos, não
+  instalação) ganharam `p_panico_<tipo>_assumido=false,
+  p_panico_<tipo>_responsavel=''` junto do que já zerava o pânico — limpa o
+  "sendo atendido" no mesmo golpe que resolve.
+
+**`SIME_mesario.html`** — nenhuma assinatura Realtime nova, nenhuma consulta
+a `sime_ocorrencias`/`sime_ocorrencia_eventos` (a tela continua deliberadamente
+minimalista, toque único, sem rolagem, uso às 5h30 com sono):
+- `S.panico_assumido`/`S.panico_responsavel` (novos, por tipo) — persistidos
+  em `localStorage['sime_mesa_v1']` (`saveLocal()`/`loadState()`), mesmo
+  padrão de `S.panico`/`S.panico_resolved`.
+- `lerPanicoAtual()` (leitura ao abrir/voltar de tela) e
+  `window.aplicarPanicoRemoto(row)` (callback do Realtime já existente)
+  passaram a ler as 6 colunas novas e comparar contra o estado local — um
+  pânico que vira "assumido" de fora (`assumidoDeFora`) dispara um toast
+  próprio ("🟡 Fulano está cuidando do problema") e `vib(40)`, distinto do
+  toast de resolução (`resolvidoDeFora`, vibração mais longa).
+- **Botão do pânico** — terceiro estado visual, entre vermelho (ativo) e
+  verde (resolvido): `.c-panic-assumido` (fundo âmbar, pulso mais lento que
+  o vermelho — urgência real é vermelho, isso é só "não parece tela morta"),
+  badge 🟡, subtítulo "Sendo atendido por {nome} — toque 2x se já resolveu"
+  (ou "...pelo cartório" se o nome não veio). Botão continua clicável do
+  jeito de sempre — a pessoa ainda consegue marcar como resolvido no próprio
+  aparelho se o problema já passou, mesmo estando marcado como assumido.
+- **`#dc-panico` (chip-resumo do topo)** — texto/cor mudam de "🔴 Pânico
+  ativo" pra "🟡 Sendo atendido" quando TODOS os pânicos ativos no momento já
+  estão assumidos (`ativos.every(id => S.panico_assumido[id])`) — se houver
+  um pânico assumido e outro ainda não, o chip continua vermelho (o pior
+  caso vence, mesmo critério "o aviso mais acionável vence" já usado alhures
+  no projeto).
+
+**Nunca escrito pelo próprio aparelho do mesário** — `syncMesa()` (a função
+que já garante que campos de pânico só entram no payload quando o toque foi
+de pânico, ver "Pânico — propagação de volta ao campo" abaixo) nunca manda
+os 6 parâmetros novos; eles só chegam via `sime_ocorrencia_assumir`/
+`delegar`/`resolver`, sempre do lado do cartório. O mesário só LÊ.
+
+Coberto por `tests/test_mesario_panico_realtime.mjs` (blocos 8-12, 59 checks
+no total no arquivo inteiro): botão vira âmbar com o nome de quem assumiu +
+toast; chip-resumo troca de vermelho pra âmbar quando o único pânico ativo é
+assumido; delegar troca o nome sem voltar a vermelho; resolver depois de
+assumido vira verde (não âmbar) com o toast certo; reabrir a tela com
+"assumido" já gravado no servidor nasce direto em âmbar (via
+`lerPanicoAtual()`, não só localStorage).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
@@ -4977,6 +5065,11 @@ abrir e a cada volta de tela, então a resolução feita pelo Admin chega ao
 aparelho. Além disso, **os campos de pânico só entram no payload quando o
 toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
 ação pode desfazer a resolução (vale offline também).
+
+Desde 11/09/2026 (ver "🟡 'SENDO ATENDIDO' NO PAINEL DO MESÁRIO" acima), não é
+mais só resolução que chega ao aparelho — "assumida"/"delegada" também
+propagam, virando um terceiro estado visual (chip âmbar "sendo atendido")
+entre o vermelho de pânico ativo e o verde de resolvido.
 
 O `SIME_acessibilidade.html` também recebe — assina as seções do **local** do
 coordenador (`secao_id=in.(...)`, não a zona inteira) e relê ao entrar e a cada
