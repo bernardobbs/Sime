@@ -4964,6 +4964,67 @@ assumido vira verde (não âmbar) com o toast certo; reabrir a tela com
 
 ---
 
+## IMPRESSÃO EM CARTÃO DE VISITA (`SIME_tokens.html`, 11/09/2026)
+
+Pedido direto: "em imprimir todos, quero que gere cada e as informações como
+um cartão de visitas e preenchendo uma folha a4 com cartões suficientes,
+verifique se o qrcode esta em tamanho suficiente." Antes disso, "🖨️
+Imprimir todos" só chamava `window.print()` direto sobre a própria lista na
+tela — cada card full-width, um embaixo do outro, QR de 120px — nada de
+cartão de visita, e desperdiçava a folha A4 (cabiam só 2-3 cards por página
+impressa nesse formato). Esclarecido via `AskUserQuestion` antes de
+implementar (three perguntas, todas respondidas com a opção recomendada):
+
+1. **Tamanho: cartão de visita padrão (85×54mm), não crachá maior.**
+2. **Conteúdo essencial**: nome, papel (ícone+label) e PIN — sem escopo
+   (seção/rota/local), sem badges de válido/expirado, sem datas. Um
+   cartão de visita não é a tela de detalhe; escopo continua consultável
+   na lista normal (tela) se precisar conferir antes de entregar.
+3. **O 🖨️ de cada linha usa o MESMO formato** — consistência: imprimir 1
+   ou todos sempre usa o cartão pequeno, útil pra reimprimir um cartão
+   avulso perdido sem precisar rolar até "Imprimir todos".
+
+**Layout**: `@page{size:A4;margin:8mm}` + `.tk-page{display:grid;
+grid-template-columns:repeat(2,85mm);grid-template-rows:repeat(5,54mm)}` —
+2 colunas × 5 linhas = 10 cartões por folha. Cada cartão (`.tk-card`,
+85×54mm exatos via `box-sizing:border-box`) tem borda tracejada como guia
+de corte. `.tk-page:not(:last-child){page-break-after:always}` — mais de
+10 tokens vira página nova, sem página em branco sobrando no fim (a
+quebra só entra ENTRE páginas, nunca depois da última).
+
+Mesmo padrão de `#print-area` já usado em Correspondência/Oficial de
+Justiça/Rotas (`display:none` na tela, só visível via `@media print`,
+`window.print()` chamado direto, sem popup): `tkImprimirCartoes(tokens)`
+(nova, em `SIME_tokens.html`) monta o HTML de todas as páginas, gera o QR
+de cada cartão (síncrono, `new QRCode()`, mesma lib vendorizada de sempre)
+e chama `window.print()` — uma rotina só, compartilhada por
+`imprimirTodos()` (todos os tokens, ordenados como na lista) e
+`imprimirToken(id)` (1 token só, que agora chama a mesma função em vez do
+hack antigo de esconder/mostrar `.token-card` na própria lista).
+
+**QR: tamanho físico fixo em 40mm × 40mm** (quase metade da largura do
+cartão) — bem acima do mínimo recomendado (~20mm) pra escanear de perto
+com celular. `tkQrCanvasPx(texto)` (mesmo princípio de `rtQrSizePx()` do
+módulo de Rotas, 10/09/2026 — QR ilegível impresso em canvas fixo pra um
+link mais longo que o costumeiro) escala a RESOLUÇÃO do canvas por trás
+(160/220/280px conforme o tamanho da URL) — o tamanho FÍSICO impresso não
+muda (é regra CSS fixa do cartão), só a nitidez da matriz por trás, pra
+nunca borrar se a URL crescer (ex.: zona não resolvida, cai no fallback
+de URL relativa mais longa). Verificado gerando o PDF de verdade (12
+tokens de teste): A4 exato (210×297mm), 2 páginas (10+2), QR nítido e
+proporcional — não só teoria.
+
+Token de TV mostra "Sem PIN — só QR" no lugar do PIN (TV nunca usa PIN de
+verdade — mesmo critério já documentado em "TOKEN DE TV PELA UI" acima).
+
+Coberto por `tests/test_tokens_impressao.mjs` (24 checks): 12 tokens
+viram 2 páginas (10+2, sem página em branco); conteúdo essencial (nome,
+papel, PIN) presente e escopo ausente (mesmo o mesário tendo seção
+cadastrada); QR desenhado em resolução generosa; token TV sem PIN; e o
+🖨️ de uma linha imprime só aquele 1 token, no mesmo formato de cartão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

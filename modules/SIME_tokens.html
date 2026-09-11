@@ -96,17 +96,32 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* .toast.show vem de sime_components.css */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(12px);background:#2a2a2a;color:#fff;padding:10px 18px;border-radius:99px;font-size:.78rem;font-weight:600;opacity:0;transition:all .22s;pointer-events:none;z-index:200;white-space:nowrap;}
 
-/* ── IMPRESSÃO ── */
+/* ── IMPRESSÃO — cartões de visita (11/09/2026) ──
+   Mesmo padrão de #print-area já usado em Correspondência/Oficial de
+   Justiça/Rotas: fica invisível na tela, só aparece via @media print,
+   evitando window.open()/popup — window.print() é chamado direto depois
+   de montar o innerHTML. */
+#print-area{display:none;}
 @media print{
-  body{background:#fff;}
-  .topbar,.sidebar-card,.tc-actions,.copy-btn,.btn,.topbar-right{display:none!important;}
-  .page{display:block;padding:0;max-width:100%;}
-  .tokens-list{gap:0;}
-  .token-card{border:none;border-bottom:1px dashed #ccc;border-radius:0;break-inside:avoid;margin-bottom:16px;}
-  .tc-body{padding:10px 0;}
-  .qr-container{width:120px;height:120px;}
-  .pin-digit{background:#333;}
-  .tc-url{font-size:.6rem;}
+  body > *:not(#print-area){display:none!important;}
+  #print-area{display:block!important;color:#000;}
+  @page{size:A4;margin:8mm;}
+  /* Cartão de visita padrão (85×54mm) — 2 colunas × 5 linhas = 10 por
+     folha A4, com margem de 8mm; o restante da folha (gap) fica como
+     respiro entre os cartões, não como sobra desperdiçada. Token a mais
+     que 10 vira página nova (.tk-page:not(:last-child), sem página em
+     branco sobrando no fim). */
+  .tk-page{display:grid;grid-template-columns:repeat(2,85mm);grid-template-rows:repeat(5,54mm);gap:2mm 6mm;justify-content:center;align-content:start;}
+  .tk-page:not(:last-child){page-break-after:always;}
+  .tk-card{box-sizing:border-box;width:85mm;height:54mm;border:1px dashed #999;border-radius:3mm;padding:3mm;display:flex;gap:3mm;align-items:center;break-inside:avoid;overflow:hidden;background:#fff;}
+  .tk-card-qr{width:40mm;height:40mm;flex-shrink:0;}
+  .tk-card-qr canvas{width:100%!important;height:100%!important;}
+  .tk-card-info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1.8mm;}
+  .tk-card-brand{font-size:6.5pt;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#888;}
+  .tk-card-nome{font-weight:800;font-size:9.5pt;line-height:1.15;color:#000;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .tk-card-papel{font-size:7.5pt;font-weight:700;color:#333;}
+  .tk-card-pin{font-size:9.5pt;font-weight:900;letter-spacing:1.5px;font-family:monospace;color:#000;}
+  .tk-card-pin-off{font-size:7pt;color:#666;font-style:italic;}
 }
 </style>
 </head>
@@ -136,7 +151,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="brand-sub">Gere QR Codes e PINs para os operadores de campo</div>
   </div>
   <div class="topbar-right">
-    <button class="btn btn-out btn-sm" onclick="window.print()">🖨️ Imprimir todos</button>
+    <button class="btn btn-out btn-sm" onclick="imprimirTodos()">🖨️ Imprimir todos</button>
     <button class="btn btn-red btn-sm" onclick="resetarTodos()">🗑 Limpar todos</button>
     <span id="sime-um-slot" style="display:none"></span>
   </div>
@@ -254,6 +269,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div id="print-area"></div>
 
 <!-- confirm() nativo quebrava o padrão visual do resto do sistema (achado
      "baixo" da auditoria) — modal mínimo reaproveitado pelas 2 confirmações
@@ -1079,13 +1096,103 @@ function resetarTodos(){
   });
 }
 
-function imprimirToken(id){
-  // Oculta todos os cards exceto o selecionado, imprime, restaura
-  document.querySelectorAll('.token-card').forEach(c=>{
-    c.style.display = c.id === 'tc-'+id ? '' : 'none';
+// ══════════════════════════════════════════════════
+// IMPRESSÃO — cartões de visita (11/09/2026)
+// ══════════════════════════════════════════════════
+// Pedido direto: "quero que gere cada e as informações como um cartão de
+// visitas e preenchendo uma folha a4 com cartões suficientes, verifique
+// se o qrcode esta em tamanho suficiente" — antes disso "Imprimir todos"
+// só chamava window.print() sobre a própria lista na tela (cada card
+// full-width, um embaixo do outro, QR de 120px) — nem de longe um cartão
+// de visita, e desperdiçava a folha A4 imprimindo um card só por vez na
+// prática (a lista raramente cabe mais de 2-3 cards visíveis por página
+// impressa nesse formato). Layout novo, único pra "Imprimir todos" E pro
+// 🖨️ de cada linha (mesmo formato pros dois, decisão explícita — reimprimir
+// um cartão avulso perdido usa a mesma folha/tamanho de sempre): cartão de
+// visita padrão 85×54mm, 2 colunas × 5 linhas = 10 por folha A4 (ver CSS
+// #print-area/.tk-page), com guia de corte tracejada em cada cartão.
+//
+// Conteúdo ESSENCIAL only (escolha explícita do dono do projeto, entre
+// "essencial" e "essencial + escopo"): nome, papel (ícone+label) e PIN —
+// sem seção/rota/local, sem badges de válido/expirado, sem datas. Um
+// cartão de visita não é a tela de detalhe; escopo continua consultável
+// na lista normal (tela) se precisar conferir antes de entregar.
+
+// Canvas do QR escalado pelo tamanho do link, mesmo princípio de
+// rtQrSizePx() (sime_rotas_modulo.js, 10/09/2026 — QR da rota VIS1 saiu
+// ilegível impresso em 96px fixo pra um link bem mais longo que o
+// costumeiro). Aqui o TAMANHO FÍSICO impresso já é fixo (.tk-card-qr é
+// 40mm×40mm no CSS, generoso — bem acima do mínimo ~20mm recomendado pra
+// QR de cartão de visita escaneado a curta distância); o que este helper
+// controla é a RESOLUÇÃO do canvas por trás disso, pra a matriz não sair
+// borrada quando o link for mais longo que o normal (ex.: zona não
+// resolvida, cai no fallback de URL relativa mais longa). Tiers mais
+// apertados que os de rtQrSizePx() porque aqui o espaço físico do cartão
+// não cresce pra acomodar — 160px já é generoso pro comprimento típico de
+// URL de token (domínio + /z/<n>/<módulo>.html?token=<uuid>, ~90-110
+// caracteres), e mesmo o tier maior ainda cabe bem escalado pra 40mm.
+function tkQrCanvasPx(texto){
+  const n = (texto || '').length;
+  if (n <= 110) return 160;
+  if (n <= 180) return 220;
+  return 280;
+}
+
+function tkCardHtml(t){
+  const url = buildUrl(t.id, t.tipo, t.local);
+  const ehTv = t.tipo === 'tv';
+  const papel = TIPO_LABEL[t.tipo] || { icon:'🔑', nome:t.tipo };
+  return `
+    <div class="tk-card">
+      <div class="tk-card-qr" id="tk-qr-${t.id}"></div>
+      <div class="tk-card-info">
+        <div class="tk-card-brand">SIME · Zona ${t.zona}</div>
+        <div class="tk-card-nome">${t.nome}</div>
+        <div class="tk-card-papel">${papel.icon} ${papel.nome}</div>
+        ${ehTv
+          ? '<div class="tk-card-pin-off">Sem PIN — só QR</div>'
+          : `<div class="tk-card-pin">PIN ${t.pin}</div>`}
+      </div>
+    </div>`;
+}
+
+// Uma única rotina pra "Imprimir todos" e pro 🖨️ de uma linha — o
+// segundo só passa um array de 1 token. Monta as páginas (.tk-page,
+// 10 cartões cada, grid fixo — sobra de cartão vira grade vazia na
+// mesma folha, não página em branco), gera o QR de cada um (síncrono,
+// depois do innerHTML — mesmo padrão de rtImprimirFicha) e chama
+// window.print() direto, sem popup.
+function tkImprimirCartoes(tokens){
+  const area = document.getElementById('print-area');
+  if (!tokens.length) { area.innerHTML = ''; return; }
+  const POR_PAGINA = 10;
+  const paginas = [];
+  for (let i = 0; i < tokens.length; i += POR_PAGINA) paginas.push(tokens.slice(i, i + POR_PAGINA));
+  area.innerHTML = paginas
+    .map(pagina => `<div class="tk-page">${pagina.map(tkCardHtml).join('')}</div>`)
+    .join('');
+  tokens.forEach(t => {
+    const qrEl = document.getElementById('tk-qr-' + t.id);
+    const url = buildUrl(t.id, t.tipo, t.local);
+    if (qrEl && window.QRCode) {
+      try {
+        const px = tkQrCanvasPx(url);
+        new QRCode(qrEl, { text: url, width: px, height: px, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      } catch(e) { qrEl.innerHTML = ''; }
+    }
   });
   window.print();
-  document.querySelectorAll('.token-card').forEach(c=>{ c.style.display=''; });
+}
+
+function imprimirTodos(){
+  const tokens = Object.values(loadTokens()).sort((a,b) => b.criado_em - a.criado_em);
+  tkImprimirCartoes(tokens);
+}
+
+function imprimirToken(id){
+  const t = loadTokens()[id];
+  if (!t) return;
+  tkImprimirCartoes([t]);
 }
 
 let toastT = null;
