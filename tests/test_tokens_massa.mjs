@@ -64,13 +64,24 @@ function baseMockConfig() {
   return {
     sime_eleicoes: [{ id: 'ele-uuid-1', turno: 1, ativa: true, created_at: '2026-01-01' }],
     sime_rotas: [
-      { id: 'rota-uuid-001', codigo: '001', nome: 'Rota 001', municipios: ['Campo Maior'], ativo: true },
-      { id: 'rota-uuid-002', codigo: '002', nome: 'Rota 002', municipios: ['Campo Maior'], ativo: true },
+      // Só a 001 é de tipo 'instalacao' — a 002 é só 'distribuicao', então a
+      // geração em massa de Instalador (e o filtro do checkbox individual)
+      // deve incluir a 001 e excluir a 002 (ver "TOKEN DE INSTALADOR SEM
+      // ESCOPO REAL" — o fix depende de `tipos` pra saber qual rota oferecer).
+      { id: 'rota-uuid-001', codigo: '001', nome: 'Rota 001', tipos: ['distribuicao','instalacao'], municipios: ['Campo Maior'], ativo: true },
+      { id: 'rota-uuid-002', codigo: '002', nome: 'Rota 002', tipos: ['distribuicao'], municipios: ['Campo Maior'], ativo: true },
     ],
     sime_secoes: [
       { id: 'sec-uuid-135', numero: 135, local_nome: 'G.E. Profª Maroquinha', municipio: 'Campo Maior', eleitores: 178, ativo: true, rota_id: 'rota-uuid-001', parada: 1 },
       { id: 'sec-uuid-144', numero: 144, local_nome: 'G.E. Profª Maroquinha', municipio: 'Campo Maior', eleitores: 165, ativo: true, rota_id: 'rota-uuid-001', parada: 1 },
       { id: 'sec-uuid-180', numero: 180, local_nome: 'U.E. José Gomes Oliveira', municipio: 'Campo Maior', eleitores: 200, ativo: true, rota_id: 'rota-uuid-002', parada: 1 },
+    ],
+    // Fonte real das seções de uma rota (qualquer tipo) — o mock não resolve
+    // embed de verdade, então cada linha já traz `sime_secoes:{numero}` pronto,
+    // simulando o que o Supabase devolveria pra `.select('...,sime_secoes(numero)')`.
+    sime_rota_secoes: [
+      { rota_id: 'rota-uuid-001', parada: 1, sime_secoes: { numero: 135 } },
+      { rota_id: 'rota-uuid-001', parada: 1, sime_secoes: { numero: 144 } },
     ],
     insertCalls: [], deleteCalls: [], insertShouldFail: false,
   };
@@ -142,6 +153,39 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2b. Criar token de Instalador manualmente: só rota tipo 'instalacao' no
+// checkbox, e o token nasce com `secoes` resolvidas (não vazio — sem isso,
+// SIME_instalador.html não teria nenhuma seção de trabalho, ver CLAUDE.md
+// "como configurar rotas de instalação"). ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+
+  await p.selectOption('#f-tipo', 'instalador');
+  const rotulos = await p.evaluate(() => [...document.querySelectorAll('#rotas-check input')].map(c => c.value));
+  check('checkbox de rota, pro tipo instalador, só lista a rota de tipo instalacao (001, não 002)',
+    JSON.stringify(rotulos) === JSON.stringify(['Rota 001']), rotulos.join(','));
+
+  await p.fill('#f-nome', 'Pedro Instalador');
+  await p.click('label.rota-ck >> nth=0');
+  await p.click('text=🔑 Gerar QR Code + PIN');
+  await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
+  const call = (await p.evaluate(() => window.__mockConfig.insertCalls))[0];
+  check('token de instalador grava tipo=instalador', call.payload.tipo === 'instalador');
+  check('token de instalador grava rotas=["001"]', JSON.stringify(call.payload.rotas) === JSON.stringify(['001']));
+  check('token de instalador grava secoes resolvidas (0135,0144), não vazio',
+    JSON.stringify(call.payload.secoes) === JSON.stringify(['0135','0144']));
+  const url = await p.locator('.tc-url').first().textContent();
+  check('QR aponta pra SIME_instalador.html', url.includes('SIME_instalador.html?token='));
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
 // ── 3. Gerar em massa: cria 1 por seção/rota/local, coletor de mídias não aparece no dropdown ──
 {
   const ctx = await b.newContext();
@@ -154,9 +198,9 @@ async function login(p) {
   await login(p);
 
   const opcoesTipo = await p.evaluate(() => [...document.getElementById('f-tipo').options].map(o => o.value));
-  check('os 6 tipos de campo estão no dropdown',
+  check('os 6 tipos de campo + tv estão no dropdown',
     JSON.stringify([...opcoesTipo].sort()) === JSON.stringify(
-      ['coletor_midias','coord_acessibilidade','conferente','instalador','mesario','motorista'].sort()),
+      ['coletor_midias','coord_acessibilidade','conferente','instalador','mesario','motorista','tv'].sort()),
     opcoesTipo.join(','));
 
   await p.evaluate(() => window.gerarEmMassa());
@@ -167,13 +211,18 @@ async function login(p) {
   const porTipo = {};
   Object.values(tokens).forEach(t => { porTipo[t.tipo] = (porTipo[t.tipo]||0) + 1; });
   check('gerou 3 tokens de mesário (1 por seção)', porTipo.mesario === 3);
-  check('gerou 2 tokens de conferente (1 por rota)', porTipo.conferente === 2);
-  check('gerou 2 tokens de motorista (1 por rota)', porTipo.motorista === 2);
-  check('gerou 2 tokens de instalador (1 por rota)', porTipo.instalador === 2);
+  check('gerou 2 tokens de conferente (1 por rota, sem filtro de tipo)', porTipo.conferente === 2);
+  check('gerou 2 tokens de motorista (1 por rota, sem filtro de tipo)', porTipo.motorista === 2);
+  check('gerou 1 token de instalador — só a rota 001 (tipo instalacao), não a 002 (só distribuicao)', porTipo.instalador === 1);
   check('gerou 2 tokens de acessibilidade (1 por local único)', porTipo.coord_acessibilidade === 2);
   check('não gerou nenhum token de coletor_midias', !porTipo.coletor_midias);
 
-  const totalEsperado = 3 + 2 + 2 + 2 + 2;
+  const tokenInstalador = Object.values(tokens).find(t => t.tipo === 'instalador');
+  check('token de instalador em massa grava rotas=["Rota 001"]', JSON.stringify(tokenInstalador?.rotas) === JSON.stringify(['Rota 001']));
+  check('token de instalador em massa já vem com secoes resolvidas de sime_rota_secoes (0135,0144)',
+    JSON.stringify(tokenInstalador?.secoes) === JSON.stringify(['0135','0144']));
+
+  const totalEsperado = 3 + 2 + 2 + 1 + 2;
   check(`total de ${totalEsperado} tokens criados`, Object.keys(tokens).length === totalEsperado);
 
   // Verifica que usou insert em LOTE (1 chamada com N linhas), não N chamadas

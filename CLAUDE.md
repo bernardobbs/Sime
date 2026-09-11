@@ -77,7 +77,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
 /
 ├── CLAUDE.md                          ← Este arquivo
-├── modules/                           ← 20 módulos HTML
+├── modules/                           ← 21 módulos HTML
 │   ├── SIME_coordenador_preparacao.html  D-X
 │   ├── SIME_tv_preparacao.html           D-X (TV)
 │   ├── SIME_conferente.html              D-1
@@ -92,6 +92,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_acessibilidade.html          Dia D
 │   ├── SIME_atores.html                  Todos
 │   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
+│   ├── SIME_rotas.html                   Pré-eleição (cadastro de rotas — ver seção própria abaixo)
 │   ├── SIME_principal.html               Todos — landing padrão do site (/ redireciona pra cá)
 │   ├── SIME_tokens.html                  Pré-eleição
 │   ├── SIME_paineis.html                 Todos
@@ -133,6 +134,14 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Gestor de Distribuição** | Rotas | Ver + controlar embarque |
 | **Observador** | Tudo | Somente leitura |
 | **Coord. de Motoristas (Preposto)** | `empresa_id` do usuário | Só rotas da empresa dele |
+| **Auxiliar de Eleição** (10/09/2026) | `sime_auxiliar_locais` do usuário (N locais) | Ver + resolver problema de urna nesses locais |
+
+> ⚠️ **Duas coisas diferentes com o mesmo nome** — a linha acima
+> (`sime_usuarios.perfil='auxiliar_eleicao'`, login e-mail/senha, ver seção
+> própria "AUXILIAR DE ELEIÇÃO — LOCAIS PREDETERMINADOS" mais abaixo) não é
+> a mesma coisa que a linha "Auxiliar de Eleição" da tabela Camada Campo
+> logo abaixo (`sime_atores.funcao='auxiliar_eleicao'`, roster do TRE,
+> convocação) — cadastros paralelos, deliberadamente desacoplados.
 
 ### Camada Campo (acesso via QR Code + PIN)
 
@@ -194,7 +203,8 @@ Detecção (SIME/Hermes)
 ```sql
 sime_zonas          -- zonas eleitorais
 sime_secoes         -- seções com local, município, eleitores (por zona)
-sime_rotas          -- rotas com paradas (por zona)
+sime_rotas          -- rotas com paradas (por zona); tipos[] desde 04/09/2026 (ver módulo 🗺️ Rotas)
+sime_rota_secoes    -- junção rota↔seção (04/09/2026) — uma seção pode estar em rotas diferentes por tipo
 sime_eleicoes       -- por zona e turno
 sime_empresas       -- empresas contratadas (motoristas) ← NOVO
 sime_usuarios       -- admins com perfil, zona_id, empresa_id, local_id
@@ -209,6 +219,7 @@ sime_ocorrencia_eventos -- histórico append-only de cada ocorrência
 sime_contatos_externos  -- Equatorial e afins, por zona/município
 sime_campanhas_confirmacao -- fila de disparo em massa do Hermes (SIME popula, Hermes envia)
 sime_voluntarios    -- cadastro paralelo de mesários voluntários (não é sime_atores/roster do TRE)
+sime_auxiliar_locais -- locais de votação atribuídos a um Auxiliar de Eleição (perfil admin, N-pra-N)
 ```
 
 ### Painel de Problemas (`SIME_problemas.html`)
@@ -226,6 +237,163 @@ pelo Realtime.
 
 Escalonamento conta de `aberta_em`, não de `assumida_em` — senão a forma mais
 fácil de não ser escalado seria clicar em "Assumir" e esquecer.
+
+**Bug real corrigido em 10/09/2026, reportado pelo cartório: "ao resolver o
+problema aparece ⚠ TypeError: Failed to fetch".** Investigado direto no
+Supabase (projeto saudável, `sime_ocorrencia_resolver` existe e está
+correta, e nenhuma requisição sequer chegou aos edge logs no horário) — a
+falha foi de rede no NAVEGADOR de quem clicou (sinal instável no cartório/
+campo, o mesmo cenário que a filosofia offline-first do projeto já assume
+como normal), não um defeito no código ou no banco. Mas o toast mostrava o
+texto cru do erro JS (`error.message`) direto na tela — assustador e sem
+sentido pra quem não é dev, e nada nesta tela tinha o mesmo tratamento
+"erro amigável" que `mensagemErroAmigavel()` já dá em `SIME_admin.html`
+desde a auditoria de UI/UX (achado "médio": "7 pontos expunham error.message
+puro na tela") — `SIME_problemas.html` tinha ficado de fora daquela
+varredura. Corrigida com a mesma função, replicada aqui (não importada —
+os dois arquivos não compartilham `<script>` clássico), nos 3 pontos que
+mostram toast de erro (`assumir`/`confirmarDelegar`/`confirmarResolver`):
+`Failed to fetch`/`NetworkError` vira "Sem conexão com o servidor —
+verifique a rede e tente de novo"; permissão/RLS e sessão expirada também
+ganham tradução. **Diferente da versão do Admin** (que sempre prefere o
+fallback genérico sobre a mensagem crua — lá os erros são principalmente
+constraint do Postgres, sem valor pro operador): aqui as RPCs
+(`sime_ocorrencia_assumir` etc.) levantam `RAISE EXCEPTION` com texto
+pensado pro operador ("Ocorrência já tem responsável ou não está aberta") —
+raw `error.message` continua vencendo o fallback nesta tela, só os padrões
+técnicos (rede/sessão/permissão) são substituídos. `registrarContato()` não
+mostra toast nenhum (só o badge de sync) — não precisou de tradução. O card
+continua na lista de qualquer forma (nenhum caminho de erro fecha a folha
+nem recarrega) — é só tentar de novo. Coberto por dois testes novos em
+`tests/test_problemas.mjs` (reproduzindo o `TypeError: Failed to fetch`
+exato em Resolver e em Assumir), sem regredir o teste existente que checava
+a mensagem de negócio do servidor aparecendo tal qual.
+
+**Número de chamado (10/09/2026, `sql/SIME_ocorrencias_numero.sql`), pedido
+direto: "cada problema pode receber um número tipo um chamado?"**
+`sime_ocorrencias.numero` — sequencial **por zona**, não global (mesma
+lógica de "Seção 0063": o número precisa fazer sentido falado por telefone/
+rádio dentro da zona de quem está operando, sem competir por posição com o
+que acontece na outra zona ao mesmo tempo). `sime_zonas.ocorrencias_contador`
+guarda o último número emitido; `sime_proximo_numero_ocorrencia(zona_id)`
+incrementa via `UPDATE ... RETURNING` — o próprio lock de linha do Postgres
+evita duas ocorrências da mesma zona saírem com o mesmo número em paralelo,
+sem precisar de advisory lock nem `SELECT FOR UPDATE` à parte. Emitido nos
+dois únicos pontos que inserem em `sime_ocorrencias`: o gatilho automático
+(`sime_sync_ocorrencias()`, pânico vindo do campo) e a abertura manual
+(`sime_ocorrencia_abrir()`, cartório soube por telefone) — nunca calculado
+no cliente. Backfill do que já existia numerou por zona na ordem de
+`aberta_em` (mesma ordem que o histórico/escalonamento já usa), mas em
+produção não havia nenhuma ocorrência real na hora da migração (zeradas
+pelo botão de reset de dados de teste do Admin) — as duas zonas começam
+do zero.
+
+Exibido como `#007` (3 dígitos, `fmtChamado()`) no card da lista, no
+cabeçalho do detalhe, e na mensagem de WhatsApp pré-pronta pro contato
+("SIME — Chamado #007 — Seção 63...") — referenciável por telefone junto
+da seção, sem precisar ditar um UUID. Ocorrência sem `numero` (dado de
+antes desta migração, ou fallback offline) nunca mostra um `#undefined`
+quebrado — `fmtChamado()` só omite o prefixo, mesmo critério "nunca
+inventa" de sempre. Coberto por `tests/test_problemas.mjs` (card, detalhe e
+mensagem de WhatsApp mostram o número; card/detalhe sem `numero` não
+mostram `#` nenhum).
+
+**Prioridade declarada, "aguardando terceiro" e busca em resolvidos
+(11/09/2026, `sql/SIME_ocorrencias_prioridade_aguardando_busca.sql`).**
+Pedido direto, a partir de um brainstorm sobre o que faltaria pra este
+painel virar um sistema de tickets/helpdesk de verdade — "vamos
+implementar os itens 1, 2 e 5" da lista levantada.
+
+- **Prioridade (item 1)** — `sime_ocorrencias.prioridade`
+  (`'baixa'|'normal'|'alta'`, default `'normal'`), editável a qualquer
+  momento, **não só "na abertura".** Investigado antes de desenhar: das
+  duas formas de uma ocorrência nascer, só `sime_sync_ocorrencias()`
+  (gatilho automático do pânico de campo) de fato roda em produção —
+  `sime_ocorrencia_abrir()` (a RPC pensada pro cartório "abrir manualmente,
+  soube por telefone") **não tem nenhum caller no frontend**, é código só
+  de schema desde que foi criada. Travar a escolha de prioridade num
+  formulário de abertura que não existe deixaria de fora praticamente todo
+  o volume real — por isso virou uma linha de 3 botões
+  (🟢 Baixa / 🔵 Normal / 🔴 Alta, mesmo padrão de toque único já usado em
+  "Contatar mesários" pro trio Confirmado/Convocado/Substituir) dentro da
+  folha de detalhe, trocável quantas vezes precisar enquanto o chamado
+  segue aberto. RPC `sime_ocorrencia_definir_prioridade(p_id,p_prioridade)`
+  (`SECURITY DEFINER`, só grava com `status IN ('aberta','assumida')`, loga
+  `prioridade_definida` em `sime_ocorrencia_eventos`).
+
+  **Nunca substitui `nivel_escalonamento`** — os dois sinais respondem
+  perguntas diferentes: escalonamento é o cronômetro (10/30 min desde
+  `aberta_em`, ninguém edita), prioridade é o julgamento humano de quão
+  grave aquilo é, declarado por quem está olhando o caso. A lista principal
+  passou a **ordenar por prioridade primeiro** (`ordenarPorPrioridade()`,
+  peso alta=2/normal=1/baixa=0), e só depois pela idade de sempre — um
+  problema marcado Alta sobe pro topo mesmo recém-aberto, sem precisar
+  esperar o relógio do escalonamento automático chegar lá. Card ganha badge
+  vermelho/verde só pra alta/baixa — Normal (o default, a maioria dos
+  casos) não polui a lista com um badge que não diz nada de novo.
+
+- **"Aguardando terceiro" (item 2)** — `sime_ocorrencias.aguardando_terceiro`
+  (boolean, default `false`), **flag própria, não um status novo** — mesmo
+  espírito de `sime_atores.precisa_substituir` (já documentado nesta
+  seção): um valor novo em `status` exigiria caçar e atualizar todo lugar
+  que já lê `status IN ('aberta','assumida')` como "ainda em aberto"
+  (`recarregar()`, `sime_escalonar_ocorrencias()`, o índice único que
+  impede pânico duplicado) — uma flag ao lado de nenhum desses quebra.
+  Distingue "estou trabalhando nisso agora" de "já fiz minha parte, só
+  esperando a Equatorial/oficial de justiça ligar de volta", situação hoje
+  visualmente idêntica a qualquer outra ocorrência assumida. Botão
+  "🕓 Aguardando terceiro" no rodapé da folha, **só aparece depois de
+  assumida** (RPC `sime_ocorrencia_toggle_aguardando_terceiro` exige
+  `responsavel_id IS NOT NULL` — não faz sentido "esperar terceiro" numa
+  ocorrência que ainda nem tem dono); vira "✓ Terceiro respondeu" quando já
+  marcada. Card e detalhe ganham um badge/pill âmbar
+  "🕓 aguardando terceiro" enquanto ativa.
+
+  **Não muda o comportamento do escalonamento automático** — decisão
+  deliberada, não esquecimento: o relógio de `aberta_em` já é documentado
+  como propositalmente imune a "clicar em Assumir e esquecer"; deixar esta
+  flag pausar o escalonamento reabriria a mesma brecha por outra porta. Uma
+  ocorrência aguardando terceiro continua escalando normalmente se
+  ninguém voltar a mexer nela.
+
+- **Busca em chamados resolvidos (item 5)** — `recarregar()` só busca
+  `status IN ('aberta','assumida')` de propósito (mantém a lista principal
+  rápida e focada no que precisa de ação); um chamado resolvido some dessa
+  lista pra sempre, sem nenhum jeito de reabrir pra consulta ("o que foi
+  feito no chamado #012?"). Painel novo, recolhido por padrão
+  (`toggleBusca()`, `#busca-painel`), com campo de texto que casa por
+  **número do chamado, número da seção, ou nome do tipo** — busca em lote
+  (`.in('status',['resolvida','cancelada'])`, limite de 300, filtro no
+  cliente) em vez de uma query server-side mais elaborada: a escala da
+  tabela (uma zona, algumas centenas de ocorrências no máximo até o fim da
+  operação) não justifica a complexidade extra.
+
+  **`renderSheetFor(o)`** — a folha de detalhe foi refatorada pra um ponto
+  único de renderização, chamado tanto por `abrirSheet(id)` (card da lista
+  de ativos, busca em `OCORRENCIAS`) quanto por `abrirSheetResolvida(id)`
+  (resultado da busca, busca em `BUSCA_RESULTADOS`) — evita duplicar o
+  template HTML inteiro só pra trocar de onde vem o dado. Pra um chamado
+  fora de `('aberta','assumida')`, os botões de ação (Assumir/Delegar/
+  Aguardando terceiro/Resolvido) **somem** — é histórico, não se edita — e
+  em vez deles a folha mostra um bloco "Desfecho" com a resolução
+  registrada e a data.
+
+  **`ABERTA_ORIGEM` ('lista'|'busca')** — `recarregar()` (chamado pelo
+  Realtime e pelo `setInterval` de reidade) só reabre/fecha a folha
+  sozinho quando ela veio da lista de ativos; um chamado resolvido aberto
+  pela busca nunca está em `OCORRENCIAS`, então sem essa distinção
+  `recarregar()` o fecharia sozinho a cada evento Realtime, achando que
+  "sumiu da lista".
+
+Coberto por `tests/test_problemas.mjs` (blocos 18-20b): prioridade Alta
+sobe pro topo da lista mesmo mais recente que uma Normal mais antiga;
+badge no card só pra alta/baixa; botão de prioridade certo destacado no
+detalhe (inclusive o fallback "Normal" quando o dado é antigo e não tem a
+coluna preenchida); clique chama a RPC com id/prioridade certos;
+"Aguardando terceiro" só aparece com dono; clique chama o toggle certo;
+badge aparece no card e no detalhe; busca acha um chamado resolvido fora
+da lista principal, abre o detalhe sem os botões de ação, mostra a
+resolução registrada; busca sem resultado avisa em vez de ficar em branco.
 
 ### RPCs críticas
 ```sql
@@ -350,7 +518,8 @@ cada um com propósito diferente:
     Acessibilidade / Auxiliares de Eleição (apoio logístico) — cada uma com
     **3 fatias mutuamente exclusivas que somam o Total daquele grupo**:
     Confirmado (verde) / Convocado — designado mas ainda não confirmado
-    (azul) / Vazio — ninguém designado (cinza). Antes eram 2 pizzas por
+    (azul) / Vazio — ninguém designado (vermelho, ver revisão de cor
+    abaixo). Antes eram 2 pizzas por
     grupo (nomeado×vazio separada de confirmado×total); agora é uma pizza
     só, mais completa. "Total" tem semântica diferente pros dois tipos de
     grupo: MRV é por **cargo de mesa** (4 por seção — `rsCalcular()` já
@@ -368,6 +537,25 @@ cada um com propósito diferente:
     Total de vagas (faixa de fundo, cinza) → Convocados (barra mais curta
     por cima, azul) → Confirmados (a mais curta de todas, verde) —
     `rsBarraFunil()`.
+
+  **Cor de "Vazio" trocada de cinza pra vermelho + percentual em toda
+  fatia/barra (02/09/2026), pedido agendado do cartório: "achou um pouco
+  confuso" e faltava percentual em algumas partes.** No tema claro
+  (`sime_theme_cream.css`), `--border2` (usado antes pra "Vazio") é um
+  bege quase da cor do próprio card — a fatia de quem falta preencher
+  "sumia" visualmente em vez de chamar atenção, o oposto do que uma fatia
+  de alerta deveria fazer. `RS_COR_VAZIO` virou `var(--red)` — mesmo sinal
+  de "falta preencher" que `rsBarraCor()` já usa no gradiente por local
+  (0%→vermelho), consistente com o resto do Dashboard, não uma cor nova
+  inventada só pra isto. Confirmado/Convocado continuam verde/azul (a
+  dupla mais segura pra daltonismo vermelho-verde, o tipo mais comum — não
+  havia motivo pra trocar essas duas). Percentual: antes só a fatia
+  Confirmado tinha (dentro do SVG, centro do donut); as legendas de
+  Convocado/Vazio (`rsPizzaCard3`) e as de Convocados/Confirmados da
+  barra-funil (`rsBarraFunil`) ganharam "(N%)" ao lado da contagem — nova
+  função `rsPct(valor, total)`, mesmo arredondamento de sempre
+  (`Math.round`). O percentual do centro do donut (só Confirmado) não
+  mudou de lugar nem de cálculo, só ganhou companhia nas legendas.
   - **Tabela "🏘️ Progresso por município e função" (21/08/2026)** — pedido
     direto do cartório: "saber por cidade e por função se já está com todas
     as funções preenchidas e se já foi confirmado". A barra-funil e as
@@ -769,6 +957,19 @@ cada um com propósito diferente:
   logístico entrou na mesma lista — sem isso não dava pra separar os dois
   grupos pra trabalhar um de cada vez.
 
+  **Filtro por município (02/09/2026)** — terceiro `<select>` na mesma fila
+  (`cm-filtro-municipio`), pedido direto: "quero que acrescente o filtro de
+  municipio alem de status, função mantendo a busca por nome ou titulo".
+  Opções calculadas na hora a partir de `cmDados.secoesPorId` (distintos,
+  ordenados) — não é uma lista fixa, então cresce sozinho se a zona ganhar
+  município novo. Resolve o município de cada pessoa por `p.secao_id`; quem
+  não tem seção (`secao_id` nulo — mesmo caso de Auxiliar de Eleição sem
+  local, documentado acima) nunca casa com nenhuma opção específica e some
+  da lista sempre que um município é selecionado, só reaparecendo em "Todos
+  os municípios". Os três filtros (status, função, município) se combinam
+  entre si, e com a busca por nome/título, que continua exatamente como
+  era — nenhum dos dois foi tocado.
+
   **Bug real, grave, corrigido em 21/08/2026 — "Registrar tentativa" (e toda
   ação registrada por esta página) gravava com sucesso mas ficava invisível
   pra sempre na releitura.** Sintoma reportado pelo cartório: clicar
@@ -1091,6 +1292,82 @@ cada um com propósito diferente:
   `<select>`, e trocar de meio zera o status anterior só quando o
   vocabulário muda de fato (Carta↔Ofício continuam compartilhando os
   mesmos 4 valores de sempre, então não zeram entre si).
+
+  **Convocação oficial (ZEO/TRE) como meio de contato (02/09/2026,
+  `sql/SIME_atores_meio_contato_zeo.sql`).** Quinto valor de
+  `meio_contato`, pedido direto: "acrescente a status zeo para os contatos
+  que tiveram tentativa de contato Convocação oficial (ZEO/TRE) —
+  Convocação formal enviada pelo sistema próprio do TRE (ZEO)". Mesmo tipo
+  de coisa que Carta Registrada/Oficial de Justiça (convocação formal, com
+  necessidade de confirmar recebimento) — reaproveita o MESMO vocabulário
+  de status (`a_enviar`/`enviado`/`entregue`/`devolvido`, via
+  `cmStatusLabelSet()`, que só troca de vocabulário pra `ligacao`), nenhum
+  valor novo de status precisou ser criado. `CM_MEIO_LABEL` (label "Convocação
+  oficial (ZEO/TRE)"), `cmPrecisaEscalonamento()` (nunca sugere escalonar
+  quem já está em ZEO, mesmo critério de Carta/Ofício) e os ícones do
+  Dashboard (`RS_ICONE_POR_MEIO`/`RS_MEIO_SUFIXO` em `sime_resumo_secoes.js`,
+  🏛️) atualizados juntos. `SIME_correspondencia.js`/`SIME_oficial_justica.js`
+  continuam filtrando só `carta_registrada`/`oficial_justica` respectivamente
+  — ZEO não tem etiqueta/AR nem relação de oficial de justiça própria ainda,
+  é só o valor do meio de contato por enquanto.
+
+  **Filtro "🏛️ Convocação oficial (ZEO/TRE)" em Contatar mesários
+  (02/09/2026).** Sexto bucket virtual em `CM_BUCKETS` (`meio_zeo`), mesmo
+  padrão de `sem_whatsapp`/`aguardando_resposta` — filtra por
+  `p.meio_contato==='zeo'`, não por `confirmacao`. É como o cartório marca
+  alguém como ZEO (pelo `<select>` de Meio de contato, já com a opção nova)
+  e depois reúne esse grupo pra usar "📢 Criar campanha com estes" —
+  respondendo ao pedido original ("em status quero que acrescente a status
+  zeo") sem precisar de um import de lista nenhum: a marcação é manual,
+  pessoa por pessoa, pelo mesmo fluxo que já existe pra Carta/Ofício.
+
+  **Campanha conversacional "Confirmação de identidade — Convocação
+  ZEO/TRE" (02/09/2026).** Pedido direto, no estilo de uma conversa real
+  anexada (Bom dia, esse contato é de FULANO? → Sim/Não → Sim: avisa que a
+  carta já saiu pelo ZEO → Não: encerra e avisa o cartório). Criada como
+  `sime_campanhas` própria (status `rascunho` — nasce parada, mesmo padrão
+  do script de 27/08/2026, cartório revisa e ativa em 🧩 Campanhas antes de
+  qualquer envio saltar): etapa 1 pergunta a identidade (ramo "sim" → etapa
+  2; ramo "não" → `status_final: 'telefone_incorreto'`, terminal, mesmo
+  comportamento de sempre — sai da fila e fica visível pro cartório, é o
+  "informa o SIME" do pedido); etapa 2 confirma a convocação e informa que
+  a carta oficial já foi enviada pelo próprio sistema do TRE — **sem anexar
+  PDF** (decisão explícita do cartório ao ser perguntado: "por enquanto, só
+  o texto"). Rodar essa campanha é manual como qualquer outra: filtrar por
+  "🏛️ Convocação oficial (ZEO/TRE)" acima, "📢 Criar campanha com estes",
+  escolher o script salvo no Disparo em massa.
+
+  **Por que não veio pré-carregada com uma lista de pessoas — corrigido no
+  mesmo dia, a lista existia sim.** Perguntado onde estava "a lista ZEO
+  fornecida pelo cartório em 31/08/2026" — a busca original checou
+  `meio_contato`/`confirmacao` (colunas estruturadas) e não achou nada, e a
+  resposta do cartório foi "está no sime". Estava mesmo, só num lugar que a
+  busca não tinha olhado: `sime_logs.acao='mesario_tentativa_contato'` já
+  tinha **228 registros** com `payload->>'meio' = 'Convocação oficial
+  (ZEO/TRE)'`, todos com o mesmo timestamp (31/08/2026 10:13 local) e autor
+  `"Claude (lista ZEO fornecida pelo cartório, 31/08/2026)"` — uma tentativa
+  de contato em massa já registrada por uma sessão anterior, que nunca
+  tinha sido espelhada em `sime_atores.meio_contato` (porque o valor `zeo`
+  não existia ainda naquela época). Corrigido com um `UPDATE` em massa
+  (`sime_logs.acao='mesarios_marcar_meio_zeo_lote'`) casando por
+  `payload->>'ator_id'`: dos 228, **220 foram marcados como `zeo`** — os
+  outros **8 foram deliberadamente preservados** porque já tinham um
+  `mesario_meio_contato` gravado DEPOIS da tentativa ZEO, escalonando pra
+  `carta_registrada`/`oficial_justica` (decisão manual mais recente do
+  cartório — sobrescrever de volta pra `zeo` teria apagado esse
+  escalonamento). Com os 220 marcados, o filtro "🏛️ Convocação oficial
+  (ZEO/TRE)" acima já não está mais vazio — "Criar campanha com estes" já
+  tem pra quem mandar.
+
+  **Anexo de PDF por pessoa continua sem existir.** `sime_campanha_etapas.imagem_url`
+  ainda é uma imagem só, compartilhada por TODOS os destinatários da etapa
+  (ver "Suporte de imagem por etapa no script conversacional", 22/08/2026)
+  — anexar a carta de convocação nominal de cada mesário (como no print
+  anexado, um PDF por título de eleitor) exigiria um campo de anexo por
+  PESSOA que ainda não existe. Fora do escopo desta v1 por decisão
+  explícita do cartório, não por esquecimento — se um dia for pedido,
+  precisa de uma coluna nova (`sime_atores` ou
+  `sime_campanhas_confirmacao`) com a URL do PDF de cada pessoa.
 
   **Título de eleitor na busca (20/08/2026).** `getAtores()` (`sime_dados.js`)
   e o `select()` de `sime_contatar_mesarios.js` agora trazem
@@ -1498,7 +1775,39 @@ cada um com propósito diferente:
   `telefones_sem_whatsapp`/`telefones_confirmados` também, se estava lá —
   não faz sentido guardar status de um número que acabou de deixar de ser
   desta pessoa.
-- **📜 Histórico** (`sime_historico_sync.js`) — últimas sincronizações
+
+  **Lote de confirmação por terceiro (02/09/2026, pedido direto: "atualize
+  os contatos dos mesários do sime, informando que é informação de
+  terceiros"), 67 nomes colados com telefone.** Casado por nome (exato,
+  case/acento-insensível — sem título de eleitor na lista colada) contra
+  `sime_atores` da 7ª Zona, rodado uma vez via SQL Editor/MCP (não é
+  migração). Três desfechos, dependendo do que já estava cadastrado —
+  nenhum sobrescreve o principal às cegas:
+  - **60 registros — número informado bate com o já cadastrado**: só
+    confirma (`telefones_confirmados`) + observação "confirmado por
+    terceiro". Inclui 4 pessoas com registro duplicado (mesmo nome, dois
+    `id`) e inativas — a duplicata/inatividade não impediu registrar a
+    confirmação, só não prioriza reativar ninguém.
+  - **4 registros — mesmo número, só faltava o 9º dígito no banco** (ex.:
+    JEAN RIBEIRO DE OLIVEIRA, `558681764945` → `5586981764945`): a versão
+    dada pelo terceiro já vinha corrigida — em vez de tratar como conflito,
+    o cadastro foi corrigido pra bater (mesmo critério de sempre: nunca
+    inventa um número, aqui só estava reaplicando a normalização de 9º
+    dígito que o próprio `sime_normalizar_telefone_whatsapp()` já teria
+    feito se o dado não tivesse entrado direto via import antigo) + também
+    confirmado.
+  - **5 registros — número genuinamente diferente do cadastrado**
+    (EDINALDO ALVES DE CARVALHO, JOSE ARINEU TEIXEIRA DE OLIVEIRA, SIMONE
+    KELLE COSTA DO NASCIMENTO, GÉSSICA MARIA OLIVEIRA DA SILVA — 2
+    registros duplicados dela): **nunca sobrescreve o principal** — o
+    número novo vai pro `telefone_alternativo` (só quando esse campo
+    estava vazio) e liga `tem_relato_terceiro_pendente=true` com
+    observação "PRECISA CONFIRMAR COM A PESSOA", mesmo padrão de
+    `relatar_terceiro`/`atualizar_telefone_terceiro` do Hermes — o
+    cartório decide qual dos dois números é o certo. Um caso (EDNETE
+    RIBEIRO DE OLIVEIRA PAZ) já tinha exatamente o número do terceiro
+    gravado no `telefone_alternativo` de antes — só confirmou esse campo,
+    sem tocar em mais nada.
   (`sime_logs` com `acao='mesarios_sync_csv'`): quando, quantos registros,
   quantos atualizados/inativados.
 - **📄 Relatório ELO** (`sime_relatorio_elo.js`, 21/08/2026) — quem o SIME já
@@ -2705,6 +3014,2078 @@ supabase
 
 ---
 
+## MENU DO USUÁRIO — trocar senha / sair (03/09/2026)
+
+Pedido direto, a partir de um print do topbar de `SIME_principal.html`: "o
+usuário ao clicar em cima do seu nome, deve mostrar um menu para ele trocar
+senha ou sair do sistema. essa barra superior deve ficar aberta em todas as
+janelas". `modules/sime_user_menu.js` (novo, sem dependências, sem
+framework) — dropdown compartilhado por **toda a camada Admin** (login por
+e-mail/senha via Supabase Auth): `SIME_principal.html`, `SIME_admin.html`,
+`SIME_convocacao.html`, `SIME_atores.html`, `SIME_relatorios.html`,
+`SIME_problemas.html`, `SIME_tokens.html`, `SIME_hermes_painel.html`,
+`SIME_coordenador_preparacao.html` — as 9 janelas que de fato têm uma sessão
+autenticada pra trocar senha. **Fora do escopo, deliberadamente**: os
+módulos de campo (QR+PIN — Mesário, Motorista, Conferente, Instalador,
+Mídias, Acessibilidade) não usam Supabase Auth, então "trocar senha" não
+existe pra eles; `SIME_paineis.html` (gerenciador de TVs) e os próprios
+painéis de TV também não têm sessão de usuário nenhuma.
+
+`window.initSimeUserMenu(supabase, opts)` — `opts.chipEl` reaproveita um
+elemento que a página já usa pra mostrar nome/perfil (`SIME_principal.html`/
+`SIME_admin.html`, que já tinham esse chip pronto); `opts.slotEl` + `nome`/
+`perfil` monta um chip padrão do zero dentro de um `<span id="sime-um-slot">`
+vazio, pras 7 páginas que nunca mostravam nome nenhum no topbar (só zona,
+ou nada). `opts.sairEl` reaproveita um botão de "Sair" que a página já
+tinha (`SIME_admin.html`/`SIME_relatorios.html`/`SIME_problemas.html`) —
+movido pra dentro do dropdown, sem duplicar a ação de logout; sem `sairEl`
+o menu cria a própria opção padrão.
+
+**Trocar senha** abre um modal próprio (2 campos, mínimo 6 caracteres,
+confirmação precisa bater) e chama `supabase.auth.updateUser({password})`
+— funciona em qualquer uma das 9 páginas porque todas compartilham a mesma
+sessão do Supabase Auth (`persistSession`, mesma origem). **Sair do
+sistema** chama `supabase.auth.signOut()` e recarrega a página (mesmo
+comportamento que os `simeLogout()`/`btn-logout` de sempre já tinham,
+onde existiam) — toque único, sem confirmação modal: logout é reversível
+(só precisa logar de novo), não se enquadra na regra de "confirmação só
+pra ação irreversível".
+
+**Toda chamada de identidade (`supabase.auth.getUser()` + `sime_usuarios`)
+que alimenta o menu é melhor-esforço, envolta em try/catch** — achado real
+testando `SIME_coordenador_preparacao.html`: a primeira versão deixava
+essa chamada solta no meio do `await carregarDadosReais()`, e uma falha ali
+(sessão velha, stub de teste sem `auth.getUser`) abortava a função inteira
+— seções, cabeçalho dinâmico, upsert de carga/lacre, tudo parava de
+carregar só porque o menu de conta (um extra) não conseguiu montar. Mesmo
+critério já aplicado em `sime_user_menu.js` internamente (`initSimeUserMenu`
+nunca propaga exceção pro chamador). Coberto pela suíte inteira existente
+(`bash tests/run_all.sh`, 74 suítes) — nenhum teste precisou mudar, exceto
+o comportamento em si ser preservado (`#btn-logout` continua existindo com
+o mesmo id, só migrou de "botão solto no topbar" pra "item dentro do
+dropdown").
+
+---
+
+## RESPONSÁVEL + PRÓXIMO CONTATO — "Contatar mesários" (03/09/2026)
+
+Pedido direto, depois de uma conversa sobre o que faltaria pro módulo virar
+uma espécie de CRM de mesários. Das 5 ideias levantadas, o cartório aprovou
+3: **"1 faz sentido, podendo enviar para outra pessoa concluir tarefa,
+comunicação"** (dono do caso + encaminhar), **"2 sim faz sentido"** (próximo
+contato agendado) e **"4 sim"** (SLA por tempo) — descartou por enquanto a
+fila de trabalho pessoal como tela própria (item 3) e o kanban visual (item
+5). Na comunicação do encaminhamento, a resposta foi objetiva: **"só
+registra"** — nunca manda WhatsApp pro novo responsável, só fica no
+histórico de quem abrir a pessoa.
+
+`sql/SIME_atores_responsavel_proximo_contato.sql`: `sime_atores` ganha
+`responsavel_usuario_id` (FK `sime_usuarios`, nullable), `proximo_contato_em`
+(timestamptz) e `proximo_contato_nota` (texto). Nenhum campo bloqueia
+nenhuma ação — mesma filosofia de sempre ("nunca bloquear por campo
+opcional"): responsável é organização de equipe, não permissão; qualquer um
+do cartório continua podendo editar qualquer mesário, tenha dono ou não.
+
+**Dois botões no modal, seção "👤 Responsável e próximo contato"** (novo,
+logo abaixo da linha Confirmado/Convocado/Substituir):
+- **"🙋 Assumir pra mim"** — toque único, sem motivo, sempre disponível
+  (mesmo se já tiver responsável — "rouba" o caso de propósito, sem
+  precisar de permissão especial pra isso).
+- **"↪️ Encaminhar"** — abre um miniformulário inline (select da equipe +
+  motivo obrigatório). Mesmo padrão já usado pelo Painel de Problemas
+  (`sime_ocorrencia_delegar`, que também exige motivo) — só que aqui é um
+  `update` direto em `sime_atores`, não uma RPC própria: diferente de
+  ocorrência, não há necessidade de "recusar se já tem dono" nem de
+  `SECURITY DEFINER`, já que qualquer membro da equipe já pode editar
+  qualquer mesário mesmo sem ser o responsável. Grava
+  `mesario_responsavel_encaminhado` em `sime_logs` (com o nome de quem
+  recebeu + motivo) — aparece em "📜 Atualizações", nunca manda nada por
+  WhatsApp.
+
+**Próximo contato**: campo de data (sem hora — não é crítico pra este uso)
++ nota opcional, botão **"📅 Agendar"** (nome escolhido de propósito pra não
+colidir com o "💾 Salvar" geral do rodapé — a primeira versão usava "📅
+Salvar" e isso quebrava `button:has-text("Salvar")` em produção e nos
+testes, casando com os dois botões ao mesmo tempo). Salvar com o campo de
+data vazio remove o agendamento (limpa nota junto).
+
+**Atraso é sempre relativo à data que a PRÓPRIA pessoa do cartório
+agendou** (`cmAtrasado()`) — não um prazo fixo arbitrário tipo "3 dias sem
+contato". Sem agendamento, não há como saber se está atrasado; com
+agendamento vencido (e `confirmacao` ainda não `confirmado` — desfecho
+fechado não cobra mais), o card e o modal mostram "🔴 Atrasado desde
+dd/mm/aaaa". Vira bucket próprio em `CM_BUCKETS`
+(`atrasado`) e ganha o mesmo painel de destaque clicável que "🕓 Aguardando
+resposta" já tinha — os dois painéis convivem, cada um cobrindo um sinal
+diferente (tentativas sem resposta vs. retorno agendado vencido).
+
+**Filtro "👤 Responsável"** (Todos / Meus / Sem responsável / cada membro da
+equipe) sai de graça da mesma coluna nova — não virou tela própria (item 3
+foi descartado nesta rodada), só mais um `<select>` ao lado dos filtros que
+já existiam (status/função/município). `cmCarregar()` passou a buscar
+`sime_usuarios` da zona (id+nome, só quem está `ativo`) pra popular esse
+filtro e o `<select>` de "Encaminhar para"; `window.meuUsuarioId()` (novo em
+`SIME_convocacao.html`, mesmo padrão de cache de sessão de
+`zonaDoUsuario()`/`nomeDoUsuario()`) resolve quem é "eu" pro filtro "Meus" e
+pro "🙋 Assumir".
+
+Card da lista ganha três badges novos, condicionais: nome do responsável
+(`👤 Fulano`), atraso (`🔴 Atrasado desde…`) ou, se não estiver atrasado mas
+tiver data marcada, `📅 Retorno em dd/mm`. Coberto pela suíte inteira
+(`bash tests/run_all.sh`, 75 suítes, 0 falhas) — nenhum teste precisou
+mudar, só o botão renomeado acima pra não colidir.
+
+**Bug real corrigido em 04/09/2026, reportado pelo cartório com print
+anexado: "em encaminhar apareceu o token".** O select "Encaminhar para" (e
+o filtro "👤 Responsável" da mesma leva) listava também os TOKENS de acesso
+de campo (QR/PIN de mesário, conferente, instalador, coordenador de
+acessibilidade, coletor de mídias, TVs) — eles também moram em
+`sime_usuarios`, com `perfil='observador'` e `nome` tipo "Token mesario
+(BX86FPJ7)", não são pessoas do cartório. Checado direto no banco antes de
+corrigir: os 15 registros `observador` da 7ª Zona são 100% desse tipo
+(`nome ILIKE 'Token %'`); equipe de verdade é só `coordenador`(2) +
+`gestor_prob`(5) = 7 pessoas. `SIME_problemas.html` já filtrava
+`perfil!=='observador'` no seletor de "delegar" ocorrência — o mesmo
+critério nunca tinha sido replicado aqui ao buscar `sime_usuarios` em
+`cmCarregar()`. Corrigido com o mesmo filtro, em JS depois da busca (não
+`.neq()` na query — o mock de teste não suporta esse método, e travaria a
+tabela toda). Coberto por teste de regressão dedicado em
+`tests/test_convocacao_mesarios.mjs` (bloco "2.63" — injeta um token
+`observador` no mock e confirma que ele nunca aparece nem no filtro nem no
+select de encaminhar, só gente de verdade).
+
+**Ordem das abas reorganizada (04/09/2026, pedido direto).** Só reordenação
+de `<div class="tab">` no HTML — cada aba já navega por `goTab('<nome>',
+this)` independente de posição, nenhuma lógica de `goTab`/teclado depende da
+ordem no DOM, então não foi necessário mudar mais nada. Ordem nova: 📊
+Dashboard, 📞 Contatar mesários, ⚖️ Oficial de Justiça, 📬 Correspondência,
+🙋 Voluntários, 🎓 Treinamento, 📄 Relatório ELO, 🔄 Sincronizar, 📜
+Histórico.
+
+**Modal mais largo em telas de desktop (04/09/2026, pedido direto com print
+anexado do modal do mesário "espremido" numa tela grande).** `.modal` era
+fixo em `max-width:480px` em qualquer tamanho de tela — no celular isso é o
+próprio limite físico (não uma escolha), mas num monitor largo sobrava
+espaço dos dois lados enquanto o conteúdo (Confirmado/Convocado/Substituir,
+Responsável e próximo contato, todos os telefones conhecidos, tentativas de
+contato) empilhava tudo numa coluna estreita, exigindo bem mais rolagem
+vertical do que precisaria. `@media (min-width:700px){.modal{max-width:720px;
+max-height:90vh}}` — só entra em telas com espaço de sobra; abaixo de 700px
+(celular, a maioria dos tablets em retrato) o comportamento é
+exatamente o de antes. Nenhum elemento interno precisou mudar — `.cm-tel-card`/
+`.m-kv-row` já usam `flex-wrap`, então ganham colunas extras sozinhos com a
+largura nova. Escopado só a `SIME_convocacao.html` — `.modal` é definido
+dentro do `<style>` de cada módulo (não um arquivo CSS compartilhado), então
+essa mudança não afeta o modal de nenhuma outra tela do sistema.
+
+**Revisado no mesmo dia — tela cheia com 2-3 colunas (pedido direto: "poderia
+preencher toda a tela, ficando duas ou três colunas, mantendo o x no canto
+superior").** O ajuste de 720px acima ainda ajudava pouco num monitor
+largo de verdade. `.cm-modal-wide` (classe nova, ligada/desligada por JS,
+não CSS estático) é o marcador que decide quem ganha o tratamento — só o
+modal de pessoa em "Contatar mesários" (`cmRenderModal()` adiciona a classe
+ao abrir; `cmFecharModal()` remove ao fechar); os outros modais deste
+arquivo (`vlRenderModal()` em Voluntários, `rsAbrirVoluntarios()` no
+drilldown do Dashboard) removem a classe defensivamente no próprio início,
+já que `#modal-body` é um elemento único compartilhado por todos eles.
+Acima de 900px: o modal ocupa quase a tela toda (`max-width:1400px`, teto
+pra não virar 4+ colunas ilegíveis num monitor gigante), cabeçalho (com o
+✕) e rodapé (Fechar/Salvar) ficam fixos via `display:flex;flex-direction:
+column` + `flex:none` nos dois, e só o corpo rola. As colunas usam
+`column-width:380px` (não `column-count` fixo) — o navegador decide sozinho
+2 ou 3 colunas conforme o espaço, sem precisar de mais um breakpoint; cada
+seção ganha `break-inside:avoid` pra nunca ser cortada ao meio entre
+colunas. Abaixo de 900px nada muda.
+
+**Conferido antes de mexer: o botão "💾 Salvar" do rodapé não é código
+morto.** Continua sendo rede de segurança pro telefone principal/
+alternativo, código de rastreio e nome/telefone do substituto (que hoje já
+salvam sozinhos ao sair do campo — "Salvar" só cobre quem edita e clica
+direto nele sem tabular) e também recolhe texto deixado nas caixas de
+"nota da tentativa"/"observação" sem passar pelos botões próprios delas
+(bug real de 21/08/2026, já documentado acima). Nenhuma mudança nele.
+
+**Bug real corrigido no caminho: "Rodar script"/"Dispensar" não resetavam
+ao trocar de pessoa.** As duas seções já nasciam recolhidas por padrão
+(`cmScriptAberto`/`cmDispensarAberto`, ambas `false`) — mas são variáveis do
+MÓDULO, não por pessoa: expandir uma delas pra alguém e depois abrir o
+modal de OUTRA pessoa mantinha a seção aberta lá também. `cmAbrirModal(id)`
+agora zera as duas toda vez que abre — corrigido justamente porque um teste
+de regressão existente (`tests/test_convocacao_mesarios.mjs`, bloco "🚫
+Dispensar (ELO)") dependia implicitamente desse vazamento (abria "Dispensar"
+pra OLIVIA e clicava direto no botão de PATRICIA sem reabrir a seção,
+porque o estado "vazava") — o teste foi ajustado pra expandir a seção de
+novo pra PATRICIA também, refletindo o comportamento certo agora.
+
+**Fim de linha esconde a seção inteira; SLA automático de 48h pros demais
+(08/09/2026, pedido direto: "ao final de linha não precisa mais contactar e
+não precisa mais data de proximo contato... os outros vamos estabelecer um
+prazo de 48h para o proximo contato a partir da ultima informação,
+podendo alterar para mais ou para menos").** Duas mudanças em
+`cmRenderModal()`/`cmConfirmarParticipacao()`/`cmRegistrarTentativaCore()`:
+
+- **`confirmacao==='confirmado'` esconde a seção "👤 Responsável e próximo
+  contato" inteira** (Assumir/Encaminhar/campo de data/Agendar) — mesmo
+  critério de "fim de linha" já documentado acima ("Confirmado ≠ Convocado,
+  Confirmado = fim de linha": só `confirmado` para o ciclo ativo de CRM;
+  `convocado`/`recusou`/`contato_incorreto` continuam precisando de
+  acompanhamento). `cmConfirmarParticipacao()` limpa
+  `proximo_contato_em`/`proximo_contato_nota` no mesmo update — sem isso, um
+  agendamento antigo ficaria como dado morto, sem UI pra mexer nele, e a
+  linha-resumo "Responsável" no topo do modal continuaria mostrando "📅
+  Próximo contato em..." de um agendamento que não faz mais sentido cobrar.
+- **`cmAtualizarPrazoAutomatico(p)`** (nova) — toda vez que uma tentativa é
+  registrada pra alguém que ainda NÃO é fim de linha (`➕ Registrar
+  tentativa` ou `🔗 Copiar link do WhatsApp`, os dois já passam por
+  `cmRegistrarTentativaCore()`), `proximo_contato_em` é gravado sozinho como
+  `sime_now() + 48h` — é a "última informação" mais recente que se tem sobre
+  a pessoa, e o relógio reinicia a cada tentativa nova, não só na primeira.
+  O campo continua 100% editável pelo `📅 Agendar` de sempre — clicar em
+  Agendar com outra data sobrescreve o automático sem nenhum aviso ou
+  bloqueio ("podendo alterar para mais ou para menos"), mesma filosofia de
+  "nunca bloquear por campo opcional" do resto do projeto. Melhor-esforço:
+  falha de rede aqui não derruba o registro da tentativa em si (já gravada
+  no log antes desta chamada) — só o prazo automático fica pra próxima.
+  Escopo desta v1, deliberado: só cobre eventos disparados pela própria tela
+  `SIME_convocacao.html` — uma resposta do mesário via Hermes/WhatsApp
+  (`api/hermes-mesarios.js`) não reinicia o prazo automaticamente, é
+  server-side e fora deste arquivo.
+- Quem nunca teve nenhuma tentativa registrada (🔴 "Nunca contactado") não
+  ganha prazo nenhum — não tem "última informação" pra contar 48h a partir
+  dela; o campo continua em branco até a primeira tentativa ou um
+  agendamento manual.
+
+Coberto por teste de regressão dedicado em `tests/test_convocacao_mesarios.mjs`
+(bloco "2.865" — seção ausente pra quem já é confirmado, presente pra quem
+está pendente, prazo automático de 48h a partir de `sime_now()` mockado,
+sobrescrita manual pra outra data, e limpeza do agendamento ao confirmar).
+
+---
+
+## 🚦 PENDÊNCIAS DE CONVOCAÇÃO — aba órfã, ligada em 10/09/2026
+
+`modules/sime_pendencias_convocacao.js` (211 linhas) foi escrito numa sessão
+anterior — pedido direto de 03/09/2026: "quero um relatorio para saber
+todos que estão como convocados no elo e ainda não estão convocados ou
+confirmados no sime" → "pode fazer isso um relatorio do sime convocações?
+permanente? por exemplo, os mesários que copiamos o link e nunca foram
+marcados como convocados ou confirmados" — mas nunca chegou a ser ligado:
+sem `<script src>` em `SIME_convocacao.html`, sem aba, sem entrada em
+`goTab()`/`render()`. Achado ao investigar por que o stop-hook do git
+continuava reclamando de um arquivo não rastreado a cada turno desta sessão
+— em vez de só commitar um script órfão (que nenhuma página carrega, logo
+não faz nada), a integração foi concluída de verdade.
+
+**"Convocado no ELO" = está ativo no roster sincronizado** — `sime_atores`
+JÁ É o roster (nenhuma consulta extra ao staging é necessária). "Ainda não
+avançou no SIME" = `confirmacao NOT IN ('convocado','confirmado',
+'substituido')` — inclui pendente/contato_incorreto/recusou; `substituido`
+fica de fora de propósito (desfecho já resolvido, vaga preenchida por outra
+pessoa, não é pendência de contato). Duas situações, mesmo critério de
+tentativas já usado em `sime_contatar_mesarios.js` (campanha
+'enviado'/'aguardando_resposta' + `sime_logs.mesario_tentativa_contato`,
+que inclui "copiou o link do WhatsApp pra confirmar contato"): 🔴 nunca
+contactado / 🟡 já contactado, mas nunca virou Convocado/Confirmado — é
+literalmente o exemplo do pedido original.
+
+**Ligado como nova aba "🚦 Pendências de Convocação"**, entre 🎓 Treinamento
+e 📄 Relatório ELO (mesmo grupo de "relatório", perto do Relatório ELO, que
+é o mais parecido em espírito) — `<script src="./sime_pendencias_convocacao.js">`
+adicionado depois de `sime_relatorio_elo.js`; `goTab()` zera `pcDados` ao
+entrar na aba (mesmo padrão de recarregar do banco a cada entrada, evita
+mostrar dado velho depois de sincronizar/mudar status noutra aba);
+`render()` ganha `if (curTab === 'pendencias') { renderPendenciasConvocacao(); return; }`.
+Reaproveita `cmRotuloFuncao`/`cmBadge`/`CM_FUNCAO_FILTRO`/`cmAbrirModal`
+(de `sime_contatar_mesarios.js`, carregado antes) e `fmtTelefone`
+(`sime_ui_utils.js`) — nenhuma duplicação, script já era desenhado pra isso
+desde que foi escrito, só faltava a integração.
+
+Filtros por situação/função/município + busca por nome/título de eleitor,
+exportação CSV, e clicar no nome abre o MESMO modal de "Contatar mesários"
+— zero UI nova pra edição, é um relatório de leitura sobre o mesmo dado.
+
+Coberto por `tests/test_convocacao_pendencias.mjs` (23 checks, arquivo
+novo, mesmo padrão de stub/mock isolado já usado por
+`test_convocacao_voluntarios.mjs`): lista só quem ainda não avançou (nunca
+os já convocados/confirmados/substituídos), contagem e badges 🔴/🟡, os
+três filtros, busca, painel de destaque clicável, exportar CSV, e o nome
+abrindo o modal compartilhado. **Achado escrevendo o teste**: o painel de
+destaque amarelo ("já tiveram alguma tentativa...") sempre cita os nomes de
+quem tem tentativa, independente do filtro de situação ativo (mesmo padrão
+de "Contatar mesários") — os testes de filtro precisaram escopar a
+asserção à lista de pessoas (`.cm-lista-pessoas`), não ao `#content`
+inteiro, senão davam falso negativo mesmo com o filtro funcionando certo.
+A stub do Supabase usada pelos testes de `SIME_convocacao.html` (QB mock em
+`test_convocacao_mesarios.mjs` e a cópia própria em
+`test_convocacao_pendencias.mjs`) ganhou `.not(coluna,'in',...)`/
+`.not(coluna,'is',null)` — não existia ainda porque nenhuma aba anterior
+desta página usava `.not()` no supabase-js real.
+
+---
+
+## MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 04/09/2026)
+
+Pedido direto: "vamos fazer um modulo de rotas precisa ser rota poder
+cadastrar rotas de recolhimento de midias, distribuição e recolhimento de
+urnas, rotas de instalação de seção".
+
+**Contexto que faltava antes de mexer no schema.** `sime_rotas` já existia,
+mas sem nenhum jeito de dizer PRA QUE cada rota serve. As 35 linhas da 7ª
+Zona (+7 da 94ª) vieram do export do MaxLog (Sistema de Logística das
+Eleições do TRE, 31/08/2026, ver "Rotas de recolhimento de mídia da 7ª Zona
+substituídas pelo MaxLog" acima) — o nome usado até aqui ("recolhimento de
+mídia") era impreciso. Perguntado direto ao dono do projeto antes de aplicar
+qualquer migração: essas rotas cobrem **ida (distribuição) E volta
+(recolhimento de urna) pelo MESMO trajeto físico** — o mesmo veículo leva a
+urna e traz de volta. `urnas_estimadas` preenchido em quase todas e o texto
+do itinerário ("entrega direta pelo presidente de mesa", "ponto de
+consolidação") batem com isso, não com recolhimento de mídia (cartão de
+memória, logística bem mais leve).
+
+`sql/SIME_rotas_modulo.sql` (aplicado em produção nas duas zonas em
+04/09/2026, idempotente):
+- **`sime_rotas.tipos`** — `TEXT[]`, não um valor único: as 42 rotas atuais
+  já são o caso de uma mesma rota servindo DOIS propósitos ao mesmo tempo
+  (`{distribuicao,recolhimento_urna}`, valor do backfill) — um enum de valor
+  só não serviria nem pro dado que já existia. `CHECK` garante só os 4
+  valores conhecidos (`distribuicao`/`recolhimento_urna`/
+  `recolhimento_midia`/`instalacao`) e pelo menos 1.
+- **`sime_rota_secoes`** (nova, `rota_id, secao_id, parada`, `UNIQUE(rota_id,
+  secao_id)`) — uma seção pode precisar de rotas DIFERENTES por tipo ao
+  mesmo tempo (ex.: rota de instalação numa data, rota de
+  distribuição/recolhimento de urna noutra — datas e veículos diferentes),
+  o que o FK único antigo (`sime_secoes.rota_id`) não comporta. Backfillada
+  a partir do que já existia em `sime_secoes.rota_id` (174/175 seções da 7ª
+  Zona) — o módulo novo já abre mostrando a atribuição real, sem re-digitar
+  nada.
+
+**`sime_secoes.rota_id`/`parada` CONTINUAM existindo** e são a fonte real
+pra quem já lê direto de lá sem passar por este módulo (Motorista,
+Conferente, TV Distribuição, `sime_dados.js` `getRotas()`/`getSecoes()`).
+Pra edição feita no módulo novo valer de verdade nesses módulos
+operacionais, toda escrita em `sime_rota_secoes` que envolve uma rota com
+tipo `distribuicao` (`rtRotaTemTipoLegado()` — só esse tipo desde a
+correção de "recolhimento de urna é cadastro separado", ver abaixo)
+também espelha em `sime_secoes.rota_id`/`parada` — adicionar, remover e
+reordenar seção fazem os DOIS updates juntos. Pra
+`recolhimento_urna`/`recolhimento_midia`/`instalacao` (sem consumidor
+legado) só `sime_rota_secoes` é tocada.
+Remover uma seção só limpa o campo legado se ele ainda apontar pra ESTA
+rota — nunca sobrescreve uma reatribuição que já tenha acontecido por outro
+caminho. Mover uma seção de uma rota legada pra OUTRA rota legada
+SOBRESCREVE o campo (nunca bloqueia — filosofia de sempre), mas avisa por
+toast que ela "estava em outra rota de distribuição/recolhimento de urna",
+pra não confundir silêncio com sucesso sem intercorrência.
+
+**`SIME_admin.html` → aba Seções não edita mais `rota_id` (mesmo dia)** — o
+`<select>` de rota virou um texto só-leitura ("Rota 005" ou "— sem rota —")
+com um link "🗺️ Atribuir/trocar rota no módulo de Rotas". Deixar duas telas
+escrevendo em `rota_id` (uma sem saber da outra) reintroduziria a mesma
+classe de bug de fonte-dupla que a tabela de junção nova foi criada pra
+evitar. `salvarSecao()` não manda mais `rota_id` no payload nenhum.
+
+**Escopo desta v1, deliberado**: é um cadastro de rotas com atribuição de
+seções — não reconstrói os fluxos operacionais de Dia D/D-1 (Motorista,
+Conferente, TV Distribuição continuam exatamente como eram, só passam a
+receber edições feitas por este módulo também). Coberto por
+`tests/test_rotas.mjs` — write-through pra tipo legado, ausência dele pro
+tipo sem consumidor, filtro por tipo, busca, CRUD de rota, toggle ativo,
+mover seção entre rotas com aviso.
+
+**Correção no mesmo dia: as 42 rotas do MaxLog são de recolhimento de
+MÍDIA, não de urna.** A pergunta original ("essas rotas cobrem ida
+(distribuição) E volta (recolhimento de urna)?") tinha sido respondida
+"sim" — mas o dono do projeto corrigiu isso horas depois, revertendo pra
+interpretação que o CLAUDE.md já tinha ANTES deste módulo existir
+("recolhimento de mídia"). `sql/SIME_rotas_recolhimento_midia_e_estrutura.sql`
+(aplicado em produção): as 42 rotas viraram `tipos=['recolhimento_midia']`
+— **hoje não existe nenhuma rota de distribuição/recolhimento de urna
+cadastrada**, nascem do zero quando houver dado real.
+
+**Recolhimento de urna é a distribuição percorrida ao contrário, em OUTRO
+DIA — cadastro separado, não a mesma linha.** Pedido direto: "o
+recolhimento de urnas é a rota de distribuição de urnas só que inversa e
+no outro dia." Por isso `RT_TIPOS_LEGADO` (`sime_rotas_modulo.js`) só tem
+`'distribuicao'` agora — `'recolhimento_urna'` foi removido: como
+`sime_secoes.rota_id` é uma FK única por seção, não dava pra guardar os
+dois sentidos ali ao mesmo tempo (ida e volta são rotas diferentes, com
+paradas em ordem invertida). `rota_origem_id` (nova coluna em `sime_rotas`,
+FK pra ela mesma) já existe pronta pra quando um gerador de "rota de
+retorno" for construído — ainda não foi, porque não há nenhuma rota de
+distribuição real pra reverter.
+
+**Como consequência, `sime_secoes.rota_id`/`parada` foram LIMPOS** (174
+seções da 7ª Zona) — antes apontavam pras rotas de mídia, e
+Motorista/Conferente/TV Distribuição liam isso como se fosse a rota de
+distribuição, mostrando dado errado com aparência de certo.
+`sime_rotas_estado`/`sime_rotas_urnas` tinham zero linhas no momento da
+limpeza (ninguém usou essas telas pra valer ainda) — era o momento mais
+barato pra corrigir; "sem rota" é mais seguro que dado errado.
+
+**Estrutura de itinerário mais rica** — toda rota ganhou `ponto_partida`,
+`destino`, `horario_saida` e `horario_chegada_previsto` (antes só existia
+o campo livre "itinerário"), editáveis no mesmo modal de criar/editar rota
+e exibidos no card. **Responsável pela rota** — `responsavel_ator_id`
+(FK opcional pra `sime_atores`, qualquer ator ativo da zona, sem restringir
+por função) — select no mesmo modal, nome exibido no card.
+
+**Georreferência por LOCAL de votação** — `sime_secoes.latitude`/
+`longitude` (repetida entre as seções do mesmo prédio, mesmo padrão de
+`local_nome`/`municipio` — não existe tabela de "locais" própria).
+Importada da 7ª Zona a partir de um KML do GEL ("Locais de Votação",
+19/06/2026) colado pelo cartório — casado por **nome** (nunca pelo
+"código" do local do KML, que não é único: o mesmo código aparece em até 3
+locais diferentes no arquivo, achado real que inicialmente grudou a
+coordenada errada em "SAAE" antes de eu trocar a chave de match pra texto).
+Casamento por similaridade com expansão de abreviação
+(U.E./G.E./Esc./Mun./Sec./Col./Prof.../etc.) + 3 siglas curtas
+(CAIC/SAAE/FSESP) revisadas manualmente, porque sozinhas bateram por acaso
+com um nome errado no primeiro passe — corrigidas por conterem a sigla
+como palavra inteira no nome do KML. 61 dos 64 locais distintos da zona
+casaram; 3 ficaram sem geo, de propósito, por não aparecerem no arquivo
+sob nenhuma variação de nome ("Creche Tia Medeiros", "Sec. Mun. de
+Educação", "U.E. Antônio Rodrigues") — nunca adivinhados. No módulo, cada
+seção com coordenada ganha um link "📍" pro Google Maps, dentro do modal
+"Seções da rota".
+
+**Ponto de partida/destino das 35 rotas de mídia da 7ª Zona, preenchidos
+(04/09/2026).** Regra confirmada com o dono do projeto: toda rota de
+recolhimento de mídia começa numa seção (local de votação) e termina num
+dos 4 **pontos de transmissão** fixos — Cartório Eleitoral da 7ª Zona
+Eleitoral, Creche Mamãe Lima (Jatobá), Escola Monsenhor Mateus (Sigefredo
+Pacheco) e Escola da Baixinha (Sigefredo Pacheco). `sql/
+SIME_rotas_partida_destino_zona7.sql` (rodado uma vez, não é migração)
+preencheu `ponto_partida` (primeiro trecho do itinerário) e `destino`
+(reconhecido no último trecho — "Sede da 7ª Zona" no texto do MaxLog vira
+o nome canônico do Cartório) pras 33 rotas que batem com o padrão.
+**Escola da Baixinha não tem nenhuma rota apontando pra ela hoje** — nem
+existe em `sime_secoes.local_nome` — só documentado como ponto válido,
+sem dado pra preencher agora. **Rota 001 e Rota 005 ficaram sem `destino`,
+de propósito, não adivinhadas**: a 001 (4 locais de Sigefredo Pacheco)
+não menciona nenhum dos 4 pontos no itinerário do MaxLog, mesmo sendo do
+mesmo município das rotas que consolidam em Monsenhor Mateus — pode ser
+dado incompleto do export; a 005 ("Secretaria (Campo Maior)") é dado
+ANTIGO, de antes do MaxLog (já documentado acima que "não veio no export
+desta vez e ficou intocada"), não segue o padrão de rota de mídia nenhum.
+Falta o cartório confirmar as duas antes de eu preencher algo ali.
+
+**Distribuição de urna e o retorno (recolhimento de urna) — 12 rotas reais
+carregadas em produção (09/09/2026, pedido direto: planilha de 12 rotas
+colada, com a regra "a distribuição de urnas ocorre na véspera da eleição,
+a partir de 5 horas" e "o recolhimento começa após a eleição, após as
+17h").** Até aqui só existia UMA rota de distribuição de teste (`UR1`,
+"Rota Urnas 01" — Maroquinha/José Gomes de Oliveira/Mario Cazuza, batendo
+exatamente com a "ROTA 01" da planilha, o que confirmou que a numeração
+"ROTA 01..12" da planilha É a de distribuição de urna, não outra coisa).
+As outras 11 (`UR2`..`UR12`) foram criadas a partir do itinerário colado,
+casando cada local do texto com `sime_secoes.local_nome` por nome (nunca
+por município — a planilha às vezes atribui um município diferente do que
+já está cadastrado, e o nome já é único na zona) e por expansão de
+abreviação, mesmo critério do casamento de coordenadas do KML documentado
+acima (Esc./Escola→U.E./G.E., Semed→Sec. Mun. de Educação, etc.). Quando um
+local tem mais de uma seção (prédio com várias urnas), TODAS entram como
+paradas consecutivas, na ordem em que a planilha cita o prédio — é o mesmo
+padrão que já estava em `UR1` (2 seções de "G.E. Profª Maroquinha" como
+paradas 1 e 2).
+
+`ponto_partida='Cartório Eleitoral da 7ª Zona Eleitoral'` e
+`horario_saida='05:00:00'` em todas as 12 (`UR1` foi corrigida também —
+tinha `06:00` e "cartório" em minúsculo de um cadastro de teste anterior);
+`destino` fica em branco de propósito, pra usar a sugestão automática já
+existente (1º/último local das paradas) em vez de repetir manualmente.
+`tempo_parada_min=10` como default (ajustável depois, mesmo campo que já
+existe no módulo).
+
+**9 locais da planilha NÃO entraram na primeira carga — sem nome batendo
+com nenhuma seção da 7ª Zona, nunca adivinhado.** 3 confirmados pelo
+cartório no mesmo dia (pedido direto: "vlceja é o mulata lima", "Milton
+Soldani é agora a creche tia Medeiros", "escola municipal da varjota é o
+posto de saude") e já corrigidos em produção:
+- **CEJA (ROTA 06) = Centro Ed. JA Mulata Lima** — entrou como parada 28-36
+  de `UR6` (9 seções do mesmo prédio), no fim da rota (mesma posição do
+  texto: "...Escola Valdivino Tito – centro, e CEJA").
+- **Escola Mun. Dr. Milton Soldani Afonso (ROTA 04) = Creche Tia Medeiros**
+  — o prédio mudou de função/nome; entrou como parada 17-25 de `UR4` (9
+  seções), no fim da rota.
+- **Escola Municipal Varjota (ROTA 11) = Posto Saúde da Varjota** —
+  confirma o candidato que eu tinha descartado por precaução ("posto de
+  saúde não é escola"); como esse item era o PRIMEIRO da ROTA 11 no texto
+  original, entrou como parada 1 de `UR11`, empurrando as 8 paradas já
+  cadastradas uma posição pra baixo (2-9) — não só um append no fim.
+
+As 3 rotas de recolhimento correspondentes (`RU4`/`RU6`/`RU11`) foram
+regeneradas do zero (delete + reinsert invertido a partir da ordem atual
+de `UR4`/`UR6`/`UR11`) — pra `RU4`/`RU6`, o novo último local da ida
+(Creche Tia Medeiros / Centro Ed. JA Mulata Lima) passou a ser o
+`ponto_partida` do recolhimento; `RU11` manteve o mesmo `ponto_partida`
+(a Varjota entrou no INÍCIO da ida, não mudou qual é o ÚLTIMO local).
+
+**IATE (ROTA 06) confirmado pelo cartório: "iate nao existe mais"** —
+diferente dos outros 3 casos resolvidos acima (nome trocado, mesmo
+prédio), este não é um problema de casamento de nome — o local em si foi
+desativado/não existe mais como ponto de votação, então não entra na rota
+de propósito, não é uma pendência de dado.
+
+**4 dos 5 locais pendentes, resolvidos em 10/09/2026 — confirmados pelo
+cartório com nome exato + coordenada, inseridos em UR11/UR12 e
+reotimizados.** Pedido direto, respondendo à pergunta "onde exatamente no
+texto original cada local entra?" (a resposta inicial tinha sido "vou
+informar a posição exata"): em vez de posição no texto, o cartório trouxe
+**lat/long reais** de cada local —
+"Igreja da Morada Nova (seções 221, 243) -4.7647851, -41.9635639",
+"Posto Saúde M. Sousa Dié (seções 160, 162, 258) -4.730326, -41.8415003",
+"Grupo Escolar (seção 139) -4.7858354, -41.8596112",
+"U.E. Jovino Josino Oliveira (seções 138, 231) -4.8047352, -41.7420495".
+Coordenada real muda a régua de "nunca adivinha": em vez de estimar POSIÇÃO
+no itinerário (o que exigiria o texto original), rodou-se o mesmo algoritmo
+de otimização (vizinho-mais-próximo + 2-opt, ver "🔀 OTIMIZAÇÃO DE ORDEM
+DAS PARADAS" acima) sobre a rota com as paradas novas incluídas — a MESMA
+ferramenta já validada e documentada pra decidir ordem geográfica, não uma
+adivinhação nova. `sime_secoes.latitude/longitude` das 8 seções foram
+gravadas com os valores exatos informados (bem próximos do que já havia
+casado pelo KML — nunca tinham entrado numa rota, só tinham geo).
+
+- **UR11** (Igreja da Morada Nova, 221/243) — 9→11 paradas, 34,09km→32,24km
+  reotimizados. As duas entraram entre "Esc. Mun. Mano Castelo Branco" e
+  "U.E. Francisco F.P. Oliveira" (posições 4-5 de 11) — geograficamente
+  entre os dois clusters. O ÚLTIMO local da rota mudou (de "U.E. Francisco
+  F.P. Oliveira" pra "U.E. Rafael Nogueira Passos"), então RU11 (o retorno)
+  foi regenerada por inversão da nova ordem e seu `ponto_partida` atualizado
+  pra acompanhar.
+- **UR12** (Posto Saúde M. Sousa Dié 160/162/258, Grupo Escolar 139, U.E.
+  Jovino Josino Oliveira 138/231) — 16→22 paradas, 62,68km→49,55km
+  reotimizados. Sousa Dié entrou perto do início (logo após "G.E. Prof.
+  Francisco Luis"); Grupo Escolar e U.E. Jovino Josino Oliveira (esta em
+  Sigefredo Pacheco, município diferente do resto da rota — mesma
+  discrepância planilha×cadastro já aceita alhures) entraram perto do fim,
+  junto de "Esc. Mun. A.F. Ribeiro Paz". O último local também mudou (de
+  "Esc. Mun. A.F. Ribeiro Paz" pra "U.E. Jovino Josino Oliveira"); RU12
+  regenerada e `ponto_partida` atualizado do mesmo jeito.
+
+Cada adição logada como `rota_secao_adicionada` (mesma ação de
+`rtAdicionarSecao`), a reotimização como `rota_ordem_otimizada` (payload
+`origem:'insercao_locais_confirmados_10-09-2026'`, pra distinguir do lote
+de 10/09 e de um clique futuro do cartório no botão), e a regeneração de
+RU11/RU12 como `rota_paradas_copiadas_retorno` (mesma ação de
+`rtCopiarParadasInvertidas`) — tudo rodado uma vez via MCP, replicando
+exatamente as mesmas ações/payloads que a UI já grava, não uma ação nova.
+
+**Escola Engenio Rodrigues Lima confirmada como INEXISTENTE (10/09/2026,
+pedido direto: "não existe local de votação Escola Engenio Rodrigues Lima.
+existe alguma seção atribuida a esse local?").** Checado direto no banco
+(nome, "Engenio", "Rodrigues Lima" — nenhuma variação bateu com seção
+nenhuma da 7ª Zona, só "Igreja da Morada Nova" por proximidade textual, o
+mesmo candidato descartado desde 09/09/2026). Confirmado pelo cartório que
+o local em si nunca existiu/nunca foi cadastrado — mesmo caso do IATE
+(ROTA 06, "não existe mais"), não uma pendência de nome-diferente pra
+resolver. Pendência fechada: nenhuma das 5 menções órfãs da carga original
+de UR/RU (ver "9 locais da planilha... 3 confirmados") fica de fora por
+falta de investigação — as outras 4 foram inseridas em 10/09/2026 (ver
+acima), esta é a única que de fato não corresponde a nenhum local real.
+
+**12 rotas de recolhimento geradas automaticamente (`RU1`..`RU12`)** — via
+SQL direto no banco (mesmo efeito que o botão "🔄 Gerar rota de
+recolhimento" do módulo já faz um por vez): `rota_origem_id` apontando pra
+respectiva `UR#`, paradas na ordem EXATAMENTE invertida, `ponto_partida`
+= último local de cada distribuição (o texto, não coordenada — mesmo
+formato de `rtNomeLocalParada()`), `destino='Cartório Eleitoral da 7ª
+Zona Eleitoral'`, `horario_saida='17:00:00'` (após o encerramento oficial
+da votação). `tipos=['recolhimento_urna']` — tipo sem consumidor legado,
+então só grava em `sime_rota_secoes`, nunca em `sime_secoes.rota_id`
+(que já está ocupado pela respectiva rota de distribuição). `sime_rotas.codigo`
+precisou ser alargado de `VARCHAR(3)` pra `VARCHAR(10)` — os códigos
+`UR10`/`UR11`/`UR12`/`RU10`/`RU11`/`RU12` têm 4 caracteres, e o limite
+antigo só cobria os códigos numéricos de 3 dígitos do MaxLog (001-035).
+
+**Cadastro de locais de votação (paradas) unificado no modal de Editar Rota
+(08/09/2026, pedido direto: "quero poder cadastrar a rota, indicando o
+local de saida, e todos os pontos, expectativa de hora de saida e chegada,
+devendo cadastrar cada um dos locais de votação... quero as informações de
+georeferenciamento que ja consta no sistema").** Até aqui, vincular seções
+a uma rota vivia num modal PRÓPRIO ("👥 Seções", separado do modal "✏️
+Editar Rota") — o cartório precisava abrir dois modais diferentes pra
+cadastrar uma rota por completo: um pros dados gerais (código, itinerário
+livre, partida/destino/horário), outro pros locais de votação de verdade.
+O pedido juntou os dois num fluxo só.
+
+- **"👥 Seções (N)" deixou de existir como botão/modal separado** — a seção
+  "📍 Locais de votação (paradas)" (busca + lista ordenada + link "📍 Ver no
+  mapa" pra quem já tem `latitude`/`longitude`, ver "Georreferência por
+  LOCAL de votação" acima) agora vive DENTRO do modal "✏️ Editar Rota",
+  logo abaixo do Itinerário. `rtAdicionarSecao`/`rtRemoverSecao`/
+  `rtSalvarParada` continuam exatamente as mesmas RPCs/updates de antes
+  (inclusive a escrita de mão-dupla em `sime_secoes.rota_id`/`parada` pra
+  rota de tipo `distribuicao`, ver acima) — só a apresentação mudou.
+- **Escopado a `#rt-paradas-secao`, nunca ao modal inteiro
+  (`rtRenderParadas()`, não `rtRenderModalRota()`).** Mesma lição já
+  aprendida em `cmSalvarTelefoneCard()` (`sime_contatar_mesarios.js`):
+  re-renderizar o formulário inteiro a cada tecla digitada na busca de
+  local, ou a cada seção adicionada/removida/reordenada, perderia o que a
+  pessoa estivesse editando ao mesmo tempo nos outros campos (código, nome,
+  itinerário, horário...) — agora que os dois convivem no mesmo modal, essa
+  separação passou a importar de verdade, e foi aplicada desde o início em
+  vez de esperar o bug acontecer de novo.
+- **"Nova rota" não tem onde vincular seção ainda** (não existe `rota.id`
+  até salvar) — em vez disso, mostra a nota "📍 Salve a rota primeiro pra
+  poder cadastrar os locais de votação (com geolocalização) abaixo". Salvar
+  uma rota nova **não fecha mais o modal** — recarrega e reabre o MESMO
+  modal já em modo edição da rota recém-criada (casando por `codigo`, único
+  por zona — o insert deste projeto não pede o id de volta), com a seção de
+  locais de votação já pronta pra usar. É o que faz "cadastrar a rota...
+  devendo cadastrar cada um dos locais de votação" ser um fluxo contínuo,
+  sem precisar fechar/reabrir pra achar onde vincular os locais.
+- **Itinerário (texto livre) continua existindo**, só com o rótulo ajustado
+  pra "observações livres, opcional" — ainda útil pra detalhe de trajeto
+  que não é um local de votação (ex.: "vira à direita depois da ponte"),
+  complementar à lista estruturada, não substituída por ela.
+- **Ponto de partida/destino/horário de saída/previsão de chegada não
+  mudaram** — já existiam no nível da rota (não por parada) desde
+  04/09/2026, ver "Estrutura de itinerário mais rica" acima; o pedido
+  citava "expectativa de hora de saida e chegada" mas isso já estava
+  coberto, o que faltava mesmo era o cadastro estruturado dos locais.
+
+Coberto por `tests/test_rotas.mjs` (abrir via "✏️ Editar" em vez de "👥
+Seções" em todos os blocos que testam locais de votação; bloco 2 ajustado
+pra esperar o modal continuar aberto em modo edição, com a seção de locais
+já visível, em vez de fechar).
+
+**Seis melhorias próprias (08/09/2026), do mais fácil ao mais difícil —
+depois de "somente pense" (brainstorm) seguido de "faça um plano de
+implantação do mais fácil ao dificil" e "implemente o que falta para o
+módulo rotas".** Nenhuma veio de um pedido específico do cartório — são
+lacunas identificadas ao revisar o módulo inteiro depois da unificação
+acima. Todas cobertas por `tests/test_rotas.mjs` (blocos 11-16, 100
+checks no total).
+
+1. **Aviso de conflito de responsável** — `rtConflitosDe(rota)`: mesma
+   pessoa (`responsavel_ator_id`) escalada em duas rotas ATIVAS com
+   horário sobreposto ganha um aviso vermelho no card de cada uma,
+   citando a outra pelo código (`rtHorariosSobrepoem`, comparando sempre
+   normalizado por `rtFmtHora()` — "08:30" vs "08:30:00" batidos direto
+   como string dava falso negativo). Só calcula quando as DUAS rotas têm
+   `horario_saida` **e** `horario_chegada_previsto` preenchidos — sem os
+   dois não dá pra saber se sobrepõe, e "nunca adivinha" vale aqui
+   também: melhor não avisar do que avisar errado.
+2. **Painel "⚠️ Seções sem rota, por tipo"** — `rtSecoesOrfasPorTipo()`,
+   card novo entre a busca e a lista de rotas, com disclosure por tipo
+   (▸/▾, `rtToggleOrfas()`, mesmo padrão de `rsToggleMunicipios()` em
+   `sime_resumo_secoes.js`). Só considera um tipo se já existe pelo menos
+   1 rota ATIVA desse tipo cadastrada (`tipoEmUso`) — sem isso, um tipo
+   ainda não iniciado (ex.: distribuição de urnas, hoje sem nenhuma rota
+   real) apareceria como "175 seções sem rota", que é esperado/conhecido,
+   não uma lacuna acionável. O aviso real de "76 seções órfãs"
+   (recolhimento de mídia, já documentado acima) é exatamente o caso que
+   isto cobre: um tipo já em uso, com cobertura parcial.
+3. **"🗺️ Ver rota completa no mapa"** — dentro de "📍 Locais de votação
+   (paradas)", link único (Google Maps Directions API, sem chave/custo)
+   ligando a 1ª parada com geo até a última, com as do meio como
+   `waypoints=`. Só aparece com pelo menos 2 paradas geolocalizadas — só
+   um ponto não forma trajeto. Complementa (não substitui) o "📍 Ver no
+   mapa" que já existia por parada individual.
+4. **Gerador de "rota de recolhimento"** — `rtGerarRetorno(rotaId)`,
+   botão "🔄 Gerar rota de recolhimento" (só em rota com tipo
+   `distribuicao`, e só enquanto ela ainda não tem um retorno gerado).
+   Abre "Nova rota" PRÉ-PREENCHIDA (partida/destino invertidos, tipo
+   `recolhimento_urna` já marcado) mas nunca salva sozinho — código é
+   obrigatório e não dá pra adivinhar um que não colida, então o cartório
+   sempre revisa e confirma pelo "💾 Salvar" de sempre. Só as paradas (sem
+   ambiguidade nenhuma — é a mesma lista, ao contrário) são copiadas
+   automaticamente pra rota nova, logo depois dela ser salva pela primeira
+   vez (`rtCopiarParadasInvertidas`, INSERT em lote com `parada: total -
+   idx`). Usa `sime_rotas.rota_origem_id` (FK pra ela mesma) — a coluna
+   estava DOCUMENTADA aqui como "já existe pronta" desde 04/09/2026, mas
+   uma checagem direta no schema de produção (antes de escrever qualquer
+   código que dependesse dela) mostrou que nunca tinha sido criada de
+   verdade; migrada via `mcp__Supabase__apply_migration` nesta sessão,
+   antes do gerador ser construído. Card da rota de origem passa a avisar
+   "↩️ Já tem recolhimento gerado: Rota X" e esconde o botão (evita gerar
+   duas vezes); a rota gerada mostra "↩️ Recolhimento gerado a partir da
+   Rota Y".
+5. **Impressão da ficha da rota pro motorista** — `rtImprimirFicha(rotaId)`
+   / `rtHtmlFicha()`, botão "🖨️ Imprimir ficha" em todo card. Mesmo
+   mecanismo sem popup já usado em Correspondência/Oficial de Justiça
+   (`SIME_convocacao.html`): `#print-area` oculto na tela, só visível via
+   `@media print`, populado por `innerHTML` e `window.print()` chamado
+   direto (sem `window.open()`, que popup blocker costuma barrar) — CSS
+   novo em `SIME_rotas.html`, que até então não tinha nenhum mecanismo de
+   impressão. Documento de apoio operacional (não uma peça oficial):
+   partida/destino/horários, responsável **com telefone** (`sime_atores`
+   ganhou `telefone_whatsapp` no SELECT de `rtCarregar()` só pra isto),
+   itinerário/observações, e a tabela de paradas em ordem com
+   número/local/município/coordenadas (ou "sem geo") e uma coluna em
+   branco pra anotar o horário real de chegada em campo. Cada impressão
+   grava log de auditoria (`rota_ficha_impressa`, autor + quantidade de
+   paradas) — mesmo critério das demais telas de impressão do sistema:
+   não é confirmação de que a rota foi cumprida, só de que o documento foi
+   gerado.
+6. **Status operacional de Dia D, só leitura** — `sime_rotas_estado`/
+   `sime_rotas_urnas` já existiam desde a criação original do módulo de
+   Rotas (`sql/SIME_schema.sql`) pra uso do Conferente (embarque de urna,
+   `sime_rota_estado_upsert`/`sime_rota_urna_toggle`, com fila offline
+   própria) e da TV Distribuição — nunca eram lidas aqui. `rtCarregar()`
+   passou a buscar `sime_rotas_estado` da eleição ativa da zona
+   (`window.eleicaoIdAtual()`, exposto por `SIME_rotas.html` reaproveitando
+   a mesma resolução que `log()` já fazia — não duplica a query) e, a
+   partir dos ids encontrados, `sime_rotas_urnas`. Card da rota mostra uma
+   linha ("📦 Embarcando — Dia D: 1/2 embarcada(s) · Conferente: Fulano ·
+   aberta 09:00...") só quando existe uma linha de `sime_rotas_estado`
+   pra aquela rota+eleição — **nunca fabrica um "aguardando" que ninguém
+   registrou**: rota sem operação em andamento não mostra nada extra.
+   Puramente informativo — o módulo de Rotas continua sem nenhum jeito de
+   ESCREVER nesse status; isso continua sendo trabalho do Conferente
+   (offline-first, com fila própria), que não faz sentido duplicar aqui.
+   RLS de `sime_rotas_estado`/`sime_rotas_urnas` já era por zona
+   (`sime_zona_visivel`, via `eleicao_id`/`rota_estado_id`) desde a
+   criação — qualquer membro da equipe logado em Rotas já podia ler, só
+   nunca tinha sido pedido.
+
+**Quatro ajustes no modal de rota (08/09/2026), pedido direto do cartório
+depois de usar o módulo:** "Tipo (marque quantos precisar), mude para uma
+caixa de seleção. o modal deve ser responsivo, tanto para celular, como
+para computador, sendo o modal de computador maior. onde tem ponto de
+partida e destino não ficou legal, acho melhor o ponto de partida ser o
+primeiro item da rota, e o destino o ultimo, pegue dos locais (paradas).
+quero poder estimar o tempo de parada para calcular o total do percurso da
+rota." Coberto por `tests/test_rotas.mjs` (blocos 17-18, 21 checks novos).
+
+- **"Tipo" virou `<select multiple>`** (`#rt-tipos`, `size` igual ao
+  número de tipos — mostra as 4 opções sem precisar abrir dropdown) — os
+  checkboxes (`.rt-tipo-check`) saíram de vez. `rtSalvarRota()` lê
+  `[...document.getElementById('rt-tipos').selectedOptions]` em vez de
+  `querySelectorAll('.rt-tipo-check:checked')`. Ctrl/Cmd+clique marca mais
+  de um, mesmo padrão nativo de qualquer `<select multiple>`.
+- **Modal responsivo, maior no desktop** — `.modal` ganhou dois
+  breakpoints (`@media (min-width:700px){max-width:640px}` e
+  `(min-width:1000px){max-width:820px;max-height:92vh}`), mesmo padrão já
+  usado em `SIME_convocacao.html` (04/09/2026). Abaixo de 700px (celular)
+  nada muda. Optou-se por só alargar o modal (não reorganizar em colunas
+  como o modal de "Contatar mesários" faz) — o formulário de rota é
+  essencialmente linear (código→nome→tipo→itinerário→paradas→partida/
+  destino/horários→responsável), diferente do modal de pessoa que tem
+  várias seções independentes; alargar já resolve o aperto real (campos
+  lado a lado como partida/destino/horário/tempo por parada cabendo numa
+  linha só) sem o risco de reorganizar um formulário sequencial em blocos
+  que quebram de forma estranha.
+- **Ponto de partida/destino SUGERIDOS a partir das paradas, mas continuam
+  editáveis** — decisão tomada via pergunta direta ao dono do projeto
+  antes de implementar (o pedido original, se levado ao pé da letra,
+  destruiria um dado real já em produção: várias rotas de distribuição têm
+  `ponto_partida='Cartório Eleitoral da 7ª Zona Eleitoral'`, que não é
+  nenhum local de votação e portanto nunca apareceria como "1º item da
+  rota"). Escolhida a opção "Automático, mas editável": ao abrir o modal
+  de uma rota já salva, se o campo ainda não tem valor próprio no banco
+  (nem um rascunho de `rtGerarRetorno`), ele já vem preenchido com
+  `rtNomeLocalParada()` do 1º/último local da lista de paradas
+  (`partidaSugerida`/`destinoSugerido` em `rtRenderModalRota()`) — mas
+  continua sendo um `<input type="text">` normal, editável por cima a
+  qualquer momento. Um botão **"↻"** ao lado de cada campo
+  (`rtUsarSugestaoPartida()`/`rtUsarSugestaoDestino()`, ids
+  `rt-partida-sugerir`/`rt-destino-sugerir`) recalcula sob demanda (ex.:
+  depois de reordenar as paradas) sem esperar reabrir o modal — só existe
+  em rota já salva (`!isNovo`), já que "Nova rota" ainda não tem onde
+  vincular parada nenhuma. Uma nota (`ic-sub`) abaixo dos campos mostra a
+  sugestão atual em texto, pra deixar claro que é só um ponto de partida
+  editável, não um valor travado.
+- **Tempo estimado por parada, pro cálculo do percurso total** —
+  `sime_rotas.tempo_parada_min` (novo, migração `sime_rotas_tempo_parada_min`,
+  minutos médios parado em CADA local de votação da rota). Campo
+  "Tempo por parada (min)" na mesma linha de Horário de saída/Previsão de
+  chegada. `rtTempoTotalParadasMin(rota, totalParadas)` multiplica pelo
+  número de paradas cadastradas; `rtFmtMinutos()` formata como "Xh Ymin"/
+  "Ymin"; quando `horario_saida` também está preenchido,
+  `rtSomarMinutos()` soma os minutos e mostra "libera por volta de HH:MM"
+  — só o tempo PARADO, nunca tenta estimar deslocamento entre paradas
+  (exigiria uma API paga de rotas/matriz de distância, fora do orçamento
+  R$ 0,00/mês do projeto; o texto deixa isso explícito: "sem contar
+  deslocamento"). Mostrado em três lugares que já reaproveitam a mesma
+  conta: dentro do modal (logo abaixo de partida/destino/horários), no
+  card da lista (linha "⏱️ N parada(s) × M min ≈ ..."), e na ficha impressa
+  (`rtHtmlFicha()`, linha "Tempo estimado parado"). Some sozinho quando
+  `tempo_parada_min` não está preenchido ou a rota ainda não tem paradas —
+  mesmo critério de "nunca fabrica dado" já usado no resto do módulo.
+
+**Mapa esquemático + QR na ficha impressa, reposicionar paradas com ▲/▼,
+previsão de chegada estimada e destino incluído no mapa/link (08/09/2026,
+pedidos diretos em sequência).** Quatro pedidos do mesmo dia, sobre o
+módulo recém-lançado:
+
+- **"em imprimir ficha conseguimos gerar para imprimir um mapa da rota?"**
+  — `rtSvgMinimapa(paradas)` desenha um SVG esquemático a partir das
+  coordenadas já cadastradas: liga as paradas em LINHA RETA, na ordem,
+  marcador verde na 1ª (partida), vermelho na última (destino), número da
+  ordem dentro de cada círculo e o número da seção embaixo. Deliberadamente
+  NÃO é um mapa de verdade (sem ruas, sem rio, sem relevo) — um mapa
+  estático de verdade exigiria um serviço de terceiro (a maioria paga; os
+  gratuitos como staticmap.openstreetmap.de dependem de rede no ato de
+  imprimir, incompatível com conectividade ruim no interior do Piauí) —
+  então é só um ESQUEMA offline, sem custo, sem depender de rede. O rodapé
+  do mapa deixa isso explícito ("não segue estrada nenhuma"). Complementado
+  por um **QR code** (`vendor/qrcode.min.js`, a mesma lib já vendorizada
+  que gera os QR de token de campo em `SIME_tokens.html` — offline, sem
+  custo) apontando pro link de verdade do Google Maps
+  (`rtMapsUrl`) — quem for dirigir aponta a câmera e abre a navegação real,
+  quando tiver sinal. `rtImprimirFicha()` gera o QR depois de montar o
+  HTML do `#print-area` (`new QRCode()` é síncrono, desenha um `<canvas>`
+  — mesmo padrão de `SIME_tokens.html`).
+- **"o destino deve ser incluido no mapa de rotas"** — achado ao construir
+  o item acima: o esquema só desenhava as PARADAS (`sime_rota_secoes`),
+  mas Partida/Destino são campos de texto livre que podem não ser NENHUMA
+  parada geolocalizada (ex.: `ponto_partida='Cartório Eleitoral da 7ª
+  Zona Eleitoral'`, já em produção em várias rotas de distribuição — ver
+  acima). Resolvido em duas frentes, sem inventar coordenada nenhuma pro
+  texto livre:
+  - Uma **legenda de texto**, sempre presente abaixo do mapa/SVG
+    ("🟢 Partida: X · 🔴 Destino: Y"), usando o texto digitado quando
+    existe (senão cai pro nome do 1º/último local, mesma sugestão que já
+    preenche os campos do formulário) — nunca depende de o destino ter
+    coordenada pra aparecer.
+  - `rtMapsUrl(rota, paradas)` (usada tanto pelo link "Ver rota completa
+    no mapa" na tela quanto pelo QR da ficha) passou a priorizar o TEXTO
+    de Partida/Destino como origem/destino da URL do Google Maps Directions
+    — o próprio Google geocodifica o endereço/nome sozinho, de graça, ao
+    abrir o link; só cai pra coordenada da 1ª/última parada quando o campo
+    de texto correspondente está vazio. Antes disso, um "Cartório Eleitoral"
+    digitado como destino era simplesmente ignorado pelo link, que sempre
+    usava só as paradas geolocalizadas.
+- **"no modal de cada rota, podemos ter duas colunas com as informações
+  para não ter que ficar rolando tela"** — mesmo mecanismo já usado no
+  modal de "Contatar mesários" (`SIME_convocacao.html`, 04/09/2026):
+  cabeçalho (com o ✕) e rodapé (Cancelar/Salvar) ficam FIXOS
+  (`flex:none`), só o corpo rola (`.m-body{overflow-y:auto}`) — só entra
+  em telas `>=1000px` (`.modal{max-width:900px}`); abaixo disso nada muda.
+  Diferente de Convocação (`column-width` automático, decide 2 ou 3
+  colunas sozinho), aqui é **`column-count:2` fixo** — o pedido foi
+  especificamente "duas colunas", e o formulário de rota é mais estreito
+  que o de pessoa, então 2 já usa bem o espaço sem precisar de uma 3ª.
+  `break-inside:avoid` em cada filho direto de `.m-body` evita cortar um
+  campo (ou a seção de paradas inteira) ao meio entre as colunas.
+- **"quero poder reposicionar os locais da rota de modo a fazer mais
+  sentido"** — pedido com print de produção anexado mostrando 3 paradas
+  com o número de ordem **"1" ao mesmo tempo** (e outra com "2") — o campo
+  numérico livre de antes (`rtSalvarParada`, digitar qualquer número e
+  perder o foco) não impedia duplicata nem lacuna, e claramente confundiu
+  o cartório em uso real. Removido de vez — trocado por botões **"▲"/"▼"**
+  por parada (`rtMoverParada(rotaId, secaoId, direcao)`), desabilitados nas
+  pontas (1ª parada sem "▲", última sem "▼"). Cada clique troca a POSIÇÃO
+  na lista (não só edita um número solto) e **renumera TODAS as paradas
+  daquela rota sequencialmente, 1..N**, o que corrige sozinho qualquer
+  duplicata/lacuna que já existisse assim que alguém mexe na rota — sem
+  precisar de nenhuma migração própria pro dado velho. Mesma escrita de
+  mão-dupla de sempre pra `sime_secoes.parada` em rota de tipo legado
+  (`rtRotaTemTipoLegado`); rota sem consumidor legado só grava em
+  `sime_rota_secoes`, sem tocar `sime_secoes`.
+- **"como o sistema calcula a rota pelo google maps e tempo medio de
+  espera de 10 minutos em cada local conseguimos calcular automaticamente
+  a previsão de chegada?"** — esclarecido com o dono do projeto ANTES de
+  implementar (pergunta direta, via `AskUserQuestion`): o SIME nunca
+  consultou o Google de verdade, só gera um LINK gratuito; calcular
+  deslocamento real exigiria a API paga do Google (Directions/Distance
+  Matrix), fora do orçamento R$ 0,00/mês. Escolhida a opção recomendada:
+  **estimativa em linha reta**. `rtChegadaEstimada(rota, paradas)` só
+  calcula quando TODAS as paradas têm geo (nunca subestima em silêncio
+  pulando uma perna sem coordenada) e há horário de saída + tempo por
+  parada preenchidos — soma o tempo parado de sempre
+  (`rtTempoTotalParadasMin`) com o tempo de deslocamento estimado
+  (distância HAVERSINE entre paradas consecutivas ÷ `RT_VELOCIDADE_MEDIA_KMH`
+  = 40km/h fixo, aproximação de estrada rural, não configurável por rota
+  nesta v1) ao horário de saída. Mesmo critério de "sugestão, nunca
+  força" já usado em Partida/Destino: só entra como valor DEFAULT do campo
+  "Previsão de chegada" quando ele ainda está vazio no banco; nota abaixo
+  do campo (`🧭 Previsão de chegada ESTIMADA...`) deixa explícito que é
+  aproximação, cita a velocidade assumida e convida a ajustar manualmente;
+  botão **"↻"** (`rtUsarSugestaoChegada()`) recalcula sob demanda usando
+  os valores DIGITADOS na hora (saída/tempo por parada), não só o que já
+  está salvo — útil pra testar "e se eu sair mais cedo" sem precisar
+  salvar primeiro.
+
+Coberto por `tests/test_rotas.mjs` (blocos 19-24, 148 checks no total no
+arquivo inteiro).
+
+**Ficha revisada de novo no mesmo dia — mapa por último, e o link do
+Google Maps corrigido pra usar coordenada em vez de geocodificar texto cru
+(08/09/2026, pedido direto: "coloque o mapa por ultimo e traga o trajeto
+com o ponto das rotas no google maps").**
+
+- **Mapa (esquema + legenda + QR/link) movido pra depois da tabela de
+  paradas** — antes ficava entre os dados da rota e a tabela; agora é a
+  última seção antes do rodapé de sempre.
+- **Link por extenso, além do QR** — o QR só serve pra quem escaneia com o
+  celular; o mesmo link agora também sai IMPRESSO POR EXTENSO
+  (`.rt-mapa-url`, `word-break:break-all` pra não estourar a largura da
+  página), clicável se o PDF impresso for aberto no computador.
+- **Bug real, achado testando em produção (Rota 24) — geocodificar o TEXTO
+  cru levava pra lugar errado.** `origin=Creche%20Tia%20Medeiros` (sem
+  nenhum contexto de cidade) resolvia pra um resultado em TERESINA;
+  `destination=Cart%C3%B3rio%20Eleitoral%20da%207%C2%AA%20Zona%20Eleitoral`
+  caía numa "zona 63" sem relação nenhuma. Pedido direto: "poderia criar o
+  link com as coordenadas?". `rtMapsUrl()` reescrita com uma prioridade
+  clara:
+  1. **Coordenada de verdade**, quando o texto de Partida/Destino bate
+     (por nome normalizado) com uma parada já cadastrada NA ROTA — mesmo
+     que a suposta parada não tenha geo salva, tenta achar uma
+     seção-irmã do MESMO prédio (mesmo `local_nome`+`município` —
+     comum: uma seção sem geo e outra com, no mesmo endereço, ver "G.E.
+     Treze de Março" documentado acima) que tenha coordenada, e usa essa.
+     Nunca inventa uma coordenada — só reaproveita uma que já existe pro
+     mesmo lugar físico.
+  2. **Texto + contexto de cidade**, quando bate com uma parada cadastrada
+     mas NINGUÉM daquele prédio tem geo ainda — o texto (formato de
+     `rtNomeLocalParada()`) já vem como "{local}, {município}", então só
+     falta anexar ", PI" pra completar o endereço pro geocodificador do
+     Google.
+  3. **Texto + `{1º município da rota}` + "PI"**, quando o texto não bate
+     com NENHUMA parada cadastrada (ex.: "Cartório Eleitoral da 7ª Zona
+     Eleitoral", que não é local de votação) — o único contexto disponível
+     é o(s) município(s) já preenchido(s) no cadastro da própria rota.
+  4. Coordenada da 1ª/última parada geolocalizada, quando o campo de texto
+     está vazio (comportamento de sempre, sem mudança).
+  Nenhuma camada inventa geografia nova — só usa dado que já existe
+  (coordenada de uma seção-irmã, ou município já cadastrado) pra dar mais
+  contexto ao Google, em vez de mandar um nome de prédio pelado.
+
+Coberto por `tests/test_rotas.mjs` (bloco 19 reescrito + ajustes no bloco
+22, 152 checks no total no arquivo inteiro).
+
+**Nome da rota abre o modal; endereço real do Cartório na geocodificação
+(08/09/2026, dois pedidos diretos).**
+
+- **"vamos retirar o botão de editar e selecionar o nome da rota para abrir
+  o modal"** — o botão "✏️ Editar" (card da lista) foi removido; clicar no
+  título da rota (código+nome, `cursor:pointer`, `title="Clique pra
+  editar"`) chama o mesmo `rtAbrirEditar()` de sempre. Nenhuma outra ação
+  do card mudou (Imprimir ficha, Gerar recolhimento, Desativar/Reativar
+  continuam onde estavam).
+- **"falta informação da coordenada do Cartório Eleitoral da 7ª Zona
+  Eleitoral??"** — resposta: sim, falta, e nunca existiu. O SIME não tem
+  (nem nunca teve) `latitude`/`longitude` do Cartório em lugar nenhum — só
+  o endereço POSTAL (`sime_zonas.remetente_endereco`/`bairro`/`cep`/
+  `municipio`/`uf`, cadastrado em 27/08/2026 pro módulo de Correspondência,
+  ver acima: "Rua Benjamin Constant, 948, Centro, 64280-000, Campo
+  Maior-PI"). Em vez de pedir uma coordenada nova (que exigiria o cartório
+  ir a campo com um GPS, ou confiar num pin solto no Google Maps — não é
+  dado que o sistema já tem), `rtMapsUrl()` passou a usar esse endereço
+  REAL como texto de geocodificação sempre que Partida/Destino menciona
+  "Cartório" (regex `/cart[oó]rio/i`) — muito mais preciso que o fallback
+  genérico de município (item 3 da lista acima), sem inventar coordenada
+  nenhuma. `rtCarregar()` busca esses 5 campos de `sime_zonas` junto do
+  resto (`rtDados.zona`); sem endereço cadastrado (94ª Zona, hoje) cai pro
+  fallback de município de sempre, sem quebrar.
+
+Coberto por `tests/test_rotas.mjs` (158 checks no total no arquivo
+inteiro).
+
+**Mapa real (OpenStreetMap) virou o principal da ficha impressa; o esquema
+em linha reta agora é só reserva (09/09/2026) — correção de raciocínio, a
+partir de uma observação direta do dono do projeto sobre o próprio fluxo:
+"a impressão será feita antes, com Internet, o qrcode viria depois em um
+momento de dúvidas ou na saída, mas seria o mapa impresso um plano b".**
+
+A justificativa original pra `rtSvgMinimapa()` ser só um esquema em linha
+reta (documentada acima, 08/09/2026: "mapa estático de verdade... os
+gratuitos como staticmap.openstreetmap.de dependem de rede no ato de
+imprimir, incompatível com conectividade ruim no interior do Piauí")
+partia de uma premissa que não é como o fluxo real funciona: **a impressão
+sempre acontece no cartório, com internet** — é o CAMPO (a estrada, sem
+sinal) que pode ficar sem rede, nunca o momento de imprimir. Um mapa real
+baixado na hora de gerar a ficha resolve exatamente o problema que a
+decisão antiga achava impossível de resolver, e vira um "plano B" impresso
+muito mais útil do que linhas retas sem rua nenhuma — o QR/link do Google
+Maps continua existindo, mas pro uso que sempre foi dele: abrir navegação
+de verdade depois, em campo, quando tiver sinal.
+
+`rtStaticMapUrl(paradas)` (`sime_rotas_modulo.js`) monta uma URL de imagem
+estática do `staticmap.openstreetmap.de` (mesmo serviço gratuito
+considerado e descartado antes — descartado pelo motivo errado, não pelo
+serviço em si; mesma base de tiles que o mapa ao vivo da TV Dia já usa,
+sem chave/custo) — `center`/`zoom` calculados pra enquadrar todas as
+paradas geolocalizadas (mesmo algoritmo de `fitBounds` de mapas Mercator/
+256px, com ~15% de margem pra a rota não ficar colada na borda), `path=
+color:blue|weight:4|lat,lon|...` desenhando a linha reta entre elas (a
+linha continua reta — quem faz o trajeto de verdade pelas ruas é o QR/link
+do Google Maps, como sempre foi). Mesmo limiar de `rtSvgMinimapa` (≥2
+paradas com geo).
+
+**Sem SLA garantido — por isso o esquema offline nunca foi removido, só
+demovido a reserva.** `rtHtmlFicha()` sempre inclui os dois blocos no
+HTML: `#rt-mapa-real-wrap` (a imagem real, visível por padrão) e
+`#rt-mapa-esquema-wrap` (o SVG de sempre, `display:none` por padrão). A
+`<img>` tem `onerror="rtFichaMapaFalhou()"` — sem internet no momento da
+impressão (não deveria acontecer, mas nunca se sabe) ou o serviço de
+terceiro fora do ar, `rtFichaMapaFalhou()` esconde a imagem quebrada e
+revela o esquema no lugar, com um aviso explícito ("⚠ Mapa real não
+carregou..."). A ficha nunca fica sem NENHUM mapa.
+
+**`rtImprimirFicha()` espera a imagem terminar de carregar (ou falhar)
+antes de chamar `window.print()`** — diferente do QR (`QRCode()`, síncrono,
+desenha um `<canvas>`) e do SVG (string montada na hora), uma `<img
+src="https://...">` carrega de forma assíncrona; sem esperar,
+`window.print()` podia disparar com a imagem ainda em branco. Um
+`await new Promise(...)` escuta `load`/`error` da imagem (ou já resolve na
+hora se `.complete` por estar em cache), com um timeout de 4s como rede de
+segurança — nunca trava a impressão numa rede lenta/sem resposta; se
+estourar, força o mesmo fallback do `onerror`.
+
+Coberto por `tests/test_rotas.mjs` (blocos 27-28): URL do mapa real com os
+parâmetros corretos, esquema de reserva continua escondido quando o mapa
+real carrega com sucesso, e o inverso — imagem interceptada pra falhar
+(`page.route(...).abort()`) revela o esquema e mostra o aviso, sem travar
+a impressão.
+
+**Corrigido no mesmo dia — `staticmap.openstreetmap.de` estava com DNS
+morto, e o mapa real NUNCA carregava em produção.** Achado real: o dono do
+projeto testou a ficha impressa de verdade e mandou o PDF — o mapa sempre
+caía no esquema de reserva, com o aviso "⚠ Mapa real não carregou". Eu
+tinha escolhido esse domínio de memória, sem conseguir testar de verdade
+antes de subir (o sandbox onde rodo bloqueia acesso à internet externa pra
+praticamente qualquer host) — confirmado depois, testando o domínio
+diretamente: `ENOTFOUND`, falha de DNS de verdade, o host não existe mais
+(ou nunca existiu com esse endereço exato). Exatamente o tipo de
+"adivinhação" que este projeto tenta sempre evitar, e aqui deu errado.
+
+Corrigido com o dono do projeto testando ao vivo (eu sem acesso de rede
+pra verificar sozinho) — trocado pro host oficial documentado da
+**Maptoolkit** (`staticmap.maptoolkit.net`, confirmado por ele testando no
+navegador, e depois confirmado por uma doc oficial da Maptoolkit sobre
+acesso via RapidAPI que ele compartilhou, listando `staticmap.maptoolkit.net/`
+como o host nativo real da Static Maps API deles). **Duas descobertas
+importantes, também só possíveis testando ao vivo:**
+- **`path=`/`markers=` desse serviço não funcionam** — `path=` devolve erro
+  `"invalid path"` pra QUALQUER sintaxe testada (com cor/peso, só
+  coordenadas cruas, ordem lat/lon invertida, pipe `%7C` codificado —
+  nenhuma passou); `markers=` é aceito sem erro, mas a imagem devolvida não
+  tem nenhum pino desenhado (comparado lado a lado com a mesma imagem sem o
+  parâmetro — idênticas). A Maptoolkit é um produto comercial (planos
+  Basic/Pro/Ultra via RapidAPI, ou Enterprise com chave própria) — a
+  hipótese mais provável é que overlay (linha/pino desenhado pelo servidor)
+  seja um recurso pago, e o acesso sem chave que estamos usando seja uma
+  cortesia/nível não documentado que só serve o mapa base.
+- **Por isso os pinos viraram um overlay de HTML/CSS, não vêm da URL da
+  imagem** — `rtMercatorPixel()` (`sime_rotas_modulo.js`) calcula a posição
+  em pixel de cada parada usando a projeção Web Mercator padrão (a mesma
+  matemática de qualquer mapa de tiles 256px, incluindo o Leaflet já
+  vendorizado da TV Dia) a partir do MESMO `center`/`zoom` já escolhidos pra
+  montar a URL da imagem; `rtMarcadoresOverlayHTML()` desenha um `<div>`
+  circular numerado por parada (mesma cor de sempre — 1º verde, último
+  vermelho, meio preto), posicionado em **percentual** (não pixel cru) —
+  se o navegador encolher a imagem pra caber na página impressa
+  (`max-width:100%` no `<img>`), os pinos encolhem junto, em vez de ficarem
+  defasados. `rtStaticMapUrl()` virou `rtStaticMapInfo()`, que devolve
+  `{url, centerLat, centerLon, zoom, W, H, paradas}` em vez de só a string
+  da URL — a mesma info que monta a URL agora também alimenta o cálculo dos
+  pinos, sem duplicar a lógica de bounding-box/zoom.
+
+**Sem SLA garantido, mais do que nunca — mas isso já era o desenho desde o
+início.** A Maptoolkit não documenta nenhum nível gratuito/anônimo
+oficial; o acesso sem chave que funciona hoje pode ser cortado ou passar a
+exigir autenticação a qualquer momento, sem aviso — bem menos garantido
+que um script comunitário como o `staticmap.openstreetmap.de` (que,
+irônico, foi justamente o que morreu primeiro). Isso não muda nada no
+código: o esquema offline (`rtSvgMinimapa`) já era tratado como reserva
+automática desde o desenho original, exatamente pensando nesse tipo de
+cenário — se a Maptoolkit também parar de responder um dia, a ficha
+continua saindo com o esquema em linha reta, sem travar nem quebrar visualmente.
+
+Coberto por `tests/test_rotas.mjs` (blocos 27-28 revisados, 173 checks no
+total no arquivo inteiro): URL do mapa real aponta pro host novo sem
+`path=`/`markers=`; 2 pinos desenhados por cima da imagem (1 por parada
+geolocalizada), 1º verde/último vermelho, com a posição em percentual
+dentro de 0–100%; os demais comportamentos (fallback ao falhar, impressão
+esperando o carregamento) continuam cobertos como antes.
+
+**Destino virou `<select>` de locais conhecidos + "Outro (digitar)"
+(10/09/2026, pedido direto: "em todas as rotas quero poder escolher o local
+final a partir da lista, seja o cartório eleitoral ou um ponto de
+transmissão").** Até aqui "Destino" era um `<input type="text">` livre — o
+cartório digitava o nome à mão toda vez, mesmo o valor real sendo quase
+sempre um dos mesmos 4 lugares fixos (os "pontos de transmissão" já
+documentados acima em "Ponto de partida/destino das 35 rotas de mídia...",
+04/09/2026). **Vale pra TODAS as rotas** (o pedido foi explícito — "em
+todas as rotas"), não só recolhimento de mídia: é o mesmo campo, no mesmo
+modal, compartilhado por qualquer tipo de rota (distribuição, recolhimento
+de urna, recolhimento de mídia, instalação) — nenhuma ramificação por tipo
+foi necessária, já que sempre foi um único campo de texto no formulário.
+
+`RT_DESTINOS_CONHECIDOS` (`sime_rotas_modulo.js`) — checado contra
+produção ANTES de fixar a lista (SQL direto na 7ª Zona, nunca inventado):
+"Cartório Eleitoral da 7ª Zona Eleitoral" (36 rotas), "Escola Monsenhor
+Mateus (Sigefredo Pacheco)" e "Creche Mamãe Lima (Jatobá)" (4 cada) — os
+mesmos 3 dos 4 pontos fixos já documentados que têm rota real hoje ("Escola
+da Baixinha" continua sem nenhuma rota apontando pra ela, mas fica na lista
+como ponto válido, mesmo critério de quando foi documentado). A mesma
+consulta também achou **2 valores customizados** já em produção ("U.E.
+Miguel Rocha, Sigefredo Pacheco" e "Creche Mamãe Lima M. Oliveira") — nem
+erro de dado nem pendência, só locais que não são um dos 4 pontos fixos. Um
+`<select>` travado só na lista fixa destruiria esses dois valores reais
+(ou pior, exigiria adivinhar em qual dos 4 encaixá-los) — por isso o
+`<select>` sempre tem uma opção final **"Outro (digitar)"**, que revela um
+`<input type="text">` companheiro (`#rt-destino-outro`) só quando
+selecionada.
+
+`rtRenderModalRota()`: ao abrir o modal, se `r?.destino` (ou `pre?.destino`
+no rascunho de `rtGerarRetorno()`, ou `destinoSugerido` das paradas) bate
+**exatamente** com um dos 4 pontos fixos, o `<select>` já vem com ele
+selecionado e o campo "Outro" fica escondido; qualquer outro valor (custom,
+ou vazio) cai em "Outro", com o campo de texto visível e pré-preenchido
+(quando havia valor). `rtToggleDestinoOutro()` (novo `onchange` do
+`<select>`) só troca a visibilidade do campo de texto — não apaga nem
+recalcula nada. `rtSetDestinoValor()` (nova, usada por
+`rtUsarSugestaoDestino()`) encapsula a mesma lógica de decidir
+select-vs-outro, pra não duplicar o critério em dois lugares.
+
+**A sugestão (↻) quase sempre cai em "Outro"** — `rtUsarSugestaoDestino()`
+continua exatamente a mesma ideia de sempre (nome do 1º/último local de
+votação da lista de paradas), só que agora escreve via
+`rtSetDestinoValor()` em vez de `el.value` direto num `<input>` — como um
+nome de local de votação quase nunca é literalmente um dos 4 pontos fixos,
+a sugestão tipicamente seleciona "Outro" com o nome do local já preenchido
+no campo de texto, pronto pra usar ou ajustar.
+
+`rtSalvarRota()`: `destino` é lido do `<select>` (`#rt-destino-select`)
+quando o valor não é o marcador `Outro` (`RT_DESTINO_OUTRO`); quando é,
+lê o campo de texto `#rt-destino-outro` — mesmo comportamento de antes
+(string vazia vira `null`), só a fonte do valor que mudou. `Ponto de
+partida` **não foi tocado** — o pedido foi especificamente sobre "local
+final"; o campo de partida continua sendo texto livre, com a mesma
+sugestão/↻ de sempre.
+
+Coberto por `tests/test_rotas.mjs` (bloco 29, 185 checks no total no
+arquivo inteiro): dropdown lista os 4 pontos fixos + "Outro"; valor salvo
+batendo com um ponto fixo vem pré-selecionado, com o campo de texto
+escondido; salvar com um ponto fixo selecionado grava o texto exato dele;
+escolher "Outro" e digitar salva o texto customizado; reabrir com um valor
+customizado (não batendo com nenhum ponto fixo) cai em "Outro" com o texto
+preservado; clicar na sugestão (↻) cai em "Outro" com o nome do local
+sugerido.
+
+---
+
+## 🔀 OTIMIZAÇÃO DE ORDEM DAS PARADAS (`SIME_rotas.html`, 10/09/2026)
+
+Pedido direto, depois de uma pergunta exploratória ("como podemos otimizar
+a posição de cada rota?") respondida com a recomendação de um heurístico
+sem custo (a maioria dos locais já tem lat/lon cadastrada — ver
+"Georreferência por LOCAL de votação" acima) — "implemente, inclusive
+otimizando as rotas existentes".
+
+**Algoritmo: vizinho-mais-próximo + refino 2-opt, distância em linha reta
+(`rtHaversineKm`, a mesma já usada em `rtChegadaEstimada`), 1ª parada
+sempre FIXA.** Mesmo critério de sempre — nunca API paga de rotas
+(Google Directions/Distance Matrix, fora do orçamento R$ 0,00/mês). A 1ª
+parada não entra no reordenamento: é o que já alimenta a sugestão de Ponto
+de partida (`rtUsarSugestaoPartida`) e normalmente é a mais próxima da
+saída real (ex.: Cartório) — trocar sempre qual parada é a primeira
+surpreenderia o cartório sem necessidade nenhuma. `rtVizinhoMaisProximo()`
+monta uma rota gulosa a partir da 1ª parada; `rtDoisOpt()` refina por cima
+trocando trechos que reduzem a distância total — os dois juntos, sem
+heurística mais pesada, dão conta de rotas de até ~35 paradas (a maior da
+zona hoje) em milissegundos. `rtCalcularOrdemOtimizada()` só calcula com 3+
+paradas (com 0-2 só existe uma ordem possível) e com geo em TODAS as
+paradas (nunca estima distância pulando uma perna sem coordenada — mesmo
+critério de `rtChegadaEstimada`).
+
+**Botão "🔀 Otimizar ordem" — sugestão, nunca aplica sozinho**, mesmo
+padrão já usado em partida/destino/chegada estimada. Aparece em
+`rtRenderParadas()` (📍 Locais de votação) sempre que há 3+ paradas
+cadastradas; clicar calcula e guarda em `rtOtimizarSugestao` (nunca escreve
+no banco ainda), mostrando um preview: km antes → depois, % de redução, e a
+nova ordem sugerida das paradas (a 1ª nem aparece na lista — ela não muda).
+Dois botões no preview: **"✓ Aplicar nova ordem"** (`rtAplicarOrdemOtimizada`,
+mesmo loop de `rtMoverParada` — renumera 1..N, só escreve o que de fato
+muda de posição, espelha `sime_secoes.parada` só pra tipo legado
+`distribuicao`) e **"✕ Descartar"**. Quando a ordem já é a mais curta
+encontrada (nenhuma melhoria possível), o preview mostra "✓ A ordem atual
+já é a mais curta..." com só um botão "Fechar" — nunca oferece "Aplicar"
+pra um no-op.
+
+**A sugestão se autoinvalida se a lista de paradas mudar no meio-tempo** —
+`rtRenderParadas()` compara os ids das paradas usados no cálculo contra os
+atuais a cada render; se um add/remove/mover aconteceu depois de calcular
+(inclusive de outra aba/sessão), a sugestão some sozinha em vez de
+continuar oferecendo "Aplicar" em cima de um estado que não existe mais.
+`rtAplicarOrdemOtimizada()` faz a mesma checagem antes de gravar, como rede
+de segurança.
+
+**Faltando geo em alguma parada, avisa em vez de calcular errado** — nota
+fixa acima da lista ("⚠️ N parada(s) sem geolocalização...") sempre que o
+botão está visível mas alguma parada não tem coordenada; clicar no botão
+repete o mesmo aviso por toast, sem calcular nada.
+
+Coberto por `tests/test_rotas.mjs` (blocos 30-33, 214 checks no total no
+arquivo inteiro): sugestão com km antes/depois e nova ordem; aplicar grava
+a ordem certa em `sime_rota_secoes` e espelha `sime_secoes` só pra rota
+legado; log de auditoria (`rota_ordem_otimizada`) com km antes/depois e
+quantidade; descartar não grava nada; rota sem tipo legado não espelha;
+refino 2-opt corrige o vizinho-mais-próximo quando precisa (caso de
+cruzamento clássico); botão some com menos de 3 paradas; aviso de geo
+faltando; mensagem própria (sem "Aplicar") quando a ordem já é ótima.
+
+**"Inclusive otimizando as rotas existentes" — rodado uma vez em produção
+na 7ª Zona (10/09/2026), pelo MESMO algoritmo (replicado em Node, sem
+divergir do JS do app) contra as 42 rotas ativas com 3+ paradas e geo
+completa.** Só aplicou quando havia **redução real de distância**
+(`kmDepois < kmAntes`, com margem de 0.01km) — não bastava a sequência de
+`secao_id` ter mudado: prédios com 2+ seções na MESMA coordenada podem
+empatar e trocar de posição entre si sem nenhuma diferença de km real (é o
+mesmo prédio — a ordem entre as seções dele não importa pra quem dirige);
+escrever isso em produção seria mexer no cadastro sem ganho nenhum, mesmo
+critério "nunca escreve à toa" de `rtMoverParada`. Achado real durante essa
+checagem: a Rota UR11 batia como "mudou" pela sequência de ids mas com o
+MESMO km total — só um empate entre duas seções do mesmo prédio — e foi
+corretamente excluída do lote por esse motivo.
+
+**12 rotas otimizadas de verdade** (de 42 elegíveis) — 430,18km → 317,81km
+somados (~26% de redução nessas 12): `001`, `006`, `009`, `014`, `RU10`,
+`RU2`, `RU7`, `RU8`, `UR10`, `UR2`, `UR7`, `UR8`. As outras 30 já estavam
+na ordem ótima que o algoritmo encontra (nenhuma escrita foi feita nelas).
+Cada rota otimizada ganhou um `sime_logs.rota_ordem_otimizada`
+(`payload.origem='lote_10-09-2026'`, pra distinguir de uma otimização feita
+depois pelo cartório clicando no botão) com km antes/depois/quantidade.
+
+**Efeito colateral bom, achado ao rodar isto: a Rota 009 tinha uma seção
+com `parada=NULL`** (`6f7b3b91-f3b6-43a7-bbe3-465b4bebbc37` — vinculada à
+rota mas sem posição definida, uma inconsistência de dado anterior a esta
+feature). Como a aplicação sempre renumera 1..N do zero, essa seção ganhou
+uma posição válida (a última, por `ORDER BY parada` do SQL de origem
+colocar `NULL`s por último) sem precisar de correção manual à parte.
+
+**30 rotas não tocadas, sem regressão** — as 30 elegíveis restantes já
+estavam na ordem que o algoritmo considera ótima (a maioria são rotas
+pequenas de `recolhimento_midia` com poucas paradas concentradas, onde a
+ordem já cadastrada bate com o vizinho-mais-próximo). As rotas excluídas
+por falta de geo completa (`024`, `032`, `RU4`/`UR4`, `RU6`/`UR6`) ou com
+menos de 3 paradas continuam de fora, mesmo critério de sempre — otimizar
+com dado incompleto seria adivinhar.
+
+**Rota VIS1 — "Rota Vistoria 01" criada em 10/09/2026, pedido direto**:
+"crie uma rota saindo de campo maior, para vistoria, para as seções de
+sigefredo pacheco. mocambo do pedro, barro vermelho, olhos dagua, canto do
+pau darco, santo antonio do campo verde e cancela do brasão". Dois pontos
+esclarecidos ANTES de criar (`AskUserQuestion` + pergunta direta em texto,
+nenhum dos dois dava pra resolver adivinhando):
+- **Tipo "vistoria" não existe** — `sime_rotas.tipos` só aceita os 4
+  valores já documentados (`distribuicao`/`recolhimento_urna`/
+  `recolhimento_midia`/`instalacao`, CHECK no banco). Perguntado se criava
+  um tipo novo de verdade ou reaproveitava `instalacao` — resposta:
+  reaproveitar `instalacao` (recomendado, evita mexer em schema pra uma
+  única rota; pode virar tipo próprio depois se aparecerem mais rotas
+  assim).
+- **As 6 localidades não batem com nenhum `local_nome` cadastrado** —
+  "Mocambo do Pedro", "Barro Vermelho" etc. são nomes de povoado/
+  localidade, não de prédio, e nem `sime_secoes` nem o staging do TRE
+  (`sime_mesarios_raw`, campo `bairro_local_trabalho`) guardam essa
+  informação (só "ZONA RURAL"/"CENTRO"). Listei os 14 locais de votação já
+  cadastrados em Sigefredo Pacheco e pedi pro cartório mapear cada
+  localidade pro prédio certo — resposta confirmou as 6 correspondências
+  (ex.: Mocambo do Pedro = U.E. Jovino Josino Oliveira, Cancela do Brasão =
+  U.E. Manoel Rodrigues Melo).
+Rota criada com as 10 seções dos 6 prédios (algumas seções por prédio),
+saindo do "Cartório Eleitoral da 7ª Zona Eleitoral", e já reotimizada na
+hora (pedido explícito: "ao final otimize a rota") — mesmo algoritmo de
+sempre, 150,21km → 78,16km (~48% de redução). Cada passo (criação, adição
+de seção, reotimização) logado com a mesma ação/payload que a UI grava.
+
+**Bug real, achado imprimindo a ficha da VIS1 — QR ilegível na
+impressão.** `new QRCode()` (`vendor/qrcode.min.js`) sempre desenha a
+matriz inteira dentro do canvas de `width`/`height` pedido, não importa
+quantos módulos a matriz precise (`cellSize = width / moduleCount`, visto
+no código da lib) — o tamanho fixo de 96px (bom pro link curto de um token
+de campo, ver `SIME_tokens.html`) nunca tinha sido um problema porque
+nenhuma rota anterior gerava uma URL de Directions tão longa. A VIS1 tem
+10 paradas **e** um destino que caiu no fallback de texto (endereço postal
+completo do Cartório, bem mais longo que uma coordenada — ver `rtMapsUrl`
+acima), somando ~9 waypoints + endereço → URL de ~440 caracteres → matriz
+QR bem mais densa (~versão 20+) espremida nos mesmos 96px → módulo com
+menos de 1px, ilegível depois de impresso.
+
+Corrigido com `rtQrSizePx(texto)` (`sime_rotas_modulo.js`) — escala o
+canvas do QR em degraus conforme o tamanho do link (96/140/190/250/320px),
+usado em `rtImprimirFicha()` no lugar do 96 fixo de antes. Não reimplementa
+a tabela de capacidade da própria lib (overkill pra este caso) — o
+tamanho do texto já é um proxy direto e suficiente de quantos módulos vão
+ser necessários, e a ficha é uma página inteira, então sobra espaço pra
+um QR bem maior sem prejudicar o resto do layout. `#rt-ficha-qr{flex:none}`
+adicionado no CSS de impressão como rede de segurança, pra o QR maior
+nunca ser espremido pelo flex da linha ao lado do link por extenso.
+Coberto por `tests/test_rotas.mjs` (bloco 34, 219 checks no total no
+arquivo inteiro): `rtQrSizePx()` isolada nos 5 degraus, e um teste ponta a
+ponta reproduzindo o cenário real (muitas paradas + endereço do Cartório
+como destino) confirmando que o `<canvas>` de fato sai maior que 96px.
+
+**Linha ligando as paradas, desenhada por cima do mapa real (10/09/2026,
+pedido direto: "não conseguimos desenhar a rota?").** Até aqui o mapa real
+da ficha só tinha os PINOS numerados sobre a imagem (`rtMarcadoresOverlayHTML`)
+— sem nada ligando eles, porque o serviço (`staticmap.maptoolkit.net`) não
+desenha `path=` (ver bloco acima, "path=/markers= desse serviço não
+funcionam"), então a impressão mostrava pontos soltos, não uma rota
+"desenhada" de verdade. `rtLinhaOverlaySVG(info)` (`sime_rotas_modulo.js`)
+resolve isso do mesmo jeito que os pinos já resolviam a falta de `markers=`:
+um `<svg>` desenhado no CLIENTE, nunca pelo serviço, com uma `<polyline>`
+ligando as paradas geolocalizadas NA ORDEM, usando a MESMA projeção Web
+Mercator (`rtMercatorPixel`, `center`/`zoom` da própria `rtStaticMapInfo`) já
+usada pros pinos — garante que a linha passa exatamente pelo centro de cada
+pino, não uma aproximação separada. Posicionado com `viewBox="0 0 100 100"`
++ `preserveAspectRatio="none"`, esticando igual ao container percentual dos
+pinos (que usam `left:X%/top:Y%`) — funciona mesmo a imagem não sendo
+quadrada, sem duplicar a lógica de bounding-box em unidades diferentes. Só
+desenha com 2+ paradas geolocalizadas (mesmo limiar de sempre — 1 ponto não
+forma trajeto); entra no HTML ANTES do overlay dos pinos, pra eles ficarem
+visualmente por cima da linha. **Continua sendo a ordem das paradas em
+linha reta, não o trajeto real pelas ruas** — isso nunca mudou, é só o
+mesmo esquema que `rtSvgMinimapa()` (a reserva offline) já desenhava,
+agora também em cima do mapa de verdade; o texto abaixo do mapa e o
+QR/link do Google Maps continuam sendo a única fonte de trajeto real.
+Coberto por `tests/test_rotas.mjs` (bloco 35, 224 checks no total no
+arquivo inteiro): linha liga todas as 10 paradas de uma rota com muitas
+paradas geolocalizadas, entra antes dos pinos no DOM, e nunca desenha com
+só 1 parada geolocalizada.
+
+---
+
+## PREVISÃO DE ENCERRAMENTO DA ZONA (`SIME_admin.html` → aba 🔮 Previsão, 08/09/2026)
+
+Pedido direto: "a ideia é a cada nova informação de demora na seção, nova
+informação de recolhimento das midias com a chegada do motorista, a
+informação depois de 17h de demora na fila a rota ser redefinida, com isso
+teriamos previsão mais real do fim da eleição". Esclarecido via
+`AskUserQuestion` ANTES de implementar (três perguntas, todas respondidas
+com a opção recomendada) — três decisões que mudam completamente o escopo:
+
+1. **"A rota ser redefinida" = recalcular uma PREVISÃO de horário, não
+   reordenar paradas de rota nenhuma.** Reordenar continua 100% manual, no
+   módulo 🗺️ Rotas (botões ▲/▼) — este painel é só leitura, nunca escreve
+   em `sime_rotas`/`sime_rota_secoes`/`sime_secoes.parada`.
+2. **O cartório sempre aprovaria uma reordenação** (se um dia essa opção for
+   escolhida) — moot nesta v1, já que não há reordenação nenhuma, mas fica
+   registrado pra não reabrir a mesma pergunta se o escopo crescer depois.
+3. **Precisa estar pronto pro Dia D** (04/10) — não é protótipo exploratório
+   sem prazo.
+
+**Onde mora**: `SIME_admin.html`, nova aba "🔮 Previsão" — não virou módulo
+próprio (`sime_previsao.js`) porque o padrão já usado pra painéis
+Realtime-driven, só leitura, sem CRUD complexo (ex.: aba 🤖 Hermes) já é
+inline no próprio arquivo; não duplicaria a mesma decisão arquitetural sem
+motivo.
+
+**Duas fontes de sinal, nenhuma inventada:**
+- **Fila pós-encerramento** — `sime_mesa_estado.fila` (já em produção,
+  gravado pelo mesário) × `sime_eleicoes.minutos_por_eleitor_fila`
+  (`sql/SIME_eleicoes_previsao_encerramento.sql`, novo, `NUMERIC DEFAULT 1`)
+  — minutos médios que UM eleitor na fila leva pra votar. **Deliberadamente
+  configurável pelo cartório, nunca cravado como fato** — mesmo critério já
+  usado em `RT_VELOCIDADE_MEDIA_KMH` no módulo de Rotas (a estimativa de
+  deslocamento por rota, 40km/h fixo mas assumido, não medido). Só entra em
+  jogo DEPOIS do horário oficial de encerramento (`sime_eleicoes.
+  horario_enc`) — antes dele, a única previsão honesta pra qualquer seção
+  ainda votando é o próprio horário oficial, não um cálculo sobre uma fila
+  que ainda pode subir ou zerar até lá.
+- **Recolhimento de mídia por rota** — reaproveita
+  `sime_rotas.horario_chegada_previsto` (o MESMO campo que o módulo 🗺️
+  Rotas já preenche, manual ou pela sugestão de linha reta + tempo por
+  parada, ver "🧭 Previsão de chegada ESTIMADA" acima) — **não recalcula
+  distância/velocidade de novo aqui**, pra não duplicar aquela lógica (e
+  divergir dela com o tempo). Progresso real vem de `sime_midias.status`
+  (`coletada`/`entregue_transmissao` conta como recolhida) — o "com a
+  chegada do motorista" do pedido. Rota sem `horario_chegada_previsto`
+  cadastrado aparece marcada "⚠ Sem horário de chegada previsto cadastrado
+  — defina no módulo 🗺️ Rotas", nunca escondida nem com um horário
+  inventado.
+
+**Recalcula sozinho, sem polling** — `renderPrevisao()` é chamado por
+`agendarRerenderMesaEstado()`/`agendarRerenderMidias()` (mesmos debounces
+de 250ms que já disparam `renderDash()`/`renderTable()`/`renderMidias()`
+via `subscribeMesaEstado`/`subscribeMidias`, ver "PADRÃO — REALTIME" acima)
+— toda vez que UMA seção grava fila/encerramento ou UMA mídia muda de
+status, em QUALQUER aparelho da operação, o painel recalcula. Também entra
+no `setInterval` de 10s que já existia pra `renderDash()` — só o RELÓGIO
+passar do horário de encerramento também muda a previsão (uma seção que
+tinha fila às 16:58 e ninguém tocou mais nela desde então só "conta" como
+atraso a partir das 17:00, sem precisar de nenhum evento novo do banco pra
+isso acontecer na tela).
+
+**Três painéis, mais o parâmetro**:
+- **🏁 Previsão — fim da operação da zona**: o PIOR horário entre "toda a
+  zona com votação encerrada" e "toda mídia pendente recolhida" — é a
+  resposta direta ao pedido ("previsão mais real do fim da eleição"). Mostra
+  "⚠ Previsão parcial" quando pelo menos uma rota de mídia ainda pendente
+  não tem `horario_chegada_previsto` — nunca finge uma previsão completa
+  quando falta dado.
+- **🗳️ Votação — previsão de encerramento**: a seção mais lenta da zona
+  (maior estimativa entre todas), com o número/local de qual seção é.
+- **🎞️ Recolhimento de mídia — previsão por rota**: uma linha por rota de
+  tipo `recolhimento_midia`, progresso `N/total`, previsão de conclusão ou
+  aviso de dado faltando; rota já 100% recolhida vira "✅ Recolhimento
+  concluído" e SAI do cálculo do "fim da operação" (não tem sentido uma
+  rota já pronta continuar "puxando" a previsão geral pra frente).
+- **⏳ Seções com fila após o horário de encerramento**: lista nominal, só
+  quem de fato ainda tem `fila > 0` passado o horário oficial — quem não
+  tem fila (`fila=0`) conta como "fecha a qualquer momento" na previsão de
+  votação, mas não polui esta lista (não é "demora", é só falta confirmar
+  o encerramento).
+
+**`minutos_por_eleitor_fila` editável na própria aba** (campo + "💾
+Salvar") — `salvarMinutosPorEleitor()` grava em `sime_eleicoes` e loga
+`previsao_minutos_por_eleitor_atualizado` em `sime_logs` (autoria implícita
+por quem está logado, mesmo padrão do resto do Admin). Nunca bloqueia nada
+— "nunca bloquear por campo opcional" de sempre: o valor default (1) já
+funciona sozinho, ajustar é só pra refinar a estimativa se a experiência
+real do cartório mostrar que o tempo médio é outro.
+
+**Escopo desta v1, deliberado**: só cobre `recolhimento_midia` — não há
+hoje nenhuma rota de `distribuicao`/`recolhimento_urna` cadastrada em
+produção (ver módulo 🗺️ Rotas), então não há dado real pra alimentar uma
+previsão de recolhimento de urna ainda; quando existir, o mesmo padrão
+(`horario_chegada_previsto` da rota + progresso real de
+`sime_mesa_estado.urna_recolhida`) dá pra estender sem redesenhar nada.
+
+Coberto por `tests/test_admin_previsao.mjs` (20 checks: seção ainda dentro
+do horário normal não conta fila; seção com fila/sem fila/já encerrada
+depois do horário de encerramento; recolhimento de mídia por rota — reusa
+previsão de Rotas, rota concluída sai do cálculo, rota sem previsão avisa,
+fim da operação é ditado pela mídia pendente quando é o pior caso; edição
+do parâmetro grava no banco e loga).
+
+**Também na TV Dia (08/09/2026, pedido direto: "Quer que eu adicione a
+previsão de encerramento na TV Dia também agora? sim").** Botão novo no
+topbar (🔮, ao lado do 🗺️ de posição dos veículos) abre um painel overlay
+(mesmo padrão do painel de sons) com os mesmos 4 blocos do Admin — fim da
+operação, votação, recolhimento de mídia por rota, seções com fila.
+
+**Mesmo cálculo, DUPLICADO de propósito (não importado)** — os dois
+arquivos não compartilham `<script>` clássico nenhum (só `sime_dados.js`/
+`sime_realtime.js`, que são ES modules); a matemática de exibição
+(`pvTvHojeComHora`/`pvTvFmtHora`/`pvTvEstimativaSecao`/`pvTvMidiaColetada`)
+é uma cópia pequena e pura, mesmo padrão já usado noutros lugares do
+projeto pra função específica de tela (ex.: `cmPersonalizarScript`
+duplicado de `personalizarMensagem()`). **A FONTE de dado É compartilhada**
+— `getRotasRecolhimentoMidia()` (nova, `sime_dados.js`) foi extraída da
+implementação que já existia inline em `carregarRotasMidia()` do Admin,
+exatamente pra não duplicar a QUERY (só a exibição) entre as duas telas;
+`carregarRotasMidia()` do Admin foi simplificada pra só chamar essa função
+nova.
+
+**Sem parâmetro editável na TV** — `minutos_por_eleitor_fila` só é editável
+no Admin (`salvarMinutosPorEleitor()`); a TV Dia é somente leitura, mesmo
+padrão de todo o resto da tela (só pagina, mostra sons locais e o mapa —
+nunca escreve no banco). O painel da TV lê o valor já salvo, com o mesmo
+default (1) se ninguém tiver ajustado ainda.
+
+**Fonte dos dados de seção** — `window.__secoesFlat` (novo,
+`{n, loc}[]`, achatado a partir de `getSecoes()`) — a TV Dia usa `CITIES`
+(agrupado por cidade) pro board principal, formato diferente do
+`window.SECTIONS` plano que o Admin usa; o painel de previsão precisava de
+uma lista simples pra achar "qual seção é a mais lenta" sem depender da
+estrutura de paginação da tela.
+
+Coberto por `tests/test_tv_dia_previsao.mjs` (12 checks): botão visível,
+horário oficial usado antes do encerramento, seção com fila aparece
+corretamente depois dele, recolhimento de mídia reaproveita a previsão do
+módulo de Rotas com aviso de previsão parcial, e mensagem amigável sem
+eleição ativa.
+
+---
+
+## POSIÇÃO ESTIMADA DOS VEÍCULOS NO MAPA (`SIME_tv_dia.html` → 🗺️, 08/09/2026)
+
+Pedido direto: "conseguiríamos ter uma visão estimada do local no mapa em
+que esta cada veiculo?". Esclarecido via `AskUserQuestion` antes de
+implementar — três decisões:
+
+1. **Fonte da posição: "a cada informe ele atualiza a localização"** — nem
+   GPS contínuo em segundo plano, nem estimativa por tempo decorrido sem
+   nenhum sinal real. A cada vez que o motorista já ia confirmar uma ação
+   (entrega de urna, recolhimento, chegada ao cartório), o navegador captura
+   a geolocalização NESSE instante e grava junto — sem pedir nada extra da
+   pessoa, sem rodar em segundo plano gastando bateria.
+2. **Onde aparece: TV Dia.**
+3. **Escopo: D-1 (distribuição) também**, não só Dia D (recolhimento) —
+   embora hoje não haja nenhuma rota de `distribuicao` cadastrada em
+   produção (ver módulo 🗺️ Rotas), o código já cobre os dois casos desde o
+   início; quando existir rota de distribuição real, a mesma tela funciona
+   sem mudança nenhuma.
+
+**Schema** — `sql/SIME_rotas_estado_posicao.sql` (aplicado em produção):
+`sime_rotas_estado` ganha `motorista_lat`/`motorista_lng`/`motorista_pos_ts`
+— reaproveitando a tabela que já é "1 linha = estado atual da rota" (usada
+pelo Conferente pro embarque, ver módulo 🗺️ Rotas), já Realtime
+(`subscribeRotasEstado`), já com RPC de upsert. Criar uma tabela nova só
+pra posição duplicaria essa infraestrutura à toa. `sime_rota_estado_upsert`
+ganha `p_lat`/`p_lng` no FINAL da assinatura (`DEFAULT NULL`, nunca no meio
+— `CREATE OR REPLACE` só é seguro assim pros chamadores existentes do
+Conferente/`sime_rotas_modulo.js`, que nunca passam esses dois parâmetros
+novos).
+
+**`SIME_motorista.html`** — `atualizarPosicaoMotorista(rotaCodigo)`
+(exposta em `window.simeCampo.atualizarPosicao`) roda, melhor-esforço e
+**fire-and-forget** (nunca aguardada por quem chama), dentro dos três
+pontos que já existiam: `confirmarEntrega`, `confirmarRecolhimento`,
+`confirmarChegadaCartorio`. `navigator.geolocation.getCurrentPosition()`
+sem permissão/sem sinal simplesmente não grava nada — a confirmação da
+seção em si (`syncMesa`, RPC `sime_acao_mesa`) nunca fica bloqueada por
+isso, mesma filosofia "nunca bloquear" de sempre. **Não entra na fila
+offline** (`sincronizarOuEnfileirar`) — posição é dado de "agora", não uma
+ação que precise ser preservada até a rede voltar; se falhar, o próximo
+informe tenta de novo.
+
+**`sime_dados.js`** — `getRotasPosicaoMap()`/`refreshRotasPosicaoMap()`:
+`{rotaId: {codigo, nome, lat, lng, ts}}`, só rotas com
+`motorista_pos_ts IS NOT NULL` (`.not('motorista_pos_ts','is',null)`) —
+rota sem nenhum informe ainda **não aparece**, nunca um marcador inventado
+ou "aguardando" fabricado.
+
+**`SIME_tv_dia.html`** — botão novo no topbar (🗺️, ao lado do ⚙️ de sons)
+abre um painel overlay (mesmo padrão do painel de sons — `sound-overlay`)
+com um mapa Leaflet (`vendor/leaflet.js`/`leaflet.css`, vendorizado como o
+resto do projeto — ver `vendor/README.md`). Marcadores via `L.divIcon`
+(CSS puro, cor por rota + código dentro do pino) — **sem** o ícone padrão
+do Leaflet, então a pasta `images/` do pacote nem foi copiada. Snapshot
+inicial (`getRotasPosicaoMap`) + Realtime (`subscribeRotasEstado`) —
+qualquer novo informe do motorista, em qualquer aparelho, atualiza o mapa
+sem precisar reabrir o painel. `L.map()` só é criado na PRIMEIRA vez que o
+painel abre (nunca no carregamento da página — precisa do container já
+visível com tamanho > 0), com `invalidateSize()` logo depois de abrir.
+
+Centro padrão do mapa (só até o 1º veículo informar posição):
+`sime_zonas.lat/lon` (já cadastrado, sede da 7ª Zona — Campo Maior) via
+`getZonaInfo()`; com pelo menos 1 veículo, `fitBounds()` sempre enquadra os
+veículos, não a sede.
+
+**As telhas do mapa (imagens de satélite/ruas) continuam vindo por rede**,
+do OpenStreetMap — isso não dá pra vendorizar (seria a Terra inteira). A TV
+já depende de rede pro Realtime do Supabase, então não é uma dependência
+nova, só mais uma; se a rede cair, o mapa fica com telha cinza mas os
+marcadores continuam corretos (são desenhados independente da telha
+carregar).
+
+Coberto por `tests/test_veiculos_mapa.mjs` (23 checks): confirmar
+entrega/recolhimento/chegada captura geolocalização e chama
+`sime_rota_estado_upsert` com a rota e a eleição certas; geolocalização
+negada não bloqueia a confirmação da seção em si; painel do mapa mostra a
+rota com posição (marcador + legenda com horário); sem nenhuma posição
+informada, avisa em vez de inventar; evento Realtime atualiza o marcador
+sem recarregar a página; rota sem metadado conhecido (código/nome) é
+ignorada, sem quebrar.
+
+---
+
+## TOKEN DE TV PELA UI (`SIME_tokens.html`, 08/09/2026)
+
+Pedido direto, depois de investigar "onde vai ser gerado e conferido o TV
+Dia com token, além do TV Véspera?" — achado real: os 4 módulos de TV
+(Preparação/Véspera/Distribuição/Dia) já validam `tipo='tv'` igualmente,
+via `bootstrapTvSession()` (`sime_tv_auth.js`, troca `?tv_token=` por uma
+sessão JWT na Edge Function `sime-login`), mas **gerar** esse tipo de token
+nunca teve UI nenhuma — `sql/SIME_schema.sql` já documentava isso como TODO
+("rodar manualmente no SQL Editor até o Fase 4 trazer isso para
+SIME_tokens.html") desde a criação da tabela, e `SIME_tokens.html`
+explicitamente **ignorava** `tipo='tv'` ao mesclar tokens do Supabase
+(`mesclarTokensRemotos()`) — não por acidente, só porque não existia
+caminho nenhum pra criar um e mostrá-lo fazia menos sentido que escondê-lo.
+
+**Token de TV não tem escopo geográfico** (nem rota, nem seção, nem local) —
+`bootstrapTvSession()` só carrega `zona_id` da sessão; o que muda de um
+painel pro outro é só QUAL arquivo HTML abre com aquele token, uma decisão
+inteiramente de URL/QR, não de RLS. Por isso o novo grupo do formulário
+(`#grp-tv-modulo`, visível só quando `tipo==='tv'`) não é um escopo de
+verdade — é só "qual dos 4 vídeos" — mas o pedido foi explícito
+("escolhendo qual módulo"), então existe como campo próprio, com as 4
+opções (`TV_MODULOS`, chave→`{arquivo, label}`): TV Preparação (D-X), TV
+Véspera (D-1), TV Distribuição (D-1), TV Dia da Eleição. O valor escolhido
+é gravado em `sime_tokens.local_nome` — mesma coluna que `coord_acessibilidade`
+já usa pra guardar texto de escopo, reaproveitada aqui só como rótulo de
+apresentação (a chave, não o nome do arquivo, pra `TV_MODULOS` continuar
+sendo a única fonte de verdade de qual chave mapeia pra qual arquivo).
+
+**PIN nasce fixo `'0000'`** — token de TV nunca usa PIN (a função
+`sime-login` pula essa checagem quando `tipo='tv'`, já documentado no
+schema); gerar um PIN de verdade só criaria a falsa impressão de que existe
+um backup por PIN pra TV, que não existe. O cartão (`renderTokens()`)
+esconde a badge "PIN: ..." e a caixa de PIN backup pra esse tipo, trocando
+por uma nota ("📺 TVs autenticam só por QR Code/URL — sem PIN de backup.").
+
+**QR/URL usa `?tv_token=`, não `?token=`** — `buildUrl()` ganhou um branch
+próprio pra `tipo==='tv'`: resolve o arquivo a partir de `TV_MODULOS[local]`
+(cai em `SIME_tv_dia.html` se o valor não bater com nenhuma chave conhecida
+— nunca quebra, mesmo padrão "nunca adivinha, mas também nunca trava" do
+resto do sistema) e monta a URL com o parâmetro que `bootstrapTvSession()`
+de fato lê. Usar `?token=` por engano teria gerado um QR que a TV nunca
+reconheceria — o mesmo tipo de bug silencioso (funciona no formulário,
+falha só quando alguém escaneia de verdade) que este projeto tenta sempre
+capturar com teste de regressão, não só revisão visual.
+
+**`mesclarTokensRemotos()` não ignora mais `tipo='tv'`** — a exclusão
+explícita (`if (row.tipo === 'tv') continue;`) foi removida: agora que
+existe UI pra criar, escondê-lo faria um token de TV recém-criado NESTA
+MESMA aba sumir do próprio criador depois de um reload. Um token de TV
+provisionado manualmente ANTES desta feature (sem `local_nome`, pelo INSERT
+de exemplo do schema) ainda aparece — só degrada com honestidade ("TV — ?"
+no nome, `SIME_tv_dia.html` como destino padrão do QR) em vez de inventar
+qual painel era.
+
+**Geração em massa continua sem emitir token de TV** — mesmo critério já
+usado pro Coletor de Mídias: quantas TVs existem (e onde ficam fisicamente)
+é decisão de escala do cartório, não algo derivável de seções/rotas/locais;
+o tipo só sai pelo formulário individual, escolhendo "📺 Painel de TV".
+
+Coberto por `tests/test_tokens_tv.mjs` (25 checks: tipo no dropdown, grupo
+de módulo aparece só pra tv e esconde os demais grupos, validação bloqueia
+sem escolher painel, criação grava `tipo`/`local_nome`/PIN fixo corretos,
+URL usa `tv_token=` e o arquivo certo pros 4 painéis, cartão esconde PIN e
+mostra o aviso, formulário limpa depois de criar, massa não emite tv) +
+ajustes em `tests/test_tokens.mjs` (bloco 6, merge remoto agora inclui tv —
+com e sem `local_nome`) e `tests/test_tokens_massa.mjs` (dropdown passou a
+ter 7 tipos, não 6).
+
+---
+
+## TOKEN DE INSTALADOR SEM ESCOPO REAL — bug corrigido (`SIME_tokens.html`, 10/09/2026)
+
+Pergunta direta: "o TV Dia não serve para nada, então como vamos configurar
+as rotas de instalação?" — a observação sobre a TV estava certa (é só o
+painel de status ao vivo do Dia D, nunca teve nem deveria ter cadastro de
+rota nenhum); cadastrar rota de instalação é no módulo 🗺️ Rotas
+(`SIME_rotas.html`, tipo "Instalação" no `<select multiple>`, ver seção
+própria acima). Mas investigar a pergunta até o fim (gerar o token de
+Instalador a partir dessa rota) achou um bug real, não só uma dúvida de
+onde clicar: **até hoje, nenhum token de Instalador — nem pelo formulário
+individual, nem pela geração em massa — de fato dava acesso a seção
+nenhuma**, mesmo com a rota corretamente cadastrada com paradas.
+
+**Causa raiz, em cadeia:**
+- `SIME_instalador.html` (`resolverEscopo()`) só lê `secoes` da sessão —
+  nunca `rotas` (diferente de Conferente/Motorista, que resolvem a própria
+  rota por código e derivam as paradas sozinhos). Documentado desde sempre
+  no comentário do código ("secoesToken vem da sessão... é a rota real
+  atribuída a este instalador"), só nunca tinha sido de fato preenchido.
+- `SIME_tokens.html` (`criarTokenObj()`) só populava `secoes` pra
+  `tipo==='mesario'` — Instalador (como Conferente/Motorista) só gravava
+  `rotas`, deixando `secoes:[]` (`null` no banco). Isso valia tanto pro
+  formulário individual quanto pra geração em massa (`gerarEmMassa()`).
+- `getRotas()` (`sime_dados.js`, usada pra popular o checkbox de rotas do
+  formulário) resolve `paradas` só a partir do espelho legado
+  `sime_secoes.rota_id`/`parada` — que, desde a correção de "recolhimento de
+  urna é cadastro separado" (ver módulo 🗺️ Rotas), só é escrito pra rota de
+  tipo `distribuicao` (`RT_TIPOS_LEGADO` em `sime_rotas_modulo.js`). Uma
+  rota de tipo `instalacao` (como a `VIS1`) nunca aparece com paradas ali,
+  mesmo tendo seções de verdade em `sime_rota_secoes`.
+- O checkbox de rotas do formulário (`rotasDisponiveis()`) também nunca
+  filtrava por tipo — Instalador via a MESMA lista de Conferente/Motorista,
+  misturando rota de distribuição/recolhimento de mídia com rota de
+  instalação, sem distinção nenhuma.
+
+**Corrigido em três frentes**, sem tocar no comportamento de Conferente/
+Motorista/TV Distribuição (que continuam lendo o espelho legado do jeito
+que sempre foi — fora do escopo desta correção, não comprovadamente
+quebrado):
+- **`getRotas()` (`sime_dados.js`)** passou a expor `tipos` (campo aditivo,
+  `sime_rotas.tipos`) em cada rota retornada — nenhuma mudança na resolução
+  de `paradas`, que continua vindo do espelho legado (mesmo comportamento
+  de sempre pra quem já consome essa função).
+- **`getRotaSecoesMap()` (nova, `sime_dados.js`)** — `{rotaId: [numero,...]}`
+  lido direto de `sime_rota_secoes` (join com `sime_secoes` pro número), a
+  fonte de verdade pra QUALQUER tipo de rota, ao contrário de
+  `getRotas().paradas`. É o que dá a `SIME_tokens.html` como resolver as
+  seções reais de uma rota de instalação.
+- **`SIME_tokens.html`**: o checkbox de rotas passou a filtrar por tipo
+  quando `f-tipo==='instalador'` (`rotasDisponiveis('instalacao')`/
+  `buildRotasCheck()`, chamado de novo em `onTipoChange()` — só filtra
+  quando há dado real, mesmo critério "nunca adivinha, nunca trava" de
+  sempre) — Conferente/Motorista continuam vendo a lista inteira, sem
+  filtro (não era o problema reportado, e filtrar os dois também mudaria
+  comportamento já testado sem necessidade). Tanto `criarToken()` (uma rota
+  de cada vez, formulário) quanto `gerarEmMassa()` (que também passou a só
+  gerar Instalador pra rota `tipos.includes('instalacao')`, não mais pra
+  TODA rota) agora resolvem `secoes` via `secoesDasRotas()` (nova, soma as
+  seções de todas as rotas marcadas, via `getRotaSecoesMap()`) antes de
+  gravar o token — se a rota escolhida ainda não tem nenhuma parada
+  cadastrada (ex.: instalação criada mas sem seção vinculada ainda), o
+  token ainda é criado (nunca bloqueia por campo op­cional), mas com um
+  toast avisando que ele nasceu sem seção nenhuma pra trabalhar.
+
+Coberto por `tests/test_tokens_massa.mjs` (bloco 2b, novo: checkbox filtra
+só rota tipo `instalacao`, token individual grava `secoes` resolvidas de
+`sime_rota_secoes`; bloco 3 ajustado — a rota 002, sem tipo `instalacao`,
+não gera mais token de Instalador na massa, e o que sobra já vem com
+`secoes` preenchidas) — suíte completa (`test_sime_dados.mjs`,
+`test_tokens.mjs`, `test_tokens_tv.mjs`, `test_rotas.mjs`, entre outras que
+tocam `getRotas()`) sem regressão.
+
+---
+
+## AUXILIAR DE ELEIÇÃO — LOCAIS PREDETERMINADOS (`SIME_admin.html`/`SIME_problemas.html`, 10/09/2026)
+
+Pedido direto: "os auxiliares deverão ficar responsaveis por alguns locais
+de votação predeterminados, então o problema com urnas devem cair na
+pagina deles e nos whatsapp, somente daquelas urnas predeterminadas".
+Esclarecido via `AskUserQuestion` antes de implementar — três decisões:
+
+1. **Acesso: login próprio (e-mail/senha)** — mesmo padrão admin-escopado
+   já usado por Coord. de Motoristas/Coord. de Acessibilidade/Coletor de
+   Mídias em `SIME_admin.html`, não QR+PIN de campo.
+2. **Vários locais por auxiliar** — um auxiliar pode cobrir mais de um
+   local de votação ao mesmo tempo, então precisa de uma atribuição N-pra-N
+   própria, diferente do campo único "Local" que Coord. de Acessibilidade
+   já usa.
+3. **WhatsApp: alerta imediato ao auxiliar designado, ALÉM da escalada de
+   sempre** (10min→Gestor de Problemas, 30min→Chefe de Cartório) — não em
+   vez dela.
+
+> **Duas coisas diferentes chamadas "Auxiliar de Eleição" no sistema —
+> deliberadamente desacopladas, mesmo padrão já usado por
+> `sime_voluntarios` (cadastro paralelo, não o roster oficial).** A linha
+> "Auxiliar de Eleição" na tabela "Camada Campo" no topo deste arquivo é o
+> `sime_atores.funcao='auxiliar_eleicao'` — gente do roster do TRE,
+> convocada, sem local de trabalho confiável (o TRE quase nunca traz esse
+> dado pra essa função, ver "Auxiliar de Eleição virou contagem por
+> PESSOA" na seção de Convocação). O perfil novo descrito aqui
+> (`sime_usuarios.perfil='auxiliar_eleicao'`, escopo `'locais'`) é uma
+> conta de EQUIPE do cartório, atribuída manualmente a locais de votação
+> específicos — pode ou não ser a mesma pessoa do roster, o sistema nunca
+> tenta casar os dois automaticamente.
+
+### Schema — `sql/SIME_auxiliares_locais.sql`
+
+- **`auxiliar_eleicao` entra no CHECK de `sime_usuarios.perfil`** (mesma
+  lista já estendida quando `coord_motoristas`/`coord_acessibilidade`/
+  `coletor_midias` foram criados).
+- **`sime_auxiliar_locais`** (nova, N-pra-N): `usuario_id` (FK
+  `sime_usuarios`), `zona_id`, `local_nome`, `municipio` — mesmo par
+  `local_nome`+`municipio` usado em todo o resto do sistema pra agrupar
+  seções por prédio (não existe tabela própria de "locais"). RLS por zona
+  (`sime_zona_visivel`), `UNIQUE(usuario_id, local_nome, municipio)`.
+- **`sime_notificar_auxiliares_urna(p_secao_id, p_zona_id)`** — resolve
+  quem avisar (nome+telefone já prontos, filtrando `perfil='auxiliar_eleicao'`
+  e `ativo`/`telefone_whatsapp` preenchido — nunca avisa alguém que deixou
+  de ser auxiliar mas cuja atribuição antiga não foi limpa) e enfileira em
+  `sime_notificacoes` com `evento='panico_urna_auxiliar'` e `destinatarios`
+  já preenchido — diferente do escalonamento de sempre
+  (`sime_escalonar_ocorrencias()`), que sempre insere `destinatarios='[]'`
+  e deixa o Hermes resolver por role. Sem ninguém designado pro local (a
+  maioria, hoje), não enfileira nada — não é erro.
+- **`sime_sync_ocorrencias()` (trigger de `sime_mesa_estado`) substituída
+  por inteiro** — Postgres não faz patch parcial de função — com um bloco
+  novo dentro do "urna": chama a função acima só na TRANSIÇÃO pra
+  `panico_urna=true` (`TG_OP='INSERT' OR OLD.panico_urna IS DISTINCT FROM
+  true`), nunca em toda outra escrita na mesma seção enquanto o pânico
+  segue ativo (o trigger é `AFTER INSERT OR UPDATE` sem filtro de coluna —
+  sem o guard, cada `fila`/`votacao` gravado durante o pânico reenfileiraria
+  o mesmo alerta a cada clique, mesmo raciocínio já usado em
+  `sime_chamar_hermes_notificar()` pro Z-API/Hermes original). Best-effort
+  (`BEGIN/EXCEPTION`): uma falha aqui nunca desfaz a abertura da ocorrência.
+
+### `api/hermes-notificacoes.js` — `destinatarios` agora é devolvido
+
+A coluna já existia desde a criação de `sime_notificacoes`
+(`SIME_whatsapp_schema.sql`) mas **nunca foi lida nem devolvida** por este
+endpoint — todo evento de pânico (energia/urna/sos/escalonamento) sempre
+gravou `'[]'::jsonb` ali, e quem de fato decidia o destinatário sempre foi
+o `index.js` do Hermes (`ADMIN_NUMBERS`), sem olhar essa coluna. `pendentes`
+agora inclui `destinatarios` no `select` e devolve no JSON de cada
+notificação — pro evento novo (`panico_urna_auxiliar`), já vem preenchido.
+
+> **Pendência real, mesmo padrão já documentado pra `sime_escalonamento`:
+> o lado SIME está pronto, o lado Hermes (repositório separado
+> `bernardobbs/hermes`, fora do escopo desta sessão) ainda não lê
+> `destinatarios` nem manda a mensagem de verdade pro auxiliar.** O
+> `index.js` precisa, ao processar `panico_urna_auxiliar`, mandar
+> `sock.sendMessage` pra cada telefone de `destinatarios` (além do fluxo de
+> escalonamento normal, que continua indo pros `ADMIN_NUMBERS`) — sem essa
+> mudança no outro repositório, a fila enfileira mas ninguém recebe o
+> WhatsApp ainda.
+
+### `SIME_admin.html` — perfil `auxiliar_eleicao`, escopo `'locais'`
+
+`PERFIS.auxiliar_eleicao` (`escopo:'locais'`, `perms:['ver_secoes']`).
+`secoesDoUsuario()`/`escopoLabel()` ganham o caso `'locais'` — filtra
+`SECTIONS` por `curUser.locais.some(l => l.local_nome===s.loc &&
+l.municipio===s.city)`, plural, diferente do `'local'` (Coord. de
+Acessibilidade, um valor só).
+
+**Bug real corrigido no caminho, antes mesmo de existir uso — a sessão
+autenticada de VERDADE nunca carregava escopo nenhum pros perfis
+escopados.** Investigando como propagar `curUser.locais` pra sessão real,
+achei que `window.aplicarIdentidade()` (chamada quando
+`carregarIdentidade()` resolve a sessão de verdade) só define `{id, nome,
+iniciais, perfil, cor}` — nunca `.local`/`.secoes`/`.empresa`. Esses campos
+só existiam no caminho DEMO (`switchUser()`, que lê do cache
+`sime_equipe_v1` em localStorage) — ou seja, um Coord. de
+Acessibilidade/Coord. de Motoristas/Coletor de Mídias logado de verdade
+(e-mail/senha) sempre via `secoesDoUsuario()` cair no `return SECTIONS`
+(zona inteira), porque `curUser.local`/`.secoes` da sessão real sempre
+vinham vazios. Não corrigido para os perfis antigos nesta sessão (fora do
+pedido, e cada um teria uma fonte diferente — `local_id`/`sime_empresas`/
+manual) — só para `auxiliar_eleicao`, que é o que motivou a investigação:
+`carregarIdentidade()` agora busca `sime_auxiliar_locais` do próprio
+usuário quando `perfil==='auxiliar_eleicao'` e anexa em
+`window.SIME_IDENTIDADE.locais`; `aplicarIdentidade()` propaga pra
+`curUser.locais`.
+
+**Atribuição de locais no formulário "+ Novo membro"/editar** — `<select
+multiple size="8">` (`#grp-locais`, mesmo padrão `<select multiple>` já
+usado em Rotas pro campo Tipo) com todos os locais distintos da zona
+(`local_nome`+`municipio`, deduplicados a partir de `SECTIONS`). Salvar
+grava em `sime_auxiliar_locais` por delete+reinsert do conjunto inteiro
+(`salvarLocaisAuxiliar()`, mesmo padrão de qualquer N-pra-N editado de uma
+vez neste projeto) — só quando existe um `sime_usuarios.id` real (editando
+gente já com login, ou o `usuario_id` que acabou de sair da Edge Function
+ao criar um login novo); membro sem login (perfil "só visível no painel")
+não tem onde gravar a FK, e login é o próprio ponto desta feature.
+
+**Bug real, achado testando o fluxo de criação:** a primeira versão lia
+`#m-locais` só no FIM de `saveMember()` — mas criar um login novo troca o
+`#modal-body` inteiro pra tela de senha temporária
+(`mostrarSenhaTemporaria()`) assim que a Edge Function responde, e por essa
+altura `#m-locais` já não existe mais no DOM — a atribuição nunca era
+gravada, em silêncio, sem toast nenhum de erro. Corrigido lendo a seleção
+(`lerLocaisSelecionados()`) logo no TOPO de `saveMember()`, antes de
+qualquer `await`, e passando o array já lido adiante — não relendo o DOM
+depois.
+
+Card da equipe mostra os locais atribuídos (`📍 Escola A, Escola B`) ou
+avisa "nenhum local atribuído ainda" — busca em lote
+(`window.AUX_LOCAIS_POR_USUARIO`, uma consulta só no boot, não por
+membro), mesmo padrão de todo o resto da aba Equipe.
+
+### `SIME_problemas.html` — a lista escopa pra quem é auxiliar_eleicao
+
+`dentroDoEscopo(oc)`: `EU.perfil!=='auxiliar_eleicao'` sempre `true` (não
+afeta ninguém mais); pra um auxiliar, só `tipo==='urna'` **e** a seção
+estar em `MEUS_LOCAIS` (carregado de `sime_auxiliar_locais` na carga da
+tela). Composto com o filtro Meus/Todos de sempre, não substituído por ele
+— "Todos" pra um auxiliar quer dizer "toda urna nos MEUS locais", não a
+zona inteira.
+
+**`contatosPara()` (branch 'auxiliar') passa a preferir a atribuição real
+de `sime_auxiliar_locais` sobre o fallback do roster do TRE** (`AUX_POR_LOCAL`,
+mapa `local_nome|||municipio` → `[{nome,telefone}]`, montado pra QUALQUER
+perfil que abrir a tela, não só o auxiliar) — o roster quase nunca traz
+`secao_id` pra essa função (documentado desde a Convocação: 0/30 na 7ª
+Zona), então `atoresDaSecao()` sozinho raramente achava alguém; a nova
+atribuição por login é o dado de verdade. Mostra TODOS os designados ao
+local (pode ser mais de um), não só o primeiro — são justamente quem vai
+receber o alerta de WhatsApp desta urna. Sem designação real, cai no
+fallback antigo (rótulo "Auxiliar de eleição (TRE)"), sem regressão.
+
+Coberto por `tests/test_admin_auxiliar_locais.mjs` (21 checks: seletor de
+locais aparece só pro perfil certo, sem se sobrepor ao "Local" único;
+criar grava delete+insert com `usuario_id`/`zona_id` corretos; editar
+pré-seleciona e regrava só o novo conjunto; card mostra/avisa; sessão REAL
+— não o seletor demo — escopa `secoesDoUsuario()`/`escopoLabel()` de
+verdade) e blocos novos em `tests/test_problemas.mjs` (auxiliar vê só urna
+do próprio local; qualquer outro perfil continua sem recorte; contato
+prefere a atribuição real sobre o fallback do TRE).
+
+---
+
+## 🟡 "SENDO ATENDIDO" NO PAINEL DO MESÁRIO (`SIME_mesario.html`, 11/09/2026)
+
+Pergunta direta: "como o mesário que irá indicar no site da seção o problema
+vai saber que o chamado já esta sendo resolvido e verificar atualizações?" —
+até aqui o aparelho do mesário só enxergava um sinal **binário**: chip
+vermelho "🔴 Pânico ativo" enquanto o pânico está aberto, que some (com toast
+"✓ Problema resolvido pela equipe") só quando o cartório clica "Resolvido"
+em `SIME_problemas.html`. Não havia meio-termo — nenhum jeito de saber que
+"alguém já assumiu isso" antes da resolução final. Duas opções levantadas
+(espelhar só "assumida" vs. expor número do chamado + timeline completa no
+aparelho); pedido explícito do dono do projeto: **"implemente só o chip
+'sendo atendido'"** — a opção mínima, sem número de chamado nem timeline.
+
+**Espelha o mesmo padrão que `sime_ocorrencia_resolver()` já usava pra
+"resolvido"** — aquela RPC já chamava `sime_acao_mesa()` de dentro de si
+mesma pra baixar o pânico na seção quando o cartório resolve pelo Painel de
+Problemas, e é isso que o Realtime já existente do mesário
+(`subscribeMesaEstadoSecao`) capta de graça. A mesma ideia foi estendida pra
+"assumida": `sql/SIME_mesa_estado_assumido.sql` (aplicado em produção) —
+
+- **`sime_mesa_estado`** ganha 6 colunas: `panico_energia_assumido`/
+  `panico_urna_assumido`/`panico_sos_assumido` (boolean, default `false`) e
+  `panico_energia_responsavel_nome`/`panico_urna_responsavel_nome`/
+  `panico_sos_responsavel_nome` (texto) — só os 3 tipos de pânico do mesário
+  (`energia`/`urna`/`sos`), nunca `problema_instalacao` (isso é acionado por
+  outra tela de D-1, não pelo mesário).
+- **`sime_acao_mesa()`** ganha 6 parâmetros novos no FIM da assinatura
+  (`DEFAULT NULL`), mesmo padrão já documentado pro resto da RPC — `NULL`
+  = não mexe, valor = grava, `''` (só nos campos de nome) = limpa.
+- **`sime_ocorrencia_assumir(p_id)`** — depois do UPDATE de sempre
+  (`status='assumida'`), um bloco best-effort (`BEGIN/EXCEPTION WHEN OTHERS
+  THEN NULL`) chama `sime_acao_mesa()` com `p_panico_<tipo>_assumido=true` e
+  `p_panico_<tipo>_responsavel=<nome de quem assumiu, de sime_usuarios>` —
+  só quando `v_row.tipo IN ('energia','urna','sos')`. Uma falha aqui nunca
+  desfaz o "Assumir" em si (a ocorrência já está marcada, o espelho é só um
+  reforço visual pro campo).
+- **`sime_ocorrencia_delegar(p_id, p_para, p_motivo)`** — mesmo bloco, só que
+  com o nome de QUEM RECEBEU (`v_nome_novo`, resolvido de `p_para`) — trocar
+  de responsável atualiza o nome no aparelho do mesário também, sem nunca
+  voltar pro vermelho.
+- **`sime_ocorrencia_resolver(p_id, p_resolucao)`** — os `PERFORM
+  sime_acao_mesa(...)` que já existiam (pra energia/urna/sos, não
+  instalação) ganharam `p_panico_<tipo>_assumido=false,
+  p_panico_<tipo>_responsavel=''` junto do que já zerava o pânico — limpa o
+  "sendo atendido" no mesmo golpe que resolve.
+
+**`SIME_mesario.html`** — nenhuma assinatura Realtime nova, nenhuma consulta
+a `sime_ocorrencias`/`sime_ocorrencia_eventos` (a tela continua deliberadamente
+minimalista, toque único, sem rolagem, uso às 5h30 com sono):
+- `S.panico_assumido`/`S.panico_responsavel` (novos, por tipo) — persistidos
+  em `localStorage['sime_mesa_v1']` (`saveLocal()`/`loadState()`), mesmo
+  padrão de `S.panico`/`S.panico_resolved`.
+- `lerPanicoAtual()` (leitura ao abrir/voltar de tela) e
+  `window.aplicarPanicoRemoto(row)` (callback do Realtime já existente)
+  passaram a ler as 6 colunas novas e comparar contra o estado local — um
+  pânico que vira "assumido" de fora (`assumidoDeFora`) dispara um toast
+  próprio ("🟡 Fulano está cuidando do problema") e `vib(40)`, distinto do
+  toast de resolução (`resolvidoDeFora`, vibração mais longa).
+- **Botão do pânico** — terceiro estado visual, entre vermelho (ativo) e
+  verde (resolvido): `.c-panic-assumido` (fundo âmbar, pulso mais lento que
+  o vermelho — urgência real é vermelho, isso é só "não parece tela morta"),
+  badge 🟡, subtítulo "Sendo atendido por {nome} — toque 2x se já resolveu"
+  (ou "...pelo cartório" se o nome não veio). Botão continua clicável do
+  jeito de sempre — a pessoa ainda consegue marcar como resolvido no próprio
+  aparelho se o problema já passou, mesmo estando marcado como assumido.
+- **`#dc-panico` (chip-resumo do topo)** — texto/cor mudam de "🔴 Pânico
+  ativo" pra "🟡 Sendo atendido" quando TODOS os pânicos ativos no momento já
+  estão assumidos (`ativos.every(id => S.panico_assumido[id])`) — se houver
+  um pânico assumido e outro ainda não, o chip continua vermelho (o pior
+  caso vence, mesmo critério "o aviso mais acionável vence" já usado alhures
+  no projeto).
+
+**Nunca escrito pelo próprio aparelho do mesário** — `syncMesa()` (a função
+que já garante que campos de pânico só entram no payload quando o toque foi
+de pânico, ver "Pânico — propagação de volta ao campo" abaixo) nunca manda
+os 6 parâmetros novos; eles só chegam via `sime_ocorrencia_assumir`/
+`delegar`/`resolver`, sempre do lado do cartório. O mesário só LÊ.
+
+Coberto por `tests/test_mesario_panico_realtime.mjs` (blocos 8-12, 59 checks
+no total no arquivo inteiro): botão vira âmbar com o nome de quem assumiu +
+toast; chip-resumo troca de vermelho pra âmbar quando o único pânico ativo é
+assumido; delegar troca o nome sem voltar a vermelho; resolver depois de
+assumido vira verde (não âmbar) com o toast certo; reabrir a tela com
+"assumido" já gravado no servidor nasce direto em âmbar (via
+`lerPanicoAtual()`, não só localStorage).
+
+---
+
+## IMPRESSÃO EM CARTÃO DE VISITA (`SIME_tokens.html`, 11/09/2026)
+
+Pedido direto: "em imprimir todos, quero que gere cada e as informações como
+um cartão de visitas e preenchendo uma folha a4 com cartões suficientes,
+verifique se o qrcode esta em tamanho suficiente." Antes disso, "🖨️
+Imprimir todos" só chamava `window.print()` direto sobre a própria lista na
+tela — cada card full-width, um embaixo do outro, QR de 120px — nada de
+cartão de visita, e desperdiçava a folha A4 (cabiam só 2-3 cards por página
+impressa nesse formato). Esclarecido via `AskUserQuestion` antes de
+implementar (three perguntas, todas respondidas com a opção recomendada):
+
+1. **Tamanho: cartão de visita padrão (85×54mm), não crachá maior.**
+2. **Conteúdo essencial**: nome, papel (ícone+label) e PIN — sem escopo
+   (seção/rota/local), sem badges de válido/expirado, sem datas. Um
+   cartão de visita não é a tela de detalhe; escopo continua consultável
+   na lista normal (tela) se precisar conferir antes de entregar.
+3. **O 🖨️ de cada linha usa o MESMO formato** — consistência: imprimir 1
+   ou todos sempre usa o cartão pequeno, útil pra reimprimir um cartão
+   avulso perdido sem precisar rolar até "Imprimir todos".
+
+**Layout**: `@page{size:A4;margin:8mm}` + `.tk-page{display:grid;
+grid-template-columns:repeat(2,85mm);grid-template-rows:repeat(5,54mm)}` —
+2 colunas × 5 linhas = 10 cartões por folha. Cada cartão (`.tk-card`,
+85×54mm exatos via `box-sizing:border-box`) tem borda tracejada como guia
+de corte. `.tk-page:not(:last-child){page-break-after:always}` — mais de
+10 tokens vira página nova, sem página em branco sobrando no fim (a
+quebra só entra ENTRE páginas, nunca depois da última).
+
+Mesmo padrão de `#print-area` já usado em Correspondência/Oficial de
+Justiça/Rotas (`display:none` na tela, só visível via `@media print`,
+`window.print()` chamado direto, sem popup): `tkImprimirCartoes(tokens)`
+(nova, em `SIME_tokens.html`) monta o HTML de todas as páginas, gera o QR
+de cada cartão (síncrono, `new QRCode()`, mesma lib vendorizada de sempre)
+e chama `window.print()` — uma rotina só, compartilhada por
+`imprimirTodos()` (todos os tokens, ordenados como na lista) e
+`imprimirToken(id)` (1 token só, que agora chama a mesma função em vez do
+hack antigo de esconder/mostrar `.token-card` na própria lista).
+
+**QR: tamanho físico fixo em 40mm × 40mm** (quase metade da largura do
+cartão) — bem acima do mínimo recomendado (~20mm) pra escanear de perto
+com celular. `tkQrCanvasPx(texto)` (mesmo princípio de `rtQrSizePx()` do
+módulo de Rotas, 10/09/2026 — QR ilegível impresso em canvas fixo pra um
+link mais longo que o costumeiro) escala a RESOLUÇÃO do canvas por trás
+(160/220/280px conforme o tamanho da URL) — o tamanho FÍSICO impresso não
+muda (é regra CSS fixa do cartão), só a nitidez da matriz por trás, pra
+nunca borrar se a URL crescer (ex.: zona não resolvida, cai no fallback
+de URL relativa mais longa). Verificado gerando o PDF de verdade (12
+tokens de teste): A4 exato (210×297mm), 2 páginas (10+2), QR nítido e
+proporcional — não só teoria.
+
+Token de TV mostra "Sem PIN — só QR" no lugar do PIN (TV nunca usa PIN de
+verdade — mesmo critério já documentado em "TOKEN DE TV PELA UI" acima).
+
+Coberto por `tests/test_tokens_impressao.mjs` (24 checks): 12 tokens
+viram 2 páginas (10+2, sem página em branco); conteúdo essencial (nome,
+papel, PIN) presente e escopo ausente (mesmo o mesário tendo seção
+cadastrada); QR desenhado em resolução generosa; token TV sem PIN; e o
+🖨️ de uma linha imprime só aquele 1 token, no mesmo formato de cartão.
+
+---
+
+## BUG GRAVE — PÂNICO NUNCA CHEGAVA EM PROBLEMAS (`sime_acao_mesa`, 11/09/2026)
+
+Reportado direto: "Quando cadastro um problema
+[`SIME_mesario.html?token=Z556SUFF`, Seção 1, 7ª Zona] com o devido pin não
+aparece em problema". Investigado direto no banco (Supabase MCP): 0 linhas
+em `sime_mesa_estado` pra toda a 7ª Zona — nenhum pânico estava sendo
+gravado de verdade, não só "esse caso específico".
+
+**Causa raiz: `sime_acao_mesa()`/`sime_rota_estado_upsert()` tinham DUAS
+sobrecargas coexistindo no banco, sem ninguém perceber.** As migrações de
+"🟡 Sendo atendido" (11/09/2026, ver seção própria acima,
+`sql/SIME_mesa_estado_assumido.sql`) e "Posição estimada dos veículos"
+(08/09/2026, `sql/SIME_rotas_estado_posicao.sql`) usaram `CREATE OR REPLACE
+FUNCTION` adicionando parâmetros novos no FIM da assinatura — prática já
+documentada nas duas seções como segura ("`CREATE OR REPLACE` só é seguro
+assim pros chamadores existentes"). O que não tinha sido percebido: o
+Postgres só SUBSTITUI uma função quando a assinatura (nº/tipo de
+parâmetros) é IDÊNTICA — como as duas ganharam parâmetros extras, cada
+`CREATE OR REPLACE` criou uma SOBRECARGA nova, deixando a versão ANTIGA
+viva no banco ao lado da nova, sem erro nem aviso nenhum na hora de aplicar
+a migração.
+
+Quando um chamador antigo (`SIME_mesario.html`, `SIME_motorista.html`,
+`SIME_instalador.html`, `SIME_acessibilidade.html`) chama a RPC só com os
+parâmetros de sempre (todos opcionais nas DUAS versões), o PostgREST não
+consegue decidir sozinho qual sobrecarga usar —
+`PGRST203: Could not choose the best candidate function` — e a escrita
+falha. Do lado do navegador isso cai no mesmo tratamento de qualquer falha
+de rede (fila offline, badge 🟡, retry a cada 30s, ver "PADRÃO DE CÓDIGO —
+OFFLINE-FIRST" acima) — só que esse erro NUNCA se resolve sozinho (não é
+intermitência, é ambiguidade permanente): a ação fica pra sempre "tentando
+sincronizar", sem o operador ter como perceber que não é só demora.
+
+Corrigido em `sql/SIME_fix_overload_ambiguo_acao_mesa.sql` — `DROP
+FUNCTION` das duas versões ANTIGAS (assinatura menor); as versões novas já
+são um superset 100% compatível (parâmetros extras sempre `DEFAULT NULL`)
+e já tinham `GRANT EXECUTE` pra `anon`/`authenticated`/`service_role`,
+então nenhum chamador precisou mudar uma linha.
+
+**Verificado ao vivo, na mesma sessão da correção**: o celular do próprio
+cartório (token `Z556SUFF`) tinha um pânico "energia" preso na fila
+offline desde antes da correção — assim que a ambiguidade foi removida, o
+retry automático do navegador sincronizou sozinho (sem o cartório precisar
+fazer nada) e a ocorrência apareceu em `SIME_problemas.html`, sendo
+inclusive resolvida pelo próprio cartório em seguida, ainda durante a
+investigação — confirmação de ponta a ponta, não só teórica.
+
+> **Lição pro futuro, pra não se repetir na próxima vez que uma RPC ganhar
+> parâmetro novo**: depois de qualquer `CREATE OR REPLACE FUNCTION` que
+> adiciona parâmetro a uma função já chamada pelo frontend, checar
+> `select proname, count(*) from pg_proc where proname='<nome>' group by
+> proname having count(*) > 1` — se vier mais de uma linha, sobrou
+> sobrecarga fantasma pra derrubar. `CREATE OR REPLACE` nunca avisa quando,
+> na prática, criou uma função nova em vez de substituir a existente. Os
+> mocks de Supabase usados nos testes Playwright deste projeto (QB
+> simplificada, sem PostgREST de verdade) não pegam esse tipo de bug —
+> só existe contra o Postgres real, daí ter passado batido nas duas
+> migrações que o causaram.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
@@ -2751,6 +5132,54 @@ com sessão (criar, editar, remover/soft-delete) — corrigido: antes só gravav
 mudança na cópia local (`window.ATORES_REAIS`) em vez de rebuscar — rebuscar
 devolveria a lista antiga do cache.
 
+**Varredura dedicada de "pontas soltas" (03/09/2026)** — pedido agendado:
+achar telas que ainda dependem só de `localStorage` sem sincronizar de
+verdade com o Supabase, ou onde os dois podem divergir sem ninguém
+perceber (diferente do uso legítimo de `localStorage` como cache offline,
+que é a arquitetura de sempre). Focada em mesários/convocação (nenhum
+achado — `SIME_convocacao.html`/`sime_contatar_mesarios.js` e os demais
+arquivos do módulo são 100% Supabase, nunca tiveram `localStorage`) e Dia D
+(`SIME_mesario.html`, `SIME_tv_dia.html`, `SIME_admin.html`). Dois achados
+reais, os dois corrigidos:
+
+- **`getHor()` do TV Dia lia só `localStorage['sime_eleicao_v1']`, chave
+  gravada em outro aparelho.** Usada pra pré-preencher o campo de
+  auto-troca com o horário real de encerramento da zona — como essa chave
+  só é gravada pelo Painel Principal, num computador diferente da própria
+  TV, o campo sempre caía no "17:00" chumbado (a TV nunca tinha essa chave
+  no próprio navegador). É a MESMA classe de bug já achada e corrigida em
+  `SIME_tokens.html`/`SIME_admin.html` (`window.ELEICAO_ATIVA`, vindo de
+  `getEleicaoAtiva()`/Supabase) — só nunca tinha sido replicada em TV Dia.
+  Corrigido: `getHor()` agora prefere `window.ELEICAO_ATIVA.horario_ab`/
+  `horario_enc` (populado pelo `<script type="module">` já existente,
+  `.slice(0,5)` porque o Postgres devolve "HH:MM:SS" e `#auto-switch` é
+  `<input type="time">`, que só aceita "HH:MM"); o campo é re-preenchido
+  assim que o dado real chega, sem depender de ordem de execução entre o
+  script clássico e o módulo.
+- **Mesário grava status de mídia mas nunca lia de volta.** `marcarMidiaPronta()`
+  já sincronizava direito com o Supabase (RPC `sime_acao_midia`) — o
+  problema era leitura: `loadMidia()`/`renderMidiaBtn()` liam só
+  `localStorage['sime_midias_v1']` do PRÓPRIO aparelho, que nunca reflete
+  "coletada"/"entregue_transmissao" (essas transições acontecem no
+  aparelho do Coletor de Mídias, `SIME_midias.html` — um dispositivo físico
+  diferente). O botão já tinha até os textos prontos pra esses dois
+  estados, só eram inalcançáveis — o mesário nunca ficava sabendo que a
+  própria mídia já tinha sido recolhida. Corrigido com o mesmo padrão já
+  usado pro pânico (Realtime + leitura inicial + releitura ao voltar pra
+  tela): nova `subscribeMidiasSecao()` em `sime_realtime.js` (filtrada por
+  seção — um celular de mesário não deve receber o tráfego de mídia das
+  outras ~174 seções da zona, mesmo motivo de `subscribeMesaEstadoSecao`),
+  `window.aplicarMidiaRemota()` (script clássico) aplica o status recebido
+  em `MIDIA_KEY` e rechama `renderMidiaBtn()`.
+
+Os dois cobertos por teste de regressão dedicado — `tests/test_tv_dia.mjs`
+(Caso 3) e `tests/test_mesario_midia_realtime.mjs` (novo arquivo). A suíte
+de pânico (`test_mesario_panico_realtime.mjs`) precisou de um ajuste — o
+mock de `channel()` só guardava o ÚLTIMO canal criado numa página
+(`canalNome`/`realtimeFiltro`/`realtimeCallback`), e agora o mesário abre
+dois canais (pânico + mídia); virou um array `window.__mockConfig.canais`,
+indexável por tabela, sem mudar o que os testes de pânico já verificavam.
+
 ### Pânico — propagação de volta ao campo (parcial)
 
 O `SIME_mesario.html` assina o Realtime da própria seção e relê o estado ao
@@ -2758,6 +5187,11 @@ abrir e a cada volta de tela, então a resolução feita pelo Admin chega ao
 aparelho. Além disso, **os campos de pânico só entram no payload quando o
 toque foi de pânico** — o RPC trata `NULL` como "mantém", então nenhuma outra
 ação pode desfazer a resolução (vale offline também).
+
+Desde 11/09/2026 (ver "🟡 'SENDO ATENDIDO' NO PAINEL DO MESÁRIO" acima), não é
+mais só resolução que chega ao aparelho — "assumida"/"delegada" também
+propagam, virando um terceiro estado visual (chip âmbar "sendo atendido")
+entre o vermelho de pânico ativo e o verde de resolvido.
 
 O `SIME_acessibilidade.html` também recebe — assina as seções do **local** do
 coordenador (`secao_id=in.(...)`, não a zona inteira) e relê ao entrar e a cada

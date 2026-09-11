@@ -152,6 +152,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
       </div>
       <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
+      <span id="sime-um-slot" style="display:none"></span>
     </div>
     <div class="prereq-legend">
       <span class="step c">📦 Carga</span><span class="arrow">→</span>
@@ -237,8 +238,27 @@ window.simeCoordPrep = {
   },
 };
 
+// Melhor-esforço: uma falha aqui (rede, sessão velha) nunca deve travar o
+// carregamento dos dados de carga/lacre, que é o que de fato importa nesta
+// tela — mesmo critério do restante do app pra código "extra" sobre o fluxo
+// principal.
+async function carregarMenuUsuario(){
+  try {
+    if (!window.initSimeUserMenu) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', user.id).maybeSingle();
+    window.initSimeUserMenu(supabase, {
+      slotEl: document.getElementById('sime-um-slot'),
+      nome: meu?.nome || user.email || 'Usuário',
+      perfil: meu?.perfil,
+    });
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
+}
+
 async function carregarDadosReais(){
   initSimeDados(supabase);
+  await carregarMenuUsuario();
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
   const secoesReais = await getSecoes({ fallback: null });
@@ -297,6 +317,7 @@ document.getElementById('login-offline').addEventListener('click', () => { escon
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script>
 // Ordenado por município (Campo Maior → Jatobá do Piauí → Sigefredo Pacheco)
 // e por número de seção crescente dentro de cada município

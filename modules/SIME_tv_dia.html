@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME TV Dia</title>
 <link rel="stylesheet" href="./sime_theme_purple.css">
+<link rel="stylesheet" href="./vendor/leaflet.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;}
@@ -181,6 +182,18 @@ body{display:flex;flex-direction:column;}
 .sp-title{font-size:.9rem;font-weight:800;}
 .sp-close{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
 .sp-body{padding:14px 16px;display:flex;flex-direction:column;gap:16px;}
+/* Mapa de posição dos veículos (08/09/2026) — mesmo padrão de overlay do
+   painel de sons acima, só mais largo (precisa caber um mapa de verdade). */
+.map-overlay{position:fixed;inset:0;background:rgba(30,27,46,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.map-overlay.open{opacity:1;pointer-events:all;}
+.map-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;width:min(880px,94vw);max-height:88vh;box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;}
+.map-body{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px;}
+.map-hint{font-size:.68rem;color:var(--text3);}
+#mapa-rotas{width:100%;height:min(64vh,560px);border-radius:10px;border:1px solid var(--border);background:var(--bg2);}
+.map-legenda{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.68rem;color:var(--text2);}
+.rt-pin{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--blue);color:#fff;font-size:.62rem;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);}
+.rt-pin span{transform:rotate(45deg);}
+.leaflet-popup-content{font-size:.78rem;}
 .sp-cat{display:flex;flex-direction:column;gap:8px;}
 .sp-cat-title{font-size:.72rem;font-weight:800;display:flex;align-items:center;gap:6px;}
 .sp-cat-sub{font-size:.65rem;color:var(--text2);}
@@ -230,6 +243,8 @@ body{display:flex;flex-direction:column;}
   <div class="t-right">
     <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
     <div class="t-clock" id="clock">--:--:--</div>
+    <button class="gear-btn" id="mapa-rotas-btn" onclick="toggleMapaRotas()" title="Posição estimada dos veículos">🗺️</button>
+    <button class="gear-btn" id="previsao-btn" onclick="togglePrevisao()" title="Previsão de encerramento da zona">🔮</button>
     <button class="gear-btn" onclick="toggleSoundPanel()" title="Configurar sons de alerta">⚙️</button>
   </div>
 </div>
@@ -289,6 +304,50 @@ body{display:flex;flex-direction:column;}
     </div>
   </div>
 </div>
+
+<!-- MAPA — posição estimada dos veículos (08/09/2026) -->
+<div class="map-overlay" id="mapa-overlay" onclick="closeMapaRotasIfOut(event)">
+  <div class="map-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🗺️ Posição estimada dos veículos</div>
+      <button class="sp-close" onclick="toggleMapaRotas()">✕</button>
+    </div>
+    <div class="map-body">
+      <div class="map-hint">Atualiza a cada confirmação do motorista (entrega, recolhimento, chegada ao cartório) — não é rastreamento contínuo, é a última posição informada.</div>
+      <div id="mapa-rotas"></div>
+      <div class="map-legenda" id="mapa-legenda"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PREVISÃO DE ENCERRAMENTO (08/09/2026) -->
+<div class="sound-overlay" id="prev-overlay" onclick="closePrevisaoIfOut(event)">
+  <div class="sound-panel" id="prev-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🔮 Previsão de encerramento</div>
+      <button class="sp-close" onclick="togglePrevisao()">✕</button>
+    </div>
+    <div class="sp-body">
+      <div class="map-hint">Estimativa — recalcula sozinha a cada nova fila ou mídia recolhida informada. Nunca substitui confirmação oficial nenhuma.</div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🏁</span> Fim da operação da zona</div>
+        <div id="prev-fim-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🗳️</span> Votação — previsão de encerramento</div>
+        <div id="prev-votacao-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>🎞️</span> Recolhimento de mídia por rota</div>
+        <div id="prev-midia-tv" class="map-hint">Carregando…</div>
+      </div>
+      <div class="sp-cat">
+        <div class="sp-cat-title"><span>⏳</span> Seções com fila após o encerramento</div>
+        <div id="prev-filas-tv" class="map-hint">Carregando…</div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="fase-bar">
   <button class="fase-btn active ab"  id="fase-ab"   onclick="setFase('ab')">🌅 Abertura</button>
   <button class="fase-btn enc"        id="fase-enc"  onclick="setFase('enc')">🏁 Encerramento</button>
@@ -319,10 +378,11 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="v-leg" id="v-leg"></div>
 </div>
+<script src="./vendor/leaflet.js"></script>
 <script type="module">
 import { bootstrapTvSession, atualizarCacheTv, agruparSecoesPorCidade } from './sime_tv_auth.js';
-import { initSimeDados, getSecoes, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow } from './sime_dados.js';
-import { subscribeMesaEstado, subscribeMidias } from './sime_realtime.js';
+import { initSimeDados, getSecoes, getEleicaoAtiva, getMesaEstadoMap, mapMesaEstadoRow, getAtores, getMidiasMap, mapMidiaRow, getRotas, getZonaInfo, getRotasPosicaoMap, getRotasRecolhimentoMidia } from './sime_dados.js';
+import { subscribeMesaEstado, subscribeMidias, subscribeRotasEstado } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
 import { SIME_CONFIG } from './sime_config.js';
@@ -332,6 +392,23 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   const { client } = await bootstrapTvSession(SIME_CONFIG);
   if (!client) return; // sem token de TV configurado ainda — segue no fallback local
   initSimeDados(client);
+
+  // Achado real na auditoria de 03/09/2026: getHor() (script clássico, usado
+  // só pra pré-preencher o campo de auto-troca com o horário real de
+  // encerramento) lia SÓ localStorage['sime_eleicao_v1'] — chave gravada
+  // pelo Painel Principal, num aparelho DIFERENTE (o computador do cartório,
+  // não a própria TV). Sem alguém ter aberto o Principal nessa mesma TV uma
+  // vez, a chave nunca existe ali, e o campo sempre cai no "17:00" chumbado
+  // — o mesmo bug já corrigido em SIME_tokens.html/SIME_admin.html (ver
+  // comentários em calcularExpiracao()), só que nunca replicado aqui.
+  // window.ELEICAO_ATIVA (mesmo global que os outros dois já usam) passa a
+  // vir do Supabase de verdade; getHor() abaixo prefere ele.
+  const eleicaoAtiva = await getEleicaoAtiva({ fallback: null });
+  if (eleicaoAtiva) {
+    window.ELEICAO_ATIVA = eleicaoAtiva;
+    const inpAutoSwitch = document.getElementById('auto-switch');
+    if (inpAutoSwitch && window.getHor) inpAutoSwitch.value = window.getHor().enc;
+  }
 
   // CITIES: NUMPAGES e os pontos de paginação são montados uma única vez no
   // carregamento — troca via cache+reload (mesmo padrão de SIME_tv_vespera.html).
@@ -347,11 +424,15 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   // (localStorage) automaticamente, como antes.
   const secoesParaMesa = await getSecoes({ fallback: null });
   const numeroPorSecaoId = new Map((secoesParaMesa || []).map((s) => [s.id, s.numero]));
+  // Lista achatada {n, loc} — usada só pelo painel 🔮 Previsão (08/09/2026)
+  // pra achar "qual seção é a mais lenta"; window.SECTIONS não existe nesta
+  // TV (que usa CITIES, agrupado por cidade, formato diferente do Admin).
+  window.__secoesFlat = (secoesParaMesa || []).map((s) => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome }));
   const mesaInicial = await getMesaEstadoMap({ fallback: null });
   let rerenderTimer = null;
   function agendarRerender() {
     clearTimeout(rerenderTimer);
-    rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); }, 300);
+    rerenderTimer = setTimeout(() => { if (window.buildPages) window.buildPages(); if (window.renderPrevisaoTv) renderPrevisaoTv(); }, 300);
   }
   // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
   // atualizado a cada segundo pelo <script> clássico) — sem ele a tela não
@@ -421,6 +502,44 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
     }
     window.__contatosPorSecao = porSecao;
   } catch (e) { /* sem contatos — o modal simplesmente não mostra o botão */ }
+
+  // Mapa — posição estimada dos veículos (08/09/2026, ver comentário em
+  // sime_dados.js/getRotasPosicaoMap). Snapshot inicial + Realtime, mesmo
+  // padrão de sime_mesa_estado/sime_midias acima; window.__posicaoRotas fica
+  // exposto pro <script> clássico (toggleMapaRotas/renderMarcadoresMapa).
+  try {
+    const rotasMeta = await getRotas({ fallback: [] });
+    window.__metaPorRotaId = Object.fromEntries((rotasMeta || []).map((r) => [r.id, { codigo: r.codigo, nome: r.nome }]));
+    const posicaoInicial = await getRotasPosicaoMap({ fallback: {} });
+    window.__posicaoRotas = posicaoInicial || {};
+    if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+    subscribeRotasEstado(client, (row) => {
+      const meta = window.__metaPorRotaId?.[row.rota_id];
+      if (!meta) return;
+      if (row.motorista_lat == null || row.motorista_lng == null) return;
+      window.__posicaoRotas[row.rota_id] = {
+        codigo: meta.codigo, nome: meta.nome,
+        lat: row.motorista_lat, lng: row.motorista_lng,
+        ts: row.motorista_pos_ts ? new Date(row.motorista_pos_ts).getTime() : null,
+      };
+      if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+    });
+    // Centro padrão do mapa (sede da zona, sime_zonas.lat/lon) — só usado
+    // enquanto nenhum veículo ainda informou posição; com pelo menos um
+    // ponto, o mapa sempre enquadra os veículos, não a sede.
+    const zona = await getZonaInfo({ fallback: null });
+    if (zona && zona.lat != null && zona.lon != null) window.__centroMapaZona = [zona.lat, zona.lon];
+  } catch (e) { /* mapa fica indisponível — o resto da TV segue normal */ }
+
+  // Previsão de encerramento (08/09/2026, mesmo cálculo da aba 🔮 Previsão do
+  // Admin — ver CLAUDE.md) — carregada uma vez (rota/ETA mudam pouco); o
+  // progresso REAL de coleta (window.__midiasRemota) já é Realtime pelos
+  // blocos acima, então a previsão recalcula sozinha a cada mídia nova sem
+  // precisar assinar mais nada aqui.
+  try {
+    window.__rotasMidiaTv = await getRotasRecolhimentoMidia({ fallback: [] });
+    if (window.renderPrevisaoTv) renderPrevisaoTv();
+  } catch (e) { /* previsão fica indisponível — o resto da TV segue normal */ }
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -479,7 +598,19 @@ function getSt(n,mesa){
   }
   return st;
 }
-function getHor(){try{const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');const t=el['turno'+(el.turno_ativo||1)]||{};return{ab:t.abertura||'07:00',enc:t.encerramento||'17:00'};}catch(e){return{ab:'07:00',enc:'17:00'};}}
+// Prefere sime_eleicoes (Supabase, window.ELEICAO_ATIVA — populado pelo
+// <script type="module"> acima) sobre localStorage['sime_eleicao_v1'], que só
+// existe nesta TV se alguém já tiver aberto o Painel Principal no MESMO
+// aparelho (achado real de 03/09/2026 — mesma classe de bug já corrigida em
+// SIME_tokens.html/SIME_admin.html, nunca replicada aqui até agora).
+function getHor(){
+  const real = window.ELEICAO_ATIVA;
+  // .slice(0,5): horario_ab/horario_enc vêm do Postgres como "HH:MM:SS"
+  // (tipo time) — #auto-switch é <input type="time">, que só aceita "HH:MM"
+  // (mesmo corte já usado em SIME_admin.html pra exibir esses campos).
+  if (real && (real.horario_ab || real.horario_enc)) return { ab: (real.horario_ab || '').slice(0, 5) || '07:00', enc: (real.horario_enc || '').slice(0, 5) || '17:00' };
+  try{const el=JSON.parse(localStorage.getItem('sime_eleicao_v1')||'{}');const t=el['turno'+(el.turno_ativo||1)]||{};return{ab:t.abertura||'07:00',enc:t.encerramento||'17:00'};}catch(e){return{ab:'07:00',enc:'17:00'};}
+}
 function toMin(hm){const[h,m]=(hm||'00:00').split(':').map(Number);return h*60+m;}
 function nowMin(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 // fmtNow() vem de sime_ui_utils.js
@@ -727,6 +858,196 @@ function toggleSoundPanel(){
 function closeSoundPanelIfOut(e){
   if(e.target===document.getElementById('sound-overlay')) toggleSoundPanel();
 }
+
+// ── MAPA — posição estimada dos veículos (08/09/2026) ──────
+// window.__posicaoRotas ({rotaId:{codigo,nome,lat,lng,ts}}) e
+// window.__centroMapaZona são preenchidos pelo <script type="module"> acima
+// (getRotasPosicaoMap()/subscribeRotasEstado); este bloco só desenha.
+// L.map() exige o container já visível com tamanho > 0 — por isso o mapa só
+// é criado na primeira vez que o painel abre (garantirMapaLeaflet), nunca no
+// carregamento da página, e invalidateSize() roda logo depois de abrir pra
+// corrigir o tamanho que o Leaflet calculou errado com o painel ainda oculto.
+let mapaLeaflet = null;
+const marcadoresMapaRotas = new Map(); // rotaId -> L.marker
+const CORES_ROTA = ['#2d50a0','#1e7048','#5c3a98','#a0522d','#0891b2','#be123c','#7c3aed','#166534'];
+function corDaRota(codigo){
+  let h = 0; for (const c of String(codigo)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CORES_ROTA[h % CORES_ROTA.length];
+}
+function iconPinRota(codigo){
+  return L.divIcon({
+    className: '', html: `<div class="rt-pin" style="background:${corDaRota(codigo)}"><span>${codigo}</span></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28],
+  });
+}
+function fmtHoraPosicao(ts){
+  return ts ? new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+function garantirMapaLeaflet(){
+  if (mapaLeaflet || typeof L === 'undefined') return mapaLeaflet;
+  const centro = window.__centroMapaZona || [-4.8252, -42.1733]; // sede da 7ª Zona — só até o 1º ponto real chegar
+  mapaLeaflet = L.map('mapa-rotas', { attributionControl: false }).setView(centro, 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapaLeaflet);
+  L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(mapaLeaflet);
+  return mapaLeaflet;
+}
+function renderMarcadoresMapa(){
+  if (!mapaLeaflet) return;
+  const pontos = window.__posicaoRotas || {};
+  for (const [rotaId, marker] of [...marcadoresMapaRotas]) {
+    if (!pontos[rotaId]) { mapaLeaflet.removeLayer(marker); marcadoresMapaRotas.delete(rotaId); }
+  }
+  for (const [rotaId, p] of Object.entries(pontos)) {
+    const popup = `<b>Rota ${p.codigo}${p.nome ? ' — ' + p.nome : ''}</b><br>Última posição: ${fmtHoraPosicao(p.ts)}`;
+    if (marcadoresMapaRotas.has(rotaId)) {
+      marcadoresMapaRotas.get(rotaId).setLatLng([p.lat, p.lng]).setPopupContent(popup);
+    } else {
+      const m = L.marker([p.lat, p.lng], { icon: iconPinRota(p.codigo) }).addTo(mapaLeaflet).bindPopup(popup);
+      marcadoresMapaRotas.set(rotaId, m);
+    }
+  }
+  const legenda = document.getElementById('mapa-legenda');
+  const lista = Object.values(pontos);
+  if (legenda) {
+    legenda.innerHTML = lista.length
+      ? lista.map((p) => `<span>🚗 Rota ${p.codigo} — ${fmtHoraPosicao(p.ts)}</span>`).join('')
+      : '<span>Nenhum veículo informou posição ainda.</span>';
+  }
+  if (lista.length) mapaLeaflet.fitBounds(lista.map((p) => [p.lat, p.lng]), { padding: [30, 30], maxZoom: 14 });
+}
+window.renderMarcadoresMapa = renderMarcadoresMapa;
+function toggleMapaRotas(){
+  const ov = document.getElementById('mapa-overlay');
+  const vaiAbrir = !ov.classList.contains('open');
+  ov.classList.toggle('open');
+  if (vaiAbrir) {
+    garantirMapaLeaflet();
+    setTimeout(() => { if (mapaLeaflet) { mapaLeaflet.invalidateSize(); renderMarcadoresMapa(); } }, 60);
+  }
+}
+function closeMapaRotasIfOut(e){
+  if (e.target === document.getElementById('mapa-overlay')) toggleMapaRotas();
+}
+
+// ── PREVISÃO DE ENCERRAMENTO (08/09/2026) ───────────────────
+// Mesmo cálculo da aba 🔮 Previsão de SIME_admin.html (ver CLAUDE.md) —
+// duplicado aqui de propósito, não importado: os dois arquivos não
+// compartilham <script> clássico nenhum (só sime_dados.js/sime_realtime.js,
+// que são ES modules), mesmo padrão já usado noutros lugares do projeto pra
+// função pura pequena que não vale a pena promover a módulo compartilhado
+// (ex.: cmPersonalizarScript duplicado de personalizarMensagem). A fonte de
+// dado É compartilhada (getRotasRecolhimentoMidia() em sime_dados.js) — só a
+// matemática de exibição, que é específica de cada tela, é que se repete.
+function pvTvHojeComHora(horaStr){
+  if(!horaStr) return null;
+  const partes = String(horaStr).split(':').map(Number);
+  if(!partes.length || Number.isNaN(partes[0])) return null;
+  const d = new Date();
+  d.setHours(partes[0]||0, partes[1]||0, partes[2]||0, 0);
+  return d;
+}
+function pvTvFmtHora(ts){
+  if(ts == null) return '—';
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+function pvTvEstimativaSecao(mesa, horarioEnc, minPorEleitor, agora){
+  if(!mesa) return null;
+  if(mesa.enc) return { ts: mesa.ts, tipo:'real' };
+  if(!horarioEnc || agora.getTime() < horarioEnc.getTime()){
+    return { ts: horarioEnc ? horarioEnc.getTime() : null, tipo:'oficial' };
+  }
+  const fila = mesa.fila || 0;
+  if(fila <= 0) return { ts: agora.getTime(), tipo:'semFila' };
+  return { ts: agora.getTime() + fila*minPorEleitor*60000, tipo:'fila', fila };
+}
+function pvTvMidiaColetada(midia){
+  return !!midia && (midia.status === 'coletada' || midia.status === 'entregue_transmissao');
+}
+function renderPrevisaoTv(){
+  const elFim = document.getElementById('prev-fim-tv');
+  if(!elFim) return;
+  const elVotacao = document.getElementById('prev-votacao-tv');
+  const elMidia = document.getElementById('prev-midia-tv');
+  const elFilas = document.getElementById('prev-filas-tv');
+
+  const real = window.ELEICAO_ATIVA;
+  if(!real){
+    const semDado = '<span>Sem eleição ativa configurada</span>';
+    elFim.innerHTML = elVotacao.innerHTML = elMidia.innerHTML = elFilas.innerHTML = semDado;
+    return;
+  }
+
+  const minPorEleitor = Number(real.minutos_por_eleitor_fila) || 1;
+  const horarioEnc = pvTvHojeComHora(real.horario_enc);
+  const agora = new Date();
+  const secoes = window.__secoesFlat || [];
+  const mesaMap = window.__mesaRemota || {};
+
+  let piorVotacao = null;
+  const comFila = [];
+  for(const s of secoes){
+    const est = pvTvEstimativaSecao(mesaMap[s.n], horarioEnc, minPorEleitor, agora);
+    if(est && est.ts != null && (piorVotacao == null || est.ts > piorVotacao.ts)){
+      piorVotacao = { ts: est.ts, numero: s.n, loc: s.loc };
+    }
+    if(est && est.tipo === 'fila') comFila.push({ numero: s.n, loc: s.loc, fila: est.fila, ts: est.ts });
+  }
+  elVotacao.innerHTML = piorVotacao
+    ? `<b>${pvTvFmtHora(piorVotacao.ts)}</b> — seção mais lenta: ${piorVotacao.numero}${piorVotacao.loc ? ' — '+piorVotacao.loc : ''}`
+    : '<span>Sem seções cadastradas</span>';
+
+  comFila.sort((a,b) => b.fila - a.fila);
+  elFilas.innerHTML = comFila.length
+    ? comFila.map((c) => `<div>🔵 Seção ${c.numero}${c.loc ? ' — '+c.loc : ''} — ${c.fila} na fila · previsão ${pvTvFmtHora(c.ts)}</div>`).join('')
+    : '<span>Nenhuma seção com fila registrada além do horário de encerramento</span>';
+
+  const rotas = window.__rotasMidiaTv;
+  const midiasMap = window.__midiasRemota || {};
+  const rotasComputadas = (rotas || []).map((r) => {
+    const total = r.secoes.length;
+    const coletadas = r.secoes.filter((n) => pvTvMidiaColetada(midiasMap[n])).length;
+    const previsaoTs = r.horario_chegada_previsto ? pvTvHojeComHora(r.horario_chegada_previsto)?.getTime() ?? null : null;
+    return { ...r, total, coletadas, concluida: total > 0 && coletadas === total, previsaoTs };
+  });
+  if(rotas == null){
+    elMidia.innerHTML = '<span>Carregando rotas…</span>';
+  } else if(!rotas.length){
+    elMidia.innerHTML = '<span>Nenhuma rota de recolhimento de mídia cadastrada</span>';
+  } else {
+    elMidia.innerHTML = rotasComputadas.map((r) => `
+      <div style="margin-bottom:4px">
+        <b>${r.concluida ? '✅' : '🚚'} Rota ${r.codigo}${r.nome ? ' — '+r.nome : ''}</b> — ${r.coletadas}/${r.total}${
+          r.concluida ? ' (concluído)'
+            : (r.previsaoTs != null ? ' · previsão '+pvTvFmtHora(r.previsaoTs)
+                : ' · ⚠ sem previsão cadastrada')
+        }
+      </div>`).join('');
+  }
+
+  let piorGeral = piorVotacao ? piorVotacao.ts : null;
+  let faltaDado = false;
+  for(const r of rotasComputadas){
+    if(r.concluida) continue;
+    if(r.previsaoTs == null){ faltaDado = true; continue; }
+    if(piorGeral == null || r.previsaoTs > piorGeral) piorGeral = r.previsaoTs;
+  }
+  if(piorGeral == null){
+    elFim.innerHTML = '<span>Sem dado suficiente ainda pra estimar</span>';
+  } else {
+    elFim.innerHTML = `<div style="font-size:1.3rem;font-weight:800;color:var(--text)">${pvTvFmtHora(piorGeral)}</div>` +
+      (faltaDado ? '<div style="margin-top:2px">⚠ Previsão parcial — pelo menos uma rota de recolhimento ainda não tem horário de chegada previsto cadastrado</div>' : '');
+  }
+}
+window.renderPrevisaoTv = renderPrevisaoTv;
+function togglePrevisao(){
+  const ov = document.getElementById('prev-overlay');
+  ov.classList.toggle('open');
+  if (ov.classList.contains('open')) renderPrevisaoTv();
+}
+function closePrevisaoIfOut(e){
+  if (e.target === document.getElementById('prev-overlay')) togglePrevisao();
+}
+
 const alertEmit=new Set();
 function emitAlerta(key,fn){if(!alertEmit.has(key)){alertEmit.add(key);fn();}}
 function clearAlerta(key){alertEmit.delete(key);}

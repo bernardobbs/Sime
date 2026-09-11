@@ -39,6 +39,25 @@ export function subscribeRotasUrnas(client, onChange) { return subscribeTable(cl
 // zona-scoped pela RLS, sem filtro de seção porque o Admin vê a zona toda.
 export function subscribeMidias(client, onChange) { return subscribeTable(client, 'sime_midias', onChange); }
 
+// Variante filtrada por seção — achado real na auditoria de 03/09/2026:
+// SIME_mesario.html grava o status de mídia (sime_acao_midia RPC) mas nunca
+// lia de volta, só do próprio localStorage['sime_midias_v1'] do aparelho —
+// que jamais reflete "coletada"/"entregue_transmissao" (essas transições
+// acontecem no aparelho do Coletor de Mídias, um dispositivo físico
+// diferente). O botão de mídia do mesário tinha até os textos prontos pra
+// esses dois estados (`renderMidiaBtn()`), só nunca alcançáveis. Mesmo
+// motivo de subscribeMesaEstadoSecao() acima: um celular de mesário não
+// deve receber o tráfego de mídia das outras ~174 seções da zona.
+export function subscribeMidiasSecao(client, secaoId, onChange) {
+  return client
+    .channel(`sime_midias_secao_${secaoId}`)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'sime_midias',
+      filter: `secao_id=eq.${secaoId}`,
+    }, (payload) => onChange(payload.new, payload.eventType))
+    .subscribe();
+}
+
 // Heartbeat do Hermes (aba Hermes do Admin) — o Hermes faz UPSERT direto
 // nesta tabela a cada ciclo; sem isso o painel só atualizaria no refresh manual.
 export function subscribeHeartbeat(client, onChange) { return subscribeTable(client, 'sime_heartbeat', onChange); }

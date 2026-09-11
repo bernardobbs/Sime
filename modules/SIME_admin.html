@@ -252,6 +252,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <button class="nav-tab"        onclick="goTab('equipe',this)">👥 Equipe</button>
   <button class="nav-tab"        onclick="goTab('config',this)">⚙️ Config</button>
   <button class="nav-tab"        onclick="goTab('midias',this)">📦 Mídias</button>
+  <button class="nav-tab"        onclick="goTab('previsao',this)">🔮 Previsão</button>
   <button class="nav-tab"        onclick="goTab('atores',this)">👥 Atores</button>
   <button class="nav-tab"        onclick="goTab('hermes',this)">🤖 Hermes</button>
   <button class="nav-tab" id="tab-zonas-btn" style="display:none" onclick="goTab('zonas',this)">🗺️ Zonas</button>
@@ -394,6 +395,47 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div id="midias-list"></div>
 </div>
 
+<!-- ══════ PREVISÃO ══════ -->
+<div id="tab-previsao" class="tab-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-weight:800;font-size:.95rem;">🔮 Previsão de encerramento da zona</div>
+      <div style="font-size:.74rem;color:var(--text2);margin-top:2px;">Recalcula sozinha a cada nova informação de fila, encerramento ou coleta de mídia — não muda nenhuma rota, só estima quando a operação termina.</div>
+    </div>
+    <button class="btn btn-out" onclick="renderPrevisao()">↺ Atualizar</button>
+  </div>
+  <div style="font-size:.7rem;color:var(--text3);margin:-8px 0 12px;">
+    Toda previsão aqui é <b>estimativa</b>, nunca fato — seções ainda dentro do horário normal de votação contam pelo horário oficial de encerramento; depois dele, quem ainda tem fila é estimado pelos minutos por eleitor configurados abaixo. Rota de recolhimento sem previsão de chegada cadastrada (módulo 🗺️ Rotas) aparece marcada, não é ignorada nem inventada.
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">🏁 Previsão — fim da operação da zona</div>
+    <div id="prev-fim" class="hint">Carregando…</div>
+  </div>
+  <div class="grid2" style="gap:16px;margin-bottom:16px;">
+    <div class="card">
+      <div class="sec-title">🗳️ Votação — previsão de encerramento</div>
+      <div id="prev-votacao" class="hint">Carregando…</div>
+    </div>
+    <div class="card">
+      <div class="sec-title">🎞️ Recolhimento de mídia — previsão por rota</div>
+      <div id="prev-midia" class="hint">Carregando…</div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="sec-title">⏳ Seções com fila após o horário de encerramento</div>
+    <div id="prev-filas" class="hint">Carregando…</div>
+  </div>
+  <div class="card">
+    <div class="sec-title">⚙️ Parâmetro da estimativa</div>
+    <div style="font-size:.74rem;color:var(--text2);margin-bottom:10px;">Minutos médios que UM eleitor na fila leva pra votar — só usado depois do horário oficial de encerramento, pra estimar quanto tempo falta pra uma seção com fila fechar. Ajustável a qualquer momento, nunca trava nada.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input type="number" id="prev-min-eleitor" min="0.1" step="0.1" style="width:100px" placeholder="1">
+      <span style="font-size:.78rem;color:var(--text2)">min/eleitor</span>
+      <button class="btn btn-dark btn-sm" onclick="salvarMinutosPorEleitor()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════ ATORES ══════ -->
 <div id="tab-atores" class="tab-panel">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
@@ -467,7 +509,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
-import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap } from './sime_dados.js';
+import { initSimeDados, getSecoes, getMunicipios, getRotas, getEmpresas, getAtores, secoesDaEmpresa, getMesaEstadoMap, mapMesaEstadoRow, getEleicaoAtiva, getMidiasMap, mapMidiaRow, getRotasEstadoMap, getRotasRecolhimentoMidia } from './sime_dados.js';
 import { subscribeOcorrencias, subscribeMesaEstado, subscribeMidias, subscribeHeartbeat } from './sime_realtime.js';
 
 // Preenchido pelo Admin no deploy (mesmos valores públicos do projeto Supabase
@@ -513,6 +555,15 @@ async function carregarDadosReais(){
     return emp ? secoesDaEmpresa(emp.rotas, window.ROTAS_REAIS || []) : [];
   };
 
+  // Rotas de tipo 'recolhimento_midia' (aba 🔮 Previsão) — window.ROTAS_REAIS
+  // (getRotas()) não serve pra isto: ele lê sime_secoes.rota_id, campo legado
+  // que só é escrito por rota de tipo 'distribuicao' desde a correção do
+  // módulo de Rotas (04/09/2026, ver CLAUDE.md — "recolhimento de urna é
+  // cadastro separado"). Carregado uma vez (rota e paradas mudam pouco, e
+  // quando mudam é no módulo de Rotas, não aqui) — "↺ Atualizar" da aba
+  // Previsão refaz esta busca sob demanda.
+  await carregarRotasMidia();
+
   // Aba Equipe: mostrava sime_equipe_v1 (localStorage) — saveMember() já cria
   // o login real via sime-admin-user, mas o roster exibido nunca lia
   // sime_usuarios de volta. Cada navegador via uma lista diferente (a demo
@@ -521,6 +572,18 @@ async function carregarDadosReais(){
   const { data: equipeReal } = await supabase.from('sime_usuarios')
     .select('id,nome,email,perfil,empresa_id,local_id,ativo,telefone_whatsapp');
   window.EQUIPE_REAL = (equipeReal || []).filter(u => u.ativo !== false && !/^Token /.test(u.nome || ''));
+  if (window.renderTeam) window.renderTeam();
+
+  // Locais atribuídos a cada Auxiliar de Eleição (sime_auxiliar_locais) —
+  // buscados em lote pra o card da equipe mostrar sem esperar clique em
+  // nenhum membro (RLS já escopa pra zona, sem precisar filtrar por id
+  // aqui). renderTeam() já rodou acima com dado antigo/vazio; chamado de
+  // novo assim que este lote chega, mesmo padrão de todo o resto do boot.
+  const { data: auxLocais } = await supabase.from('sime_auxiliar_locais').select('usuario_id,local_nome,municipio');
+  window.AUX_LOCAIS_POR_USUARIO = {};
+  (auxLocais || []).forEach(l => {
+    (window.AUX_LOCAIS_POR_USUARIO[l.usuario_id] ||= []).push({ local_nome: l.local_nome, municipio: l.municipio });
+  });
   if (window.renderTeam) window.renderTeam();
 
   if (window.recarregarAppComSectionsNovas) window.recarregarAppComSectionsNovas();
@@ -535,12 +598,12 @@ let canalMesaAberto = false;
 let rerenderMesaTimer = null;
 function agendarRerenderMesaEstado(){
   clearTimeout(rerenderMesaTimer);
-  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); }, 250);
+  rerenderMesaTimer = setTimeout(() => { renderDash(); renderTable(); if (window.renderPrevisao) renderPrevisao(); }, 250);
 }
 let rerenderMidiasTimer = null;
 function agendarRerenderMidias(){
   clearTimeout(rerenderMidiasTimer);
-  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); }, 250);
+  rerenderMidiasTimer = setTimeout(() => { if (window.renderMidias) renderMidias(); if (window.renderPrevisao) renderPrevisao(); }, 250);
 }
 async function iniciarMesaEstadoReal(secoesReais){
   if (canalMesaAberto) return; // evita canal duplicado se carregarDadosReais() rodar de novo
@@ -577,6 +640,18 @@ async function iniciarMesaEstadoReal(secoesReais){
   });
 }
 
+// Rotas de recolhimento de mídia + paradas, pra aba 🔮 Previsão — extraído
+// pra sime_dados.js (getRotasRecolhimentoMidia, 08/09/2026) pra ser
+// reaproveitado também pelo mesmo painel na TV Dia, sem duplicar a query nos
+// dois lugares. Carregado uma vez; "↺ Atualizar" da própria aba chama de
+// novo sob demanda (ex.: depois de editar horário de chegada previsto no
+// módulo de Rotas, em outra aba do navegador).
+async function carregarRotasMidia(){
+  window.ROTAS_MIDIA_REAIS = await getRotasRecolhimentoMidia({ fallback: [] });
+  if (window.renderPrevisao) renderPrevisao();
+}
+window.carregarRotasMidia = carregarRotasMidia;
+
 // Descobre QUEM é o usuário autenticado (nome + perfil reais de sime_usuarios)
 // e passa pro <script> clássico aplicar no cabeçalho — substitui a identidade
 // da equipe-demo (sime_equipe_v1) pela real de quem logou. super_admin ganha
@@ -589,6 +664,15 @@ async function carregarIdentidade(){
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
   window.MEU_USUARIO_ID = meuUsuario.id || null;
+  // Escopo 'locais' (Auxiliar de Eleição) precisa dos locais atribuídos pra
+  // secoesDoUsuario()/escopoLabel() funcionarem na SESSÃO REAL — diferente
+  // do fallback demo (loadTeam()), que guarda escopo em localStorage, este
+  // é o único perfil cujo escopo é sempre buscado do banco, nunca do cache.
+  if (meuUsuario.perfil === 'auxiliar_eleicao') {
+    const { data: locais } = await supabase.from('sime_auxiliar_locais')
+      .select('local_nome,municipio').eq('usuario_id', meuUsuario.id);
+    window.SIME_IDENTIDADE.locais = locais || [];
+  }
   if (meuUsuario.perfil === 'super_admin') {
     const [{ data: zonas }, { data: secoes }, { data: usuarios }] = await Promise.all([
       supabase.from('sime_zonas').select('*').order('numero'),
@@ -715,6 +799,7 @@ supabase.auth.onAuthStateChange?.((event) => {
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS E CONSTANTES
@@ -774,8 +859,9 @@ const TX_STATUS_BADGE = {
 const TEAM_KEY = 'sime_equipe_v1';
 const PERMS_ALL = ['ver_secoes','editar_secoes','resolver_panico','lancar_telefone','gestao_dist','config_equipe'];
 const PERMS_LABELS = {ver_secoes:'Ver seções',editar_secoes:'Editar seções',resolver_panico:'Resolver pânico',lancar_telefone:'Lançar por telefone',gestao_dist:'Distribuição',config_equipe:'Config equipe'};
-// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'empresa' (seções das
-//         rotas da empresa) | 'midias' (seções designadas de coleta)
+// escopo: 'tudo' (padrão) | 'local' (filtra por local) | 'locais' (vários
+//         locais, ver sime_auxiliar_locais) | 'empresa' (seções das rotas
+//         da empresa) | 'midias' (seções designadas de coleta)
 const PERFIS = {
   super_admin: {label:'Super Admin',color:'#1a1a22',perms:PERMS_ALL,escopo:'tudo'},
   coordenador: {label:'Coordenador Geral',color:'#2a2a2a',perms:PERMS_ALL,escopo:'tudo'},
@@ -787,6 +873,10 @@ const PERFIS = {
   coord_motoristas:     {label:'Coord. de Motoristas',    color:'#8a5c20',perms:['ver_secoes','gestao_dist'],escopo:'empresa'},
   coord_acessibilidade: {label:'Coord. de Acessibilidade',color:'#6040a0',perms:['ver_secoes','resolver_panico'],escopo:'local'},
   coletor_midias:       {label:'Coletor de Mídias',       color:'#15803d',perms:['ver_secoes'],escopo:'midias'},
+  // Auxiliar de Eleição, locais predeterminados (10/09/2026) — ver
+  // sql/SIME_auxiliares_locais.sql. 'ver_secoes' basta pro escopo (a página
+  // de Problemas escopa por conta própria; ver dentroDoEscopo() lá).
+  auxiliar_eleicao:     {label:'Auxiliar de Eleição',     color:'#b8860b',perms:['ver_secoes'],escopo:'locais'},
 };
 
 // ── ESCOPO DO USUÁRIO ──────────────────────────────────────
@@ -798,9 +888,14 @@ function userEscopo(){ return PERFIS[curUser.perfil]?.escopo || 'tudo'; }
 // offline (sem empresas cadastradas ainda). 'midias' (Coletor de Mídias)
 // permanece sempre manual por design: não existe agrupamento real (rota/
 // local) do qual derivar as seções designadas a um coletor específico.
+// 'locais' (Auxiliar de Eleição) vem de sime_auxiliar_locais, carregado em
+// curUser.locais por carregarIdentidade()/aplicarIdentidade() — diferente
+// de 'local' (Coord. de Acessibilidade), aceita vários locais ao mesmo
+// tempo (decisão confirmada com o cartório).
 function secoesDoUsuario(){
   const esc = userEscopo();
   if(esc==='local'  && curUser.local)          return SECTIONS.filter(s=>s.loc===curUser.local);
+  if(esc==='locais' && curUser.locais?.length) return SECTIONS.filter(s=>curUser.locais.some(l=>l.local_nome===s.loc && l.municipio===s.city));
   if(esc==='empresa'&& curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
   if(esc==='midias' && curUser.secoes?.length)  return SECTIONS.filter(s=>curUser.secoes.includes(s.n));
   return SECTIONS;
@@ -808,6 +903,7 @@ function secoesDoUsuario(){
 function escopoLabel(){
   const esc = userEscopo();
   if(esc==='local'   && curUser.local)  return `Local: ${curUser.local}`;
+  if(esc==='locais'  && curUser.locais?.length) return `Locais: ${curUser.locais.map(l=>l.local_nome).join(', ')}`;
   if(esc==='empresa' && curUser.empresa)return `Empresa: ${curUser.empresa}`;
   if(esc==='midias')                    return `Coleta de mídias designada`;
   return null;
@@ -887,12 +983,23 @@ window.aplicarIdentidade = function(){
   const id = window.SIME_IDENTIDADE;
   if (!id) return;
   const iniciais = (id.nome || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
-  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a' };
+  curUser = { id: 'me', nome: id.nome, iniciais, perfil: id.perfil, cor: PERFIS[id.perfil]?.color || '#2a2a2a', locais: id.locais || [] };
   applyUser();
   renderDash(); renderTable();
   const btnSair = document.getElementById('btn-logout');
   if (btnSair) btnSair.style.display = '';
   if (id.perfil === 'super_admin') renderZonas();
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo componente
+  // compartilhado por toda a camada Admin, ver sime_user_menu.js. #btn-logout
+  // continua existindo (só some da vista solta e passa a viver dentro do
+  // dropdown), então o teste que checa a visibilidade dele continua válido.
+  if (window.initSimeUserMenu) {
+    window.initSimeUserMenu(supabase, {
+      chipEl: document.querySelector('.user-chip'),
+      sairEl: document.getElementById('btn-logout'),
+    });
+  }
 };
 
 // ── HERMES (heartbeat + versão) ──────────────────────────────────────────
@@ -1409,6 +1516,7 @@ function renderTeam(){
           <div class="tc-name">${m.nome}</div>
           <div class="tc-role">${perfil.label}</div>
           ${m.local?`<div class="tc-scope">📍 ${m.local}</div>`:''}
+          ${(perfil.escopo==='locais')?`<div class="tc-scope">📍 ${(window.AUX_LOCAIS_POR_USUARIO?.[m.id]||[]).map(l=>l.local_nome).join(', ')||'nenhum local atribuído ainda'}</div>`:''}
           ${m.empresa?`<div class="tc-scope">🏢 ${m.empresa}${m.secoes?.length?` · ${m.secoes.length} seç.`:''}</div>`:''}
           ${(perfil.escopo==='midias'&&m.secoes?.length)?`<div class="tc-scope">📦 ${m.secoes.length} seç. de coleta</div>`:''}
           ${m.substituto?`<div class="tc-scope">🔄 Substituto: ${m.substituto}</div>`:''}
@@ -1502,6 +1610,28 @@ function showMemberModal(m){
         </select>
       </div>
 
+      <!-- Escopo: Locais de votação (Auxiliar de Eleição) — N-pra-N, ver
+           sime_auxiliar_locais/salvarLocaisAuxiliar(). Diferente do "Local"
+           único do Coord. de Acessibilidade acima: um auxiliar pode cobrir
+           vários locais ao mesmo tempo (decisão confirmada com o cartório,
+           10/09/2026). Problema de urna num desses locais cai na página
+           deste auxiliar (SIME_problemas.html) e dispara alerta imediato de
+           WhatsApp, além da escalada de sempre. -->
+      <div class="form-group" id="grp-locais" style="display:none">
+        <label for="m-locais">Locais de votação atribuídos (Ctrl/Cmd+clique marca vários)</label>
+        <select id="m-locais" multiple size="8">
+          ${[...new Map(SECTIONS.map(s=>[`${s.loc}|||${s.city}`,s])).values()]
+            .sort((a,b)=>a.loc.localeCompare(b.loc))
+            .map(s=>{
+              const v = `${s.loc}|||${s.city}`;
+              const meusLocais = m ? (window.AUX_LOCAIS_POR_USUARIO?.[m.id]||[]) : [];
+              const sel = meusLocais.some(l=>l.local_nome===s.loc && l.municipio===s.city);
+              return `<option value="${v}" ${sel?'selected':''}>${s.loc} — ${s.city}</option>`;
+            }).join('')}
+        </select>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">Opcional — sem nenhum local marcado, este auxiliar não recebe nenhum alerta de urna ainda.</div>
+      </div>
+
       <!-- Escopo: Empresa (Coord. de Motoristas) — dropdown real (sime_empresas)
            quando disponível; cai no texto livre se offline/sem empresas cadastradas -->
       <div class="form-group" id="grp-empresa" style="display:none">
@@ -1567,6 +1697,7 @@ function onPerfilChange(){
       : (isNew ? 'Opcional — se preenchido, as credenciais de acesso são enviadas por WhatsApp assim que a conta for criada.' : '');
   }
   show('grp-local',      esc==='local');
+  show('grp-locais',     esc==='locais');
   show('grp-empresa',    esc==='empresa');
   // Com empresa real, as seções são derivadas automaticamente das rotas da
   // empresa (sime_empresas.rotas) — não precisa mais digitar à mão. Sem
@@ -1594,11 +1725,52 @@ function parseSecoes(str){
     .filter(x=>SECTIONS.some(s=>s.n===x));
 }
 
+// Lê a seleção do <select multiple> ANTES de qualquer coisa assíncrona
+// rodar — chamada logo no topo de saveMember(), nunca depois. Achado real
+// testando isto: criar um login novo troca o #modal-body inteiro pra tela
+// de "senha temporária" (mostrarSenhaTemporaria()) assim que a Edge
+// Function responde — se a leitura de #m-locais acontecesse só no fim de
+// saveMember() (como fazia a 1ª versão), o elemento já nem existia mais no
+// DOM, e a atribuição de locais nunca era gravada, em silêncio.
+function lerLocaisSelecionados(){
+  const sel = document.getElementById('m-locais');
+  if(!sel) return null;
+  return [...sel.selectedOptions].map(o=>{
+    const [local_nome, municipio] = o.value.split('|||');
+    return { local_nome, municipio };
+  });
+}
+
+// Grava a atribuição de locais de um Auxiliar de Eleição — delete+reinsert
+// (mesmo padrão usado noutros lugares do projeto pra editar um N-pra-N
+// inteiro de uma vez, ex.: sime_rota_secoes) em vez de tentar diffar
+// individualmente. Só chamada quando existe um sime_usuarios.id de
+// verdade — sem login (membro "só visível no painel"), não há em que FK
+// gravar, e login é o próprio ponto desta feature (acesso por e-mail/senha).
+async function salvarLocaisAuxiliar(usuarioId, zonaId, locaisSelecionados){
+  if(!zonaId || !locaisSelecionados) return;
+  const locais = locaisSelecionados.map(l=>({ usuario_id: usuarioId, zona_id: zonaId, local_nome: l.local_nome, municipio: l.municipio }));
+  const { error: delErr } = await supabase.from('sime_auxiliar_locais').delete().eq('usuario_id', usuarioId);
+  if(delErr){ trackSync(false); showToast('⚠ Locais não sincronizaram: '+mensagemErroAmigavel(delErr,'tente novamente')); return; }
+  if(locais.length){
+    const { error: insErr } = await supabase.from('sime_auxiliar_locais').insert(locais);
+    if(insErr){ trackSync(false); showToast('⚠ Locais não sincronizaram: '+mensagemErroAmigavel(insErr,'tente novamente')); return; }
+  }
+  trackSync(true);
+  window.AUX_LOCAIS_POR_USUARIO = window.AUX_LOCAIS_POR_USUARIO || {};
+  window.AUX_LOCAIS_POR_USUARIO[usuarioId] = locais.map(l=>({local_nome:l.local_nome, municipio:l.municipio}));
+  renderTeam();
+}
+
 async function saveMember(id){
   const nome=document.getElementById('m-nome').value.trim(); if(!nome){showToast('⚠ Nome obrigatório');return;}
   const email=(document.getElementById('m-email')?.value||'').trim().toLowerCase();
   const perfil=document.getElementById('m-perfil').value;
   const esc=PERFIS[perfil]?.escopo||'tudo';
+  // Lidos AGORA, antes de qualquer await — ver comentário de
+  // lerLocaisSelecionados() logo abaixo pro porquê disso importar.
+  const locaisSelecionados = esc==='locais' ? lerLocaisSelecionados() : null;
+  const zonaAlvoLocais = document.getElementById('m-zona')?.value || window.MINHA_ZONA_ID;
   const usaEmpresaReal = esc==='empresa' && !!window.EMPRESAS?.length;
   if(usaEmpresaReal && !document.getElementById('m-empresa-sel')?.value){ showToast('⚠ Selecione a empresa'); return; }
   const empresaSelecionada = usaEmpresaReal ? window.EMPRESAS.find(e=>e.id===document.getElementById('m-empresa-sel').value) : null;
@@ -1734,6 +1906,19 @@ async function saveMember(id){
     team.push({id: base.usuario_id || ('u'+Date.now()), ...base});
   }
   saveTeam(team); renderTeam();
+
+  // Locais atribuídos (Auxiliar de Eleição) — só grava com um
+  // sime_usuarios.id real (id ao editar gente já loga da equipe, ou
+  // base.usuario_id quando o login acabou de ser criado acima); zona é a
+  // que foi escolhida no formulário (super_admin) ou a de quem está
+  // logado, mesmo par já usado pra enfileirar as credenciais por WhatsApp.
+  // locaisSelecionados/zonaAlvoLocais foram lidos no TOPO da função — ver
+  // lerLocaisSelecionados().
+  if(perfil==='auxiliar_eleicao'){
+    const realId = id || base.usuario_id;
+    if(realId) await salvarLocaisAuxiliar(realId, zonaAlvoLocais, locaisSelecionados);
+  }
+
   // Se o usuário atual foi editado, reaplica o escopo
   if(curUser.id===id){ curUser=loadTeam().find(m=>m.id===id)||curUser; applyUser(); renderDash(); renderTable(); }
   // Bug real corrigido em 28/08/2026, achado ao adicionar a nota de envio por
@@ -1999,11 +2184,9 @@ function secaoForm(id){
       </div>
       <div class="form-group"><label for="sc-local">Local de votação</label>
         <input type="text" id="sc-local" value="${s?.local_nome||''}" placeholder="Nome do local"></div>
-      <div class="form-group"><label for="sc-rota">Rota (opcional)</label>
-        <select id="sc-rota">
-          <option value="">— sem rota —</option>
-          ${rotas.map(r=>`<option value="${r.id}" ${s?.rota_id===r.id?'selected':''}>Rota ${r.codigo}</option>`).join('')}
-        </select>
+      <div class="form-group"><label>Rota de distribuição/recolhimento de urna</label>
+        <div style="font-size:.85rem;color:var(--text2);padding:8px 0">${s?.rota_id ? `Rota ${(rotas.find(r=>r.id===s.rota_id)||{}).codigo || '?'}` : '— sem rota —'}</div>
+        <a href="./SIME_rotas.html" target="_blank" style="font-size:.78rem">🗺️ Atribuir/trocar rota no módulo de Rotas</a>
       </div>
       <div class="form-group"><label><input type="checkbox" id="sc-ativo" ${(!s||s.ativo)?'checked':''}> Seção ativa</label></div>
     </div>
@@ -2018,14 +2201,18 @@ async function salvarSecao(id){
   const municipio=document.getElementById('sc-municipio').value.trim();
   const local=document.getElementById('sc-local').value.trim();
   const eleitoresRaw=document.getElementById('sc-eleitores').value;
-  const rota_id=document.getElementById('sc-rota').value||null;
   const ativo=document.getElementById('sc-ativo').checked;
   if(!numero){ showToast('⚠ Número obrigatório'); return; }
   if(!municipio||!local){ showToast('⚠ Município e local obrigatórios'); return; }
   const zona_id=window.MINHA_ZONA_ID;
   if(!zona_id){ showToast('⚠ Zona do usuário não resolvida'); return; }
+  // rota_id/parada não são mais editados por aqui (04/09/2026) — migraram
+  // pro módulo 🗺️ Rotas, que também escreve nesses dois campos legados
+  // quando a rota tem tipo distribuição/recolhimento de urna (ver
+  // sime_rotas_modulo.js). Editar por aqui de novo reintroduziria uma
+  // segunda fonte de verdade sem sincronia com a nova tabela sime_rota_secoes.
   const payload={ zona_id, numero, municipio, local_nome:local,
-    eleitores: eleitoresRaw===''?null:parseInt(eleitoresRaw,10), rota_id, ativo };
+    eleitores: eleitoresRaw===''?null:parseInt(eleitoresRaw,10), ativo };
   let error;
   if(id){
     ({ error } = await supabase.from('sime_secoes').update(payload).eq('id',id));
@@ -2183,6 +2370,7 @@ function goTab(id,btn){
   if(id==='equipe') renderTeam();
   if(id==='config') renderConfig();
   if(id==='midias') renderMidias();
+  if(id==='previsao') renderPrevisao();
   if(id==='atores') renderAtores();
   if(id==='hermes') renderHermes();
 }
@@ -2272,7 +2460,174 @@ applyUser();
 renderDash();
 renderTable();
 renderConfig();
-setInterval(()=>{ renderDash(); },10000);
+setInterval(()=>{ renderDash(); if(window.renderPrevisao) renderPrevisao(); },10000);
+
+// ══════════════════════════════════════════════
+// PREVISÃO DE ENCERRAMENTO DA ZONA (08/09/2026)
+// ══════════════════════════════════════════════
+// Pedido direto: "a cada nova informação de demora na seção, nova
+// informação de recolhimento das midias com a chegada do motorista, a
+// informação depois de 17h de demora na fila a rota ser redefinida, com
+// isso teriamos previsão mais real do fim da eleição". Esclarecido via
+// AskUserQuestion antes de construir: "a rota ser redefinida" aqui é
+// RECALCULAR uma previsão de horário, não reordenar paradas de rota nenhuma
+// — reordenar continua manual, no módulo 🗺️ Rotas. Este painel é só
+// leitura: recalcula sozinho (chamado por agendarRerenderMesaEstado/
+// agendarRerenderMidias via Realtime, e a cada 10s pelo setInterval acima —
+// só o RELÓGIO passar das 17h também muda a previsão, sem nenhum dado novo
+// chegar do banco) e nunca escreve em sime_mesa_estado/sime_midias/rota
+// nenhuma.
+//
+// Toda estimativa é claramente rotulada como estimativa — nunca finge ser
+// fato. Duas fontes, nenhuma inventada:
+//  - Fila pós-encerramento: sime_mesa_estado.fila (MESA_ESTADO_MAP) × um
+//    "minutos por eleitor" CONFIGURÁVEL pelo cartório (sime_eleicoes.
+//    minutos_por_eleitor_fila, default 1 — mesmo critério de
+//    RT_VELOCIDADE_MEDIA_KMH no módulo de Rotas: um número editável, não
+//    cravado como fato).
+//  - Recolhimento de mídia: reaproveita sime_rotas.horario_chegada_previsto
+//    (o mesmo campo que o módulo 🗺️ Rotas já preenche, manual ou sugerido)
+//    — não recalcula distância/velocidade de novo aqui, pra não duplicar
+//    aquela lógica; rota sem esse campo aparece marcada "sem previsão
+//    cadastrada", nunca escondida nem inventada.
+function pvHojeComHora(horaStr){
+  if(!horaStr) return null;
+  const partes = String(horaStr).split(':').map(Number);
+  if(!partes.length || Number.isNaN(partes[0])) return null;
+  const d = new Date();
+  d.setHours(partes[0]||0, partes[1]||0, partes[2]||0, 0);
+  return d;
+}
+function pvFmtHora(ts){
+  if(ts == null) return '—';
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+// -> {ts, tipo} | null. null só quando a seção nunca reportou nada ainda
+// (sem sime_mesa_estado) — sem dado, sem previsão, não inventa um horário.
+function pvEstimativaSecao(mesa, horarioEnc, minPorEleitor, agora){
+  if(!mesa) return null;
+  if(mesa.enc) return { ts: mesa.ts, tipo:'real' };
+  if(!horarioEnc || agora.getTime() < horarioEnc.getTime()){
+    // Ainda dentro do horário normal de votação — sem informação de atraso
+    // ainda, a única previsão honesta é o próprio horário oficial.
+    return { ts: horarioEnc ? horarioEnc.getTime() : null, tipo:'oficial' };
+  }
+  const fila = mesa.fila || 0;
+  if(fila <= 0) return { ts: agora.getTime(), tipo:'semFila' };
+  return { ts: agora.getTime() + fila*minPorEleitor*60000, tipo:'fila', fila };
+}
+function pvMidiaColetada(midia){
+  return !!midia && (midia.status === 'coletada' || midia.status === 'entregue_transmissao');
+}
+function renderPrevisao(){
+  const elFim = document.getElementById('prev-fim');
+  if(!elFim) return; // aba ainda não montada nesta sessão
+  const elVotacao = document.getElementById('prev-votacao');
+  const elMidia = document.getElementById('prev-midia');
+  const elFilas = document.getElementById('prev-filas');
+  const elMin = document.getElementById('prev-min-eleitor');
+
+  const real = window.ELEICAO_ATIVA;
+  if(elMin && document.activeElement !== elMin){
+    elMin.value = real ? (real.minutos_por_eleitor_fila ?? 1) : '';
+  }
+  if(!real){
+    const semDado = '<span class="hint">Sem eleição ativa configurada</span>';
+    elFim.innerHTML = elVotacao.innerHTML = elMidia.innerHTML = elFilas.innerHTML = semDado;
+    return;
+  }
+
+  const minPorEleitor = Number(real.minutos_por_eleitor_fila) || 1;
+  const horarioEnc = pvHojeComHora(real.horario_enc);
+  const agora = new Date();
+  const secoes = window.SECTIONS || [];
+  const mesaMap = window.MESA_ESTADO_MAP || {};
+
+  // ---- Votação: pior previsão entre todas as seções ----
+  let piorVotacao = null;
+  const comFila = [];
+  for(const s of secoes){
+    const est = pvEstimativaSecao(mesaMap[s.n], horarioEnc, minPorEleitor, agora);
+    if(est && est.ts != null && (piorVotacao == null || est.ts > piorVotacao.ts)){
+      piorVotacao = { ts: est.ts, numero: s.n, loc: s.loc };
+    }
+    if(est && est.tipo === 'fila') comFila.push({ numero: s.n, loc: s.loc, fila: est.fila, ts: est.ts });
+  }
+  elVotacao.innerHTML = piorVotacao
+    ? `<div style="font-size:1.3rem;font-weight:800">${pvFmtHora(piorVotacao.ts)}</div>
+       <div style="font-size:.72rem;color:var(--text3);margin-top:2px">Seção mais lenta: ${piorVotacao.numero}${piorVotacao.loc ? ' — '+piorVotacao.loc : ''}</div>`
+    : '<span class="hint">Sem seções cadastradas</span>';
+
+  comFila.sort((a,b) => b.fila - a.fila);
+  elFilas.innerHTML = comFila.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">` + comFila.map(c => `
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:.8rem;border-bottom:1px solid var(--border);padding-bottom:6px">
+          <span><b>Seção ${c.numero}</b>${c.loc ? ' — '+c.loc : ''}</span>
+          <span>🔵 ${c.fila} na fila · previsão ${pvFmtHora(c.ts)}</span>
+        </div>`).join('') + `</div>`
+    : '<span class="hint">Nenhuma seção com fila registrada além do horário de encerramento</span>';
+
+  // ---- Recolhimento de mídia, por rota ----
+  const rotas = window.ROTAS_MIDIA_REAIS;
+  const midiasMap = window.MIDIAS_MAP || {};
+  const rotasComputadas = (rotas || []).map(r => {
+    const total = r.secoes.length;
+    const coletadas = r.secoes.filter(n => pvMidiaColetada(midiasMap[n])).length;
+    const previsaoTs = r.horario_chegada_previsto ? pvHojeComHora(r.horario_chegada_previsto)?.getTime() ?? null : null;
+    return { ...r, total, coletadas, concluida: total > 0 && coletadas === total, previsaoTs };
+  });
+  if(rotas == null){
+    elMidia.innerHTML = '<span class="hint">Carregando rotas…</span>';
+  } else if(!rotas.length){
+    elMidia.innerHTML = '<span class="hint">Nenhuma rota de recolhimento de mídia cadastrada — ver módulo 🗺️ Rotas</span>';
+  } else {
+    elMidia.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">` + rotasComputadas.map(r => `
+        <div style="border-bottom:1px solid var(--border);padding-bottom:8px">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:.82rem;font-weight:700">
+            <span>${r.concluida ? '✅' : '🚚'} Rota ${r.codigo}${r.nome ? ' — '+r.nome : ''}</span>
+            <span>${r.coletadas}/${r.total}</span>
+          </div>
+          <div style="font-size:.72rem;color:var(--text3);margin-top:2px">${
+            r.concluida ? 'Recolhimento concluído'
+              : (r.previsaoTs != null ? 'Previsão de conclusão: '+pvFmtHora(r.previsaoTs)
+                  : '⚠ Sem horário de chegada previsto cadastrado — defina no módulo 🗺️ Rotas')
+          }</div>
+        </div>`).join('') + `</div>`;
+  }
+
+  // ---- Fim da operação da zona: pior entre votação e recolhimento pendente ----
+  let piorGeral = piorVotacao ? piorVotacao.ts : null;
+  let faltaDado = false;
+  for(const r of rotasComputadas){
+    if(r.concluida) continue;
+    if(r.previsaoTs == null){ faltaDado = true; continue; }
+    if(piorGeral == null || r.previsaoTs > piorGeral) piorGeral = r.previsaoTs;
+  }
+  if(piorGeral == null){
+    elFim.innerHTML = '<span class="hint">Sem dado suficiente ainda pra estimar</span>';
+  } else {
+    elFim.innerHTML = `<div style="font-size:1.6rem;font-weight:800">${pvFmtHora(piorGeral)}</div>` +
+      (faltaDado ? `<div style="font-size:.74rem;color:#b58900;margin-top:4px">⚠ Previsão parcial — pelo menos uma rota de recolhimento ainda não tem horário de chegada previsto cadastrado</div>` : '');
+  }
+}
+window.renderPrevisao = renderPrevisao;
+
+async function salvarMinutosPorEleitor(){
+  const el = document.getElementById('prev-min-eleitor');
+  const v = Number(el.value);
+  if(!v || v <= 0){ showToast('⚠ Informe um número maior que zero'); return; }
+  if(!window.ELEICAO_ID){ showToast('⚠ Sem sessão com o servidor — não deu para salvar'); return; }
+  const { error } = await window.supabase.from('sime_eleicoes').update({ minutos_por_eleitor_fila: v }).eq('id', window.ELEICAO_ID);
+  if(error){ showToast('⚠ ' + mensagemErroAmigavel(error, 'Falha ao salvar')); return; }
+  if(window.ELEICAO_ATIVA) window.ELEICAO_ATIVA.minutos_por_eleitor_fila = v;
+  try{
+    const ts = await window.supabase.rpc('sime_now');
+    await window.supabase.from('sime_logs').insert({ acao:'previsao_minutos_por_eleitor_atualizado', modulo:'admin', eleicao_id: window.ELEICAO_ID, payload:{ minutos_por_eleitor_fila: v }, ts: ts.data });
+  }catch(e){ /* log é melhor-esforço — o parâmetro já foi salvo acima */ }
+  showToast('✓ Parâmetro salvo');
+  renderPrevisao();
+}
+window.salvarMinutosPorEleitor = salvarMinutosPorEleitor;
 
 // ══════════════════════════════════════════════
 // MÍDIAS

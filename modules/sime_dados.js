@@ -60,14 +60,23 @@ export async function getSecoes({ fallback = [] } = {}) {
   }, fallback);
 }
 
-// -> [{id, codigo, nome, municipios:[...], itinerario, urnas_estimadas, paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
+// -> [{id, codigo, nome, tipos:[...], municipios:[...], itinerario, urnas_estimadas, paradas:[{ordem, local_nome, secoes:[numero,...]}]}]
 // `id` (UUID de sime_rotas) é necessário pra quem for GRAVAR em
 // sime_rotas_estado (FK rota_id) — Conferente de Embarque (Fase 4).
+// `paradas` continua resolvida por `sime_secoes.rota_id`/`parada` — o espelho
+// legado que só é escrito pra rota de tipo 'distribuicao' (ver módulo 🗺️
+// Rotas, RT_TIPOS_LEGADO em sime_rotas_modulo.js) — então pra qualquer outro
+// tipo (`instalacao`/`recolhimento_urna`/`recolhimento_midia`) `paradas` vem
+// vazio aqui, mesmo com seções cadastradas em `sime_rota_secoes`. `tipos` é
+// exposto pra quem precisar filtrar por tipo sem duplicar essa decisão (ex.:
+// SIME_tokens.html, escolhendo qual rota oferecer pra token de Instalador);
+// quem precisar da lista de seções de verdade, de qualquer tipo, usa
+// getRotaSecoesMap() abaixo, que lê `sime_rota_secoes` direto.
 export async function getRotas({ fallback = [] } = {}) {
   return withFallback('rotas', async (c) => {
     const { data: rotas, error: errR } = await c
       .from('sime_rotas')
-      .select('id, codigo, nome, municipios, itinerario, urnas_estimadas')
+      .select('id, codigo, nome, tipos, municipios, itinerario, urnas_estimadas')
       .eq('ativo', true)
       .order('codigo');
     if (errR) throw errR;
@@ -92,12 +101,37 @@ export async function getRotas({ fallback = [] } = {}) {
         id: r.id,
         codigo: r.codigo,
         nome: r.nome,
+        tipos: r.tipos || [],
         municipios: r.municipios || [],
         itinerario: r.itinerario || null,
         urnas_estimadas: r.urnas_estimadas ?? null,
         paradas: [...paradasPorOrdem.values()].sort((a, b) => a.ordem - b.ordem),
       };
     });
+  }, fallback);
+}
+
+// -> {rotaId: [numeroSecao,...]} — seções de CADA rota via `sime_rota_secoes`,
+// a fonte de verdade pra qualquer tipo de rota (diferente de getRotas().paradas,
+// que só reflete o espelho legado de rota tipo 'distribuicao'). Usado por
+// SIME_tokens.html pra resolver o escopo real de um token de Instalador (que
+// lê `secoes`, nunca `rotas`, ver SIME_instalador.html) a partir da rota de
+// tipo 'instalacao' escolhida no formulário.
+export async function getRotaSecoesMap({ fallback = {} } = {}) {
+  return withFallback('rota_secoes_map', async (c) => {
+    const { data, error } = await c
+      .from('sime_rota_secoes')
+      .select('rota_id, parada, sime_secoes(numero)')
+      .order('parada');
+    if (error) throw error;
+    const map = {};
+    for (const row of data) {
+      const numero = row.sime_secoes?.numero;
+      if (numero == null) continue;
+      if (!map[row.rota_id]) map[row.rota_id] = [];
+      map[row.rota_id].push(numero);
+    }
+    return map;
   }, fallback);
 }
 
@@ -194,7 +228,7 @@ export async function getEleicaoAtiva({ fallback = null, zonaId = null } = {}) {
   return withFallback(`eleicaoAtiva:${zonaId || 'minha'}`, async (c) => {
     let q = c
       .from('sime_eleicoes')
-      .select('id, turno, zona_id, data_d, data_d1, horario_ab, horario_enc, nome, dist_inicio, intervalo_saidas_min')
+      .select('id, turno, zona_id, data_d, data_d1, horario_ab, horario_enc, nome, dist_inicio, intervalo_saidas_min, minutos_por_eleitor_fila')
       .eq('ativa', true);
     if (zonaId) q = q.eq('zona_id', zonaId);
     const { data, error } = await q
@@ -356,4 +390,89 @@ export async function getRotasEstadoMap({ fallback = null } = {}) {
 export async function refreshRotasEstadoMap() {
   if (!_client) return null;
   try { return await fetchRotasEstadoMap(_client); } catch (e) { return null; }
+}
+
+// -> {rotaId: {codigo, nome, lat, lng, ts}} — última posição conhecida de
+// cada rota (08/09/2026, "visão estimada do local no mapa em que está cada
+// veículo") — SEM inventar rastreamento contínuo: motorista_lat/lng/pos_ts
+// só existem quando o motorista já confirmou alguma ação (entrega,
+// recolhimento, chegada ao cartório — sime_rota_estado_upsert grava a
+// geolocalização do navegador nesse instante). Rota sem nenhum informe ainda
+// simplesmente não entra no mapa. Chaveado por rota_id (UUID), não pelo nome
+// "Rota 00X" como fetchRotasEstadoMap() — o payload de Realtime de
+// sime_rotas_estado só traz rota_id, e casar por ele evita mais uma consulta
+// pra resolver nome→id na hora de aplicar um evento.
+async function fetchRotasPosicaoMap(c) {
+  const rotas = await getRotas({ fallback: null });
+  if (!rotas) throw new Error('sem rotas pra resolver código/nome');
+  const metaPorRotaId = new Map(rotas.map((r) => [r.id, { codigo: r.codigo, nome: r.nome }]));
+
+  const { data: estados, error } = await c.from('sime_rotas_estado')
+    .select('rota_id, motorista_lat, motorista_lng, motorista_pos_ts')
+    .not('motorista_pos_ts', 'is', null);
+  if (error) throw error;
+
+  const map = {};
+  for (const row of estados) {
+    const meta = metaPorRotaId.get(row.rota_id);
+    if (!meta || row.motorista_lat == null || row.motorista_lng == null) continue;
+    map[row.rota_id] = {
+      codigo: meta.codigo, nome: meta.nome,
+      lat: row.motorista_lat, lng: row.motorista_lng,
+      ts: row.motorista_pos_ts ? new Date(row.motorista_pos_ts).getTime() : null,
+    };
+  }
+  return map;
+}
+
+export async function getRotasPosicaoMap({ fallback = null } = {}) {
+  return withFallback('rotasPosicaoMap', fetchRotasPosicaoMap, fallback);
+}
+
+export async function refreshRotasPosicaoMap() {
+  if (!_client) return null;
+  try { return await fetchRotasPosicaoMap(_client); } catch (e) { return null; }
+}
+
+// -> [{id, codigo, nome, horario_chegada_previsto, secoes:[numero,...]}] —
+// rotas de tipo 'recolhimento_midia' com as seções atribuídas (número com 4
+// dígitos, via sime_rota_secoes). Extraído aqui (08/09/2026) pra ser
+// reaproveitado tanto pela aba 🔮 Previsão do Admin quanto pelo mesmo painel
+// na TV Dia, sem duplicar a query nos dois lugares — window.ROTAS_REAIS
+// (getRotas()) não serve pra isto, ele lê sime_secoes.rota_id, campo legado
+// que só é escrito por rota de tipo 'distribuicao' desde a correção do
+// módulo de Rotas (ver CLAUDE.md — "recolhimento de urna é cadastro
+// separado").
+async function fetchRotasRecolhimentoMidia(c) {
+  const secoes = await getSecoes({ fallback: null });
+  if (!secoes) throw new Error('sem seções pra mapear secao_id -> numero');
+  const numeroPorSecaoId = new Map(secoes.map((s) => [s.id, String(s.numero).padStart(4, '0')]));
+
+  const { data: todasRotas, error } = await c.from('sime_rotas')
+    .select('id, codigo, nome, tipos, horario_chegada_previsto')
+    .eq('ativo', true)
+    .order('codigo');
+  if (error) throw error;
+  // Filtro por tipo em JS (não .contains() na query) — mesmo critério já
+  // usado em sime_rotas_modulo.js pra RT_TIPOS_LEGADO.
+  const rotas = (todasRotas || []).filter((r) => Array.isArray(r.tipos) && r.tipos.includes('recolhimento_midia'));
+  const rotaIds = rotas.map((r) => r.id);
+  const { data: rotaSecoes } = rotaIds.length
+    ? await c.from('sime_rota_secoes').select('rota_id, secao_id').in('rota_id', rotaIds)
+    : { data: [] };
+
+  return rotas.map((r) => ({
+    id: r.id,
+    codigo: r.codigo,
+    nome: r.nome,
+    horario_chegada_previsto: r.horario_chegada_previsto || null,
+    secoes: (rotaSecoes || [])
+      .filter((rs) => rs.rota_id === r.id)
+      .map((rs) => numeroPorSecaoId.get(rs.secao_id))
+      .filter((n) => n != null),
+  }));
+}
+
+export async function getRotasRecolhimentoMidia({ fallback = null } = {}) {
+  return withFallback('rotasRecolhimentoMidia', fetchRotasRecolhimentoMidia, fallback);
 }

@@ -53,6 +53,7 @@ tr:last-child td{border-bottom:none;}
   <div class="brand">SIME · Relatórios</div>
   <div class="spacer" style="flex:1"></div>
   <span id="zona-info" style="font-size:.74rem;color:var(--text3)"></span>
+  <span id="sime-um-slot" style="display:none"></span>
   <button id="btn-logout" onclick="simeLogout()" style="display:none;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text2);font-size:.74rem;font-weight:700;cursor:pointer;">⎋ Sair</button>
 </div>
 
@@ -96,6 +97,7 @@ tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<script src="./sime_user_menu.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -140,7 +142,28 @@ async function iniciarRelatorios(){
     ZONA=z;
     document.getElementById('zona-info').textContent = z ? `${z.numero}ª Zona · ${z.municipio||''}` : '';
   }
+  await iniciarMenuUsuario();
   await recarregar();
+}
+
+// Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo componente
+// compartilhado por toda a camada Admin, ver sime_user_menu.js. Esta página
+// nunca mostrava nome nenhum no topbar (só a zona), então o chip é montado
+// do zero dentro do slot vazio; o botão "⎋ Sair" de sempre vira o item de
+// saída do menu, em vez de ficar solto ao lado da zona.
+async function iniciarMenuUsuario(){
+  try {
+    if (!window.initSimeUserMenu) return;
+    const { data:{ user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data:meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', user.id).maybeSingle();
+    window.initSimeUserMenu(supabase, {
+      slotEl: document.getElementById('sime-um-slot'),
+      nome: meu?.nome || user.email || 'Usuário',
+      perfil: (window.PERFIL_LABEL && window.PERFIL_LABEL[meu?.perfil]) || meu?.perfil,
+      sairEl: document.getElementById('btn-logout'),
+    });
+  } catch (e) { /* melhor-esforço — nunca deve travar o carregamento dos relatórios */ }
 }
 window.iniciarRelatorios = iniciarRelatorios;
 
