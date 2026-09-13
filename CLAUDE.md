@@ -5086,6 +5086,69 @@ investigação — confirmação de ponta a ponta, não só teórica.
 
 ---
 
+## SEÇÃO 263 — PENITENCIÁRIA REGIONAL ARIMATEIA BARBOSA LEITE (11/09/2026)
+
+Pergunta direta ("consta a seção da penitenciária?") + formulário oficial de
+vistoria do TSE (Sistema de Georreferenciamento Eleitoral) anexado —
+`sime_secoes` da 7ª Zona não tinha nenhum local com "penitenc"/"presíd"/
+"cadeia" no nome, e o número máximo de seção cadastrado era 261. Cadastrada
+a partir do formulário: **Seção 263**, local "Penitenciária Regional
+Arimateia Barbosa Leite" (código TSE 1724), Campo Maior, zona rural,
+coordenadas -4.871698/-42.1510562 (as mesmas do formulário). **34 eleitores**
+(confirmado depois, à parte — "entre presos provisórios e mesários
+convocados") — o formulário de vistoria do TSE é só de infraestrutura, não
+traz contagem eleitoral, então o campo ficou em branco até essa confirmação
+(nunca um `0` inventado — `eleitores` é nullable exatamente pra isso). Sem
+rota vinculada — hoje não há rota de distribuição/instalação cobrindo esse
+local isolado (acesso só por estrada de terra, segundo o próprio
+formulário); criar quando houver pedido real. 7ª Zona passa de 175 para
+**176 seções** — os "Números da operação" no topo deste arquivo continuam
+sem atualização manual de propósito (painel/tokens já leem do banco, que é
+a fonte real).
+
+---
+
+## UC (UNIDADE CONSUMIDORA) DA EQUATORIAL POR LOCAL DE VOTAÇÃO (13/09/2026)
+
+Pedido direto: lista de 23 locais de votação da 7ª Zona com o número da UC
+da Equatorial já identificado (provavelmente levantado durante a vistoria
+do TSE). `sime_secoes.uc_equatorial` (novo, `sql/SIME_secoes_uc_equatorial.sql`)
+— texto livre, mesmo critério de `codigo_rastreio` (Correspondência): o
+formato do número varia demais entre unidades pra validar por regex (só
+dígitos, `A`+dígitos, `D`+dígitos, `A-`/`D-` com hífen, até com espaço —
+`"A 816430"`, um dos 23 valores reais) — nunca reformatado, só guardado
+como veio.
+
+**Repetida entre as seções do mesmo PRÉDIO, mesmo padrão de `latitude`/
+`longitude`** — a UC é do prédio, não da seção. Casamento por
+`local_nome`+`municipio` (nunca pelo código "Local NNNN" do TSE, que o
+SIME não guarda — mesmo critério já usado pro KML de georreferência: o
+código do TSE não é confiável como chave, o nome é) — os 23 locais da
+lista bateram certinho contra os nomes já cadastrados no SIME (às vezes
+abreviados diferente — ex.: "Assembleia de Deus" no rótulo do TSE é
+`U.E. Manoel Rodrigues Melo` no SIME, "Grupo Escolar Santa Paz" é
+`G.E. Manoel Pereira dos Reis` — o pedido já veio com essa segunda forma
+entre parênteses, então não precisou adivinhar qual prédio era). Aplicado
+via SQL Editor/MCP (não é migração de dado, só o `ALTER TABLE` é) —
+48 seções atualizadas ao todo, de 6 a 10 seções por prédio (G.E. Monsenhor
+Mateus, por ser ponto de consolidação de vários cargos de mesa, sozinho
+concentra 10).
+
+**Consumida pelo Painel de Problemas (`SIME_problemas.html`)** — a UC só
+tem valor prático se aparecer justo onde o cartório vai ligar pra
+Equatorial: o contato de "energia" (`contatosPara()`) já mostra nome/
+telefone da concessionária; agora, quando a seção pertence a um local com
+UC cadastrada, o card ganha uma linha extra "UC: `<código>`" e a mensagem
+de WhatsApp pré-pronta também inclui a UC — evita o cartório precisar
+procurar o número no meio de uma ligação de urgência de falta de energia.
+Sem UC cadastrada pro local (a maioria, ainda), o card continua exatamente
+como sempre foi, sem linha nenhuma — nunca mostra "UC: undefined/null".
+Coberto por `tests/test_problemas.mjs` (bloco 21): card e mensagem
+mostram a UC quando cadastrada; sem UC, nem o card nem a mensagem
+mencionam UC.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

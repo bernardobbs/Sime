@@ -360,7 +360,12 @@ function contatosPara(oc){
       // e cai no da zona quando não houver um específico.
       const c = EXTERNOS.find(x => x.tipo==='energia' && x.municipio === sec?.municipio)
              || EXTERNOS.find(x => x.tipo==='energia' && !x.municipio);
-      if(c) out.push({ papel:'Equatorial', nome:c.nome, telefone:c.telefone, ico:'⚡', whatsapp:c.whatsapp });
+      // UC (Unidade Consumidora) do PRÉDIO, quando cadastrada (sime_secoes.
+      // uc_equatorial, 13/09/2026) — a Equatorial sempre pede esse número
+      // pra abrir chamado; ter à mão evita o cartório procurar no meio da
+      // ligação. Sem UC cadastrada pra esse local, o contato aparece igual
+      // de sempre, sem o campo.
+      if(c) out.push({ papel:'Equatorial', nome:c.nome, telefone:c.telefone, ico:'⚡', whatsapp:c.whatsapp, uc:sec?.uc_equatorial||null });
     }
     else if(chave === 'pm'){
       // Mesmo padrão de energia: contato por município, com fallback pra
@@ -398,7 +403,7 @@ async function iniciar(){
   ELEICAO = el?.[0] || null;
 
   const [secoes, atores, externos, equipe, auxLocais, auxUsuarios] = await Promise.all([
-    supabase.from('sime_secoes').select('id,numero,local_nome,municipio'),
+    supabase.from('sime_secoes').select('id,numero,local_nome,municipio,uc_equatorial'),
     supabase.from('sime_atores').select('nome_completo,telefone_whatsapp,funcao,funcao_mesa,secao_id,ativo'),
     supabase.from('sime_contatos_externos').select('tipo,nome,municipio,telefone,whatsapp').eq('ativo',true),
     supabase.from('sime_usuarios').select('id,nome,perfil').eq('ativo',true),
@@ -413,7 +418,7 @@ async function iniciar(){
     const n = String(s.numero).padStart(4,'0');
     numPorId[s.id]=n;
     NUM_POR_SECAO_ID[s.id]=n;
-    SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio };
+    SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio, uc_equatorial:s.uc_equatorial };
   });
   ATORES = (atores.data||[]).map(a=>({
     nome:a.nome_completo, telefone:a.telefone_whatsapp, funcao:a.funcao,
@@ -597,7 +602,7 @@ function renderSheetFor(o){
 
   const cts = contatosPara(o);
   const ctHtml = cts.length ? cts.map((c,i)=>{
-    const msg = `SIME ${o.numero?'— Chamado #'+String(o.numero).padStart(3,'0')+' ':''}— Seção ${parseInt(o.secao_numero)}\n${t.nome}${sec.local_nome?'\n'+sec.local_nome:''}\n\nAqui é o cartório. Pode nos ajudar?`;
+    const msg = `SIME ${o.numero?'— Chamado #'+String(o.numero).padStart(3,'0')+' ':''}— Seção ${parseInt(o.secao_numero)}\n${t.nome}${sec.local_nome?'\n'+sec.local_nome:''}${c.uc?'\nUC: '+c.uc:''}\n\nAqui é o cartório. Pode nos ajudar?`;
     const href = c.whatsapp === false
       ? 'tel:' + String(c.telefone).replace(/\D/g,'')
       : linkWhatsApp(c.telefone, msg);
@@ -609,6 +614,7 @@ function renderSheetFor(o){
         <span class="ct-papel">${c.papel}</span>
         <div class="ct-nome">${c.nome}</div>
         <div class="ct-tel">${fmtTelefone(c.telefone)}</div>
+        ${c.uc?`<div class="ct-tel">UC: ${c.uc}</div>`:''}
       </span>
       <span class="ct-seta">${c.whatsapp===false?'📞':'›'}</span>
     </a>`;

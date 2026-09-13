@@ -677,6 +677,44 @@ async function abrir(ctx, mock) {
   await ctx.close();
 }
 
+// ── 21. UC da Equatorial (sime_secoes.uc_equatorial, 13/09/2026) — mostrada
+// junto do contato de energia, quando cadastrada pro local; sem inventar
+// quando não há. ──
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'energia' });
+  mock.sime_secoes[0].uc_equatorial = 'A2088740'; // SEC_63
+  const { p, erros } = await abrir(ctx, mock);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+
+  const destaqueTxt = await p.locator('.ct.destaque').textContent();
+  check('card do contato de energia mostra a UC do local', destaqueTxt.includes('UC: A2088740'), destaqueTxt);
+
+  const linkMsg = await p.locator('.ct.destaque').getAttribute('href');
+  check('mensagem pré-pronta pra Equatorial inclui a UC', decodeURIComponent(linkMsg).includes('UC: A2088740'), linkMsg);
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  // SEC_63 sem uc_equatorial (mesmo baseMock, sem setar o campo) — nunca
+  // inventa "UC: undefined/null" no card nem na mensagem.
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'energia' }));
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+
+  const destaqueTxt = await p.locator('.ct.destaque').textContent();
+  check('sem UC cadastrada: card não mostra linha de UC nenhuma', !destaqueTxt.includes('UC:'), destaqueTxt);
+
+  const linkMsg = await p.locator('.ct.destaque').getAttribute('href');
+  check('sem UC cadastrada: mensagem não menciona UC', !decodeURIComponent(linkMsg).includes('UC:'), linkMsg);
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;
