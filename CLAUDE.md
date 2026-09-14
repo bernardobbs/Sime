@@ -5210,6 +5210,31 @@ sem precisar de mock novo pra continuar cobrindo o caminho de sempre.
 
 ---
 
+## BUG REAL — "PERFIL INVÁLIDO" AO CRIAR AUXILIAR DE ELEIÇÃO (`sime-admin-user`, 14/09/2026)
+
+Reportado com print: cadastrar um novo membro com "Perfil de acesso" =
+Auxiliar de Eleição (locais/WhatsApp já preenchidos) falhava com
+"perfil_invalido". A tabela (`sime_usuarios.perfil` CHECK) e o front
+(`PERFIS` em `SIME_admin.html`) já aceitavam `auxiliar_eleicao` desde
+10/09/2026 — mas a Edge Function `sime-admin-user` (a que de fato cria o
+login) mantém sua PRÓPRIA lista hardcoded, `PERFIS_VALIDOS`, comentada
+como "espelha `PERFIS` do `SIME_admin.html`" — um espelho que não foi
+atualizado junto quando o perfil novo nasceu: a checagem
+`sime-admin-user` faz é independente da constraint do banco, então a
+tabela aceitava o valor perfeitamente, só a função que nunca deixava a
+gravação acontecer. Corrigido acrescentando `'auxiliar_eleicao'` ao
+`Set` e reimplantando a função (`mcp__Supabase__deploy_edge_function`,
+`verify_jwt: false` preservado — a função já faz sua própria validação
+do Bearer, documentado no topo do arquivo). Nenhuma mudança de schema
+nem de frontend — só a lista da Edge Function estava desatualizada.
+
+> Vale de lição pra qualquer perfil novo no futuro: `sime-admin-user`
+> tem um terceiro lugar (além da constraint e de `PERFIS` no Admin) que
+> precisa saber do valor novo — fácil de esquecer justamente por não
+> estar no mesmo arquivo que os outros dois.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
