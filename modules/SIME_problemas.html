@@ -473,7 +473,7 @@ async function recarregar(){
   // NUM_POR_SECAO_ID com o que veio junto da própria ocorrência — nunca
   // fica preso ao snapshot do boot.
   const { data } = await supabase.from('sime_ocorrencias')
-    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem,prioridade,aguardando_terceiro,sime_secoes(numero,local_nome,municipio,uc_equatorial,latitude,longitude)')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,visualizada_em,nivel_escalonamento,origem,prioridade,aguardando_terceiro,sime_secoes(numero,local_nome,municipio,uc_equatorial,latitude,longitude)')
     .in('status',['aberta','assumida'])
     .order('aberta_em',{ascending:true});
 
@@ -590,6 +590,7 @@ function renderLista(){
         ${resp ? `<span class="dono">👤 <b>${resp.nome}</b></span>`
                : `<span class="sem-dono">— sem responsável —</span>`}
         <span class="sp"></span>
+        ${o.responsavel_id && !o.visualizada_em ? '<span class="pill warn">👁️ ainda não visualizada</span>' : ''}
         ${o.prioridade==='alta'?'<span class="pill bad">🔴 alta prioridade</span>':''}
         ${o.prioridade==='baixa'?'<span class="pill low">🟢 baixa prioridade</span>':''}
         ${o.aguardando_terceiro?'<span class="pill warn">🕓 aguardando terceiro</span>':''}
@@ -698,6 +699,21 @@ function renderSheetFor(o){
 
   document.getElementById('sheet-bg').classList.add('open');
   carregarHistorico(o.id);
+
+  // Só marca "visualizada" pra chamado ainda em aberto — é o que liga o
+  // amarelo (panico_*_assumido) no aparelho do mesário quando a ocorrência
+  // já tem responsável mas ninguém tinha aberto a folha ainda (caso da urna
+  // auto-atribuída ao auxiliar). Otimista: marca localmente antes da RPC
+  // responder, pra não reenviar se a folha reabrir rápido (ex.: depois de
+  // uma ação que chama recarregar()) nem continuar mostrando "ainda não
+  // visualizada" pra quem está olhando bem agora. Falha de rede aqui não é
+  // crítica — a próxima abertura tenta de novo.
+  if(aberto && !o.visualizada_em){
+    o.visualizada_em = new Date().toISOString();
+    supabase.rpc('sime_ocorrencia_marcar_visualizada', { p_id: o.id })
+      .then(({error})=>{ if(error) o.visualizada_em = null; })
+      .catch(()=>{ o.visualizada_em = null; });
+  }
 }
 
 // Prioridade e a linha de desfecho leem este rótulo — declarado fora do
@@ -738,7 +754,7 @@ async function carregarHistorico(id){
     .select('acao,detalhe,autor_id,criado_em').eq('ocorrencia_id',id).order('criado_em');
   const box = document.getElementById('hist-box');
   if(!box || !data?.length) return;
-  const ACAO = { abriu:'Aberta', assumiu:'Assumiu', delegou:'Delegou para', contatou:'Contatou', resolveu:'Resolveu', escalou:'Escalou para', prioridade_definida:'Prioridade definida', aguardando_terceiro:'Aguardando terceiro' };
+  const ACAO = { abriu:'Aberta', assumiu:'Assumiu', delegou:'Delegou para', contatou:'Contatou', resolveu:'Resolveu', escalou:'Escalou para', prioridade_definida:'Prioridade definida', aguardando_terceiro:'Aguardando terceiro', atribuido_automatico:'Atribuído automaticamente', visualizada:'Visualizada' };
   box.innerHTML = `<div class="sh-lbl">Histórico</div><div class="hist">` + data.map(ev=>{
     const quem = EQUIPE.find(u=>u.id===ev.autor_id);
     return `<div><span class="h-h">${fmtTs(ev.criado_em)}</span> — ${ACAO[ev.acao]||ev.acao}${ev.detalhe?': '+ev.detalhe:''}${quem?` <span class="h-h">(${quem.nome})</span>`:''}</div>`;

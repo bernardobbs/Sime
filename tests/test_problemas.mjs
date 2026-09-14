@@ -715,6 +715,90 @@ async function abrir(ctx, mock) {
   await ctx.close();
 }
 
+// ── 22. Urna auto-atribuída ao auxiliar (14/09/2026, pedido direto: "deve
+// ser atribuído ao auxiliar, mas somente mostra amarelo para o mesario
+// quando ele visualizar a mensagem") — a auto-atribuição em si é feita no
+// banco (sime_sync_ocorrencias); aqui testa-se só o lado cliente: o card
+// avisa "ainda não visualizada" enquanto ninguém abriu a folha, some do
+// aviso quando já tem visualizada_em, e abrir a folha chama a RPC de
+// marcar-visualizada exatamente uma vez (mesmo reabrindo o card depois). ──
+{
+  const ctx = await b.newContext();
+  // responsavel setado (como a auto-atribuição do banco deixaria) mas sem
+  // visualizada_em — é o estado "atribuído, ninguém abriu ainda".
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'urna', responsavel:'u-joao' }));
+
+  const cardTxt = await p.locator('.prob').first().textContent();
+  check('card avisa "ainda não visualizada" quando tem dono mas ninguém abriu',
+    cardTxt.includes('ainda não visualizada'), cardTxt);
+
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+
+  const chamadasRpc = await p.evaluate(() => window.__mock.rpcCalls.filter(c => c.nome === 'sime_ocorrencia_marcar_visualizada'));
+  check('abrir a folha chama sime_ocorrencia_marcar_visualizada com o id certo',
+    chamadasRpc.length === 1 && chamadasRpc[0].params.p_id === 'oc-1', JSON.stringify(chamadasRpc));
+
+  // Fecha e reabre — o objeto em OCORRENCIAS já ficou marcado (otimista) da
+  // primeira vez, então não deve chamar a RPC de novo.
+  await p.locator('.sh-x').click();
+  await p.waitForTimeout(150);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  const chamadasRpc2 = await p.evaluate(() => window.__mock.rpcCalls.filter(c => c.nome === 'sime_ocorrencia_marcar_visualizada'));
+  check('reabrir a mesma folha não repete a chamada (marcado otimista)', chamadasRpc2.length === 1, JSON.stringify(chamadasRpc2));
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  // Sem dono nenhum (aberta, ninguém assumiu) — o aviso é especificamente
+  // sobre "tem dono mas não foi visto", não sobre estar sem responsável (que
+  // já tem o próprio aviso "— sem responsável —").
+  const { p, erros } = await abrir(ctx, baseMock({ tipo:'urna', responsavel:null }));
+  const cardTxt = await p.locator('.prob').first().textContent();
+  check('sem responsável: não mostra "ainda não visualizada" (mostra "sem responsável")',
+    !cardTxt.includes('ainda não visualizada') && cardTxt.includes('sem responsável'), cardTxt);
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna', responsavel:'u-joao' });
+  mock.sime_ocorrencias[0].visualizada_em = new Date().toISOString();
+  const { p, erros } = await abrir(ctx, mock);
+  const cardTxt = await p.locator('.prob').first().textContent();
+  check('já visualizada: card não mostra mais o aviso', !cardTxt.includes('ainda não visualizada'), cardTxt);
+
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(250);
+  const chamadas = await p.evaluate(() => window.__mock.rpcCalls.filter(c => c.nome === 'sime_ocorrencia_marcar_visualizada'));
+  check('já visualizada: abrir a folha não chama a RPC de novo', chamadas.length === 0, JSON.stringify(chamadas));
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  const mock = baseMock({ tipo:'urna', responsavel:'u-joao' });
+  mock.sime_ocorrencia_eventos.push(
+    { ocorrencia_id:'oc-1', acao:'atribuido_automatico', detalhe:'João Silva', autor_id:null, criado_em:new Date(Date.now()-9*60000).toISOString() },
+    { ocorrencia_id:'oc-1', acao:'visualizada', detalhe:null, autor_id:'u-maria', criado_em:new Date(Date.now()-1*60000).toISOString() },
+  );
+  const { p, erros } = await abrir(ctx, mock);
+  await p.locator('.prob').first().click();
+  await p.waitForTimeout(300);
+
+  const histTxt = await p.locator('.hist').textContent();
+  check('histórico mostra a atribuição automática, com o nome de quem foi designado',
+    histTxt.includes('Atribuído automaticamente') && histTxt.includes('João Silva'), histTxt);
+  check('histórico mostra quando foi visualizada, com quem abriu', histTxt.includes('Visualizada') && histTxt.includes('Maria Gomes'), histTxt);
+
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

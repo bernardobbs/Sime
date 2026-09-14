@@ -5352,6 +5352,118 @@ de Preparação, Rotas, Principal).
 
 ---
 
+## URNA AUTO-ATRIBUÍDA AO AUXILIAR; AMARELO SÓ AO VISUALIZAR (`sime_sync_ocorrencias`/`SIME_problemas.html`, 14/09/2026)
+
+Pedido direto: "Quando for problema na urna, deve ser atribuído ao
+auxiliar, mas somente mostra amarelo para o mesario quando ele visualizar
+a mensagem". Duas peças, deliberadamente desacopladas — atribuir e "acender
+o aviso pro mesário" não podem ser o mesmo instante, senão o mesário veria
+"sendo atendido" antes de qualquer humano ter de fato olhado o problema.
+
+**Atribuição automática, só quando é inequívoca.** `sime_sync_ocorrencias()`
+(o trigger de `sime_mesa_estado` que já cria a ocorrência de urna no pânico,
+ver "Painel de Problemas" acima) passou a, logo após criar a ocorrência
+(via `RETURNING id` — só quando o `INSERT` de fato criou uma linha nova,
+nunca num update de fila/votação em cima de um pânico já aberto, que bate
+no `ON CONFLICT DO NOTHING` de sempre), procurar quantos `auxiliar_eleicao`
+ativos estão em `sime_auxiliar_locais` pro local da seção. **Só atribui
+sozinho quando há EXATAMENTE 1 candidato** — mesmo critério "nunca adivinha"
+de sempre; com 0 ou 2+ candidatos, a ocorrência nasce `aberta` do jeito que
+sempre foi, esperando alguém assumir manualmente (inclusive um dos vários
+auxiliares candidatos). Quando atribui, grava `status='assumida'`,
+`responsavel_id`, `assumida_em` — mas **nunca toca `sime_mesa_estado`**
+nesse momento, então o mesário continua vendo vermelho.
+
+**Bug real, achado testando esta migração (dry-run transacional, sem tocar
+dado de produção — `BEGIN`/`ROLLBACK` isolando um usuário e uma seção reais
+emprestados só pra durar a transação): Postgres não define `min()`/`max()`
+pra `uuid`.** A primeira versão usava `SELECT count(DISTINCT ...), min(...),
+min(...) INTO ...` pra pegar contagem + o único candidato num select só —
+gerava `function min(uuid) does not exist`, engolido em silêncio pelo
+`EXCEPTION WHEN OTHERS THEN NULL` que já protege este bloco (por desenho —
+uma falha aqui nunca deve desfazer a abertura da ocorrência). Corrigido
+trocando por um segundo `SELECT ... LIMIT 1`, chamado só depois de já saber
+(pelo `count`) que existe exatamente 1 candidato — mais simples que
+contornar com `array_agg`, sem depender de ordenação de `uuid` nenhuma.
+
+**Segundo achado, no mesmo teste: `sime_notificar_auxiliares_urna()` — a
+função que enfileira o WhatsApp pro(s) auxiliar(es) do local, documentada
+desde 10/09/2026 — não estava sendo chamada por NADA em produção.** A versão
+viva de `sime_sync_ocorrencias()` no banco não tinha o bloco que a CLAUDE.md
+já descrevia ("chama a função acima só na TRANSIÇÃO pra `panico_urna=true`")
+— uma regressão silenciosa de alguma migração posterior que reescreveu a
+função inteira (`CREATE OR REPLACE` de função sempre substitui o corpo
+inteiro) sem preservar aquele trecho. Religada como parte desta mesma
+correção: toda vez que uma ocorrência de urna nova é criada, a função é
+chamada (independente de ter havido auto-atribuição ou não — com 2+
+candidatos, todos são avisados por WhatsApp pra que algum assuma na mão).
+
+**"Visualizar" = abrir a folha de detalhe em `SIME_problemas.html` pela
+primeira vez.** `sime_ocorrencias.visualizada_em` (novo, `timestamptz`) +
+`sime_ocorrencia_marcar_visualizada(p_id)` (nova RPC, `SECURITY DEFINER`,
+idempotente — chamar de novo numa já visualizada não repete efeito nem
+evento): só quando `visualizada_em` ainda é `NULL`, grava o timestamp,
+loga `visualizada` em `sime_ocorrencia_eventos`, e **só então**, se a
+ocorrência já tem `responsavel_id` e é `energia`/`urna`/`sos`, chama
+`sime_acao_mesa(p_panico_<tipo>_assumido=>true, p_panico_<tipo>_responsavel=>
+<nome do responsável>)` — o mesmo mecanismo de "🟡 Sendo atendido"
+(11/09/2026, ver seção própria acima), só que disparado pela VISUALIZAÇÃO
+em vez de pelo clique em "✋ Assumir".
+
+**`sime_ocorrencia_assumir()` (clique manual, cartório ou qualquer um)
+continua acendendo o amarelo na hora, sem mudança de comportamento** — um
+clique em "Assumir" já É engajamento ativo, não faz sentido esperar uma
+segunda ação; só ganhou `visualizada_em=COALESCE(visualizada_em,NOW())` de
+brinde, pra não aparecer como "ainda não visualizada" pra quem acabou de
+assumir. Na prática, o gap entre atribuição e visualização só existe pro
+caso novo (auto-atribuição silenciosa da urna) — em todos os outros
+fluxos, atribuir e visualizar continuam sendo o mesmo instante.
+
+**`SIME_problemas.html`**: `renderSheetFor()` (ponto único de renderização
+da folha, usado tanto pela lista de ativos quanto pela busca) chama
+`sime_ocorrencia_marcar_visualizada` sempre que abre um chamado **aberto**
+(`aberto = status IN ('aberta','assumida')`) que ainda não tem
+`visualizada_em` — marca o campo **otimisticamente no objeto local antes**
+da RPC responder (evita uma segunda chamada se a folha for fechada e
+reaberta rápido, e evita que a PRÓPRIA pessoa vendo o card agora veja
+"ainda não visualizada" description enquanto olha pra ele); falha de rede
+reverte o otimismo (`{error}` no retorno, ou `.catch()` de falha de
+conexão de verdade) — melhor-esforço, a próxima abertura tenta de novo.
+`recarregar()` passou a trazer `visualizada_em` no `select()`.
+
+**Card da lista ganha um aviso `pill warn` — "👁️ ainda não visualizada"** —
+só quando `responsavel_id` está setado **e** `visualizada_em` não —
+condição que, na prática, só acontece pro caso novo (auto-atribuição),
+já que todo outro caminho de assumir já grava `visualizada_em` junto.
+Sem responsável nenhum, o card continua mostrando só "— sem responsável —"
+de sempre, sem o aviso novo (são avisos pra situações diferentes — "ninguém
+pegou" vs. "alguém pegou mas ainda não olhou"). Histórico da folha
+(`carregarHistorico()`) ganhou rótulos pros dois eventos novos —
+"Atribuído automaticamente" (com o nome de quem, via `detalhe` — o evento
+não tem `autor_id`, é o sistema quem atribui, não uma pessoa) e
+"Visualizada" (com quem abriu, via `autor_id` de sempre).
+
+Coberto por `tests/test_problemas.mjs` (bloco 22): card avisa quando tem
+dono mas ainda não foi visualizado; sem responsável não mostra o aviso
+(mostra o de sempre); já visualizada não mostra o aviso nem rechama a RPC
+ao abrir; abrir a folha chama a RPC com o id certo, e reabrir a mesma
+folha não repete a chamada; histórico mostra os dois eventos novos com
+nome/autor corretos. A auto-atribuição/notificação em si (lado banco) foi
+verificada por teste transacional direto no Supabase (MCP,
+`BEGIN`/`ROLLBACK`, nunca persistido) cobrindo: 1 auxiliar → atribui,
+mesário continua vermelho, WhatsApp enfileirado, visualizar acende o
+amarelo com o nome certo, segunda visualização é no-op; 2 auxiliares →
+nunca adivinha, fica `aberta`.
+
+> **Pendência real, mesmo padrão já documentado alhures**: o lado SIME está
+> pronto (`destinatarios` chega preenchido em `sime_notificacoes` pro evento
+> `panico_urna_auxiliar`), mas o `index.js` do Hermes (repositório separado
+> `bernardobbs/hermes`, fora do escopo desta sessão) ainda não lê esse campo
+> nem manda a mensagem pro auxiliar de fato — só pros `ADMIN_NUMBERS` do
+> escalonamento normal.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
