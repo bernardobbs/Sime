@@ -5149,6 +5149,67 @@ mencionam UC.
 
 ---
 
+## BUG REAL — SEÇÃO/CONTATO SUMINDO NA FOLHA DE DETALHE + GEOLOCALIZAÇÃO (`SIME_problemas.html`, 14/09/2026)
+
+Reportado com print: a folha de detalhe do chamado #067 mostrava "Seção —"
+no título e "Nenhum contato cadastrado para este tipo de problema nesta
+seção" — mesmo a seção existindo, com um Presidente de mesa ativo e com
+telefone cadastrado. Pedido direto: "Na página de problema precisa
+aparecer o número da seção, o contato do presidente e a geolocalizacao".
+
+**Causa raiz, uma só pros dois primeiros sintomas.** `recarregar()`/
+`buscar()` sempre resolviam `secao_numero` de uma ocorrência olhando um
+mapa `NUM_POR_SECAO_ID`/`SECOES` montado **uma vez só**, na carga inicial
+da página (`iniciar()`). Se esse mapa ficasse sem a seção por qualquer
+motivo (sessão aberta há um tempo, ordem de eventos entre Realtime e o
+boot, ou qualquer outra divergência entre o snapshot do cliente e o
+banco), `o.secao_numero` virava `''` — e **`atoresDaSecao()` recusa
+funcionar sem `SECOES[secaoNum]` resolvido** (`if(!sec) return [];`,
+`sime_contatar_mesarios` nem entra em jogo aqui, é lógica própria deste
+arquivo). Como `contatosPara()` depende inteiramente de `atoresDaSecao()`
+pra achar o mesário/presidente, o mesmo mapa quebrado apagava os dois
+sintomas de uma vez — não eram dois bugs, era um só com duas
+consequências.
+
+Corrigido substituindo o mapa client-side desatualizável por um **JOIN
+direto com `sime_secoes`** em toda consulta de `sime_ocorrencias`
+(`recarregar()` e `buscar()`, via a FK `sime_ocorrencias_secao_id_fkey`
+já existente — `select('...,sime_secoes(numero,local_nome,municipio,
+uc_equatorial,latitude,longitude)')`) — a seção agora vem sempre fresca,
+junto da própria ocorrência, nunca dependendo de um snapshot separado.
+`NUM_POR_SECAO_ID`/`SECOES` continuam existindo (usados pelo resto da
+tela, e como fallback se o embed vier vazio por algum motivo), mas
+**cada recarga também os atualiza** com o que veio no join — o mapa se
+autocorrige a cada `recarregar()`/`buscar()`, nunca fica preso ao boot.
+
+**Geolocalização (terceiro pedido)** — `sime_secoes.latitude`/`longitude`
+(já preenchidas pro módulo 🗺️ Rotas desde 04/09/2026, ver "Georreferência
+por LOCAL de votação" acima) nunca eram buscadas nesta tela. Passaram a
+entrar no `select()` de `iniciar()` (a carga inicial de `SECOES`) e no
+JOIN acima — quando presentes, a folha de detalhe ganha uma seção
+"📍 Localização" com um link pro Google Maps (`?q=lat,lon`), mesmo padrão
+visual dos cartões de contato (`.ct`). Sem coordenada cadastrada pro
+local (a maioria, ainda), a seção simplesmente não aparece — mesmo
+critério "nunca inventa dado" de sempre, nenhum mapa fabricado.
+
+**"Contato do presidente" não precisou de UI nova** — `CONTATO_POR_TIPO`
+já inclui `'mesario'` pra falta de energia, e `atoresDaSecao()` já ordena
+por `ORDEM_MESA` (Presidente primeiro); o card já rotula certo com
+`funcao_mesa`. O problema nunca foi a lógica de escolha do contato, era
+só a seção nunca resolver pra alimentá-la — corrigindo a causa raiz, o
+Presidente volta a aparecer sozinho.
+
+Verificado ao vivo: chamado #067 (Seção 1, "Centro Ed. JA Mulata Lima")
+tem VALERIA DA SILVA LEMOS como Presidente ativa, telefone cadastrado —
+com o fix, ela aparece como primeiro contato de mesário na folha.
+Coberto pela suíte inteira de `tests/test_problemas.mjs` (114 checks, 0
+falhas) — o mock de teste não simula embed do PostgREST (a query builder
+de teste ignora colunas do `.select()`), então o comportamento cai
+graciosamente no fallback de `NUM_POR_SECAO_ID` já populado no boot,
+sem precisar de mock novo pra continuar cobrindo o caminho de sempre.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

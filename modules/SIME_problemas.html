@@ -403,7 +403,7 @@ async function iniciar(){
   ELEICAO = el?.[0] || null;
 
   const [secoes, atores, externos, equipe, auxLocais, auxUsuarios] = await Promise.all([
-    supabase.from('sime_secoes').select('id,numero,local_nome,municipio,uc_equatorial'),
+    supabase.from('sime_secoes').select('id,numero,local_nome,municipio,uc_equatorial,latitude,longitude'),
     supabase.from('sime_atores').select('nome_completo,telefone_whatsapp,funcao,funcao_mesa,secao_id,ativo'),
     supabase.from('sime_contatos_externos').select('tipo,nome,municipio,telefone,whatsapp').eq('ativo',true),
     supabase.from('sime_usuarios').select('id,nome,perfil').eq('ativo',true),
@@ -418,7 +418,7 @@ async function iniciar(){
     const n = String(s.numero).padStart(4,'0');
     numPorId[s.id]=n;
     NUM_POR_SECAO_ID[s.id]=n;
-    SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio, uc_equatorial:s.uc_equatorial };
+    SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio, uc_equatorial:s.uc_equatorial, latitude:s.latitude, longitude:s.longitude };
   });
   ATORES = (atores.data||[]).map(a=>({
     nome:a.nome_completo, telefone:a.telefone_whatsapp, funcao:a.funcao,
@@ -463,12 +463,30 @@ async function iniciar(){
 window.iniciar = iniciar;
 
 async function recarregar(){
+  // Junta direto com sime_secoes, em vez de depender só do mapa
+  // NUM_POR_SECAO_ID/SECOES montado uma vez na carga da página — achado real
+  // (14/09/2026): a folha de detalhe apareceu com "Seção —" e "Nenhum
+  // contato cadastrado" pra um chamado cuja seção existe e tem mesário
+  // cadastrado; como atoresDaSecao()/contatosPara() dependem inteiramente de
+  // SECOES[secao_numero] pra funcionar, qualquer mapa desatualizado quebra
+  // os dois de uma vez. Agora cada recarga também atualiza SECOES/
+  // NUM_POR_SECAO_ID com o que veio junto da própria ocorrência — nunca
+  // fica preso ao snapshot do boot.
   const { data } = await supabase.from('sime_ocorrencias')
-    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem,prioridade,aguardando_terceiro')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,nivel_escalonamento,origem,prioridade,aguardando_terceiro,sime_secoes(numero,local_nome,municipio,uc_equatorial,latitude,longitude)')
     .in('status',['aberta','assumida'])
     .order('aberta_em',{ascending:true});
 
-  OCORRENCIAS = (data||[]).map(o=>({ ...o, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' }));
+  OCORRENCIAS = (data||[]).map(o=>{
+    const s = o.sime_secoes;
+    if(s){
+      const n = String(s.numero).padStart(4,'0');
+      NUM_POR_SECAO_ID[o.secao_id] = n;
+      SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio, uc_equatorial:s.uc_equatorial, latitude:s.latitude, longitude:s.longitude };
+    }
+    const { sime_secoes, ...rest } = o;
+    return { ...rest, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' };
+  });
   renderLista();
   if(ABERTA && ABERTA_ORIGEM==='lista'){
     const atual = OCORRENCIAS.find(o=>o.id===ABERTA.id);
@@ -635,6 +653,18 @@ function renderSheetFor(o){
     <div class="sh-body">
       <div class="sh-lbl">Quem pode resolver</div>
       ${ctHtml}
+
+      ${(sec.latitude && sec.longitude) ? `
+      <div class="sh-lbl">📍 Localização</div>
+      <a class="ct" href="https://www.google.com/maps?q=${sec.latitude},${sec.longitude}" target="_blank" rel="noopener">
+        <span class="ct-ico">📍</span>
+        <span class="ct-txt">
+          <span class="ct-papel">Ver no mapa</span>
+          <div class="ct-nome">${sec.local_nome||'Local de votação'}</div>
+          <div class="ct-tel">${sec.latitude}, ${sec.longitude}</div>
+        </span>
+        <span class="ct-seta">›</span>
+      </a>` : ''}
 
       <div class="sh-lbl">Responsável</div>
       ${resp ? `<div style="font-size:.85rem">👤 <b>${resp.nome}</b>${souEu?' (você)':''}</div>`
@@ -858,7 +888,7 @@ async function buscarResolvidos(){
 
   box.innerHTML = `<div class="ct-vazio">Buscando…</div>`;
   const { data, error } = await supabase.from('sime_ocorrencias')
-    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,resolvida_em,resolucao,nivel_escalonamento,origem,prioridade,aguardando_terceiro')
+    .select('id,numero,secao_id,tipo,status,descricao,responsavel_id,aberta_em,assumida_em,resolvida_em,resolucao,nivel_escalonamento,origem,prioridade,aguardando_terceiro,sime_secoes(numero,local_nome,municipio,uc_equatorial,latitude,longitude)')
     .in('status',['resolvida','cancelada'])
     .order('aberta_em',{ascending:false})
     .limit(300);
@@ -866,7 +896,18 @@ async function buscarResolvidos(){
 
   const qDigitos = q.replace(/\D/g,'');
   const qMin = q.toLowerCase();
-  const achados = (data||[]).map(o=>({ ...o, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' })).filter(o=>{
+  // Mesmo join direto de recarregar() — mantém SECOES/NUM_POR_SECAO_ID
+  // atualizados a partir do que veio junto da própria ocorrência.
+  const achados = (data||[]).map(o=>{
+    const s = o.sime_secoes;
+    if(s){
+      const n = String(s.numero).padStart(4,'0');
+      NUM_POR_SECAO_ID[o.secao_id] = n;
+      SECOES[n] = { numero:n, local_nome:s.local_nome, municipio:s.municipio, uc_equatorial:s.uc_equatorial, latitude:s.latitude, longitude:s.longitude };
+    }
+    const { sime_secoes, ...rest } = o;
+    return { ...rest, secao_numero: NUM_POR_SECAO_ID[o.secao_id]||'' };
+  }).filter(o=>{
     const t = TIPOS[o.tipo]||TIPOS.outro;
     const casaNumero = qDigitos && o.numero && String(o.numero).padStart(3,'0').includes(qDigitos);
     const casaSecao = qDigitos && o.secao_numero && String(parseInt(o.secao_numero)||'').includes(qDigitos);
