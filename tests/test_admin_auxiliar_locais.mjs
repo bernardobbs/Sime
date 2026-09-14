@@ -16,11 +16,10 @@
 //      trocar a seleção regrava só o que mudou.
 //   4. O card da equipe mostra os locais atribuídos (ou avisa que não tem
 //      nenhum ainda).
-//   5. Numa sessão REAL logada como o próprio auxiliar (não o admin
-//      demo/local), secoesDoUsuario()/escopoLabel() de fato escopam pelos
-//      locais — bug real corrigido no caminho: a sessão autenticada de
-//      verdade nunca carregava curUser.locais (só o seletor de usuário
-//      demo/local, via localStorage, carregava esse tipo de escopo).
+//   5. Numa sessão REAL logada como o próprio auxiliar, a página redireciona
+//      de volta pro painel principal (14/09/2026 — este perfil não tem mais
+//      acesso a SIME_admin.html, só a Problemas e Rotas, ver
+//      sime_acesso_perfil.js e tests/test_acesso_perfil.mjs).
 import pw from 'playwright';
 const { chromium } = pw;
 
@@ -243,25 +242,32 @@ async function abrirComoAdmin(ctx, opts = {}) {
 }
 
 // ── 5. Sessão REAL logada como o próprio auxiliar (não o seletor de
-// usuário demo/local) — secoesDoUsuario()/escopoLabel() escopam de
-// verdade. Bug real corrigido no caminho: a sessão autenticada nunca
-// carregava curUser.locais, só o cache local (demo) carregava esse tipo
-// de escopo — sem o fix, um auxiliar logado de verdade veria a zona
-// inteira, não só os locais dele. ──
+// usuário demo/local) — desde 14/09/2026 (pedido direto: "os auxiliares
+// devem ter acesso somente a parte de gestão de problemas, consulta a
+// rotas"), auxiliar_eleicao NÃO tem mais acesso a SIME_admin.html — é
+// redirecionado pra SIME_principal.html assim que o próprio perfil é
+// conhecido (ver sime_acesso_perfil.js/simeExigirAcesso, chamado dentro de
+// carregarIdentidade()). O escopo 'locais' (secoesDoUsuario()/
+// escopoLabel(), corrigido em 10/09/2026 pra ler a sessão real) continua
+// existindo no código — só não é mais alcançável por este perfil aqui,
+// porque a página nunca termina de carregar pra ele. ──
 {
   const ctx = await b.newContext();
-  const { p, erros } = await abrirComoAdmin(ctx, {
-    meuUsuario: { id: 'aux-logado', nome: 'Pedro Auxiliar', perfil: 'auxiliar_eleicao', zona_id: 'zona-7' },
-    auxLocais: [{ usuario_id: 'aux-logado', zona_id: 'zona-7', local_nome: 'Escola A', municipio: 'Campo Maior' }],
-  });
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  p.on('dialog', (d) => d.dismiss().catch(() => {})); // o alert() de simeExigirAcesso não deve travar o teste
+  await p.route('**/vendor/supabase-js.esm.js**', (r) =>
+    r.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
+      meuUsuario: { id: 'aux-logado', nome: 'Pedro Auxiliar', perfil: 'auxiliar_eleicao', zona_id: 'zona-7' },
+      auxLocais: [{ usuario_id: 'aux-logado', zona_id: 'zona-7', local_nome: 'Escola A', municipio: 'Campo Maior' }],
+    }) }));
+  await p.goto('http://localhost:8917/modules/SIME_admin.html');
   await p.waitForTimeout(300);
+  await fazerLogin(p);
+  await p.waitForTimeout(500); // carregarIdentidade() (async) + o redirecionamento
 
-  const escopoTxt = await p.evaluate(() => window.escopoLabel ? window.escopoLabel() : (typeof escopoLabel !== 'undefined' ? escopoLabel() : null));
-  check('escopoLabel() mostra os locais atribuídos, na sessão real', /Escola A/.test(escopoTxt || ''), escopoTxt);
-
-  const secoesVisiveis = await p.evaluate(() => (window.secoesDoUsuario ? window.secoesDoUsuario() : secoesDoUsuario()).map(s => s.loc));
-  check('secoesDoUsuario() traz só as seções do local atribuído', secoesVisiveis.every(l => l === 'Escola A') && secoesVisiveis.length > 0, JSON.stringify(secoesVisiveis));
-
+  check('auxiliar_eleicao é redirecionado pra fora de SIME_admin.html', /SIME_principal\.html/.test(p.url()), p.url());
   check('sem erro JS', erros.length === 0, erros.join('; '));
   await ctx.close();
 }

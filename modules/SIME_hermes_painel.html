@@ -576,6 +576,7 @@
   </main>
 
   <script src="./sime_user_menu.js"></script>
+  <script src="./sime_acesso_perfil.js"></script>
   <script type="module">
 
     import { createClient } from './vendor/supabase-js.esm.js';
@@ -595,6 +596,9 @@
         zonaId: data?.zona_id || null, zonaNumero: data?.sime_zonas?.numero ?? null,
         nome: data?.nome || user?.email || 'Usuário', perfil: data?.perfil || null,
       };
+      // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas)
+      // — ver sime_acesso_perfil.js.
+      if (window.simeExigirAcesso) window.simeExigirAcesso(_zonaCache.perfil);
       return _zonaCache;
     }
 

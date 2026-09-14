@@ -127,6 +127,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script src="./sime_campanha_script_editor.js"></script>
 <script type="module">
 // Carrega os atores do Supabase. Este módulo era 100% localStorage: a zona
@@ -147,13 +148,19 @@ const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonK
   initSimeDados(supabase);
   window.supabaseAtores = supabase;
 
+  // Fora do try/catch de baixo (melhor-esforço, só pro menu) porque a
+  // checagem de acesso precisa de fato bloquear o carregamento.
+  const { data: meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', session.user.id).maybeSingle();
+  // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+  // ver sime_acesso_perfil.js.
+  if (window.simeExigirAcesso && !window.simeExigirAcesso(meu?.perfil)) return;
+
   // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
   // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.
   // Melhor-esforço: uma falha aqui nunca deve impedir o resto da tela
   // (lista de atores, disparo em massa, etc.) de terminar de carregar.
   try {
     if (window.initSimeUserMenu) {
-      const { data: meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', session.user.id).maybeSingle();
       window.initSimeUserMenu(supabase, {
         slotEl: document.getElementById('sime-um-slot'),
         nome: meu?.nome || session.user.email || 'Usuário',

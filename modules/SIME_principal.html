@@ -431,6 +431,10 @@ async function carregarZonas(){
 
   window.SIME_PERFIL = meu.perfil;
   window.MINHA_ZONA_ID = meu.zona_id || null;
+  // Re-renderiza o hub de módulos agora que o perfil é conhecido — a
+  // primeira chamada (na carga da página, antes do login resolver) sempre
+  // mostra tudo, já que simeAcessoPermitido() sem perfil nunca restringe.
+  if (window.renderModulos) window.renderModulos();
 
   // Topbar mostrava "Rafael A." fixo no HTML — sobrevivência de antes do login
   // real existir. Agora reflete quem de fato autenticou.
@@ -591,6 +595,7 @@ function abrirAbaDaUrl() {
 </script>
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
 function loadEl(){ try{return JSON.parse(localStorage.getItem(ELEICAO_KEY)||'{}')}catch(e){return{}} }
@@ -879,9 +884,16 @@ const MODS = {
 
 function renderModulos(){
   const fid=getFase();
+  // Perfis restritos (hoje só auxiliar_eleicao — ver sime_acesso_perfil.js)
+  // só enxergam os módulos que de fato podem abrir; sem SIME_PERFIL ainda
+  // resolvido (antes do login, ou offline) simeAcessoPermitido() sempre
+  // devolve true, então nada muda pra ninguém nesse meio-tempo.
   Object.entries(MODS).forEach(([g,mods])=>{
     const el=document.getElementById('mods-'+g); if(!el) return;
-    el.innerHTML=mods.map(m=>{
+    const modsFiltrados = window.simeAcessoPermitido
+      ? mods.filter(m => !m.href || window.simeAcessoPermitido(window.SIME_PERFIL, m.href))
+      : mods;
+    el.innerHTML=modsFiltrados.map(m=>{
       const ativo=m.fase===fid;
       const cls=['mod-card',ativo?'fase-ativa':'',m.dis?'disabled':''].filter(Boolean).join(' ');
       const badge=m.dis?'<span class="mod-badge" style="background:var(--bg2);color:var(--text3)">Em desenvolvimento</span>':ativo?'<span class="mod-badge" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)">Fase atual</span>':'';
@@ -889,6 +901,14 @@ function renderModulos(){
       const href=m.href?'href="'+m.href+'" target="_blank"':'';
       return '<'+tag+' class="'+cls+'" '+href+'><div class="mod-icon">'+m.icon+'</div><div class="mod-title">'+m.title+'</div><div class="mod-sub">'+m.sub+'</div>'+badge+'</'+tag+'>';
     }).join('');
+    // Grupo inteiro some (cabeçalho junto) quando nenhum módulo sobra nele —
+    // um "D-X · Preparação das urnas" sem nenhum card embaixo pareceria
+    // quebrado, não intencional (ex.: Auxiliar de Eleição só vê Problemas/
+    // Rotas, os dois no grupo "Ferramentas do cartório").
+    const tituloEl = el.previousElementSibling;
+    const temModulo = modsFiltrados.length > 0;
+    if (tituloEl && tituloEl.classList.contains('sec-title')) tituloEl.style.display = temModulo ? '' : 'none';
+    el.style.display = temModulo ? '' : 'none';
   });
 }
 

@@ -287,6 +287,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 </div>
 
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { initSimeDados, getEleicaoAtiva, getSecoes, getRotas, getRotaSecoesMap } from './sime_dados.js';
@@ -320,6 +321,10 @@ async function carregarIdentidadeZona() {
     if (!meu) return;
     minhaZonaId = meu.zona_id || null;
     souSuperAdmin = meu.perfil === 'super_admin';
+
+    // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+    // ver sime_acesso_perfil.js.
+    if (window.simeExigirAcesso && !window.simeExigirAcesso(meu.perfil)) return;
 
     // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo
     // componente compartilhado por toda a camada Admin, ver sime_user_menu.js.

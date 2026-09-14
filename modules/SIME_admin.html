@@ -664,6 +664,9 @@ async function carregarIdentidade(){
   window.SIME_IDENTIDADE = { nome: meuUsuario.nome || user.email, perfil: meuUsuario.perfil, email: user.email };
   window.MINHA_ZONA_ID = meuUsuario.zona_id || null;
   window.MEU_USUARIO_ID = meuUsuario.id || null;
+  // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+  // ver sime_acesso_perfil.js. Redireciona e para aqui, sem carregar o resto.
+  if (window.simeExigirAcesso && !window.simeExigirAcesso(meuUsuario.perfil)) return;
   // Escopo 'locais' (Auxiliar de Eleição) precisa dos locais atribuídos pra
   // secoesDoUsuario()/escopoLabel() funcionarem na SESSÃO REAL — diferente
   // do fallback demo (loadTeam()), que guarda escopo em localStorage, este
@@ -800,6 +803,7 @@ supabase.auth.onAuthStateChange?.((event) => {
 </script>
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // DADOS E CONSTANTES

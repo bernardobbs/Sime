@@ -502,6 +502,16 @@ let rtOtimizarSugestao = null; // { rotaId, idsOriginais:[...], ordemIds:[...], 
 function rtEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+// Modo consulta (14/09/2026, pedido direto: "os auxiliares devem ter acesso
+// somente a parte de gestão de problemas, consulta a rotas") — window.
+// RT_SOMENTE_LEITURA é setado por SIME_rotas.html assim que o perfil do
+// usuário logado é conhecido (auxiliar_eleicao). Uma função só, chamada
+// tanto pelos pontos de render (esconder os botões de escrita) quanto pelos
+// próprios pontos de escrita (defesa extra, caso algo escape do render —
+// ex.: chamado direto pelo console).
+function rtSomenteLeitura() {
+  return !!window.RT_SOMENTE_LEITURA;
+}
 function rtRotaTemTipoLegado(rota) {
   return !!(rota && (rota.tipos || []).some(t => RT_TIPOS_LEGADO.includes(t)));
 }
@@ -676,7 +686,7 @@ function renderRotas() {
     <div class="import-card">
       <div class="ic-title">🗺️ Rotas</div>
       <div class="ic-sub">Cadastro das rotas de distribuição de urnas, recolhimento de urnas, recolhimento de mídias e instalação de seção. Uma mesma rota pode servir mais de um propósito ao mesmo tempo (ex.: o mesmo veículo leva e depois traz a urna pelo mesmo trajeto).</div>
-      <button class="btn btn-dark" onclick="rtAbrirNovo()">➕ Nova rota</button>
+      ${rtSomenteLeitura() ? '<div class="ic-sub" style="margin-bottom:0">👁️ Modo consulta — seu perfil só pode visualizar as rotas.</div>' : '<button class="btn btn-dark" onclick="rtAbrirNovo()">➕ Nova rota</button>'}
     </div>
 
     <div class="import-card">
@@ -716,7 +726,7 @@ function renderRotas() {
         ].filter(Boolean).join(', ') : '';
         return `
       <div class="import-card" style="padding:12px 14px;${r.ativo ? '' : 'opacity:.6'}">
-        <div style="font-weight:800;font-size:.86rem;cursor:pointer;color:var(--text)" onclick="rtAbrirEditar('${r.id}')" title="Clique pra editar">Rota ${rtEsc(r.codigo)} — ${rtEsc(r.nome)}</div>
+        <div style="font-weight:800;font-size:.86rem;cursor:pointer;color:var(--text)" onclick="rtAbrirEditar('${r.id}')" title="${rtSomenteLeitura() ? 'Clique pra ver detalhes' : 'Clique pra editar'}">Rota ${rtEsc(r.codigo)} — ${rtEsc(r.nome)}</div>
         <div class="ic-sub" style="margin:2px 0 0">${(r.municipios || []).map(rtEsc).join(', ') || '—'} · ${secoes.length} seção(ões) vinculada(s)</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
           ${(r.tipos || []).map(t => `<span class="import-result ir-ok" style="margin:0;padding:3px 8px;font-size:.68rem">${RT_TIPO_LABEL[t] || t}</span>`).join('')}
@@ -734,8 +744,8 @@ function renderRotas() {
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirFicha('${r.id}')" title="Imprime a ficha da rota (paradas em ordem, contato do responsável)">🖨️ Imprimir ficha</button>
-          ${rtRotaTemTipoLegado(r) && !retornoGerado ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
-          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>
+          ${(!rtSomenteLeitura() && rtRotaTemTipoLegado(r) && !retornoGerado) ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
+          ${!rtSomenteLeitura() ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>` : ''}
         </div>
       </div>`;
       }).join('') : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhuma rota cadastrada ainda com esse filtro.</div></div>'}
@@ -748,7 +758,7 @@ function renderRotas() {
 }
 
 // ── Modal: nova/editar rota ──
-function rtAbrirNovo() { rtModalId = ''; rtAdicionarAberto = false; rtSecaoBusca = ''; rtOtimizarSugestao = null; rtRenderModalRota(); }
+function rtAbrirNovo() { if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; } rtModalId = ''; rtAdicionarAberto = false; rtSecaoBusca = ''; rtOtimizarSugestao = null; rtRenderModalRota(); }
 function rtAbrirEditar(id) { rtModalId = id; rtAdicionarAberto = false; rtSecaoBusca = ''; rtOtimizarSugestao = null; rtRenderModalRota(); }
 function rtFecharModal(e) {
   if (rtModalId === null) return;
@@ -773,6 +783,7 @@ function rtFecharModal(e) {
 // contrário) são copiadas automaticamente, depois de salvar, em
 // rtSalvarRota().
 function rtGerarRetorno(rotaId) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const origem = rtDados.rotas.find(r => r.id === rotaId);
   if (!origem) return;
   rtGerandoRetornoDe = rotaId;
@@ -849,6 +860,17 @@ function rtUsarSugestaoChegada() {
 }
 function rtRenderModalRota() {
   const isNovo = rtModalId === '';
+  // Modo consulta: "Nova rota" nunca é alcançável pela UI (o botão some em
+  // renderRotas()), mas se chegar aqui por qualquer outro caminho, mostra
+  // um aviso em vez de um formulário de criação vazio.
+  if (rtSomenteLeitura() && isNovo) {
+    document.getElementById('modal-body').innerHTML = `
+      <div class="m-hdr"><div class="m-title">👁️ Modo consulta</div><button class="close-btn" aria-label="Fechar" onclick="rtFecharModal()">✕</button></div>
+      <div class="m-body"><div class="ic-sub">Seu perfil só pode consultar rotas já cadastradas.</div></div>
+      <div class="m-foot"><button class="btn btn-out" onclick="rtFecharModal()">Fechar</button></div>`;
+    document.getElementById('overlay').classList.add('open');
+    return;
+  }
   const r = isNovo ? null : rtDados.rotas.find(x => x.id === rtModalId);
   // Rascunho de "rota de recolhimento" gerado a partir de uma rota de
   // distribuição (rtGerarRetorno()) — só existe enquanto isNovo; nunca
@@ -962,6 +984,25 @@ function rtRenderModalRota() {
     </div>`;
   document.getElementById('overlay').classList.add('open');
   if (!isNovo) rtRenderParadas();
+  if (rtSomenteLeitura()) rtAplicarSomenteLeituraModal();
+}
+
+// Modo consulta (14/09/2026) — desabilita os campos e tira a ação de
+// escrita do rodapé do formulário já renderizado. Feito uma vez aqui (não
+// dentro do template acima) porque threadar `disabled`/omissão condicional
+// em cada um dos ~15 campos do formulário seria bem mais arriscado de
+// manter do que uma passada de DOM só pra isto — a parte que de fato se
+// re-renderiza sozinha depois (📍 Locais de votação) já trata o modo
+// consulta na origem, ver rtRenderParadas().
+function rtAplicarSomenteLeituraModal() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  body.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = true; });
+  body.querySelectorAll('#rt-partida-sugerir, #rt-destino-sugerir, #rt-chegada-sugerir').forEach(el => el.remove());
+  const foot = body.querySelector('.m-foot');
+  if (foot) {
+    foot.innerHTML = '<button class="btn btn-out" onclick="rtFecharModal()">Fechar</button>';
+  }
 }
 
 // Renderiza só o conteúdo de "📍 Locais de votação (paradas)", dentro do
@@ -1019,11 +1060,12 @@ function rtRenderParadas() {
   const semGeoAgora = atuais.filter(s => s.latitude == null || s.longitude == null).length;
   const jaIgual = sugestao && sugestao.ordem.every((s, idx) => s.id === atuais[idx]?.id);
 
+  const soLeitura = rtSomenteLeitura();
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
       ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;text-decoration:none" title="Usa a Partida/Destino digitados, quando preenchidos, e as paradas geolocalizadas no meio">🗺️ Ver rota completa no mapa</a>` : ''}
-      ${atuais.length >= 3 ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtOtimizarOrdem('${r.id}')" title="Sugere uma ordem mais curta por distância em linha reta entre as paradas (não é a estrada real) — 1ª parada fica fixa">🔀 Otimizar ordem</button>` : ''}
+      ${(!soLeitura && atuais.length >= 3) ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtOtimizarOrdem('${r.id}')" title="Sugere uma ordem mais curta por distância em linha reta entre as paradas (não é a estrada real) — 1ª parada fica fixa">🔀 Otimizar ordem</button>` : ''}
     </div>
     ${sugestao ? (jaIgual ? `
     <div class="import-result ir-ok">✓ A ordem atual já é a mais curta que encontramos por linha reta (nenhuma redução possível) — nada pra aplicar.
@@ -1042,16 +1084,17 @@ function rtRenderParadas() {
       ${atuais.length ? atuais.map((s, idx) => `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <span style="display:flex;align-items:center;gap:6px">
+          ${soLeitura ? '' : `
           <span style="display:inline-flex;flex-direction:column;gap:2px">
             <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',-1)" ${idx === 0 ? 'disabled' : ''} title="Mover pra cima (mais cedo na rota)">▲</button>
             <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',1)" ${idx === atuais.length - 1 ? 'disabled' : ''} title="Mover pra baixo (mais tarde na rota)">▼</button>
-          </span>
+          </span>`}
           <span><b>${idx + 1}º</b> — <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
         </span>
-        <button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>
+        ${soLeitura ? '' : `<button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>`}
       </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
     </div>
-    ${rtAdicionarAberto ? `
+    ${soLeitura ? '' : (rtAdicionarAberto ? `
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <label for="rt-secao-busca" style="font-size:.78rem;color:var(--text2)">Adicionar local de votação</label>
@@ -1064,7 +1107,7 @@ function rtRenderParadas() {
           : (q ? '<div class="ic-sub" style="margin:0">Nenhum local encontrado.</div>' : '')}
       </div>
     </div>` : `
-    <button class="btn btn-out" style="font-size:.8rem;padding:6px 12px;margin-top:8px" onclick="rtToggleAdicionar()" title="Adicionar local de votação">+</button>`}`;
+    <button class="btn btn-out" style="font-size:.8rem;padding:6px 12px;margin-top:8px" onclick="rtToggleAdicionar()" title="Adicionar local de votação">+</button>`)}`;
   if (buscaAtiva) {
     const el = document.getElementById('rt-secao-busca');
     if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
@@ -1088,6 +1131,7 @@ async function rtCopiarParadasInvertidas(origemId, novaId) {
 }
 
 async function rtSalvarRota() {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const codigo = document.getElementById('rt-codigo').value.trim();
   const nome = document.getElementById('rt-nome').value.trim();
@@ -1166,6 +1210,7 @@ async function rtSalvarRota() {
 }
 
 async function rtToggleAtivo(id, ativo) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_rotas').update({ ativo }).eq('id', id);
   if (error) { showToast('⚠ ' + error.message); return; }
@@ -1187,6 +1232,7 @@ function rtOnSecaoBuscaInput(v) {
 }
 
 async function rtAdicionarSecao(rotaId, secaoId) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   const atuais = rtDados.secoesPorRota.get(rotaId) || [];
@@ -1211,6 +1257,7 @@ async function rtAdicionarSecao(rotaId, secaoId) {
 }
 
 async function rtRemoverSecao(rotaId, secaoId) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   const { error } = await sb.from('sime_rota_secoes').delete().eq('rota_id', rotaId).eq('secao_id', secaoId);
@@ -1238,6 +1285,7 @@ async function rtRemoverSecao(rotaId, secaoId) {
 // primeira vez que alguém mexe naquela rota, sem precisar de migração
 // própria pra dado antigo.
 async function rtMoverParada(rotaId, secaoId, direcao) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   const atuais = [...(rtDados.secoesPorRota.get(rotaId) || [])]; // já vem ordenada
@@ -1290,6 +1338,7 @@ function rtDescartarOtimizacao() {
 // add/remove/mover no meio-tempo invalida a sugestão (nunca aplica em
 // cima de uma lista que já mudou).
 async function rtAplicarOrdemOtimizada(rotaId) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
   const sb = window.supabaseAtores;
   const sugestao = rtOtimizarSugestao;
   if (!sugestao || sugestao.rotaId !== rotaId) return;

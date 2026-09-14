@@ -295,6 +295,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 <script src="./sime_ui_utils.js"></script>
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script src="./sime_mesarios_sync.js"></script>
 <script src="./sime_resumo_secoes.js"></script>
 <script src="./sime_contatar_mesarios.js"></script>
@@ -319,10 +320,13 @@ let _nomeCache = null;
 let _idCache = null;
 async function _carregarUsuario() {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data } = await supabase.from('sime_usuarios').select('id, zona_id, nome').eq('auth_user_id', user?.id).maybeSingle();
+  const { data } = await supabase.from('sime_usuarios').select('id, zona_id, nome, perfil').eq('auth_user_id', user?.id).maybeSingle();
   _zonaCache = data?.zona_id || null;
   _nomeCache = data?.nome || null;
   _idCache = data?.id || null;
+  // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+  // ver sime_acesso_perfil.js.
+  if (window.simeExigirAcesso) window.simeExigirAcesso(data?.perfil);
 }
 window.zonaDoUsuario = async function zonaDoUsuario() {
   if (!_zonaCache) await _carregarUsuario();

@@ -228,10 +228,17 @@ async function atualizarCabecalho() {
   const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
   document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
 
+  // Fora do try/catch de baixo (melhor-esforço, só pro menu) — Auxiliar de
+  // Eleição tem acesso a este módulo, mas só em modo consulta (pedido
+  // direto, 14/09/2026: "os auxiliares devem ter acesso somente a parte de
+  // gestão de problemas, consulta a rotas"), ver rtSomenteLeitura() em
+  // sime_rotas_modulo.js. Precisa estar resolvido ANTES do primeiro render().
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: meu } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+  window.RT_SOMENTE_LEITURA = meu?.perfil === 'auxiliar_eleicao';
+
   try {
     if (window.initSimeUserMenu) {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: meu } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
       window.initSimeUserMenu(supabase, {
         slotEl: document.getElementById('sime-um-slot'),
         nome: await nomeDoUsuario(),

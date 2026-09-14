@@ -98,6 +98,7 @@ tr:last-child td{border-bottom:none;}
 </div>
 
 <script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -134,6 +135,14 @@ document.getElementById('login-form').addEventListener('submit', async (e)=>{
 let ELEICAO=null, ZONA=null, REL='secoes', dadosAtuais=[];
 
 async function iniciarRelatorios(){
+  // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+  // ver sime_acesso_perfil.js. Checado antes de carregar qualquer relatório.
+  if (window.simeExigirAcesso) {
+    const { data:{ user } } = await supabase.auth.getUser();
+    const { data:meuAcesso } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+    if (!window.simeExigirAcesso(meuAcesso?.perfil)) return;
+  }
+
   // eleição ativa (RLS já limita à zona do usuário)
   const { data:eleicoes } = await supabase.from('sime_eleicoes').select('id,zona_id,turno,data_d,ativa').eq('ativa',true).order('data_d',{ascending:false}).limit(1);
   ELEICAO = eleicoes?.[0] || null;

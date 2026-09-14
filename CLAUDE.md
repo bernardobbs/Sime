@@ -134,7 +134,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 | **Gestor de Distribuição** | Rotas | Ver + controlar embarque |
 | **Observador** | Tudo | Somente leitura |
 | **Coord. de Motoristas (Preposto)** | `empresa_id` do usuário | Só rotas da empresa dele |
-| **Auxiliar de Eleição** (10/09/2026) | `sime_auxiliar_locais` do usuário (N locais) | Ver + resolver problema de urna nesses locais |
+| **Auxiliar de Eleição** (10/09/2026, restrito em 14/09/2026) | `sime_auxiliar_locais` do usuário (N locais) | Ver + resolver problema de urna nesses locais; só acessa 🚨 Problemas e 🗺️ Rotas (consulta) — qualquer outro módulo redireciona de volta pro painel |
 
 > ⚠️ **Duas coisas diferentes com o mesmo nome** — a linha acima
 > (`sime_usuarios.perfil='auxiliar_eleicao'`, login e-mail/senha, ver seção
@@ -5232,6 +5232,123 @@ nem de frontend — só a lista da Edge Function estava desatualizada.
 > tem um terceiro lugar (além da constraint e de `PERFIS` no Admin) que
 > precisa saber do valor novo — fácil de esquecer justamente por não
 > estar no mesmo arquivo que os outros dois.
+
+---
+
+## ACESSO DO AUXILIAR DE ELEIÇÃO RESTRITO A PROBLEMAS + ROTAS (14/09/2026)
+
+Pedido direto: "os auxiliares devem ter acesso somente a parte de gestão de
+problemas, consulta a rotas". Até aqui, qualquer login da equipe (perfil
+`auxiliar_eleicao` incluso) conseguia abrir QUALQUER módulo admin digitando
+a URL — o único controle que existia era de conteúdo DENTRO de cada tela
+(ex.: `SIME_problemas.html` já filtrava pra só mostrar urna dos locais
+dele, `SIME_admin.html` já tinha um escopo `'locais'` que filtrava
+`secoesDoUsuario()`). Não existia nenhuma trava de NAVEGAÇÃO — decisão
+deliberada até então (ver "Acesso a `SIME_convocacao.html` não tem trava de
+perfil" acima, sobre outros perfis) — mas o pedido de hoje é explicitamente
+o oposto pra este perfil específico: só duas telas, o resto fica fora do
+alcance.
+
+**`modules/sime_acesso_perfil.js` (novo)** — fonte única de verdade de
+quais páginas um perfil RESTRITO pode abrir:
+```js
+window.SIME_PAGINAS_PERMITIDAS = { auxiliar_eleicao: ['SIME_problemas.html', 'SIME_rotas.html'] };
+window.simeAcessoPermitido(perfil, pagina) // true = sem restrição, ou página está na lista
+window.simeExigirAcesso(perfil)            // se bloqueado: alert() + location.replace('SIME_principal.html')
+```
+Perfil ausente do mapa (todos os outros — coordenador, gestor_prob,
+coord_motoristas, etc.) nunca é restringido — mesmo comportamento de
+sempre. Mesmo NÍVEL de segurança já usado no resto do controle de acesso
+deste projeto (ex.: aba Zonas só pro super_admin): redirecionamento no
+CLIENTE, não uma barreira de RLS — a proteção de dado continua sendo a
+RLS por zona de sempre; isto é navegação/UX, não uma segunda camada de
+segurança de banco.
+
+**7 páginas passaram a chamar `simeExigirAcesso(perfil)`** assim que o
+perfil do usuário logado é conhecido (cada uma já tinha seu próprio jeito
+de resolver isso — `carregarIdentidade()`, `_carregarUsuario()`,
+`zonaDoUsuario()` etc., nenhum arquivo compartilha esse bootstrap):
+`SIME_admin.html`, `SIME_convocacao.html`, `SIME_atores.html`,
+`SIME_relatorios.html`, `SIME_tokens.html`, `SIME_hermes_painel.html`,
+`SIME_coordenador_preparacao.html`. **Sempre fora do try/catch
+"melhor-esforço" que várias dessas telas já tinham só pro menu de
+usuário** (uma falha ali nunca devia travar o carregamento da tela — mas
+a checagem de acesso precisa de fato bloquear quando resolve com sucesso).
+Em `SIME_coordenador_preparacao.html` especificamente, a checagem ficou
+com try/catch PRÓPRIO (não o do menu) — uma falha de rede na checagem em
+si não deve impedir ninguém de carregar/registrar lacre, só quando ela
+resolve com sucesso é que bloqueia. `SIME_problemas.html` e
+`SIME_rotas.html` nunca chamam `simeExigirAcesso` — são as duas páginas
+sempre permitidas.
+
+**Consequência direta: o escopo `'locais'` de `PERFIS.auxiliar_eleicao`
+dentro de `SIME_admin.html` (`secoesDoUsuario()`/`escopoLabel()`, criado em
+10/09/2026) virou código morto** — nunca mais é alcançado, porque a página
+redireciona o auxiliar antes de chegar lá. Deixado no lugar (não removido)
+— não custa nada mantê-lo, e reverter esta restrição um dia não exigiria
+reconstruir aquele pedaço.
+
+**`SIME_principal.html` — hub de módulos filtrado.** `renderModulos()`
+agora filtra cada grupo (`MODS.dx/d1/d/tv/adm`) por
+`simeAcessoPermitido(window.SIME_PERFIL, m.href)`; um grupo que fica
+totalmente vazio depois do filtro esconde o próprio cabeçalho
+(`.sec-title`) junto — um "D-X · Preparação das urnas" sem nenhum card
+embaixo pareceria quebrado, não intencional. Pra `auxiliar_eleicao`,
+Problemas e Rotas vivem os dois no grupo "Ferramentas do cartório" — é o
+único cabeçalho que sobra. `carregarZonas()` chama `renderModulos()` de
+novo assim que `window.SIME_PERFIL` é conhecido (a 1ª chamada, na carga da
+página antes do login resolver, sempre mostra tudo — sem perfil ainda,
+`simeAcessoPermitido()` nunca restringe).
+
+**`SIME_rotas.html` — a única das duas páginas permitidas que precisa de
+tratamento especial: consulta, não gestão.** Diferente de Problemas (onde
+o auxiliar já tinha ação completa dentro do próprio escopo — assumir/
+resolver urna dos locais dele), o pedido foi explícito: "consulta a
+rotas", não editar. `window.RT_SOMENTE_LEITURA` (setado em
+`atualizarCabecalho()`, `SIME_rotas.html`, assim que o perfil é conhecido
+— ANTES do primeiro `render()`) e `rtSomenteLeitura()` (helper em
+`sime_rotas_modulo.js`) controlam isso em três frentes, cada uma tratada
+na ORIGEM do render (nunca por um post-processo de DOM genérico só pro
+formulário externo — `renderRotas()`/`rtRenderParadas()` re-renderizam
+sozinhos independente do modal, e precisavam do critério embutido em cada
+um pra não vazar um botão de escrita depois de um add/remove/mover):
+- **Lista de rotas** (`renderRotas()`) — "➕ Nova rota" vira uma nota "👁️
+  Modo consulta"; cada card perde "🔄 Gerar rota de recolhimento" e "🚫
+  Desativar/✓ Reativar", mas mantém "🖨️ Imprimir ficha" (consulta segura,
+  não escreve nada) e o título continua clicável (tooltip muda pra "Clique
+  pra ver detalhes").
+- **Modal de detalhe** (`rtRenderModalRota()`) — "Nova rota" nunca é
+  alcançável pela UI (defesa: se chegar lá por outro caminho, mostra um
+  aviso em vez de formulário vazio); pra uma rota já existente, o
+  formulário inteiro renderiza normal e uma passada de DOM só (
+  `rtAplicarSomenteLeituraModal()`, chamada uma vez por abertura de modal —
+  seguro, porque este pedaço não se re-renderiza sozinho depois) desabilita
+  todo `input`/`select`/`textarea`, remove os botões de sugestão (↻) e
+  troca o rodapé por só "Fechar" (nunca "💾 Salvar").
+- **Locais de votação (paradas)** (`rtRenderParadas()`) — embutido
+  DIRETO no template (não post-processo, porque esta seção se
+  re-renderiza sozinha em várias ações): sem ▲/▼/✕ por parada, sem "🔀
+  Otimizar ordem" (e como o botão nunca aparece, nenhuma sugestão chega a
+  existir), sem "+ Adicionar local de votação". A lista em si, os links
+  "📍 Ver no mapa" e "🗺️ Ver rota completa no mapa" continuam — é
+  informação, não escrita.
+- **Defesa em profundidade nas próprias funções de escrita** —
+  `rtAbrirNovo`, `rtGerarRetorno`, `rtSalvarRota`, `rtToggleAtivo`,
+  `rtAdicionarSecao`, `rtRemoverSecao`, `rtMoverParada`,
+  `rtAplicarOrdemOtimizada` recusam com um toast (`👁️ Seu perfil só pode
+  consultar rotas.`) mesmo se chamadas direto (ex.: console do navegador),
+  não só por um botão escondido na tela.
+
+Coberto por `tests/test_acesso_perfil.mjs` (novo — hub filtrado em
+Principal, modo consulta completo em Rotas incluindo a defesa em
+profundidade chamando `rtSalvarRota()` direto) e um bloco reescrito em
+`tests/test_admin_auxiliar_locais.mjs` (bloco 5 — antes testava
+`secoesDoUsuario()`/`escopoLabel()` numa sessão real dentro de
+`SIME_admin.html`; agora testa que essa sessão é redirecionada pra
+`SIME_principal.html` antes de chegar lá). Suíte completa
+(`bash tests/run_all.sh`) rodada sem regressão nas telas tocadas
+(Admin, Atores, Convocação, Relatórios, Tokens, Hermes Painel, Coordenador
+de Preparação, Rotas, Principal).
 
 ---
 
