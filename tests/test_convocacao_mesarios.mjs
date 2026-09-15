@@ -17,6 +17,13 @@ class QB {
   eq(c,v){ this.f[c]=v; return this; }
   in(c,v){ this.f['__in_'+c]=v; return this; }
   contains(c,v){ this.f['__contains_'+c]=v; return this; }
+  not(c, op, v){
+    // Só os dois usos que existem no projeto: .not(col,'in','(a,b,c)') e
+    // .not(col,'is',null) — mesma sintaxe crua do supabase-js real.
+    if(op==='in'){ this.f['__notin_'+c]=String(v).replace(/^\(|\)$/g,'').split(','); }
+    else if(op==='is' && v===null){ this.f['__notnull_'+c]=true; }
+    return this;
+  }
   order(){ return this; }
   limit(){ return this; }
   single(){ return this.maybeSingle(); }
@@ -42,6 +49,8 @@ class QB {
         return Array.isArray(arr) && arr.some(item => v.every(want => Object.entries(want).every(([kk,vv]) => item[kk]===vv)));
       }
       if(k.includes('->>')){ const [col,key]=k.split('->>'); return String(x[col]?.[key] ?? '')===String(v); }
+      if(k.startsWith('__notin_')) return !v.includes(x[k.slice(8)]);
+      if(k.startsWith('__notnull_')) return x[k.slice(10)] != null;
       return x[k]===v;
     });
   }
@@ -211,9 +220,20 @@ async function login(p) {
   // Convocados = mrvDesignados(4) + locaisComCoord(1, Grupo Escolar A via GEORGE) + auxiliarTotal(1, ELIS) = 6.
   // Confirmados = mrvConfirmadoCargos(1, só ANA) + locaisComCoordConfirmado(0) + auxiliarConfirmado(1, ELIS) = 2.
   check('barra-funil da zona: Total 15, Convocados 6, Confirmados 2', /Total de vagas:\s*15/.test(dashFlat) && /Convocados:\s*6/.test(dashFlat) && /Confirmados:\s*2/.test(dashFlat), dashFlat.slice(0, 500));
+  // 02/09/2026 — barra-funil também ganhou percentual (Convocados 6/15=40%, Confirmados 2/15=13%).
+  check('barra-funil mostra percentual de Convocados e Confirmados', /Convocados:\s*6\s*\(40%\)/.test(dashFlat) && /Confirmados:\s*2\s*\(13%\)/.test(dashFlat), dashFlat.slice(0, 500));
 
   const cardPizzaMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().textContent();
   check('pizza MRV (3 fatias): confirmado 1, convocado 3, vazio 8, total 12', /Confirmado:\s*1/.test(cardPizzaMRV) && /Convocado:\s*3/.test(cardPizzaMRV) && /Vazio:\s*8/.test(cardPizzaMRV) && /Total:\s*12/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
+
+  // 02/09/2026 (pedido agendado: "achou um pouco confuso", faltava
+  // percentual) — cada linha da legenda ganhou "(N%)" ao lado da contagem,
+  // e a fatia "Vazio" trocou de cinza (quase invisível no tema claro) pra
+  // vermelho, mesmo sinal de alerta que rsBarraCor() já usa no gradiente
+  // por local.
+  check('pizza MRV mostra percentual em cada fatia (8%/25%/67%)', /8%/.test(cardPizzaMRV) && /25%/.test(cardPizzaMRV) && /67%/.test(cardPizzaMRV), cardPizzaMRV.replace(/\s+/g, ' '));
+  const strokeVazioMRV = await p.locator('.import-card:has-text("MRV (Mesários)")').first().locator('svg circle').first().getAttribute('stroke');
+  check('fatia "Vazio" da pizza usa var(--red), não mais cinza', strokeVazioMRV === 'var(--red)', strokeVazioMRV);
 
   // .last() (não .first()) — a barra-funil acima também menciona os nomes
   // dos 3 grupos no título ("MRV + Coordenadores de Acessibilidade +
@@ -567,6 +587,8 @@ async function login(p) {
     // Seção 51: mesmo meio (carta_registrada), mas JÁ confirmado — prova que
     // o ícone de status confirmado (✅) tem prioridade, não muda pra carta.
     cargo('icConfirmadoCarta','secIconeConfirmado','Presidente','confirmado','carta_registrada'),
+    // ZEO/TRE (02/09/2026) — quinto meio de contato, vira "prédio" 🏛️.
+    cargo('icZeo','secIconeConfirmado','2º Mesário','pendente','zeo'),
   ];
 
   const { p, erros } = await abrir(ctx, m);
@@ -586,6 +608,7 @@ async function login(p) {
 
   const cardSecao51 = await p.locator('.import-card:has-text("Seção 51")').first().textContent();
   check('confirmado com meio Carta Registrada: continua ✅, NÃO vira carta (status confirmado tem prioridade)', cardSecao51.includes('✅') && !cardSecao51.includes('✉️'), cardSecao51.replace(/\s+/g, ' '));
+  check('meio ZEO/TRE, ainda pendente: ícone vira 🏛️', cardSecao51.includes('🏛️'), cardSecao51.replace(/\s+/g, ' '));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -780,6 +803,40 @@ async function login(p) {
   await p.evaluate(() => window.cmFecharModal({ target: document.getElementById('overlay') }));
   await p.waitForTimeout(80);
   check('clicar fora do modal fecha', !(await p.evaluate(() => document.getElementById('overlay').classList.contains('open'))));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 2.63 Bug real corrigido em 04/09/2026, reportado pelo cartório com
+// print anexado: "em encaminhar apareceu o token" — o select de "Encaminhar
+// para" (e o filtro "👤 Responsável") listava também os tokens de acesso de
+// campo (QR/PIN de mesário, conferente, instalador...), que moram em
+// sime_usuarios com perfil='observador', não são pessoas de verdade. Mesmo
+// critério já usado em SIME_problemas.html pro seletor de "delegar", que
+// não tinha sido replicado aqui. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_usuarios.push({ id:'u-token-mesario', nome:'Token mesario (BX86FPJ7)', perfil:'observador', zona_id:'z7', ativo:true, auth_user_id:null });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  const filtroResp = await p.locator('#cm-filtro-responsavel').textContent();
+  check('filtro "Responsável" não lista token de acesso de campo', !/Token mesario/.test(filtroResp), filtroResp);
+  check('filtro "Responsável" lista gente de verdade da equipe', /Maria/.test(filtroResp), filtroResp);
+
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  await cardBruno.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  await p.click('#modal-body button:has-text("↪️ Encaminhar")');
+  await p.waitForTimeout(80);
+
+  const opcoesEncaminhar = await p.locator('#mm-encaminhar-para').textContent();
+  check('select "Encaminhar para" não lista token de acesso de campo', !/Token mesario/.test(opcoesEncaminhar), opcoesEncaminhar);
+  check('select "Encaminhar para" lista gente de verdade da equipe', /Maria/.test(opcoesEncaminhar), opcoesEncaminhar);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -1022,7 +1079,12 @@ async function login(p) {
   // ("Bom dia"/"Boa tarde"/"Boa noite") agora depende da hora em que o link
   // é copiado — o teste roda a qualquer hora do dia, então calcula a
   // saudação esperada com a mesma regra em vez de fixar "Bom dia".
-  const saudacaoEsperada = (() => { const h = new Date().getHours(); return h >= 5 && h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; })();
+  // Bug real achado em 03/09/2026 (CI falhando na madrugada, 02h UTC): esta
+  // reimplementação local não tratava h<5 — caía em "h<18" e virava "Boa
+  // tarde" às 2h da manhã. cmSaudacaoPorHora() (produção) já tratava isso
+  // certo (madrugada = "Boa noite", "resto" no comentário do CLAUDE.md);
+  // corrigido pra espelhar exatamente a mesma regra (h>=12 explícito).
+  const saudacaoEsperada = (() => { const h = new Date().getHours(); if (h >= 5 && h < 12) return 'Bom dia'; if (h >= 12 && h < 18) return 'Boa tarde'; return 'Boa noite'; })();
   check('link copiado já vem com a mensagem de confirmação pré-preenchida, saudação certa pra hora atual', (linkCopiado || '').includes('?text=' + encodeURIComponent(`${saudacaoEsperada}, esse contato é de BRUNO MESARIO ?`)), linkCopiado);
   // Pedido de 21/08/2026: copiar o link do WhatsApp já deve contar como
   // tentativa de contato, sem precisar preencher a Nota separada.
@@ -1040,6 +1102,16 @@ async function login(p) {
   const updMeio = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.meio_contato === 'ligacao'));
   check('trocar o meio dentro do modal grava igual ao card', !!updMeio, JSON.stringify(updMeio));
   check('modal continua aberto e mostra o seletor de resultado da ligação', /Resultado da ligação/.test(await p.locator('#modal-body').textContent()));
+
+  // ZEO/TRE (02/09/2026, quinto meio de contato) — mesmo vocabulário de
+  // status de Carta/Ofício ("Status do envio"), não o de Ligação.
+  const opcoesMeio = await p.locator('#modal-body select >> nth=0 >> option').allTextContents();
+  check('seletor de meio de contato tem a opção ZEO/TRE', opcoesMeio.includes('Convocação oficial (ZEO/TRE)'), opcoesMeio.join(', '));
+  await p.selectOption('#modal-body select >> nth=0', 'zeo');
+  await p.waitForTimeout(150);
+  const updMeioZeo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.payload.meio_contato === 'zeo'));
+  check('trocar o meio pra ZEO grava igual aos demais', !!updMeioZeo, JSON.stringify(updMeioZeo));
+  check('modal mostra "Status do envio" pro ZEO (mesmo vocabulário de Carta/Ofício, não o de ligação)', /Status do envio/.test(await p.locator('#modal-body').textContent()) && !/Resultado da ligação/.test(await p.locator('#modal-body').textContent()));
 
   // Registrar uma tentativa manual — vira parte da timeline de "Tentativas de contato".
   await p.fill('#mm-tent-nota', 'Liguei às 14h, não atendeu');
@@ -1436,6 +1508,61 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2.865 Fim de linha: "confirmado" esconde a seção inteira de Responsável/
+// próximo contato, e "Confirmado" limpa qualquer agendamento pendente
+// (03/09/2026, pedido direto: "ao final de linha não precisa mais contactar
+// e não precisa mais data de próximo contato"). Pra quem ainda está em
+// aberto, registrar uma tentativa estabelece sozinho um prazo padrão de 48h
+// a partir de agora ("os outros vamos estabelecer um prazo de 48h para o
+// proximo contato a partir da ultima informação"), mas o campo continua
+// editável pra mais ou pra menos pelo "📅 Agendar" de sempre. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-contatar-btn');
+  await p.waitForTimeout(300);
+
+  // ANA (a1) já vem confirmada no fixture — a seção não deve nem existir no DOM.
+  await p.locator('.import-card:has-text("ANA PRESIDENTE")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('confirmado: seção "Responsável e próximo contato" não aparece no modal', !/Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+  check('confirmado: nem o botão "Assumir pra mim" nem "📅 Agendar" existem', await p.locator('#modal-body button:has-text("Assumir pra mim")').count() === 0 && await p.locator('#modal-body button:has-text("📅 Agendar")').count() === 0);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(150);
+
+  // BRUNO (a2) está pendente — a seção existe, e registrar uma tentativa
+  // grava sozinho proximo_contato_em = sime_now() + 48h (mock de sime_now()
+  // fixo em 2026-08-20T15:30:00Z → 2026-08-22T15:30:00Z).
+  const cardBruno = p.locator('.import-card:has-text("BRUNO MESARIO")').first();
+  await cardBruno.locator('div[onclick*="cmAbrirModal"]').first().click();
+  await p.waitForTimeout(150);
+  check('pendente: seção "Responsável e próximo contato" aparece no modal', /Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+  await p.locator('#modal-body button:has-text("➕ Registrar tentativa")').click();
+  await p.waitForTimeout(250);
+  const updPrazo = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.proximo_contato_em).pop());
+  check('registrar tentativa estabelece prazo automático de 48h a partir de sime_now()', !!updPrazo && updPrazo.payload.proximo_contato_em === '2026-08-22T15:30:00.000Z', JSON.stringify(updPrazo));
+
+  // O cartório ainda pode mudar pra mais ou pra menos pelo campo de sempre —
+  // não fica travado no prazo automático.
+  await p.fill('#mm-proximo-contato-data', '2026-09-01');
+  await p.locator('#modal-body button:has-text("📅 Agendar")').click();
+  await p.waitForTimeout(200);
+  const updManual = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.proximo_contato_em).pop());
+  check('cartório pode sobrescrever o prazo automático manualmente (pra mais ou pra menos)', !!updManual && updManual.payload.proximo_contato_em === '2026-09-01', JSON.stringify(updManual));
+
+  // Confirmar participação, a partir daqui, limpa o agendamento — não faz
+  // mais sentido cobrar retorno de quem já é fim de linha.
+  await p.locator('#modal-body button:has-text("✅ Confirmado")').click();
+  await p.waitForTimeout(250);
+  const updConfirma = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a2' && e.payload.confirmacao === 'confirmado').pop());
+  check('confirmar participação limpa proximo_contato_em/nota no mesmo update', !!updConfirma && updConfirma.payload.proximo_contato_em === null && updConfirma.payload.proximo_contato_nota === null, JSON.stringify(updConfirma));
+  check('seção some do modal assim que confirma, sem precisar reabrir', !/Responsável e próximo contato/.test(await p.locator('#modal-body').textContent()));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 2.86 "Relato de terceiro pendente": flag gravada pelo Hermes
 // (acao='relatar_terceiro'), surfaced com badge/filtro/botão de resolver —
 // mesmo padrão de precisa_substituir (achado real 21/08/2026: sem isso, o
@@ -1659,6 +1786,50 @@ async function login(p) {
   await p.waitForTimeout(150);
   const todosDeVolta = await p.locator('.content').textContent();
   check('voltando pra "Todas as funções" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosDeVolta) && /ELIS APOIO/.test(todosDeVolta) && /FABIO APOIO/.test(todosDeVolta));
+
+  // Filtro por município (02/09/2026) — terceiro filtro, independente dos
+  // outros dois, resolvido via secao_id -> secoesPorId[...].municipio. Todas
+  // as seções da fixture são de Campo Maior; FABIO (a6) não tem secao_id
+  // nenhum (apoio logístico sem local, ver comentário da fixture acima), então
+  // ele é o caso "some ao filtrar por município, mesmo sem trocar de cidade".
+  const opcoesMunicipio = await p.locator('#cm-filtro-municipio option').allTextContents();
+  check('opções do filtro de município: Todos os municípios + Campo Maior', opcoesMunicipio.includes('Todos os municípios') && opcoesMunicipio.includes('Campo Maior') && opcoesMunicipio.length === 2, opcoesMunicipio.join(', '));
+
+  await p.selectOption('#cm-filtro-municipio', 'Campo Maior');
+  await p.waitForTimeout(150);
+  const soCampoMaior = await p.locator('.content').textContent();
+  check('filtro "Campo Maior" mantém quem tem seção na cidade e esconde FABIO (sem secao_id)', /BRUNO MESARIO/.test(soCampoMaior) && /ANA PRESIDENTE/.test(soCampoMaior) && !/FABIO APOIO/.test(soCampoMaior), soCampoMaior.replace(/\s+/g, ' ').slice(0, 200));
+
+  // Busca por nome continua funcionando junto do filtro de município (o
+  // pedido foi "mantendo a busca por nome ou titulo").
+  await p.fill('#cm-busca', 'bruno');
+  await p.waitForTimeout(450);
+  const municipioMaisBusca = await p.locator('.content').textContent();
+  check('filtro de município + busca por nome se combinam', /BRUNO MESARIO/.test(municipioMaisBusca) && !/ANA PRESIDENTE/.test(municipioMaisBusca), municipioMaisBusca.replace(/\s+/g, ' ').slice(0, 200));
+  await p.fill('#cm-busca', '');
+  await p.waitForTimeout(450);
+
+  await p.selectOption('#cm-filtro-municipio', '');
+  await p.waitForTimeout(150);
+  const todosMunicipiosDeVolta = await p.locator('.content').textContent();
+  check('voltando pra "Todos os municípios" mostra todo mundo de novo', /BRUNO MESARIO/.test(todosMunicipiosDeVolta) && /FABIO APOIO/.test(todosMunicipiosDeVolta));
+
+  // Bucket "🏛️ Convocação oficial (ZEO/TRE)" (02/09/2026) — filtra por
+  // meio_contato, não por confirmacao (mesmo padrão de "sem_whatsapp").
+  // Ninguém na fixture nasce com meio 'zeo'; marca BRUNO na hora, pelo
+  // mesmo <select> que o cartório usaria, e confirma que ele passa a
+  // aparecer no filtro (e some quando volta pra "Todos").
+  await p.selectOption('.import-card:has-text("BRUNO MESARIO") select', 'zeo');
+  await p.waitForTimeout(150);
+  await p.selectOption('#cm-filtro', 'meio_zeo');
+  await p.waitForTimeout(150);
+  const soZeo = await p.locator('.content').textContent();
+  check('filtro "Convocação oficial (ZEO/TRE)" mostra só quem tem esse meio marcado', /BRUNO MESARIO/.test(soZeo) && !/ANA PRESIDENTE/.test(soZeo) && !/FABIO APOIO/.test(soZeo), soZeo.replace(/\s+/g, ' ').slice(0, 200));
+
+  await p.selectOption('#cm-filtro', '');
+  await p.waitForTimeout(150);
+  const todosZeoDeVolta = await p.locator('.content').textContent();
+  check('voltando pra "Todos" mostra todo mundo de novo (BRUNO continua com o meio ZEO)', /BRUNO MESARIO/.test(todosZeoDeVolta) && /ANA PRESIDENTE/.test(todosZeoDeVolta) && /FABIO APOIO/.test(todosZeoDeVolta));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -2084,6 +2255,13 @@ async function login(p) {
   // campos opcionais").
   await p.locator('.import-card:has-text("PATRICIA SUBSTITUTA")').first().locator('div[onclick*="cmAbrirModal"]').first().click();
   await p.waitForTimeout(200);
+  // 04/09/2026: "Dispensar (ELO)" agora recolhe de novo pra CADA pessoa (não
+  // fica "lembrando" que foi expandida pra outra, ver cmAbrirModal) — precisa
+  // expandir de novo aqui, diferente de antes, quando o estado vazava de
+  // OLIVIA (linha 2163 acima) pra PATRICIA sem querer.
+  check('seção "Dispensar (ELO)" também começa recolhida pra PATRICIA (não herdou o estado de OLIVIA)', await p.locator('#mm-dispensar-motivo').count() === 0);
+  await p.locator('.m-section-hdr:has-text("Dispensar (ELO)")').click();
+  await p.waitForTimeout(150);
   await p.locator('#modal-body button:has-text("Dispensar e tirar do cadastro")').click();
   await p.waitForTimeout(250);
   const atorPatriciaDepois = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a51'));

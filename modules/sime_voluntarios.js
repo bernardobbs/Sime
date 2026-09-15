@@ -274,6 +274,10 @@ function vlRenderModal() {
   const municipioAtual = v?.municipio || '';
   const locais = municipioAtual ? (vlDados.locaisPorMunicipio[municipioAtual] || []) : [];
 
+  // Defesa: #modal-body é compartilhado com o modal de "Contatar mesários",
+  // que se marca com `cm-modal-wide` (tela cheia/colunas no desktop) — esse
+  // modal aqui nunca deve herdar isso.
+  document.getElementById('modal-body')?.classList.remove('cm-modal-wide');
   document.getElementById('modal-body').innerHTML = `
     <div class="m-hdr">
       <div class="m-title">${isNovo ? '➕ Novo voluntário' : '✏️ Editar voluntário'}</div>
