@@ -4648,6 +4648,71 @@ ignorada, sem quebrar.
 
 ---
 
+## MAPA DE VEÍCULOS TAMBÉM NA TV DISTRIBUIÇÃO (`SIME_tv_distribuicao.html`, 15/09/2026)
+
+Pedido direto: "PODEMOS incluir um mapa onde cada veiculo de cada rota possa
+estar?" — a mesma pergunta que gerou "POSIÇÃO ESTIMADA DOS VEÍCULOS NO MAPA"
+em `SIME_tv_dia.html` (08/09/2026, ver seção própria acima), agora pra tela
+de D-1 (embarque/saída de urna). Seguido de correção explícita do dono do
+projeto no meio do turno: **"pense antes de implementar"** — a fonte de
+dado (`sime_rotas_estado.motorista_lat/lng/pos_ts`, `getRotasPosicaoMap()`)
+já cobre D-1 desde que foi criada (o comentário da função em `sime_dados.js`
+já dizia "Escopo: D-1 (distribuição) também"), então não foi preciso mexer
+em schema nem em `SIME_motorista.html` — só ligar a exibição nesta 2ª tela.
+
+**Decisão de desenho, tomada ANTES de codar (é o "pensar" que o pedido
+exigiu): `getRotasPosicaoMap()` não filtra por `tipos` — devolve posição de
+QUALQUER rota da zona com informe, seja `distribuicao`, `recolhimento_urna`,
+`recolhimento_midia` ou `instalacao`.** Reusar a função sem filtro faria
+esta TV (tematicamente só sobre embarque de urna) misturar veículo de rota
+de mídia ou de vistoria no mesmo mapa — confuso pro cartório, e o tipo de
+mistura de conceito que o projeto sempre evita. `SIME_tv_distribuicao.html`
+passou a filtrar `getRotas()` (já buscada nesta tela pra montar
+`window.ROTAS_SUPABASE`) por `tipos.includes('distribuicao')` antes de
+montar `window.__metaPorRotaId` — só rota que bate entra no mapa; uma
+posição de rota de outro tipo é simplesmente ignorada, nunca escondida por
+engano (o filtro é por METADADO da rota, não por heurística de nome).
+
+**Reaproveita o canal Realtime já aberto, não abre um segundo** — esta tela
+já assina `sime_rotas_estado` inteira (`subscribeRotasEstado`) pro status de
+embarque (`agendarRefresh()`, debounce de 300ms); em vez de uma segunda
+assinatura na MESMA tabela (que criaria dois canais com nome idêntico —
+`sime_${table}_changes` em `sime_realtime.js` não parametriza por uso), o
+callback único agora faz as duas coisas: sempre chama `agendarRefresh()`
+(como antes) e, quando o evento traz `rota_id` de uma rota de distribuição
+conhecida com `motorista_lat`/`motorista_lng` preenchidos, também atualiza
+`window.__posicaoRotas` e redesenha o mapa — mesmo em silêncio se o painel
+estiver fechado (o mapa só é CRIADO na primeira abertura, `garantirMapaLeaflet()`,
+mas o cache de posição já fica pronto antes disso).
+
+**Resto é cópia fiel do padrão de `SIME_tv_dia.html`** — mesmo CSS
+(`.map-overlay`/`.map-panel`/`.rt-pin`), mesmo botão 🗺️ no topbar (`.gear-btn`,
+novo nesta tela — antes só existia a barra de paginação como controle
+interativo, mas ela já tem precedente de "só quem estiver na sala mexe",
+mesmo espírito), mesmo Leaflet vendorizado, mesmas funções de desenho
+(`garantirMapaLeaflet`/`renderMarcadoresMapa`/`corDaRota`/`iconPinRota`/
+`fmtHoraPosicao`/`toggleMapaRotas`/`closeMapaRotasIfOut`) — duplicadas aqui
+de propósito, não importadas, mesmo critério já documentado alhures pra
+telas de TV que não compartilham `<script>` clássico. Centro padrão do mapa
+vem de `getZonaInfo()` (sede da zona), só até o 1º veículo informar posição.
+
+Escopo desta v1: hoje não há nenhuma rota `distribuicao` real cadastrada em
+produção ainda pra 2026 (ver módulo 🗺️ Rotas — as 12 rotas UR1-UR12 já
+existem, mas de recolhimento/distribuição de urna real só entram em uso no
+D-1 de verdade), então o painel deve abrir com "Nenhum veículo... informou
+posição ainda" até o dia da distribuição — comportamento honesto esperado,
+não bug.
+
+Coberto por `tests/test_tv_distribuicao_mapa.mjs` (17 checks): botão
+visível; rota de distribuição entra no mapa e rota de outro tipo (mesmo com
+posição informada) NÃO entra; abrir o painel desenha marcador/legenda só
+da rota filtrada; evento Realtime atualiza a posição E o status de embarque
+no MESMO callback (canal único, não duplicado); sem nenhuma posição
+informada o painel avisa em vez de inventar; sem `tv_token`, o mapa nunca
+tenta carregar nada.
+
+---
+
 ## TOKEN DE TV PELA UI (`SIME_tokens.html`, 08/09/2026)
 
 Pedido direto, depois de investigar "onde vai ser gerado e conferido o TV
