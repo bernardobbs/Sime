@@ -2529,6 +2529,87 @@ cada um com propósito diferente:
   com o roster ativo (turmas 002, 003, 004 e 013) — ficam marcados na tela
   pra conferência, sem casamento por nome.
 
+  **Reimportação a partir de um PDF real do ELO (15/09/2026, pedido direto:
+  "verifique quem esta em cada turma", exportação de 30 páginas — "Lista de
+  mesários" — datada de 15/09/2026 07:28–07:30).** Diferente da carga
+  original (texto colado direto pelo cartório), desta vez a entrada foi um
+  PDF — extraído com `pdftotext -layout` (poppler-utils) e parseado em
+  Python replicando exatamente o mesmo formato que `tuParse()` já lê (rótulo
+  numa linha, valor na seguinte; blocos "1 - Identificação"/"2 -
+  Instrutores"/"3 - Mesários alunos"). Verificado ANTES de confiar no
+  parser: a contagem extraída de cada uma das 14 turmas presentes no PDF
+  (001-014; 015-016, as turmas de Sigefredo Baixinha, não vieram nesta
+  exportação) bateu exatamente com a linha "Total: N" que o próprio PDF
+  declara em cada turma — 618 alunos ao todo.
+
+  Gravado via SQL direto em produção (não pelo `tuImportar()` do navegador,
+  pra processar as 618 linhas de uma vez), replicando o MESMO contrato de
+  upsert: `sime_turma_pessoas` por `(turma_id, papel, inscricao)`, nunca
+  tocando `presenca` (preserva o que já estava marcado). Resolver `ator_id`
+  por título de eleitor caiu na mesma armadilha já documentada acima ("ON
+  CONFLICT DO UPDATE command cannot affect row a second time" — gente com
+  designação dupla, mesário + apoio) — evitada com
+  `ORDER BY (funcao='mesario') DESC LIMIT 1` dentro de um `LATERAL JOIN`,
+  escolhendo só UM candidato por inscrição, mesmo critério "preferir
+  mesário" já usado nas demais cargas por SQL. 10 pessoas (turmas 002×2,
+  004×1, 006×1, 009×2, 011×2, 013×2) não bateram com nenhum `sime_atores`
+  ativo — ficam marcadas "🔍 não encontrado no roster ativo" na tela, mesmo
+  critério de sempre. Duas pessoas continuam sem vínculo de uma
+  importação ANTERIOR (FRANCISCO DAS CHAGAS MICHEL COSTA DE OLIVEIRA,
+  turma 002; BIANCA OLIVEIRA SILVA, turma 003) — não aparecem neste PDF,
+  então não foram tocadas por esta carga, seguem como estavam.
+
+- **🖥️ Treinamento Online** (`sql/SIME_atores_treinamento_online.sql`,
+  15/09/2026, pedido direto: "quero poder indicar quem fez e concluiu o
+  treinamento online") — deliberadamente FORA da estrutura de turmas acima:
+  as 16 turmas do ELO importadas até aqui são todas `modalidade='Presencial'`
+  (conferido em produção antes de desenhar isto — 0 turmas online
+  cadastradas), e treinamento online é um curso autoguiado, sem
+  data/local/instrutor — não faz sentido modelar como mais uma turma. Virou
+  um STATUS por PESSOA em `sime_atores`
+  (`treinamento_online_status`, `'nao_iniciado'|'em_andamento'|'concluido'`,
+  default `'nao_iniciado'`) + `treinamento_online_concluido_em`. Um campo só
+  (não dois booleanos "fez"/"concluiu" independentes) — nunca existe um
+  estado sem sentido tipo "concluiu mas nunca começou", mesmo raciocínio já
+  usado noutros lugares do projeto (ex.: `sime_ocorrencias.status`).
+
+  Painel colapsável "🖥️ Treinamento Online" dentro da própria aba 🎓
+  Treinamento (`tuRenderOnline()`, `sime_turmas.js`) — mesmo padrão visual
+  de "📋 Colar turma do ELO" (botão fechado já mostra a contagem
+  concluído/fazendo/não iniciado), mas sobre `sime_atores` inteiro (mesário
+  + apoio logístico da zona), não sobre `sime_turma_pessoas`. Reaproveita
+  `CM_FUNCAO_FILTRO`/`cmRotuloFuncao`/`cmAbrirModal` de
+  `sime_contatar_mesarios.js` (carregado antes desta) — mesmo padrão já
+  usado por "🚦 Pendências de Convocação". Filtro por status, por função e
+  busca por nome/título de eleitor; três botões por pessoa (⏳ Não
+  iniciado / 🖥️ Fazendo / ✅ Concluído), toque único, mesmo padrão de
+  Confirmado/Convocado/Substituir de "Contatar mesários". Concluir grava a
+  data (`sime_now()`); sair de "Concluído" pra qualquer outro estado limpa
+  a data junto — nunca deixa um timestamp mentindo sobre um status que já
+  mudou, mesmo critério de `data_confirmacao` zerada ao voltar pra
+  "Convocado".
+
+  Grava `mesario_treinamento_online_status` em `sime_logs` com
+  `payload.ator_id` (não uma ação nova de UI — o mesmo `CM_LOG_LABEL` de
+  "Contatar mesários" ganhou uma entrada pra esse `acao`), então a mudança
+  aparece sozinha na timeline "📜 Atualizações" do modal daquela pessoa,
+  sem precisar de nenhuma UI nova lá.
+
+  **Bug real, achado escrevendo o teste de regressão: busca por nome
+  anulava o filtro quando a query não tinha nenhum dígito** — mesmo bug já
+  documentado em "🙋 Voluntários" (28/08/2026): `inscricao.includes(q.replace(/\D/g,''))`
+  com uma busca tipo "joana" (sem dígito) vira `inscricao.includes('')`,
+  sempre `true` (string vazia é substring de qualquer coisa) — o filtro por
+  nome nunca reduzia nada. Corrigido do mesmo jeito de lá: só compara
+  dígitos de inscrição quando a busca de fato extraiu algum.
+
+  Coberto por `tests/test_convocacao_treinamento_online.mjs`: contagem no
+  botão fechado, badges dos 3 status, data de conclusão exibida, marcar
+  "Fazendo"/"Concluído" grava no banco e loga com `ator_id`/autor/status
+  corretos, voltar pra "Não iniciado" limpa a data, filtro por status/
+  função, busca por nome e por título (incluindo o bug acima), e nome
+  clicável abre o modal compartilhado de "Contatar mesários".
+
 - **⚖️ Oficial de Justiça** (`sime_oficial_justica.js`, 31/08/2026, pedido
   direto: "ELABORE MAIS UMA ABA PARA O OFICIAL DE JUSTIÇA CONTROLE A
   CONVOCAÇÃO DOS MESÁRIOS") — `sime_atores.meio_contato='oficial_justica'`

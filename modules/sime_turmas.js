@@ -19,11 +19,28 @@ const TU_PRESENCA = {
   justificado: { label: '📄 Falta justificada', cls: 'ir-warn' },
 };
 
-let tuDados = null;      // { turmas:[...], pessoasPorTurma:{}, atoresPorTitulo:Map, semTurma:[...], zonaId }
+let tuDados = null;      // { turmas:[...], pessoasPorTurma:{}, atoresPorTitulo:Map, semTurma:[...], zonaId, atoresList:[...] }
 let tuBusca = '';
 let tuTurmaAberta = null; // id da turma no drilldown; null = lista
 let tuColarAberto = false;
 let tuPreview = null;     // resultado de tuParse() aguardando confirmação
+
+// ── Treinamento online (15/09/2026, pedido direto: "quero poder indicar
+// quem fez e concluiu o treinamento online") ────────────────────────────────
+// Deliberadamente SEPARADO das turmas presenciais acima — não é uma turma
+// (sem data/local/instrutor), é um status por PESSOA em sime_atores, pra
+// registrar um curso autoguiado que cada mesário/apoio faz por conta
+// própria. Reaproveita CM_FUNCAO_FILTRO/cmRotuloFuncao/cmAbrirModal de
+// sime_contatar_mesarios.js (carregado antes desta) — nenhuma duplicação.
+const TU_ONLINE_STATUS = {
+  nao_iniciado: { label: '⏳ Não iniciado', cls: '' },
+  em_andamento: { label: '🖥️ Fazendo', cls: 'ir-warn' },
+  concluido:    { label: '✅ Concluído', cls: 'ir-ok' },
+};
+let tuOnlineAberto = false;
+let tuOnlineBusca = '';
+let tuOnlineFiltroStatus = '';
+let tuOnlineFiltroFuncao = '';
 
 function tuEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -193,7 +210,7 @@ async function tuCarregar() {
       ? sb.from('sime_turma_pessoas').select('*').in('turma_id', ids).order('nome', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     sb.from('sime_atores')
-      .select('id, nome_completo, inscricao_eleitoral, funcao, funcao_mesa, telefone_whatsapp, secao_id, confirmacao')
+      .select('id, nome_completo, inscricao_eleitoral, funcao, funcao_mesa, telefone_whatsapp, secao_id, confirmacao, treinamento_online_status, treinamento_online_concluido_em')
       .eq('zona_id', zonaId).eq('ativo', true),
   ]);
   if (e2 || e3) { tuDados = { erro: (e2 || e3).message }; render(); return; }
@@ -215,7 +232,7 @@ async function tuCarregar() {
     .filter(a => a.inscricao_eleitoral && !inscricoesEmTurma.has(a.inscricao_eleitoral))
     .sort((a, b) => (a.nome_completo || '').localeCompare(b.nome_completo || ''));
 
-  tuDados = { turmas: turmas || [], pessoasPorTurma, atoresPorTitulo, semTurma, zonaId, totalAtores: (atores || []).length };
+  tuDados = { turmas: turmas || [], pessoasPorTurma, atoresPorTitulo, semTurma, zonaId, totalAtores: (atores || []).length, atoresList: atores || [] };
   render();
 }
 
@@ -283,6 +300,36 @@ async function tuMarcarPresenca(pessoaId, valor) {
   if (error) { showToast('⚠ ' + error.message); return; }
   p.presenca = valor;
   await log('turma_presenca', '', { turma_id: tuTurmaAberta, pessoa: p.nome, inscricao: p.inscricao, presenca: valor });
+  render();
+}
+
+// Status é um campo só (não dois booleanos "fez"/"concluiu" independentes)
+// — nunca existe um estado sem sentido tipo "concluiu mas nunca começou",
+// mesmo raciocínio já usado noutros lugares do projeto (ex.: status de
+// ocorrência). Concluir grava a data; sair de concluído (ex.: corrigir um
+// clique errado) limpa a data junto — nunca deixa um timestamp mentindo
+// sobre um status que já mudou, mesmo critério de `data_confirmacao`
+// zerada ao voltar pra "Convocado" em "Contatar mesários".
+async function tuMarcarOnline(id, status) {
+  const sb = window.supabaseAtores;
+  const p = (tuDados.atoresList || []).find(x => x.id === id);
+  if (!p) return;
+  const { data: ts } = await sb.rpc('sime_now');
+  const patch = { treinamento_online_status: status, treinamento_online_concluido_em: status === 'concluido' ? ts : null };
+  try {
+    const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+    if (error) { showToast('⚠ ' + error.message); return; }
+  } catch (e) {
+    showToast('⚠ Falha ao salvar — verifique a conexão e tente de novo');
+    return;
+  }
+  Object.assign(p, patch);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  // Mesma ação/payload que "Contatar mesários" já reconhece (CM_LOG_LABEL,
+  // payload.ator_id) — grava com ator_id pra aparecer sozinho na timeline
+  // "📜 Atualizações" do modal daquela pessoa, sem precisar de UI nova lá.
+  await log('mesario_treinamento_online_status', '', { ator_id: id, status, autor });
+  showToast('✓ Treinamento online atualizado');
   render();
 }
 
@@ -354,6 +401,77 @@ function tuResumo(turmaId) {
   return r;
 }
 
+// Painel colapsável "🖥️ Treinamento Online" — mesmo padrão visual de
+// "📋 Colar turma do ELO" (toggle + card), mas sobre `tuDados.atoresList`
+// (TODO o roster ativo — mesário + apoio), não sobre turmas/presença.
+// Reaproveita CM_FUNCAO_FILTRO/cmRotuloFuncao/cmAbrirModal de
+// sime_contatar_mesarios.js (carregado antes desta).
+function tuRenderOnline() {
+  const lista = tuDados.atoresList || [];
+  const contagem = { nao_iniciado: 0, em_andamento: 0, concluido: 0 };
+  for (const a of lista) contagem[a.treinamento_online_status || 'nao_iniciado']++;
+
+  if (!tuOnlineAberto) {
+    return `
+    <div class="import-card">
+      <div class="ic-title">🖥️ Treinamento Online</div>
+      <div class="ic-sub">Curso autoguiado, sem turma/data marcada — indique aqui quem já está fazendo e quem já concluiu.</div>
+      <button class="btn btn-dark" onclick="tuOnlineAberto=true;render()">▸ 🖥️ Treinamento Online (✅ ${contagem.concluido} concluído(s) · 🖥️ ${contagem.em_andamento} fazendo · ⏳ ${contagem.nao_iniciado} não iniciado(s))</button>
+    </div>`;
+  }
+
+  // Mesmo bug já documentado em "🙋 Voluntários" (28/08/2026): comparar
+  // dígito quando a busca não tem NENHUM dígito extraído dá `''.includes('')`
+  // — sempre true, anulando o filtro por nome. `qDigitos` só entra na conta
+  // quando de fato tem algo pra comparar.
+  const q = tuOnlineBusca.trim().toLowerCase();
+  const qDigitos = q.replace(/\D/g, '');
+  const pessoas = lista
+    .filter(a => !tuOnlineFiltroStatus || (a.treinamento_online_status || 'nao_iniciado') === tuOnlineFiltroStatus)
+    .filter(a => !tuOnlineFiltroFuncao || a.funcao === tuOnlineFiltroFuncao)
+    .filter(a => !q || (a.nome_completo || '').toLowerCase().includes(q) || (qDigitos && (a.inscricao_eleitoral || '').includes(qDigitos)))
+    .sort((a, b) => (a.nome_completo || '').localeCompare(b.nome_completo || ''));
+
+  return `
+    <div class="import-card">
+      <button class="btn btn-dark" onclick="tuOnlineAberto=false;render()">▾ 🖥️ Treinamento Online</button>
+      <div class="ic-sub" style="margin-top:8px">Curso autoguiado, sem turma/data marcada — indique aqui quem já está fazendo e quem já concluiu. Independente das turmas presenciais acima.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <input type="text" id="tu-online-busca" placeholder="Buscar por nome ou título de eleitor…" value="${tuEsc(tuOnlineBusca)}" oninput="tuOnlineBusca=this.value;render()" style="flex:1;min-width:180px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <select id="tu-online-filtro-status" onchange="tuOnlineFiltroStatus=this.value;render()" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          <option value="" ${tuOnlineFiltroStatus === '' ? 'selected' : ''}>Todos os status</option>
+          ${Object.entries(TU_ONLINE_STATUS).map(([v, s]) => `<option value="${v}" ${tuOnlineFiltroStatus === v ? 'selected' : ''}>${s.label} (${contagem[v]})</option>`).join('')}
+        </select>
+        <select id="tu-online-filtro-funcao" onchange="tuOnlineFiltroFuncao=this.value;render()" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${tuOnlineFiltroFuncao === f.valor ? 'selected' : ''}>${tuEsc(f.label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ic-sub" style="margin:8px 0 0">${pessoas.length} de ${lista.length} pessoa(s)</div>
+    </div>
+
+    <div class="cm-lista-pessoas" style="display:flex;flex-direction:column;gap:8px">
+      ${pessoas.length ? pessoas.map(a => {
+        const status = a.treinamento_online_status || 'nao_iniciado';
+        return `
+      <div class="import-card" style="padding:10px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;font-size:.83rem;cursor:pointer" onclick="cmAbrirModal('${a.id}')" title="Clique pra ver tentativas de contato e histórico">${tuEsc(a.nome_completo)}</div>
+            <div class="ic-sub" style="margin:2px 0 0">${tuEsc(cmRotuloFuncao(a))}${a.inscricao_eleitoral ? ` · Título ${tuEsc(a.inscricao_eleitoral)}` : ''}</div>
+            ${status === 'concluido' && a.treinamento_online_concluido_em ? `<div class="ic-sub" style="margin:2px 0 0">Concluído em ${tuEsc(tuFmtData(String(a.treinamento_online_concluido_em).slice(0, 10)))}</div>` : ''}
+          </div>
+          <span class="import-result ${TU_ONLINE_STATUS[status].cls}" style="margin-top:0;white-space:nowrap">${TU_ONLINE_STATUS[status].label}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn ${status === 'nao_iniciado' ? 'btn-dark' : 'btn-out'}" style="font-size:.7rem;padding:5px 10px" onclick="tuMarcarOnline('${a.id}','nao_iniciado')">⏳ Não iniciado</button>
+          <button class="btn ${status === 'em_andamento' ? 'btn-dark' : 'btn-out'}" style="font-size:.7rem;padding:5px 10px" onclick="tuMarcarOnline('${a.id}','em_andamento')">🖥️ Fazendo</button>
+          <button class="btn ${status === 'concluido' ? 'btn-dark' : 'btn-out'}" style="font-size:.7rem;padding:5px 10px" onclick="tuMarcarOnline('${a.id}','concluido')">✅ Concluído</button>
+        </div>
+      </div>`; }).join('') : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhuma pessoa bate com o filtro/busca atual.</div></div>'}
+    </div>
+  `;
+}
+
 function renderTurmas() {
   const content = document.getElementById('content');
   if (!tuDados) { content.innerHTML = '<div class="import-card">Carregando…</div>'; tuCarregar(); return; }
@@ -390,6 +508,8 @@ function renderTurmas() {
         <button class="btn btn-dark" style="margin-top:8px" onclick="tuImportar()">💾 Importar ${tuPreview.turmas.length} turma(s)</button>
       </div>` : ''}
     </div>
+
+    ${tuRenderOnline()}
 
     <div class="import-card">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">

@@ -241,6 +241,10 @@ const CM_LOG_LABEL = {
   mesario_proximo_contato_agendado: (p) => p.proximo_contato_em
     ? `📅 Próximo contato agendado para ${cmDiaChave(p.proximo_contato_em)}${p.nota ? ` — ${p.nota}` : ''}`
     : '📅 Agendamento de próximo contato removido',
+  // Treinamento online (15/09/2026, aba 🎓 Treinamento →
+  // sime_turmas.js/tuMarcarOnline) — gravado com payload.ator_id, então
+  // aparece sozinho aqui sem nenhuma UI nova nesta tela.
+  mesario_treinamento_online_status: (p) => `🖥️ Treinamento online → ${{ nao_iniciado: '⏳ Não iniciado', em_andamento: '🖥️ Fazendo', concluido: '✅ Concluído' }[p.status] || p.status}`,
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
