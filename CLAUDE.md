@@ -2610,6 +2610,87 @@ cada um com propósito diferente:
   função, busca por nome e por título (incluindo o bug acima), e nome
   clicável abre o modal compartilhado de "Contatar mesários".
 
+  **"📊 Visão geral — presencial + online" (15/09/2026, pedido direto:
+  "quero uma visão só, quem faltou, quem foi presencial, quem fez
+  online").** Até aqui os dois canais viviam em painéis separados dentro
+  da mesma aba (turmas presenciais acima, treinamento online logo abaixo)
+  — pra saber se ALGUÉM já cobriu o treinamento por QUALQUER via, o
+  cartório precisava cruzar os dois manualmente. Painel novo, colapsável,
+  entre "📋 Colar turma do ELO" e "🖥️ Treinamento Online"
+  (`tuRenderGeral()`, `sime_turmas.js`) — **puramente leitura**, nenhuma
+  gravação nova: cruza `tuDados.pessoasPorTurma` (presença, já existente)
+  com `sime_atores.treinamento_online_status` (já existente) por título de
+  eleitor, sobre a mesma lista de mesário+apoio ativo que os dois painéis
+  de baixo já usam. Mudar um status continua sendo só pelas ações de
+  sempre (marcar presença na turma, ou os 3 botões de Treinamento Online)
+  — este painel nunca escreve.
+
+  **Nasce ABERTO por padrão** (`tuGeralAberto = true`, diferente dos outros
+  dois painéis colapsáveis da aba, que nascem fechados) — é a visão que o
+  pedido pediu ver de cara, não algo pra procurar clicando.
+
+  **`tuPresencialPorInscricao()`** — mapa por título de eleitor cruzando
+  TODAS as turmas já importadas (não só a que estiver aberta no
+  drilldown); se por algum motivo a mesma pessoa aparecer como aluno em
+  mais de uma turma, prioriza o sinal mais conclusivo
+  (`TU_PRESENCA_PRIORIDADE`: presente > justificado > ausente > pendente)
+  — mesmo espírito de "nunca adivinha, mas decide algo razoável" já usado
+  noutros lugares do projeto quando há ambiguidade sem dado suficiente pra
+  resolver com certeza.
+
+  **`tuSituacaoGeral(presencial, online)`** — resume os dois sinais numa
+  única pill, com uma regra central: **qualquer um dos dois canais que
+  confirma já conta como treinado**. `presencial.presenca==='presente'`
+  OU `online==='concluido'` → "✅ Treinado(a)" — mesmo que a pessoa tenha
+  FALTADO na turma presencial, se ela concluiu o curso online depois isso
+  conta (o inverso também: presencial presente cobre mesmo sem nunca ter
+  aberto o curso online). `em_andamento`/`pendente` (turma agendada mas
+  ainda sem resultado, ou curso em curso) → "🖥️ Em andamento". Só cai em
+  "❌ Sem nenhum treinamento registrado" quando NENHUM dos dois sinais
+  aponta nem "em progresso" nem "concluído" — é o "quem faltou de
+  verdade, sem cobertura nenhuma" que o pedido citava.
+
+  **Filtro "👁️ Situação"** — 4 opções, mapeando direto pro pedido original:
+  ✅ Foi presencial (`presencial.presenca==='presente'`) / ❌ Faltou na
+  presencial (`presencial.presenca==='ausente'`, mesmo que já tenha
+  concluído o online — o filtro pergunta especificamente sobre o canal
+  presencial, não sobre a situação geral) / 🖥️ Fez o online
+  (`online==='concluido'`) / ⚠️ Sem nenhum treinamento (nem presencial
+  presente nem online concluído — o catch-all de quem não tem cobertura
+  nenhuma). Combina com filtro por função (`CM_FUNCAO_FILTRO`, reaproveitado
+  de "Contatar mesários") e busca por nome/título de eleitor (mesmo
+  cuidado de sempre contra o bug de string vazia — só compara dígito de
+  inscrição quando a busca de fato extraiu algum).
+
+  **Cada card mostra os dois canais lado a lado** — "🎓 Presencial" (badge
+  `TU_PRESENCA` + turma/data, ou "— Não é aluno de nenhuma turma") e
+  "🖥️ Online" (badge `TU_ONLINE_STATUS`) — sem escolher um só pra mostrar,
+  já que o ponto do painel é justamente não esconder nenhum dos dois.
+  Nome clicável abre o mesmo modal de "Contatar mesários"
+  (`cmAbrirModal`), mesmo padrão dos outros dois painéis da aba.
+
+  **"⬇️ Exportar CSV"** (`tuGeralExportarCSV()`) — mesmo padrão já usado em
+  "🚦 Pendências de Convocação" (`pcExportarCSV`): nome, função, título,
+  presencial (com turma/data), online, e a situação geral calculada —
+  exporta exatamente o que o filtro/busca atual está mostrando.
+
+  **Lista usa `.tu-geral-pessoas`, não `.cm-lista-pessoas`** — decisão
+  deliberada pra não colidir com o painel "🖥️ Treinamento Online" logo
+  abaixo: como este painel nasce ABERTO (diferente dos outros dois, que
+  nascem fechados), os dois podem estar visíveis ao mesmo tempo na tela —
+  reaproveitar a mesma classe teria feito os testes Playwright que fazem
+  `p.locator('.cm-lista-pessoas').textContent()` (assumindo match único)
+  quebrarem por ambiguidade assim que o online também fosse aberto.
+
+  Coberto por `tests/test_convocacao_treinamento_geral.mjs` (24 checks):
+  os dois canais aparecem juntos em cada card; situação "Treinado(a)"
+  mesmo com falta presencial quando o online cobre (e vice-versa);
+  "Em andamento" pra quem tem turma pendente ou curso em curso; "Sem
+  nenhum treinamento" só pra quem não tem nenhum sinal conclusivo nos dois
+  canais; os 4 filtros de situação; filtro por função; busca por nome e
+  título; nome abre o modal compartilhado; fechar/reabrir preserva a
+  contagem no botão fechado; exportar CSV.
+
 - **⚖️ Oficial de Justiça** (`sime_oficial_justica.js`, 31/08/2026, pedido
   direto: "ELABORE MAIS UMA ABA PARA O OFICIAL DE JUSTIÇA CONTROLE A
   CONVOCAÇÃO DOS MESÁRIOS") — `sime_atores.meio_contato='oficial_justica'`

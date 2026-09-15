@@ -42,6 +42,17 @@ let tuOnlineBusca = '';
 let tuOnlineFiltroStatus = '';
 let tuOnlineFiltroFuncao = '';
 
+// ── Visão Geral — presencial + online num lugar só (15/09/2026, pedido
+// direto: "quero uma visão só, quem faltou, quem foi presencial, quem fez
+// online") ───────────────────────────────────────────────────────────────
+// Cruza os dois sinais que até aqui só existiam em painéis separados
+// (turma presencial acima, treinamento online logo abaixo) — sem duplicar
+// nenhuma gravação, é só leitura sobre o mesmo `tuDados` já carregado.
+let tuGeralAberto = true; // nasce aberto — é a visão que o pedido pediu, não algo pra procurar
+let tuGeralBusca = '';
+let tuGeralFiltroSituacao = ''; // '' | 'presente' | 'faltou' | 'online' | 'sem_nenhum'
+let tuGeralFiltroFuncao = '';
+
 function tuEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -401,6 +412,163 @@ function tuResumo(turmaId) {
   return r;
 }
 
+// Um mapa por título de eleitor, cruzando TODAS as turmas (não só a que
+// está aberta no drilldown) — se a mesma pessoa por algum motivo aparecer
+// como aluno em mais de uma turma (não deveria, mas recolar/importar de
+// fontes diferentes já mostrou casos estranhos noutros lugares deste
+// arquivo), prioriza o sinal mais conclusivo: presente > justificado >
+// ausente > pendente. Sem prioridade nenhuma resolvendo, fica o último
+// encontrado (mesmo critério "não trava, só decide algo razoável" de
+// sempre).
+const TU_PRESENCA_PRIORIDADE = { presente: 3, justificado: 2, ausente: 1, pendente: 0 };
+function tuPresencialPorInscricao() {
+  const mapa = new Map();
+  for (const t of tuDados.turmas || []) {
+    for (const p of tuDados.pessoasPorTurma[t.id] || []) {
+      if (p.papel !== 'aluno') continue;
+      const atual = mapa.get(p.inscricao);
+      const prioAtual = atual ? (TU_PRESENCA_PRIORIDADE[atual.presenca] ?? -1) : -1;
+      const prioNova = TU_PRESENCA_PRIORIDADE[p.presenca] ?? -1;
+      if (!atual || prioNova >= prioAtual) {
+        mapa.set(p.inscricao, { presenca: p.presenca, turmaNumero: t.numero, turmaNome: t.nome, dataTreinamento: t.data_treinamento });
+      }
+    }
+  }
+  return mapa;
+}
+
+// Uma pessoa é "treinada" se qualquer um dos dois canais confirma —
+// presencial só conta como confirmado em `presente` (pendente/ausente/
+// justificada não é "foi", ver TU_PRESENCA); online só conta em
+// `concluido` (`em_andamento` ainda não terminou o curso).
+function tuSituacaoGeral(presencial, onlineStatus) {
+  if (presencial?.presenca === 'presente' || onlineStatus === 'concluido') return { label: '✅ Treinado(a)', cls: 'ir-ok' };
+  if (onlineStatus === 'em_andamento' || presencial?.presenca === 'pendente') return { label: '🖥️ Em andamento', cls: 'ir-warn' };
+  if (presencial?.presenca === 'ausente') return { label: '❌ Faltou na presencial', cls: 'ir-err' };
+  return { label: '❌ Sem nenhum treinamento registrado', cls: 'ir-err' };
+}
+
+function tuGeralExportarCSV() {
+  const lista = tuDados.atoresList || [];
+  if (!lista.length) { showToast('⚠ Nada para exportar'); return; }
+  const presencialPorInscricao = tuPresencialPorInscricao();
+  const linhas = lista.map(a => {
+    const presencial = a.inscricao_eleitoral ? presencialPorInscricao.get(a.inscricao_eleitoral) : null;
+    const online = a.treinamento_online_status || 'nao_iniciado';
+    return { a, presencial, online, situ: tuSituacaoGeral(presencial, online) };
+  });
+  const headers = ['Nome', 'Função', 'Título de Eleitor', 'Presencial', 'Turma', 'Data da Turma', 'Treinamento Online', 'Situação Geral'];
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const linha = ({ a, presencial, online, situ }) => [
+    a.nome_completo || '', cmRotuloFuncao(a), a.inscricao_eleitoral || '',
+    presencial ? (TU_PRESENCA[presencial.presenca]?.label || presencial.presenca) : 'Não é aluno de nenhuma turma',
+    presencial ? `Turma ${presencial.turmaNumero}${presencial.turmaNome ? ` — ${presencial.turmaNome}` : ''}` : '',
+    presencial ? tuFmtData(presencial.dataTreinamento) : '',
+    TU_ONLINE_STATUS[online]?.label || online,
+    situ.label,
+  ];
+  const csv = [headers.map(esc).join(','), ...linhas.map(l => linha(l).map(esc).join(','))].join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(blob);
+  el.download = `sime_treinamento_geral_${new Date().toISOString().slice(0, 10)}.csv`;
+  el.click();
+  showToast('✓ CSV exportado');
+}
+
+// Painel colapsável "📊 Visão geral — presencial + online" — a visão única
+// pedida direto: cruza os dois canais de treinamento (turma presencial
+// acima + treinamento online logo abaixo) numa lista só, sem duplicar
+// nenhuma gravação — é puramente leitura sobre `tuDados` já carregado.
+function tuRenderGeral() {
+  const lista = tuDados.atoresList || [];
+  const presencialPorInscricao = tuPresencialPorInscricao();
+  const enriquecidas = lista.map(a => {
+    const presencial = a.inscricao_eleitoral ? presencialPorInscricao.get(a.inscricao_eleitoral) : null;
+    const online = a.treinamento_online_status || 'nao_iniciado';
+    return { a, presencial, online, situ: tuSituacaoGeral(presencial, online) };
+  });
+
+  const contagem = { presente: 0, faltou: 0, online: 0, semNenhum: 0 };
+  for (const e of enriquecidas) {
+    if (e.presencial?.presenca === 'presente') contagem.presente++;
+    if (e.presencial?.presenca === 'ausente') contagem.faltou++;
+    if (e.online === 'concluido') contagem.online++;
+    if (e.presencial?.presenca !== 'presente' && e.online !== 'concluido') contagem.semNenhum++;
+  }
+
+  if (!tuGeralAberto) {
+    return `
+    <div class="import-card">
+      <div class="ic-title">📊 Visão geral — presencial + online</div>
+      <div class="ic-sub">Quem faltou, quem foi presencial, quem fez o treinamento online — tudo num lugar só.</div>
+      <button class="btn btn-dark" onclick="tuGeralAberto=true;render()">▸ 📊 Visão geral (✅ ${contagem.presente} presencial · 🖥️ ${contagem.online} online · ❌ ${contagem.semNenhum} sem nenhum treinamento)</button>
+    </div>`;
+  }
+
+  const q = tuGeralBusca.trim().toLowerCase();
+  const qDigitos = q.replace(/\D/g, '');
+  const filtradas = enriquecidas
+    .filter(e => {
+      if (tuGeralFiltroSituacao === 'presente') return e.presencial?.presenca === 'presente';
+      if (tuGeralFiltroSituacao === 'faltou') return e.presencial?.presenca === 'ausente';
+      if (tuGeralFiltroSituacao === 'online') return e.online === 'concluido';
+      if (tuGeralFiltroSituacao === 'sem_nenhum') return e.presencial?.presenca !== 'presente' && e.online !== 'concluido';
+      return true;
+    })
+    .filter(e => !tuGeralFiltroFuncao || e.a.funcao === tuGeralFiltroFuncao)
+    .filter(e => !q || (e.a.nome_completo || '').toLowerCase().includes(q) || (qDigitos && (e.a.inscricao_eleitoral || '').includes(qDigitos)))
+    .sort((x, y) => (x.a.nome_completo || '').localeCompare(y.a.nome_completo || ''));
+
+  return `
+    <div class="import-card">
+      <button class="btn btn-dark" onclick="tuGeralAberto=false;render()">▾ 📊 Visão geral — presencial + online</button>
+      <div class="ic-sub" style="margin-top:8px">Quem faltou, quem foi presencial, quem fez o treinamento online — tudo num lugar só. Só leitura: pra mudar um status, use as ações da turma (acima) ou de Treinamento Online (abaixo).</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <input type="text" placeholder="Buscar por nome ou título de eleitor…" value="${tuEsc(tuGeralBusca)}" oninput="tuGeralBusca=this.value;render()" style="flex:1;min-width:180px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        <select onchange="tuGeralFiltroSituacao=this.value;render()" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          <option value="" ${tuGeralFiltroSituacao === '' ? 'selected' : ''}>Todas as situações</option>
+          <option value="presente" ${tuGeralFiltroSituacao === 'presente' ? 'selected' : ''}>✅ Foi presencial (${contagem.presente})</option>
+          <option value="faltou" ${tuGeralFiltroSituacao === 'faltou' ? 'selected' : ''}>❌ Faltou na presencial (${contagem.faltou})</option>
+          <option value="online" ${tuGeralFiltroSituacao === 'online' ? 'selected' : ''}>🖥️ Fez o online (${contagem.online})</option>
+          <option value="sem_nenhum" ${tuGeralFiltroSituacao === 'sem_nenhum' ? 'selected' : ''}>⚠️ Sem nenhum treinamento (${contagem.semNenhum})</option>
+        </select>
+        <select onchange="tuGeralFiltroFuncao=this.value;render()" style="padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${tuGeralFiltroFuncao === f.valor ? 'selected' : ''}>${tuEsc(f.label)}</option>`).join('')}
+        </select>
+        <button class="btn btn-out" style="font-size:.74rem;padding:8px 12px" onclick="tuGeralExportarCSV()">⬇️ Exportar CSV</button>
+      </div>
+      <div class="ic-sub" style="margin:8px 0 0">${filtradas.length} de ${enriquecidas.length} pessoa(s)</div>
+    </div>
+
+    <div class="tu-geral-pessoas" style="display:flex;flex-direction:column;gap:8px">
+      ${filtradas.length ? filtradas.map(({ a, presencial, online, situ }) => `
+      <div class="import-card" style="padding:10px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;font-size:.83rem;cursor:pointer" onclick="cmAbrirModal('${a.id}')" title="Clique pra ver tentativas de contato e histórico">${tuEsc(a.nome_completo)}</div>
+            <div class="ic-sub" style="margin:2px 0 0">${tuEsc(cmRotuloFuncao(a))}${a.inscricao_eleitoral ? ` · Título ${tuEsc(a.inscricao_eleitoral)}` : ''}</div>
+          </div>
+          <span class="import-result ${situ.cls}" style="margin-top:0;white-space:nowrap">${situ.label}</span>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+          <div>
+            <div class="ic-sub" style="margin:0;font-weight:600">🎓 Presencial</div>
+            ${presencial
+              ? `<span class="import-result ${TU_PRESENCA[presencial.presenca]?.cls || ''}" style="margin-top:2px">${TU_PRESENCA[presencial.presenca]?.label || presencial.presenca}</span>
+                 <div class="ic-sub" style="margin:2px 0 0">Turma ${tuEsc(presencial.turmaNumero)}${presencial.turmaNome ? ` — ${tuEsc(presencial.turmaNome)}` : ''} · ${tuEsc(tuFmtData(presencial.dataTreinamento))}</div>`
+              : `<div class="ic-sub" style="margin:2px 0 0">— Não é aluno de nenhuma turma</div>`}
+          </div>
+          <div>
+            <div class="ic-sub" style="margin:0;font-weight:600">🖥️ Online</div>
+            <span class="import-result ${TU_ONLINE_STATUS[online].cls}" style="margin-top:2px">${TU_ONLINE_STATUS[online].label}</span>
+          </div>
+        </div>
+      </div>`).join('') : '<div class="import-card"><div class="ic-sub" style="margin-bottom:0">Nenhuma pessoa bate com o filtro/busca atual.</div></div>'}
+    </div>
+  `;
+}
+
 // Painel colapsável "🖥️ Treinamento Online" — mesmo padrão visual de
 // "📋 Colar turma do ELO" (toggle + card), mas sobre `tuDados.atoresList`
 // (TODO o roster ativo — mesário + apoio), não sobre turmas/presença.
@@ -508,6 +676,8 @@ function renderTurmas() {
         <button class="btn btn-dark" style="margin-top:8px" onclick="tuImportar()">💾 Importar ${tuPreview.turmas.length} turma(s)</button>
       </div>` : ''}
     </div>
+
+    ${tuRenderGeral()}
 
     ${tuRenderOnline()}
 
