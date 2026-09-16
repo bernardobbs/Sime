@@ -5691,6 +5691,65 @@ nunca adivinha, fica `aberta`.
 
 ---
 
+## BUG REAL — COORDENADOR DE ACESSIBILIDADE SEM NENHUMA SEÇÃO VISÍVEL (`SIME_acessibilidade.html`, 16/09/2026)
+
+Pedido direto, com o link de produção anexado
+(`SIME_acessibilidade.html?token=2RRQ54SD`): "ele deverá poder indicar falta
+de energia, e fila em cada uma das seções do local de votação" — a pergunta
+soava como pedido de feature nova, mas o frontend já tinha os dois recursos
+completos (widget de fila −5/−1/0/+1/+5 e os dois botões de pânico energia/
+urna por seção, sincronizando com `sime_acao_acessibilidade`). Investigado o
+token real direto no banco antes de escrever qualquer código: `tipo=
+'coord_acessibilidade'`, `local_nome='Esc. Rural Sto. Antônio C.V.'` — um
+local de verdade, com 2 seções ativas (193 e 214) em Sigefredo Pacheco.
+
+**Causa raiz.** `SECOES` (`<script>` clássico) sempre foi um array
+**hardcoded de homologação** — 16 seções, só 5 locais fixos de Campo Maior,
+com o próprio comentário do código já avisando "fase homologação — em
+produção vem do local_id do token de acesso". `secoesVisiveis()` sempre
+filtrou ESSE array fixo por `localFiltro` (o `local_nome` vindo do token
+real, via `resolverEscopo()`/`getSecoes()`) — nunca os dados de verdade.
+Qualquer coordenador cujo local de votação não estivesse entre os 5 nomes
+do array de demonstração via `secoesVisiveis()` devolver `[]`: a tela
+inteira ficava presa em "Nenhuma seção atribuída a este local. Contate o
+cartório." — sem fila, sem botão de pânico, para NENHUMA seção, mesmo com
+token/PIN corretos e seções reais cadastradas no banco. `secaoIdPorNumero`/
+`numeroPorSecaoId` (usados só pras escritas via RPC) já eram populados com
+os dados reais desde sempre — só a lista que decide o que a UI MOSTRA
+continuava presa ao array de teste.
+
+**Corrigido substituindo a fonte da UI, sem remover o fallback offline.**
+`resolverEscopo()` (`<script type="module">`) passou a montar
+`window.SECOES_REAIS` (`{n, local, mun}`, mesmo formato do array fixo) a
+partir do `getSecoes()` que já buscava — e chama `window.aoEscopoResolvido()`
+depois de montá-lo. `secoesFonte()` (novo, `<script>` clássico) decide qual
+lista usar: `window.SECOES_REAIS` quando ela já chegou do servidor, senão o
+array fixo — usado por `ensureSecao()`/`secoesVisiveis()`/`renderCard()`,
+nos três pontos que antes liam `SECOES` direto. O array hardcoded **não foi
+removido** — continua sendo o fallback do login local por token em
+`sime_tokens_v1` (offline, sem sessão real ainda) e do "modo dev" (sem
+token nenhum, `localFiltro=null`), mesmo padrão "nunca quebra, degrada com
+honestidade" do resto do projeto.
+
+**`window.aoEscopoResolvido()` existe por causa de uma corrida real, não
+teórica.** O caminho de token local (`applyToken()`) já chama `enterApp()`/
+`renderAll()` ANTES de `tentarLoginCampo()` (assíncrono) terminar —
+offline-first, não espera o servidor pra abrir a tela. Sem o callback, a
+primeira renderização usaria o array fixo (ou nada, se o local não bater),
+e só se atualizaria pra os dados reais se a pessoa saísse e voltasse da
+aba. `window.aoEscopoResolvido` só re-renderiza se a view do app já estiver
+ativa — não interfere na tela de PIN.
+
+Coberto por um bloco novo em `tests/test_acessibilidade.mjs` (bloco 4): token
+local com `local` de verdade **fora** do array de demonstração mostra as
+seções reais (não "Nenhuma seção atribuída"), cabeçalho conta certo, e
+ajustar fila sincroniza com o `secao_id` real do servidor — não um UUID do
+array de teste. Os 3 blocos anteriores continuam passando sem alteração
+(coincidentemente usavam `'G.E. Treze de Março'`, que está nos dois
+arrays — por isso o bug nunca tinha sido pego por teste antes).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

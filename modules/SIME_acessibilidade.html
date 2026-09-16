@@ -195,9 +195,25 @@ async function resolverEscopo() {
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
   const secoes = await getSecoes({ fallback: null });
-  if (secoes) for (const s of secoes) {
-    secaoIdPorNumero[s.numero] = s.id;
-    numeroPorSecaoId[s.id] = String(s.numero).padStart(4, '0');
+  if (secoes) {
+    // SECOES_REAIS substitui o array hardcoded de homologação (`SECOES`, no
+    // <script> clássico) assim que o servidor responde — sem isso, um local
+    // de votação real que não estivesse na lista de demonstração ficava sem
+    // NENHUMA seção visível (secoesVisiveis() filtrava só o array fixo),
+    // mesmo com o token/local corretos. Ver bug real de 16/09/2026.
+    const reais = [];
+    for (const s of secoes) {
+      secaoIdPorNumero[s.numero] = s.id;
+      const n = String(s.numero).padStart(4, '0');
+      numeroPorSecaoId[s.id] = n;
+      reais.push({ n, local: s.local_nome, mun: s.municipio });
+    }
+    window.SECOES_REAIS = reais;
+    // O caminho de token local (`applyToken`) já chama enterApp() antes desta
+    // função terminar (offline-first, não espera o servidor) — sem este
+    // callback, a tela ficaria presa no array de demonstração até a pessoa
+    // sair e voltar da aba.
+    if (window.aoEscopoResolvido) window.aoEscopoResolvido();
   }
 }
 
@@ -300,9 +316,17 @@ window.tentarLoginCampo = async function(token, pin) {
 </script>
 <script>
 // ══════════════════════════════════════════════════════════════
-// DADOS DE SEÇÕES (fase homologação — em produção vem do local_id
-// do token de acesso). Cada seção pertence a um "local" de votação.
+// DADOS DE SEÇÕES — fallback só pra demo/offline (sem sessão real do
+// Supabase ainda). Assim que resolverEscopo() (script module) busca as
+// seções de verdade, elas ficam em window.SECOES_REAIS e secoesFonte()
+// passa a usar essa lista — nunca mais o array fixo abaixo, que é só a
+// homologação original da 7ª Zona (Bug real 16/09/2026: um coordenador
+// com local de votação fora desta lista ficava sem nenhuma seção
+// visível, mesmo logado certo, porque secoesVisiveis() filtrava só isto).
 // ══════════════════════════════════════════════════════════════
+function secoesFonte(){
+  return (window.SECOES_REAIS && window.SECOES_REAIS.length) ? window.SECOES_REAIS : SECOES;
+}
 const SECOES = [
   {n:'0063',local:'G.E. Treze de Março',       mun:'Campo Maior'},
   {n:'0064',local:'G.E. Treze de Março',       mun:'Campo Maior'},
@@ -349,7 +373,7 @@ function saveSecao(n){
 }
 function ensureSecao(n){
   if(!state[n]){
-    const meta = SECOES.find(s=>s.n===n);
+    const meta = secoesFonte().find(s=>s.n===n);
     state[n] = {
       local: meta?.local || '',
       fila: 0,
@@ -366,9 +390,9 @@ function ensureSecao(n){
 // SEÇÕES VISÍVEIS (filtradas pelo local do coordenador)
 // ══════════════════════════════════════════════════════════════
 function secoesVisiveis(){
-  if(!localFiltro) return SECOES;
+  if(!localFiltro) return secoesFonte();
   const alvo = localFiltro.toLowerCase();
-  return SECOES.filter(s => s.local.toLowerCase() === alvo);
+  return secoesFonte().filter(s => s.local.toLowerCase() === alvo);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -529,7 +553,7 @@ function cardHTML(sec){
 function renderCard(n){
   const old = document.querySelector(`.acard[data-sec="${n}"]`);
   if(!old) return;
-  const sec = SECOES.find(s=>s.n===n);
+  const sec = secoesFonte().find(s=>s.n===n);
   const tmp = document.createElement('div');
   tmp.innerHTML = cardHTML(sec).trim();
   old.replaceWith(tmp.firstChild);
@@ -624,6 +648,15 @@ function enterApp(){
   showView('view-app');
   renderAll();
 }
+
+// Chamado pelo <script type="module"> quando resolverEscopo() termina de
+// buscar as seções reais — no caminho de token local (offline-first,
+// applyToken() já chamou enterApp() sem esperar o servidor), a tela
+// precisa se atualizar sozinha assim que o dado de verdade chega, sem
+// exigir sair e voltar da aba.
+window.aoEscopoResolvido = function(){
+  if(document.getElementById('view-app')?.classList.contains('active')) renderAll();
+};
 
 // Sem isso não havia caminho de volta se o coordenador entrasse no local
 // errado — só fechando a aba. Recarrega a página: volta pra tela de PIN,
