@@ -114,7 +114,7 @@ async function vlVerificarAtribuicoes(opts = {}) {
         .select('id, inscricao_eleitoral, funcao, funcao_mesa, secao_id')
         .eq('zona_id', zonaId).eq('ativo', true)
     : { data: [], error: null };
-  if (error) { if (!opts.silencioso) showToast('⚠ ' + error.message); render(); return; }
+  if (error) { if (!opts.silencioso) showToast('⚠ ' + mensagemErroAmigavel(error)); render(); return; }
 
   const porTitulo = new Map();
   for (const a of atores || []) if (a.inscricao_eleitoral) porTitulo.set(a.inscricao_eleitoral, a);
@@ -371,7 +371,7 @@ async function vlSalvar() {
         // CPF/título duplicado na mesma zona (idx_voluntarios_zona_documento)
         // — erro amigável em vez do "duplicate key" cru do Postgres.
         if (/duplicate key|unique constraint/i.test(error.message)) { showToast(`⚠ Já existe um voluntário com esse ${tipo_documento === 'titulo' ? 'título de eleitor' : 'CPF'} cadastrado nesta zona`); return; }
-        showToast('⚠ ' + error.message); return;
+        showToast('⚠ ' + mensagemErroAmigavel(error)); return;
       }
       await log('voluntario_cadastrado', '', { nome, documento, tipo_documento });
       showToast('✓ Voluntário cadastrado');
@@ -382,7 +382,7 @@ async function vlSalvar() {
       }).eq('id', vlModalId);
       if (error) {
         if (/duplicate key|unique constraint/i.test(error.message)) { showToast(`⚠ Já existe um voluntário com esse ${tipo_documento === 'titulo' ? 'título de eleitor' : 'CPF'} cadastrado nesta zona`); return; }
-        showToast('⚠ ' + error.message); return;
+        showToast('⚠ ' + mensagemErroAmigavel(error)); return;
       }
       await log('voluntario_editado', '', { id: vlModalId, nome });
       showToast('✓ Dados atualizados');
@@ -403,7 +403,7 @@ async function vlMudarStatus(id, novoStatus) {
   if (!v) return;
   const { data: ts } = await sb.rpc('sime_now');
   const { error } = await sb.from('sime_voluntarios').update({ status: novoStatus, updated_at: ts }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   v.status = novoStatus;
   await log('voluntario_status', '', { id, status: novoStatus });
   showToast(`✓ Status: ${VL_STATUS_LABEL[novoStatus] || novoStatus}`);
@@ -419,7 +419,7 @@ async function vlRemover(id) {
   if (!v) return;
   const { data: ts } = await sb.rpc('sime_now');
   const { error } = await sb.from('sime_voluntarios').update({ ativo: false, updated_at: ts }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await log('voluntario_removido', '', { id, nome: v.nome });
   showToast('✓ Removido da lista');
   vlDados = null;

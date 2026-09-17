@@ -5750,6 +5750,56 @@ arrays — por isso o bug nunca tinha sido pego por teste antes).
 
 ---
 
+## BUG REAL — "JWT expired" CRU NA TELA DE CONTATAR MESÁRIOS (`SIME_convocacao.html`, 16/09/2026)
+
+Reportado com print: clicar "+ Adicionar telefone" no modal de "Contatar
+mesários" mostrava só o badge "⚠ JWT expired" — a sessão do Supabase Auth
+tinha expirado (aba aberta tempo demais) e a chamada `.update()` voltou com
+401, cujo `error.message` literal é "JWT expired". A causa raiz do erro em
+si é benigna (recarregar a página e logar de novo resolve), mas o texto
+técnico cru na tela é exatamente o achado "médio" da auditoria de UI/UX já
+corrigido em `SIME_admin.html`/`SIME_problemas.html`/`SIME_relatorios.html`
+("7 pontos expunham error.message puro na tela") — `SIME_convocacao.html`
+e os módulos que ela carrega tinham ficado de fora daquela varredura.
+
+`mensagemErroAmigavel(error, fallback)` — mesma função das outras três
+páginas (JWT/sessão expirada, sem conexão, sem permissão/RLS, chave
+duplicada/violação de constraint, senão o `fallback` ou "Falha ao salvar.
+Tente novamente" — nunca a mensagem crua do Postgres), adicionada em
+`sime_contatar_mesarios.js`. **Não precisou ser replicada em cada arquivo**
+como nas outras três páginas — `SIME_convocacao.html` carrega
+`sime_mesarios_sync.js`/`sime_resumo_secoes.js`/`sime_contatar_mesarios.js`/
+`sime_relatorio_elo.js`/`sime_pendencias_convocacao.js`/
+`sime_correspondencia.js`/`sime_voluntarios.js`/`sime_turmas.js`/
+`sime_oficial_justica.js` todos como `<script>` clássico na MESMA página
+(não módulos ES, não arquivos HTML separados), então definir a função uma
+vez em `sime_contatar_mesarios.js` já basta pros outros chamarem — ordem
+das tags `<script>` não importa aqui porque toda chamada acontece dentro de
+um handler de clique, bem depois de todo script já ter carregado.
+
+Os **23 pontos** de `sime_contatar_mesarios.js` que mostravam
+`error.message` cru, mais os de `sime_oficial_justica.js`,
+`sime_turmas.js`, `sime_voluntarios.js` e `sime_mesarios_sync.js` (mesma
+classe de bug, achada na varredura desses arquivos-irmãos) passaram a usar
+`mensagemErroAmigavel(error)`. Em `sime_voluntarios.js`, os dois pontos que
+já tinham um erro amigável PRÓPRIO pra CPF/título duplicado
+(`idx_voluntarios_zona_documento`) foram preservados intocados — só o
+`else` genérico depois deles trocou de `error.message` cru pra
+`mensagemErroAmigavel(error)`. Nenhum caminho de escrita destas telas usa
+RPC com `RAISE EXCEPTION` pensado pro operador (são todos
+`.insert()`/`.update()` de tabela) — mesmo critério do Admin: a mensagem
+crua nunca vence, só os padrões conhecidos ou o fallback genérico
+(diferente de `SIME_problemas.html`, onde as RPCs de ocorrência levantam
+texto útil que continua vencendo o fallback).
+
+Verificado sem regressão: `tests/test_convocacao_mesarios.mjs` (465
+checks, inclusive o teste que já esperava "Falha ao salvar" no toast de
+falha de rede), `tests/test_convocacao_voluntarios.mjs` (89),
+`tests/test_convocacao_treinamento_online.mjs` (21) e
+`tests/test_convocacao_treinamento_geral.mjs` (24) — todos passando.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

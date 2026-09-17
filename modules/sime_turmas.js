@@ -267,7 +267,7 @@ async function tuImportar() {
       const { data: turma, error } = await sb.from('sime_turmas')
         .upsert({ ...campos, zona_id: zonaId, created_by: meu?.id || null, updated_at: ts }, { onConflict: 'zona_id,numero' })
         .select('id').single();
-      if (error) { showToast('⚠ ' + error.message); return; }
+      if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
       okTurmas++;
 
       const linhas = pessoas.map(p => {
@@ -308,7 +308,7 @@ async function tuMarcarPresenca(pessoaId, valor) {
   if (!p) return;
   const { data: ts } = await sb.rpc('sime_now');
   const { error } = await sb.from('sime_turma_pessoas').update({ presenca: valor, updated_at: ts }).eq('id', pessoaId);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.presenca = valor;
   await log('turma_presenca', '', { turma_id: tuTurmaAberta, pessoa: p.nome, inscricao: p.inscricao, presenca: valor });
   render();
@@ -329,7 +329,7 @@ async function tuMarcarOnline(id, status) {
   const patch = { treinamento_online_status: status, treinamento_online_concluido_em: status === 'concluido' ? ts : null };
   try {
     const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   } catch (e) {
     showToast('⚠ Falha ao salvar — verifique a conexão e tente de novo');
     return;
@@ -353,7 +353,7 @@ async function tuRemoverTurma(id) {
   if (!confirm(`Remover a turma ${t.numero}${t.nome ? ` (${t.nome})` : ''} desta lista?`)) return;
   const { data: ts } = await sb.rpc('sime_now');
   const { error } = await sb.from('sime_turmas').update({ ativo: false, updated_at: ts }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await log('turma_removida', '', { id, numero: t.numero });
   showToast('✓ Turma removida da lista');
   tuTurmaAberta = null; tuDados = null;

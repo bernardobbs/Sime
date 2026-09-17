@@ -17,6 +17,27 @@
 // — é essa pessoa que vai mandar a mensagem, então é o horário dela que
 // importa. Faixas comuns em pt-BR: madrugada conta como noite (ninguém
 // manda "bom dia" às 3h), não existe uma 4ª faixa própria pra madrugada.
+// Erro amigável (16/09/2026, achado real: "JWT expired" cru na tela ao
+// clicar "+ Adicionar telefone" — sessão do Supabase Auth expirada por
+// tempo de tela aberta). Mesma função replicada em SIME_admin.html/
+// SIME_problemas.html/SIME_relatorios.html (não importada — esses arquivos
+// não compartilham <script> clássico); em SIME_convocacao.html, ao
+// contrário, todos os módulos (sime_mesarios_sync.js, sime_voluntarios.js,
+// sime_turmas.js, sime_oficial_justica.js etc.) SÃO <script> clássico na
+// mesma página, então definir aqui uma vez basta pra todos eles chamarem —
+// nenhum precisou de cópia própria. Mesmo critério do Admin: a mensagem
+// crua nunca vence, só os padrões conhecidos ou o fallback genérico (nenhum
+// dos updates desta página usa RPC com RAISE EXCEPTION útil pro operador).
+function mensagemErroAmigavel(error, fallback) {
+  const msg = error?.message || '';
+  if (/duplicate key|unique constraint/i.test(msg)) return 'Já existe um registro com esse valor';
+  if (/foreign key|violates.*constraint/i.test(msg)) return 'Não é possível: há dados vinculados a isso';
+  if (/permission denied|row-level security|RLS/i.test(msg)) return 'Sem permissão para esta ação';
+  if (/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — saia e entre de novo';
+  if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor';
+  return fallback || 'Falha ao salvar. Tente novamente';
+}
+
 function cmSaudacaoPorHora(d = new Date()) {
   const h = d.getHours();
   if (h >= 5 && h < 12) return 'Bom dia';
@@ -366,7 +387,7 @@ async function cmCarregar() {
 async function cmMarcarContatoIncorreto(id) {
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ confirmacao: 'contato_incorreto' }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.confirmacao = 'contato_incorreto';
   await cmLog('mesario_contato_incorreto', '', { ator_id: id });
@@ -406,7 +427,7 @@ async function cmConfirmarParticipacao(id) {
   // mexer nele. Limpo junto, no mesmo update.
   const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts, proximo_contato_em: null, proximo_contato_nota: null };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_confirmado_manual', '', { ator_id: id });
   showToast('✅ Participação confirmada');
@@ -444,7 +465,7 @@ async function cmMarcarConvocado(id) {
   const { data: ts } = await sb.rpc('sime_now');
   const patch = { confirmacao: 'convocado', data_confirmacao: null, convocacao_recebida: true, convocacao_recebida_ts: ts };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_marcado_convocado', '', { ator_id: id });
   showToast('📋 Marcado como convocado — aguardando confirmação');
@@ -472,7 +493,7 @@ async function cmTogglePrecisaSubstituir(id) {
   const patch = { precisa_substituir: novo };
   if (!novo) { patch.substituto_nome = null; patch.substituto_telefone = null; }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
@@ -512,7 +533,7 @@ async function cmAssumir(id) {
   if (!p || !cmMeuId) { showToast('⚠ Não foi possível identificar seu usuário'); return; }
   const patch = { responsavel_usuario_id: cmMeuId };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_responsavel_assumido', '', { ator_id: id });
   showToast('🙋 Você assumiu o acompanhamento');
@@ -535,7 +556,7 @@ async function cmConfirmarEncaminhamento(id) {
   if (!motivo) { showToast('⚠ Informe o motivo do encaminhamento'); return; }
   const patch = { responsavel_usuario_id: paraId };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_responsavel_encaminhado', '', { ator_id: id, para_nome: cmNomeUsuario(paraId), motivo });
   cmEncaminharAberto = null;
@@ -552,7 +573,7 @@ async function cmSalvarProximoContato(id) {
   const nota = document.getElementById('mm-proximo-contato-nota')?.value.trim() || null;
   const patch = { proximo_contato_em: data || null, proximo_contato_nota: data ? nota : null };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_proximo_contato_agendado', '', { ator_id: id, proximo_contato_em: patch.proximo_contato_em, nota: patch.proximo_contato_nota });
   showToast(data ? '📅 Próximo contato agendado' : '📅 Agendamento removido');
@@ -599,7 +620,7 @@ async function cmToggleSemWhatsappNumero(id, digitos) {
   const marcado = atual.includes(digitos);
   const novo = marcado ? atual.filter(d => d !== digitos) : [...atual, digitos];
   const { error } = await sb.from('sime_atores').update({ telefones_sem_whatsapp: novo }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.telefones_sem_whatsapp = novo;
   await cmLog('mesario_telefone_sem_whatsapp', '', { ator_id: id, telefone: fmtTelefone(digitos), sem_whatsapp: !marcado });
   showToast(!marcado ? '📵 Marcado — este número não é WhatsApp' : '✓ Desmarcado — pode ser WhatsApp');
@@ -620,7 +641,7 @@ async function cmToggleNumeroConfirmado(id, digitos) {
   const marcado = atual.includes(digitos);
   const novo = marcado ? atual.filter(d => d !== digitos) : [...atual, digitos];
   const { error } = await sb.from('sime_atores').update({ telefones_confirmados: novo }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.telefones_confirmados = novo;
   await cmLog('mesario_telefone_confirmado', '', { ator_id: id, telefone: fmtTelefone(digitos), confirmado: !marcado });
   showToast(!marcado ? '✅ Número confirmado' : '✓ Confirmação desfeita');
@@ -659,7 +680,7 @@ async function cmExcluirTelefoneCard(id, digitos, campo) {
     patch.telefones_confirmados = p.telefones_confirmados.filter(d => d !== digitos);
   }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog(campo ? 'mesario_editar_telefone' : 'mesario_telefone_ignorado', '', { ator_id: id, telefone: fmtTelefone(digitos), motivo: 'excluído — não é o número desta pessoa' });
   showToast('✕ Número excluído');
@@ -685,7 +706,7 @@ async function cmSalvarSubstitutoNome(id) {
   if (!p || nome === (p.substituto_nome || '')) return; // nada mudou
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ substituto_nome: nome || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.substituto_nome = nome || null;
   await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: nome || null });
   showToast('✓ Nome do substituto salvo');
@@ -713,7 +734,7 @@ async function cmConcluirSubstituicao(id) {
   if (!p) return;
   const patch = { confirmacao: 'substituido', ativo: false, precisa_substituir: false };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await cmLog('mesario_substituicao_concluida', '', { ator_id: id, substituto_nome: p.substituto_nome || null, substituto_telefone: p.substituto_telefone || null });
   showToast('✅ Substituição concluída — saiu da lista de Contatar mesários');
   cmDados.pessoas = cmDados.pessoas.filter(x => x.id !== id); // ativo=false — cmCarregar só lista ativo=true
@@ -748,7 +769,7 @@ async function cmDispensarManual(id) {
   const motivo = (campo?.value || '').trim();
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ ativo: false, dispensado_manual: true }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await cmAppendObservacao(id, `Dispensado(a) — ${motivo || 'sem motivo informado'}`);
   await cmLog('mesario_dispensado_manual', '', { ator_id: id, motivo: motivo || null });
   showToast('🚫 Dispensado(a) — saiu da lista de Contatar mesários');
@@ -773,7 +794,7 @@ async function cmSalvarSubstitutoTelefone(id) {
   if (valor === (p.substituto_telefone || null)) return; // nada mudou
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ substituto_telefone: valor }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.substituto_telefone = valor;
   await cmLog('mesario_substituto_telefone', '', { ator_id: id, substituto_telefone: valor });
   showToast('✓ Telefone do substituto salvo');
@@ -792,7 +813,7 @@ async function cmResolverRelatoTerceiro(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { error } = await sb.from('sime_atores').update({ tem_relato_terceiro_pendente: false }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.tem_relato_terceiro_pendente = false;
   await cmLog('mesario_relato_terceiro_resolvido', '', { ator_id: id });
   showToast('✓ Relato de terceiro marcado como resolvido');
@@ -812,7 +833,7 @@ async function cmSalvarMeio(id, meio) {
     patch.status_contato_alternativo = null;
   }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   if (p0) Object.assign(p0, patch);
   await cmLog('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
   showToast('✓ Meio de contato atualizado');
@@ -823,7 +844,7 @@ async function cmSalvarMeio(id, meio) {
 async function cmSalvarStatusAlt(id, status) {
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ status_contato_alternativo: status || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.status_contato_alternativo = status || null;
   await cmLog('mesario_status_contato_alt', '', { ator_id: id, status });
@@ -858,7 +879,7 @@ async function cmAppendObservacao(id, texto) {
   const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ${autor} (cartório): ${texto}`;
   const nova = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
   const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return false; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
   p.observacao = nova;
   await cmLog('mesario_observacao_adicionada', '', { ator_id: id });
   return true;
@@ -1109,7 +1130,7 @@ async function cmEnviarScript(id) {
     avulso: true,
     numeros_restantes: fila.slice(1),
   });
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
 
   await cmLog('mesario_script_enviado', '', { ator_id: p.id, campanha_id: cmScriptCampanhaId, campanha_nome: campanhaEscolhida?.nome, telefone: fila[0], total_numeros: fila.length });
   showToast(campanhaEscolhida && campanhaEscolhida.status === 'encerrada'
@@ -1196,7 +1217,7 @@ async function cmAdicionarTelefoneAlt(id) {
   const sb = window.supabaseAtores;
   const valor = '55' + digitos;
   const { error } = await sb.from('sime_atores').update({ telefone_alternativo: valor }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.telefone_alternativo = valor;
   await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
@@ -1239,7 +1260,7 @@ async function cmSalvarTelefoneCard(id, campo, elId) {
   const sb = window.supabaseAtores;
   try {
     const { error } = await sb.from('sime_atores').update({ [campo]: novoValor }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     p[campo] = novoValor;
     await cmLog(campo === 'telefone_whatsapp' ? 'mesario_editar_telefone' : 'mesario_telefone_alt_adicionado', '', { ator_id: id });
     showToast('✓ Telefone atualizado');
@@ -1264,7 +1285,7 @@ async function cmUsarComoPrincipal(id, valorBruto) {
   const sb = window.supabaseAtores;
   try {
     const { error } = await sb.from('sime_atores').update({ telefone_whatsapp: novoValor }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     p.telefone_whatsapp = novoValor;
     await cmLog('mesario_editar_telefone', '', { ator_id: id });
     showToast('✓ Definido como telefone principal');
@@ -1684,7 +1705,7 @@ async function cmSalvarModal() {
   try {
     if (Object.keys(patch).length) {
       const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-      if (error) { showToast('⚠ ' + error.message); return; }
+      if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
       Object.assign(p, patch);
       if ('telefone_whatsapp' in patch) await cmLog('mesario_editar_telefone', '', { ator_id: id });
       if ('codigo_rastreio' in patch) await cmLog('mesario_editar_rastreio', '', { ator_id: id });
