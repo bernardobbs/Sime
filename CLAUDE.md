@@ -6152,6 +6152,86 @@ atualizadas junto.
 
 ---
 
+## BUG REAL — CONFLITO DE CARGO ENTRE PESSOAS DIFERENTES + INATIVAÇÃO POR FUNÇÃO (`sime_sync_atores_from_raw`, 18/09/2026)
+
+Pergunta direta do cartório, depois de uma varredura pedida ("todas seções
+com 4 membros? cada local com 1 coordenador?"): **66 seções da 7ª Zona com
+≠4 mesários ativos e 7 locais com ≠1 coordenador de acessibilidade**.
+Investigado caso a caso (seção 243, exemplo real): cada cargo com 2+
+pessoas tinha uma linha "31/07, `data_nomeacao`" (a designação antiga) e
+outra "10/09, `data_convocacao`" (a atual) — confirmado pelo dono do
+projeto: "a última atualização vai ser o cenário mais atual, inclusive com
+um mesário mudando de função".
+
+**Causa raiz — dois bugs relacionados, os dois na mesma função:**
+
+1. **Conflito de cargo entre PESSOAS DIFERENTES nunca era resolvido.**
+   Quando o TRE dispensa um mesário/coordenador de um cargo/local e nomeia
+   OUTRA pessoa (título diferente) pro mesmo lugar, a antiga só é
+   inativada quando some por completo do arquivo — se ela ainda aparecer
+   (mesmo com a designação velha), as duas ficam `ativo=true` disputando o
+   mesmo cargo. O desempate por `data_atribuicao` mais recente (já usado
+   desde 01/09/2026, ver "cargo de mesa errado gravado quando a pessoa é
+   remanejada" acima) só comparava linhas da MESMA pessoa (mesmo título)
+   dentro do mesmo import — nunca comparava pessoas diferentes entre si.
+2. **A inativação por ausência só checava "o título sumiu do arquivo",
+   nunca "sumiu DESSA função".** Achado real: KAILANE RABELO DE SOUSA era
+   Coordenadora de Acessibilidade; no arquivo mais novo ela virou
+   Presidente de mesa (MRV) — mudou de categoria inteira. Como o título
+   dela continua aparecendo no arquivo (só que numa função diferente), o
+   `NOT EXISTS` original ("existe alguma linha MRV ou AL com este
+   título?") nunca via motivo pra inativar o registro antigo de
+   coordenadora — a pergunta certa é "existe uma linha NESSA função
+   específica?", não "existe em qualquer função?".
+
+**Corrigido em `sql/SIME_sync_conflito_cargo_e_funcao.sql`** (aplicado em
+produção), mantendo a MESMA assinatura/retorno da função — lição já
+documentada acima sobre sobrecarga fantasma foi checada explicitamente
+(`select proname,count(*) from pg_proc where proname=... group by proname
+having count(*)>1`, veio vazio nas duas vezes que a função foi alterada
+nesta correção):
+
+- **Conflito de cargo** — depois do upsert de sempre, um passo novo
+  agrupa mesários `ativo=true` por `(secao_id, funcao_mesa)` e
+  coordenadores por `(local_nome, municipio)` — busca a `data_atribuicao`
+  mais recente de cada pessoa no staging (mesmo critério de sempre) e
+  mantém só quem tem a designação mais nova, desativando o(s) outro(s) com
+  um carimbo em `observacao` ("Sistema: dispensado automaticamente —
+  outro mesário/coordenador com designação mais recente assumiu o mesmo
+  cargo/local") — nunca silencioso, sempre com rastro. **Idempotente**:
+  roda de novo em toda sincronização, sem efeito quando já não há conflito.
+- **Inativação por função** — o `NOT EXISTS` da checagem de ausência
+  passou a exigir que a linha do staging bata com a MESMA função do
+  registro (`mesario`→`MRV`; `coord_acessibilidade`→`AL` com
+  `descricao_funcao_eleitoral='Coordenador de Acessibilidade'`;
+  `auxiliar_eleicao`→`AL` com qualquer outra descrição) — uma pessoa que
+  mudou de categoria inteira agora inativa corretamente o registro antigo,
+  mesmo continuando a aparecer no arquivo (só que noutra função).
+
+**Resultado, rodando de novo sobre o staging já existente na 7ª Zona (sem
+precisar reenviar arquivo nenhum)**: 66 seções ≠4 mesários → **6** (as 6
+restantes são vaga real — um cargo genuinamente sem ninguém designado,
+nunca duplicata; a correção não inventa gente pra preencher vaga real,
+mesmo critério "nunca adivinha" de sempre) · 7 locais ≠1 coordenador →
+**0** · 83 registros inativados no total entre as duas rodadas (a maioria
+por conflito de cargo/função a mais, resolvendo dado que já estava errado
+há tempo, não uma regressão desta sessão).
+
+**Achado notável no caminho**: a seção 187 tinha exatamente 4 mesários
+ativos ANTES desta correção — mas escondia um cargo duplicado (2 pessoas
+no mesmo cargo) que compensava numericamente uma vaga vazia em outro
+cargo (2+1+1+0=4). A correção revelou os 3 membros reais — não é uma
+regressão, é a mesma classe de problema que só não aparecia na contagem
+simples de "≠4" porque o total, por coincidência, batia.
+
+Sem teste de regressão Playwright — é uma correção de função de banco
+(SQL puro, sem UI nova, sem chamador de frontend afetado), mesmo critério
+já usado nas demais correções de `sime_sync_atores_from_raw()` documentadas
+neste arquivo (verificação foi feita direto no Supabase, antes/depois,
+contando seções/locais fora do padrão).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
