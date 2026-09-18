@@ -134,6 +134,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
    é o que interessa aqui — não precisa funcionar em todo navegador). */
 @page{size:A4 portrait;margin:10mm;}
 @page co-ar-page{size:A4 landscape;margin:10mm;}
+@page ra-page{size:A4 landscape;margin:10mm;}
 @media print{
   body > *:not(#print-area){display:none!important;}
   /* Bug real corrigido em 27/08/2026, achado no primeiro teste em produção:
@@ -253,7 +254,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      depois da última, já que aqui várias páginas nascem concatenadas num
      `innerHTML` só. ── */
   .ra-pagina:not(:last-child){page-break-after:always;}
-  .ra-pagina{padding:8mm;font-family:Arial,Helvetica,sans-serif;}
+  /* Paisagem (18/09/2026, pedido direto: "não se atenha ao formato
+     vertical... pode usar o formato horizontal pra espaçar melhor as
+     informações") — mesma técnica de CSS Paged Media nomeado já usada pro
+     AR de Correspondência (`@page co-ar-page` acima): só este documento
+     ganha a página nomeada; o padrão A4 portrait do topo do arquivo
+     continua valendo pros demais (etiqueta, relação do Oficial de
+     Justiça). A4 paisagem dá ~297mm de largura útil em vez de ~210mm —
+     é essa largura extra que sobra pras colunas (Nome/Assinatura, e as
+     linhas de SUBSTITUIÇÕES abaixo) sem precisar espremer texto. */
+  .ra-pagina{page:ra-page;padding:8mm;font-family:Arial,Helvetica,sans-serif;}
   /* Timbre institucional (18/09/2026, pedido direto com print anexado do
      modelo real do ELO: marca + nome do órgão/sistema à esquerda, título
      do documento, data/hora + paginação à direita, régua horizontal
@@ -269,17 +279,24 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .ra-timbre-data{flex:none;font-size:8pt;color:#333;text-align:right;white-space:nowrap;}
   .ra-timbre-linha{border-bottom:2px solid #000;margin:3mm 0 4mm;}
   .ra-linha-info{display:flex;gap:8mm;flex-wrap:wrap;font-size:8.5pt;margin-bottom:4mm;}
-  .ra-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
-  .ra-tabela th,.ra-tabela td{border:1px solid #000;padding:2mm 2.5mm;vertical-align:top;text-align:left;}
-  .ra-tabela th{background:#eee;font-size:8pt;}
-  .ra-col-insc{width:16%;}
-  .ra-col-func{width:20%;}
-  .ra-col-assin{width:24%;}
-  .ra-linha-assin{position:relative;}
-  .ra-linha-assin::after{content:'';position:absolute;left:2mm;right:2mm;bottom:2.2mm;border-bottom:1px solid #000;}
-  .ra-substituicoes{margin-top:6mm;}
+  /* Grade removida (18/09/2026, pedido direto: "pode suprimir a grade das
+     tabelas... lembre que as informações de substituições será
+     preenchida a mão") — trocado o quadriculado cheio (borda nos 4 lados
+     de cada célula) por linhas horizontais só (formulário pautado, não
+     planilha), tanto na tabela principal quanto na de SUBSTITUIÇÕES
+     abaixo: sem coluna verticalmente fechada, mais espaço de respiro por
+     célula — o cabeçalho já basta pra guiar quem for preencher/ler à
+     mão, e a largura extra da paisagem (ver `.ra-pagina` acima) sobra
+     justamente pra esse espaçamento. */
+  .ra-tabela{width:100%;border-collapse:collapse;font-size:9pt;line-height:1.4;table-layout:fixed;}
+  .ra-tabela th,.ra-tabela td{border:none;border-bottom:1px solid #000;padding:2.5mm 3mm;vertical-align:top;text-align:left;}
+  .ra-tabela th{border-bottom:2px solid #000;font-size:8.5pt;}
+  .ra-col-insc{width:14%;}
+  .ra-col-func{width:18%;}
+  .ra-col-assin{width:22%;}
+  .ra-substituicoes{margin-top:7mm;}
   .ra-sub-titulo{font-weight:700;font-size:8.5pt;margin-bottom:2mm;}
-  .ra-tabela-sub td{height:5.5mm;}
+  .ra-tabela-sub td{height:7mm;}
   .ra-rodape-total{margin-top:6mm;font-size:8.5pt;line-height:1.8;}
   .ra-rodape-linha{display:flex;gap:8mm;flex-wrap:wrap;margin-top:1.5mm;}
   /* "OBS:" — presente nos dois documentos reais do ELO anexados como

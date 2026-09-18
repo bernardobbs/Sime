@@ -81,6 +81,20 @@ function raFuncaoLabel(p) {
   return p.funcao || '';
 }
 
+// Presidente da Junta Eleitoral é, por lei (art. 36 da Lei 4.737/65 —
+// Código Eleitoral), o próprio Juiz Eleitoral da zona — nunca um membro
+// convocado como os demais (achado real, 18/09/2026: CARLOS MARCELLO
+// SALES CAMPOS está cadastrado como `funcao_mesa='Presidente'` da junta
+// da 7ª Zona, e É o juiz titular). O juiz não recebe/assina o auxílio
+// alimentação que este documento organiza — esse benefício é só pra
+// quem foi convocado como mesário/membro de apoio, não pra quem já
+// ocupa o cargo por investidura judicial. Por isso ele nunca entra na
+// contagem nem no recibo da Junta Eleitoral, nos dois pontos (tela e
+// impressão) que leem `raDados.junta`.
+function raEhJuizEleitoral(p) {
+  return p.funcao === 'junta_eleitoral' && p.funcao_mesa === 'Presidente';
+}
+
 function raFmtValor(v) {
   return `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`;
 }
@@ -141,7 +155,7 @@ async function raCarregar() {
     mesarios: (atores || []).filter(a => a.funcao === 'mesario'),
     coord: (atores || []).filter(a => a.funcao === 'coord_acessibilidade'),
     auxiliares: (atores || []).filter(a => a.funcao === 'auxiliar_eleicao'),
-    junta: (atores || []).filter(a => a.funcao === 'junta_eleitoral'),
+    junta: (atores || []).filter(a => a.funcao === 'junta_eleitoral' && !raEhJuizEleitoral(a)),
   };
   render();
 }
@@ -493,7 +507,8 @@ function renderReciboAlimentacao() {
 
     <div class="import-card">
       <div class="ic-title" style="font-size:.85rem">⚖️ Junta Eleitoral (${raDados.junta.length})</div>
-      <div class="ic-sub">Recibo geral, em lista única, um único dia.</div>
+      <div class="ic-sub">Recibo geral, em lista única, um único dia. O Presidente da Junta (o Juiz Eleitoral,
+        por lei) nunca entra aqui — ele não assina esse auxílio.</div>
       <button class="btn btn-dark" style="margin-top:8px" ${!raDados.junta.length ? 'disabled' : ''} onclick="raImprimirJunta()">🖨️ Imprimir recibo — Junta Eleitoral</button>
     </div>
   `;

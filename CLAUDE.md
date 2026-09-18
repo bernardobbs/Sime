@@ -6034,6 +6034,79 @@ checks já existentes (agrupamento, ordem de cargo, substituições/OBS/
 rodapé, páginas por dia dos auxiliares, log de auditoria, botão
 desabilitado sem gente).
 
+**Revisado uma 4ª vez no mesmo dia — paisagem em vez de retrato, e a
+grade das tabelas suprimida.** Pedido direto: "não se atenha a folha ao
+formato vertical da pagina, pode usar o formato horizontal para espaçar
+melhor as informações, pode suprimir a filha das tabelas, lembre que as
+informações de substituições será preenchida a mão" (interpretado "a
+filha" como "a grade/grelha" — a frase seguinte, sobre substituições
+serem preenchidas à mão, só faz sentido como justificativa pra remover o
+quadriculado, não como um pedido à parte).
+
+- **Paisagem** — mesma técnica de CSS Paged Media nomeado já usada pro AR
+  de Correspondência (`@page co-ar-page`, ver seção própria acima):
+  `@page ra-page{size:A4 landscape;margin:10mm;}` + `.ra-pagina{page:
+  ra-page;...}`. Só este documento ganha a página nomeada — o `@page{size:
+  A4 portrait}` padrão do topo do arquivo continua valendo pra etiqueta e
+  pra relação do Oficial de Justiça, sem regressão nos dois. A largura
+  útil sobe de ~210mm pra ~297mm — é essa largura extra que dá espaço pras
+  colunas (Nome/Assinatura, e as 6 linhas de SUBSTITUIÇÕES) sem precisar
+  espremer texto, exatamente o "espaçar melhor as informações" do pedido.
+- **Grade suprimida** — `.ra-tabela th,.ra-tabela td` trocou de
+  `border:1px solid #000` (quadriculado cheio, nos 4 lados de cada célula)
+  pra `border:none;border-bottom:1px solid #000` (formulário pautado, só
+  linha horizontal) — tanto na tabela principal quanto na de
+  SUBSTITUIÇÕES abaixo. Já que as substituições SEMPRE são preenchidas à
+  mão (nunca por código — é literalmente o propósito do bloco), uma célula
+  fechada nos 4 lados não ajuda quem for escrever ali; o cabeçalho da
+  coluna já basta pra guiar, e menos linha vertical cortando a largura
+  extra da paisagem deixa mais espaço de respiro por célula. `.oj-tabela`
+  (Oficial de Justiça) e `.co-ar-tabela` (AR de Correspondência) **não
+  foram tocadas** — o pedido era só sobre este documento.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (57 checks): verificado
+com `page.pdf()` de verdade (não só innerHTML/screenshot, mesmo critério já
+usado pro AR) — o `/MediaBox` de cada página sai em paisagem (largura >
+altura); célula da tabela sem borda nos lados/topo, só `border-bottom`
+(checado com `getComputedStyle`, ainda sob `page.emulateMedia({media:
+'print'})` — a regra vive dentro de `@media print`, então checar depois de
+voltar pra `'screen'` daria falso negativo).
+
+---
+
+## RECIBO DE AUXÍLIO ALIMENTAÇÃO — JUIZ ELEITORAL EXCLUÍDO DA JUNTA (18/09/2026)
+
+Pedido direto: "carlos marcello, é membro da junta, mas é o juiz eleitoral
+ele não assina recibo". `sime_atores` da 7ª Zona tem CARLOS MARCELLO SALES
+CAMPOS cadastrado com `funcao='junta_eleitoral'`, `funcao_mesa='Presidente'`
+— confirmado direto no banco antes de corrigir. Por lei (art. 36 da Lei
+4.737/65 — Código Eleitoral), a Junta Eleitoral é sempre presidida pelo
+próprio Juiz Eleitoral da zona — não é uma peculiaridade desta pessoa ou
+desta zona, é regra geral: **qualquer** registro de junta com
+`funcao_mesa==='Presidente'` é o juiz, nunca um mesário convocado como os
+demais membros. O juiz não recebe/assina o auxílio alimentação que este
+documento organiza — esse benefício é pra quem foi convocado pra compor a
+mesa/junta, não pra quem já ocupa o cargo por investidura judicial.
+
+`raEhJuizEleitoral(p)` (nova, `sime_recibo_alimentacao.js`) — checa
+`funcao==='junta_eleitoral' && funcao_mesa==='Presidente'`. `raCarregar()`
+filtra esse critério na hora de montar `raDados.junta` — o juiz nunca entra
+na contagem do card (`"⚖️ Junta Eleitoral (N)"`), nunca aparece na lista de
+prévia, e nunca sai no recibo impresso. Nota no card ("O Presidente da
+Junta (o Juiz Eleitoral, por lei) nunca entra aqui — ele não assina esse
+auxílio.") deixa explícito que a ausência é deliberada, não um mesário
+esquecido. Nenhuma mudança de schema — é filtro em memória sobre o mesmo
+`sime_atores` de sempre, mesmo critério de sempre pra "membro que não deve
+entrar num relatório" (ex.: mesário inativo já é filtrado do mesmo jeito).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (57 checks): mock
+ganhou um segundo membro de junta com `funcao_mesa='Presidente'`
+(CARLOS MARCELLO SALES CAMPOS) — a contagem do card continua em 1 (só o
+membro de verdade, JUNTA FERNANDO); o recibo impresso nunca menciona o
+nome do juiz nem a palavra "Presidente"; o grupo `semJunta` (0 pessoas,
+usado no teste de botão desabilitado) continua funcionando sem alteração,
+já que os dois membros de junta ficam de fora nesse cenário.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

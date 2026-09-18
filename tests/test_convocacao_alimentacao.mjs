@@ -79,7 +79,8 @@ function mock(opts = {}) {
     { id: 'c2', nome_completo: 'COORDENADOR CARLOS SEM LOCAL', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '555555555555', zona_id: 'z7', ativo: true },
     { id: 'a1', nome_completo: 'AUXILIAR PEDRO', funcao: 'auxiliar_eleicao', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '666666666666', zona_id: 'z7', ativo: true },
     { id: 'a2', nome_completo: 'AUXILIAR LUCIA', funcao: 'auxiliar_eleicao', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '777777777777', zona_id: 'z7', ativo: true },
-    { id: 'j1', nome_completo: 'JUNTA FERNANDO', funcao: 'junta_eleitoral', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '888888888888', zona_id: 'z7', ativo: true },
+    { id: 'j1', nome_completo: 'JUNTA FERNANDO', funcao: 'junta_eleitoral', funcao_mesa: 'Membro', secao_id: null, inscricao_eleitoral: '888888888888', zona_id: 'z7', ativo: true },
+    { id: 'j2', nome_completo: 'CARLOS MARCELLO SALES CAMPOS', funcao: 'junta_eleitoral', funcao_mesa: 'Presidente', secao_id: null, inscricao_eleitoral: '999888777666', zona_id: 'z7', ativo: true },
   ];
   return {
     escritas: [], rpcChamadas: [],
@@ -189,6 +190,33 @@ async function login(p) {
   const logMesa = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_mesa_impresso');
   check('log de auditoria gravado com quantidade certa', !!logMesa && logMesa.payload.payload.quantidade === 3, JSON.stringify(logMesa));
 
+  // Paisagem (18/09/2026) — verificado com page.pdf() de verdade, não só
+  // innerHTML/screenshot, mesmo critério já usado pro AR de Correspondência.
+  await p.emulateMedia({ media: 'print' });
+  const raPdf = await p.pdf({ printBackground: true });
+  const raPdfTxt = raPdf.toString('latin1');
+  const mediaBoxes = [...raPdfTxt.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('recibo real gerado em páginas (uma por seção)', mediaBoxes.length === 2, String(mediaBoxes.length));
+  for (const [, , , wStr, hStr] of mediaBoxes) {
+    check('cada página sai em A4 PAISAGEM (largura > altura)', parseFloat(wStr) > parseFloat(hStr), `${wStr}x${hStr}`);
+  }
+
+  // Grade suprimida (18/09/2026, "pode suprimir a grade das tabelas... as
+  // informações de substituições será preenchida a mão") — célula não tem
+  // mais borda nos 4 lados, só linha horizontal (border-bottom). Checado
+  // ainda com a media 'print' ativa (a regra vive dentro de @media print).
+  const bordas = await p.evaluate(() => {
+    const td = document.querySelector('#print-area .ra-tabela td');
+    if (!td) return null;
+    const cs = getComputedStyle(td);
+    return { top: cs.borderTopStyle, left: cs.borderLeftStyle, right: cs.borderRightStyle, bottom: cs.borderBottomStyle };
+  });
+  check('célula da tabela sem grade (sem borda nos lados/topo, só embaixo)',
+    !!bordas && bordas.top === 'none' && bordas.left === 'none' && bordas.right === 'none' && bordas.bottom !== 'none',
+    JSON.stringify(bordas));
+
+  await p.emulateMedia({ media: 'screen' });
+
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }
@@ -267,6 +295,13 @@ async function login(p) {
   check('rótulo "Membro da Junta Eleitoral"', /Membro da Junta Eleitoral/.test(txt));
   check('sem subtítulo de dia (Sábado/Domingo) — recibo único', !/Sábado/.test(txt) && !/Domingo/.test(txt));
   check('linha "OBS:" presente', /OBS:/.test(txt));
+
+  // Juiz Eleitoral (18/09/2026, "carlos marcello, é membro da junta, mas é
+  // o juiz eleitoral ele não assina recibo") — Presidente da Junta é, por
+  // lei (art. 36, Lei 4.737/65), o próprio juiz eleitoral: nunca entra na
+  // contagem nem no recibo.
+  check('CARLOS MARCELLO (juiz eleitoral, Presidente da Junta) NUNCA aparece no recibo', !/CARLOS MARCELLO/.test(txt), txt.slice(0, 400));
+  check('recibo mostra só 1 pessoa (o juiz foi excluído da contagem)', (txt.match(/JUNTA FERNANDO/g) || []).length >= 1 && !/Presidente/.test(txt), txt.slice(0, 400));
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
