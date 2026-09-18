@@ -5903,14 +5903,74 @@ de que o cartório gerou o documento. Botão de cada grupo fica
 `disabled` quando não há ninguém ativo naquela função — nunca gera um
 recibo vazio.
 
-Coberto por `tests/test_convocacao_alimentacao.mjs` (39 checks): contagem
-dos 4 grupos e defaults de valor/forma; salvar configuração grava em
-`sime_eleicoes`; mesa receptora agrupa por local, ordena por cargo, mostra
-SUBSTITUIÇÕES+fechamento, exclui inativo, loga com a quantidade certa;
-coordenador agrupa por local e mostra "Sem local definido" pra quem não
-resolveu seção; auxiliares gera 2 páginas (Sábado/Domingo) num só
-`window.print()`, com as duas pessoas repetidas nas duas páginas; junta
-gera 1 página só, sem menção a dia; grupo vazio desabilita o botão.
+Coberto por `tests/test_convocacao_alimentacao.mjs` (39 checks, versão
+original): contagem dos 4 grupos e defaults de valor/forma; salvar
+configuração grava em `sime_eleicoes`; mesa receptora agrupa por local,
+ordena por cargo, mostra SUBSTITUIÇÕES+fechamento, exclui inativo, loga
+com a quantidade certa; coordenador agrupa por local e mostra "Sem local
+definido" pra quem não resolveu seção; auxiliares gera 2 páginas (Sábado/
+Domingo) num só `window.print()`, com as duas pessoas repetidas nas duas
+páginas; junta gera 1 página só, sem menção a dia; grupo vazio desabilita
+o botão.
+
+**Revisado no mesmo dia — "quero um recibo, mais institucional, uma folha
+por seção", com DOIS prints reais anexados: a Mesa Receptora do ELO (que
+já tinha motivado a v1 acima) e — desta vez — o Coordenador de
+Acessibilidade e o Auxiliar de Serviços Eleitorais reais, mostrando que o
+próprio ELO usa layouts DIFERENTES pra cada tipo (a v1 tinha generalizado
+o layout da Mesa Receptora pros outros 3 sem essa referência).** Três
+mudanças, todas batidas contra os documentos reais anexados, não
+inventadas:
+
+- **Mesa Receptora deixou de agrupar várias mesas do mesmo prédio numa
+  página só (como o ELO faz) — agora é literalmente UMA FOLHA POR SEÇÃO**,
+  mesmo quando duas seções compartilham o mesmo local. `raAgruparPorSecao()`
+  (nova) substitui `raAgruparPorLocal()` só pra este documento — o
+  coordenador continua por LOCAL (não por seção — um coordenador cobre o
+  prédio inteiro, não uma mesa específica; o pedido foi "para seções use
+  esse modelo", não pra todos os 4). Sem coluna "Seção" na tabela principal
+  da Mesa Receptora (o número já está no cabeçalho da página, repetir 4x
+  na mesma folha seria redundante) — `raHtmlMesaReceptora()` (nova).
+- **Timbre institucional (`raHtmlTimbre()`)** — marca + nome do órgão/zona
+  + título do documento + data/hora + número da página, com régua
+  horizontal, em TODOS os 4 modelos (não só mesa). **Deliberadamente SEM
+  o brasão da Justiça Eleitoral** — mesmo critério já usado em
+  Correspondência ("sem a marca/logo dos Correios") e Oficial de Justiça
+  ("inventar um formato que parecesse oficial seria o oposto do critério
+  de sempre"): usar o selo de um órgão público real num documento gerado
+  pelo SIME faria parecer uma peça oficial da Justiça Eleitoral, que não
+  é. A marca é a própria identidade do SIME (círculo com "SIME", mesmo
+  espírito do "S" do cabeçalho da tela); todo documento ganhou uma nota de
+  rodapé explícita (`raHtmlRodapeInstitucional()`) — "Documento de
+  controle interno do SIME — não substitui documento oficial da Justiça
+  Eleitoral." Número de página vira só o número cru (sem "Página X de Y")
+  — o próprio modelo real do ELO mostra só o número, sem a palavra.
+- **Rótulos de função e estrutura da tabela batidos contra os documentos
+  reais do coordenador/auxiliar** — achados genuínos, não só estilo: o
+  ELO real usa "Coordenador de Acessibilidade" (sem "(a)") e "Auxiliar de
+  Serviços Eleitorais" (não "Auxiliar de Eleição", que é só o nome
+  interno da `funcao` no SIME) — `raFuncaoLabel()` corrigido pros dois.
+  As tabelas de Coordenador/Auxiliar no ELO real NÃO têm coluna "Seção"
+  nenhuma (só Inscrição|Nome|Função|Assinatura) — removida de
+  `raHtmlPorLocal()`. Por decorrência, a tabela de SUBSTITUIÇÕES desses
+  dois documentos também sai sem a coluna "Seção Origem" (5 colunas, não
+  6) — só a Mesa Receptora (documento organizado por seção) mantém essa
+  coluna; `raHtmlSubstituicoes(comSecao)` ganhou o parâmetro pra decidir.
+  Uma linha **"OBS:"** (com espaço em branco pra anotação livre) — também
+  vista nos dois documentos reais, entre SUBSTITUIÇÕES e "Total pago" —
+  adicionada a todos os 4 modelos por consistência (`raHtmlObs()`).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (50 checks, arquivo
+revisado): mesa receptora agora gera 1 página POR SEÇÃO (2 seções → 2
+páginas, mesmo as duas compartilhando o mesmo teste anterior de "por
+local"); timbre institucional presente com zona/órgão; coluna "Seção
+Origem" nas substituições só na mesa (ausente no coordenador/auxiliar);
+rótulos "Coordenador de Acessibilidade" (sem "(a)") e "Auxiliar de
+Serviços Eleitorais" (não "Auxiliar de Eleição"); linha "OBS:" presente
+nos 4 modelos; nota de documento de controle interno presente; nenhuma
+regressão nos demais comportamentos (agrupamento do coordenador, 2
+páginas dos auxiliares, 1 página da junta, log de auditoria, grupo vazio
+desabilitando o botão).
 
 ---
 

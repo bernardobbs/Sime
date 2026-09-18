@@ -122,7 +122,7 @@ async function login(p) {
 
   const txt = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
   check('mesa receptora conta 3 (mesarios ativos, o inativo nunca entra)', /Mesa Receptora \(3\)/.test(txt), txt.slice(0, 400));
-  check('coordenadores conta 2', /Coordenador\(a\) de Acessibilidade \(2\)/.test(txt), txt.slice(0, 400));
+  check('coordenadores conta 2', /Coordenador de Acessibilidade \(2\)/.test(txt), txt.slice(0, 400));
   check('auxiliares conta 2', /Auxiliares de Eleição \(2\)/.test(txt), txt.slice(0, 400));
   check('junta conta 1', /Junta Eleitoral \(1\)/.test(txt), txt.slice(0, 400));
   check('valor default 65,00', await p.locator('#ra-valor').inputValue() === '65.00');
@@ -153,8 +153,9 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 3. Imprimir recibos — Mesa Receptora: agrupado por local, ordem de
-//      cargo, SUBSTITUIÇÕES + Total pago/Suprido, log de auditoria ──
+// ── 3. Imprimir recibos — Mesa Receptora: UMA PÁGINA POR SEÇÃO (não por
+//      local), com timbre institucional, ordem de cargo, "Seção Origem"
+//      nas substituições, OBS + Total pago/Suprido, log de auditoria ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -166,14 +167,21 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
+  const paginas = await p.locator('#print-area .ra-pagina').count();
+  check('uma página por SEÇÃO (2 seções, não 1 página agrupando as duas por local)', paginas === 2, String(paginas));
   const html = await p.locator('#print-area').innerHTML();
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('timbre institucional (marca SIME + órgão/zona)', /SIME — Sistema de Monitoramento Eleitoral/.test(txt) && /7ª Zona Eleitoral — Campo Maior/.test(txt), txt.slice(0, 300));
+  check('mostra as duas seções no cabeçalho (Seção: 5 e Seção: 12)', /Seção: 5\b/.test(txt) && /Seção: 12\b/.test(txt), txt.slice(0, 400));
   check('mostra os dois locais (Escola A e Escola B)', /Escola A/.test(txt) && /Escola B/.test(txt), txt.slice(0, 500));
-  check('mostra seção/nome/inscrição dos 3 mesários ativos', /5.*111111111111.*PRESIDENTE MARIA/.test(txt) && /MESARIO 1 JOAO/.test(txt) && /12.*333333333333.*MESARIO 2 ANA/.test(txt), txt.slice(0, 800));
+  check('mostra nome/inscrição dos 3 mesários ativos', /111111111111.*PRESIDENTE MARIA/.test(txt) && /MESARIO 1 JOAO/.test(txt) && /333333333333.*MESARIO 2 ANA/.test(txt), txt.slice(0, 800));
   check('mesário inativo nunca aparece no recibo', !/MESARIO INATIVO/.test(txt));
   check('Presidente vem antes de 1º Mesário na mesma mesa (ordem de cargo)', txt.indexOf('PRESIDENTE MARIA') < txt.indexOf('MESARIO 1 JOAO'));
   check('bloco de SUBSTITUIÇÕES presente', /SUBSTITUIÇÕES \(preencher com letra de forma\)/.test(txt));
+  check('coluna "Seção Origem" nas substituições (documento é por seção)', /Seção\s*Origem/.test(txt));
+  check('linha "OBS:" presente', /OBS:/.test(txt));
   check('rodapé Total pago / Local / Data / Suprido presente', /Total pago/.test(txt) && /Suprido \(carimbo e assinatura\)/.test(txt));
+  check('nota de documento de controle interno (nunca oficial da Justiça Eleitoral)', /controle interno do SIME/.test(txt) && /não substitui documento oficial/.test(txt));
   check('mostra forma/valor do auxílio (default)', /DINHEIRO/.test(txt) && /R\$ 65,00/.test(txt));
 
   const escritas = await p.evaluate(() => window.__mock.escritas);
@@ -200,7 +208,9 @@ async function login(p) {
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   check('coordenadora com local aparece agrupada em Escola A', /Escola A/.test(txt) && /COORDENADORA BEATRIZ/.test(txt));
   check('coordenador sem local aparece mesmo assim, numa seção própria', /Sem local definido/.test(txt) && /COORDENADOR CARLOS SEM LOCAL/.test(txt), txt.slice(0, 800));
-  check('rótulo de função correto', /Coordenador\(a\) de Acessibilidade/.test(txt));
+  check('rótulo de função correto (sem "(a)", igual ao ELO)', /Coordenador de Acessibilidade/.test(txt) && !/Coordenador\(a\)/.test(txt));
+  check('sem coluna "Seção Origem" nas substituições (documento é por local, não por seção)', !/Seção\s*Origem/.test(txt), txt.slice(0, 400));
+  check('linha "OBS:" presente', /OBS:/.test(txt));
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -227,8 +237,10 @@ async function login(p) {
   check('subtítulo Sábado (D-1) presente', /Sábado \(D-1\)/.test(txt));
   check('subtítulo Domingo \\(Dia D\\) presente', /Domingo \(Dia D\)/.test(txt));
   check('as duas pessoas aparecem NAS DUAS páginas (2x cada)', (txt.match(/AUXILIAR PEDRO/g) || []).length === 2 && (txt.match(/AUXILIAR LUCIA/g) || []).length === 2, txt.slice(0, 200));
-  check('rótulo de função "Auxiliar de Eleição"', /Auxiliar de Eleição/.test(txt));
-  check('rodapé com Zona (lista geral, sem local de votação)', /Zona/.test(txt) && /7ª Zona Eleitoral/.test(txt));
+  check('rótulo de função "Auxiliar de Serviços Eleitorais" (igual ao ELO, não "Auxiliar de Eleição") — 2 pessoas × 2 páginas', (txt.match(/Auxiliar de Serviços Eleitorais/g) || []).length === 4);
+  check('zona aparece no timbre (lista geral, sem local de votação)', /7ª Zona Eleitoral — Campo Maior/.test(txt));
+  check('sem coluna "Seção Origem" nas substituições (lista geral)', !/Seção\s*Origem/.test(txt));
+  check('linha "OBS:" presente nas duas páginas', (txt.match(/OBS:/g) || []).length === 2);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -253,6 +265,7 @@ async function login(p) {
   check('mostra o membro da junta', /JUNTA FERNANDO/.test(txt));
   check('rótulo "Membro da Junta Eleitoral"', /Membro da Junta Eleitoral/.test(txt));
   check('sem subtítulo de dia (Sábado/Domingo) — recibo único', !/Sábado/.test(txt) && !/Domingo/.test(txt));
+  check('linha "OBS:" presente', /OBS:/.test(txt));
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
