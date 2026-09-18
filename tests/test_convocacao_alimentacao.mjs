@@ -69,12 +69,19 @@ function mock(opts = {}) {
   const secoes = [
     { id: 's1', numero: 5, local_nome: 'Escola A', municipio: 'Campo Maior', zona_id: 'z7' },
     { id: 's2', numero: 12, local_nome: 'Escola B', municipio: 'Jatobá do Piauí', zona_id: 'z7' },
+    // Seção 63 — mesa COMPLETA (4 cargos, o pior caso real, nunca há um 5º)
+    // com nomes longos, pra testar "cabe estritamente em uma folha".
+    { id: 's3', numero: 63, local_nome: 'Escola Municipal Grande do Centro', municipio: 'Campo Maior', zona_id: 'z7' },
   ];
   const atores = [
     { id: 'm1', nome_completo: 'PRESIDENTE MARIA', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's1', inscricao_eleitoral: '111111111111', zona_id: 'z7', ativo: true },
     { id: 'm2', nome_completo: 'MESARIO 1 JOAO', funcao: 'mesario', funcao_mesa: '1º Mesário', secao_id: 's1', inscricao_eleitoral: '222222222222', zona_id: 'z7', ativo: true },
     { id: 'm3', nome_completo: 'MESARIO 2 ANA', funcao: 'mesario', funcao_mesa: '2º Mesário', secao_id: 's2', inscricao_eleitoral: '333333333333', zona_id: 'z7', ativo: true },
     { id: 'm4', nome_completo: 'MESARIO INATIVO NUNCA APARECE', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's2', inscricao_eleitoral: '999999999999', zona_id: 'z7', ativo: false },
+    { id: 'm5', nome_completo: 'PRESIDENTE MARIA DA SILVA SANTOS SOUSA OLIVEIRA', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's3', inscricao_eleitoral: '101010101010', zona_id: 'z7', ativo: true },
+    { id: 'm6', nome_completo: 'JOAO PEDRO OLIVEIRA DOS SANTOS FILHO NASCIMENTO', funcao: 'mesario', funcao_mesa: '1º Mesário', secao_id: 's3', inscricao_eleitoral: '202020202020', zona_id: 'z7', ativo: true },
+    { id: 'm7', nome_completo: 'ANA CAROLINA FERREIRA LIMA BARBOSA PEREIRA', funcao: 'mesario', funcao_mesa: '2º Mesário', secao_id: 's3', inscricao_eleitoral: '303030303030', zona_id: 'z7', ativo: true },
+    { id: 'm8', nome_completo: 'FRANCISCO DAS CHAGAS RODRIGUES ALVES MENDES', funcao: 'mesario', funcao_mesa: '1º Secretário', secao_id: 's3', inscricao_eleitoral: '404040404040', zona_id: 'z7', ativo: true },
     { id: 'c1', nome_completo: 'COORDENADORA BEATRIZ', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's1', inscricao_eleitoral: '444444444444', zona_id: 'z7', ativo: true },
     { id: 'c2', nome_completo: 'COORDENADOR CARLOS SEM LOCAL', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '555555555555', zona_id: 'z7', ativo: true },
     { id: 'a1', nome_completo: 'AUXILIAR PEDRO', funcao: 'auxiliar_eleicao', funcao_mesa: null, secao_id: null, inscricao_eleitoral: '666666666666', zona_id: 'z7', ativo: true },
@@ -122,7 +129,7 @@ async function login(p) {
   await p.waitForTimeout(400);
 
   const txt = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
-  check('mesa receptora conta 3 (mesarios ativos, o inativo nunca entra)', /Mesa Receptora \(3\)/.test(txt), txt.slice(0, 400));
+  check('mesa receptora conta 7 (mesarios ativos, o inativo nunca entra)', /Mesa Receptora \(7\)/.test(txt), txt.slice(0, 400));
   check('coordenadores conta 2', /Coordenador de Acessibilidade \(2\)/.test(txt), txt.slice(0, 400));
   check('auxiliares conta 2', /Auxiliares de Eleição \(2\)/.test(txt), txt.slice(0, 400));
   check('junta conta 1', /Junta Eleitoral \(1\)/.test(txt), txt.slice(0, 400));
@@ -169,14 +176,14 @@ async function login(p) {
 
   check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
   const paginas = await p.locator('#print-area .ra-pagina').count();
-  check('uma página por SEÇÃO (2 seções, não 1 página agrupando as duas por local)', paginas === 2, String(paginas));
+  check('uma página por SEÇÃO (3 seções, não 1 página agrupando por local)', paginas === 3, String(paginas));
   const html = await p.locator('#print-area').innerHTML();
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   check('timbre institucional com a logo da campanha (não a marca SIME) + órgão/zona', /assets\/logo_eleicoes2026\.png/.test(html) && /7ª Zona Eleitoral — Campo Maior/.test(txt), txt.slice(0, 300));
   check('linha "Eleição:" mostra Eleições Gerais 2026 - 1º turno com a data', /Eleição:\s*Eleições Gerais de 2026 - 1º turno \(04\/10\/2026\)/.test(txt), txt.slice(0, 300));
-  check('mostra as duas seções no cabeçalho (Seção: 5 e Seção: 12)', /Seção: 5\b/.test(txt) && /Seção: 12\b/.test(txt), txt.slice(0, 400));
-  check('mostra os dois locais (Escola A e Escola B)', /Escola A/.test(txt) && /Escola B/.test(txt), txt.slice(0, 500));
-  check('mostra nome/inscrição dos 3 mesários ativos', /111111111111.*PRESIDENTE MARIA/.test(txt) && /MESARIO 1 JOAO/.test(txt) && /333333333333.*MESARIO 2 ANA/.test(txt), txt.slice(0, 800));
+  check('mostra as três seções no cabeçalho (Seção: 5, 12 e 63)', /Seção: 5\b/.test(txt) && /Seção: 12\b/.test(txt) && /Seção: 63\b/.test(txt), txt.slice(0, 400));
+  check('mostra os locais (Escola A, Escola B e a mesa completa da 63)', /Escola A/.test(txt) && /Escola B/.test(txt) && /Escola Municipal Grande do Centro/.test(txt), txt.slice(0, 500));
+  check('mostra nome/inscrição dos mesários ativos', /111111111111.*PRESIDENTE MARIA/.test(txt) && /MESARIO 1 JOAO/.test(txt) && /333333333333.*MESARIO 2 ANA/.test(txt), txt.slice(0, 800));
   check('mesário inativo nunca aparece no recibo', !/MESARIO INATIVO/.test(txt));
   check('Presidente vem antes de 1º Mesário na mesma mesa (ordem de cargo)', txt.indexOf('PRESIDENTE MARIA') < txt.indexOf('MESARIO 1 JOAO'));
   check('bloco de SUBSTITUIÇÕES presente', /SUBSTITUIÇÕES \(preencher com letra de forma\)/.test(txt));
@@ -188,7 +195,7 @@ async function login(p) {
 
   const escritas = await p.evaluate(() => window.__mock.escritas);
   const logMesa = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_mesa_impresso');
-  check('log de auditoria gravado com quantidade certa', !!logMesa && logMesa.payload.payload.quantidade === 3, JSON.stringify(logMesa));
+  check('log de auditoria gravado com quantidade certa', !!logMesa && logMesa.payload.payload.quantidade === 7, JSON.stringify(logMesa));
 
   // Paisagem (18/09/2026) — verificado com page.pdf() de verdade, não só
   // innerHTML/screenshot, mesmo critério já usado pro AR de Correspondência.
@@ -196,7 +203,11 @@ async function login(p) {
   const raPdf = await p.pdf({ printBackground: true });
   const raPdfTxt = raPdf.toString('latin1');
   const mediaBoxes = [...raPdfTxt.matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
-  check('recibo real gerado em páginas (uma por seção)', mediaBoxes.length === 2, String(mediaBoxes.length));
+  // "Cada recibo de seção deve caber estritamente em uma folha" (18/09/2026,
+  // pedido direto) — a Seção 63 (s3) tem mesa COMPLETA (4 cargos, o pior
+  // caso real) com nomes longos; se qualquer página lógica transbordasse
+  // pra uma 2ª página física, este número físico subiria pra 4, não 3.
+  check('recibo real gerado em EXATAMENTE 3 páginas físicas (1 por seção, mesa completa não transborda)', mediaBoxes.length === 3, String(mediaBoxes.length));
   for (const [, , , wStr, hStr] of mediaBoxes) {
     check('cada página sai em A4 PAISAGEM (largura > altura)', parseFloat(wStr) > parseFloat(hStr), `${wStr}x${hStr}`);
   }

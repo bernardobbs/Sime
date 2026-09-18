@@ -6109,6 +6109,49 @@ já que os dois membros de junta ficam de fora nesse cenário.
 
 ---
 
+## RECIBO DE AUXÍLIO ALIMENTAÇÃO — MESA RECEPTORA TRANSBORDAVA PRA UMA 2ª PÁGINA (18/09/2026)
+
+Pedido direto: "cada recibo de seção deve caber estritamente em uma
+folha". Achado real testando (não só olhando o CSS): uma seção com mesa
+COMPLETA — os 4 cargos preenchidos (Presidente/1º Mesário/2º Mesário/1º
+Secretário), o caso mais comum e o pior caso real, já que nunca há um 5º
+cargo — transbordava pra uma 2ª página física do PDF, quebrando a garantia
+de "uma folha por seção" que o resto do documento (`raAgruparPorSecao()`,
+timbre, paginação "Página N") já promete desde a revisão anterior do mesmo
+dia. Verificado com `page.pdf()` de verdade (o mesmo critério já usado pro
+AR de Correspondência — innerHTML/contagem de `.ra-pagina` no DOM não pega
+isso, porque cada `.ra-pagina` já é uma div lógica só; o transbordo é a
+paginação FÍSICA do PDF, que só aparece contando `/MediaBox` de verdade):
+2 seções (uma com mesa completa) geravam 3 páginas físicas, não 2.
+
+Corrigido comprimindo margin/padding em cada bloco da folha — timbre,
+linhas de cabeçalho, tabela principal, SUBSTITUIÇÕES, OBS, rodapé —
+**nunca o conteúdo**: nenhuma linha de substituição foi removida (ainda
+são as mesmas 6 em branco), nenhum campo saiu do timbre/rodapé, só o
+espaçamento entre eles ficou mais econômico (ex.: `.ra-tabela-sub td`
+de `height:7mm` pra `5.5mm`, `.ra-substituicoes{margin-top:7mm}` pra
+`4mm`, padding da página de `8mm` pra `6mm`). Verificado de novo com
+`page.pdf()` até o pior caso (mesa completa, com nomes de mesário
+propositalmente longos pra também testar quebra de linha na coluna
+Nome) caber numa página física só — e medida a MARGEM de sobra de
+verdade (não só "coube por pouco"): `getBoundingClientRect()` do
+`.ra-pagina` sob `page.emulateMedia({media:'print'})` dá ~157mm de
+conteúdo contra ~190mm de altura útil da página (210mm − 20mm de margem
+do `@page ra-page`) — **~33mm de folga**, longe de ser um encaixe raspando.
+`.oj-tabela` (Oficial de Justiça) e `.co-ar-tabela` (AR de
+Correspondência) não foram tocadas — o pedido era só sobre este
+documento.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (58 checks): mock
+ganhou uma 3ª seção (63) com mesa completa e nomes de mesário longos;
+o teste de paginação física passou de esperar 2 páginas pra esperar
+EXATAMENTE 3 (uma por seção — se a mesa completa transbordasse de novo,
+esse número subiria pra 4, não 3), e as demais contagens (Mesa Receptora
+de 3 pra 7 mesários ativos, log de auditoria com `quantidade:7`) foram
+atualizadas junto.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
