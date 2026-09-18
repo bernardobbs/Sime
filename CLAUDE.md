@@ -5800,6 +5800,120 @@ falha de rede), `tests/test_convocacao_voluntarios.mjs` (89),
 
 ---
 
+## RECIBO DE AUXÍLIO ALIMENTAÇÃO (`SIME_convocacao.html` → aba 🍽️, 18/09/2026)
+
+Pedido direto, com dois documentos reais anexados como referência: o
+modelo oficial do ELO ("Controle de Entrega de Auxílio Alimentação / Lista
+de presença" — colunas Seção|Inscrição|Nome|Função|Assinatura, agrupado
+por local de votação, terminando com um bloco de SUBSTITUIÇÕES em branco
+e "Total pago"/"Local"/"Data"/"Suprido (carimbo e assinatura)") e uma
+planilha auxiliar de vales-alimentação de mesários — "implemente no
+modulo convocação um modelo de relatório para imprimir um recibo de
+auxilio alimentação um por mesa receptora, um para cada coordenador de
+acessibilidade, um geral para os outros auxiliares de eleição, um para os
+membros da junta ... os dos auxiliares de eleição tem que ser um para o
+sabado e um para o domingo ... o recibo deve prever possivel
+substituições de ultima hora. deixando o campo para assinatura em
+branco."
+
+`modules/sime_recibo_alimentacao.js` (novo) — 4 documentos, todos
+replicando o FORMATO real do ELO em vez de inventar um layout próprio:
+mesa receptora, coordenador de acessibilidade, auxiliares de eleição
+(geral) e junta eleitoral. **Só GERA o documento** — não é um controle de
+pagamento com status por pessoa (sem "pago"/"pendente"); a confirmação de
+entrega é a própria assinatura no papel, no ato, mesmo espírito de
+Correspondência/Oficial de Justiça: o SIME organiza e imprime, o cartório
+executa fora do sistema.
+
+**Fonte de dado — `sime_atores`, o mesmo cadastro de sempre, filtrado por
+`funcao`.** `junta_eleitoral` já existia no enum
+(`sime_ator_funcao`, `sql/SIME_schema.sql`) e no cadastro avulso de
+`SIME_atores.html` desde muito antes desta feature (nunca vem do sync do
+ELO, só cadastro manual, ver rótulo "⚖️ Junta Eleitoral" já existente na
+tela) — nenhuma mudança de schema precisou disso, só ligar a leitura.
+
+**Valor e forma do auxílio, editáveis, nunca cravados** —
+`sime_eleicoes.valor_auxilio_alimentacao` (NUMERIC, default `65.00`) e
+`forma_auxilio_alimentacao` (TEXT, default `'DINHEIRO'`,
+`sql/SIME_eleicoes_auxilio_alimentacao.sql`) — os defaults reproduzem o
+valor REAL já visto no documento de referência do ELO ("Forma de Auxílio:
+DINHEIRO Valor: R$ 65,00"), não um chute. Editáveis na própria aba (campo
++ "💾 Salvar", `raSalvarConfig()`) — mesmo padrão já usado por
+`minutos_por_eleitor_fila` em `SIME_admin.html`: default sensível, ajuste
+manual sem bloquear nada enquanto ninguém mexe.
+
+**Dois documentos "por local de votação" — Mesa Receptora e Coordenador
+de Acessibilidade (`raHtmlPorLocal`).** Agrupados por município+local
+(mesma chave `local_nome`+`municipio` de sempre — `sime_secoes` não tem id
+próprio de "local"), com quebra de página a cada troca de local (`.ra-
+pagina:not(:last-child)`, CSS Paged Media, mesmo cuidado já usado em
+`.tk-page` de `SIME_tokens.html` pra nunca deixar página em branco
+sobrando no fim). Dentro de cada local, as pessoas vêm ordenadas por
+número de seção e depois pela ordem de cargo de mesa
+(`RA_ORDEM_MESA = ['Presidente','1º Mesário','2º Mesário','1º
+Secretário']`, mesma constante já duplicada em `SIME_problemas.html`/
+`SIME_tv_dia.html`/`SIME_tv_vespera.html` — replicada aqui de propósito,
+não importada, mesmo critério de sempre pra scripts que não compartilham
+`<script>` clássico entre arquivos diferentes). Coordenador de
+Acessibilidade usa o MESMO agrupador — a única diferença é o rótulo de
+função (fixo, "Coordenador(a) de Acessibilidade", não `funcao_mesa`).
+**Quem não tem `secao_id` resolvido** (comum pra
+`coord_acessibilidade`/`auxiliar_eleicao` — ver "Auxiliar de Eleição
+virou contagem por PESSOA" na seção de Convocação, mais acima) entra numa
+seção própria, rotulada "⚠ Sem local definido", sempre impressa — nunca
+escondida por falta de dado.
+
+**Dois documentos "lista geral" — Auxiliares de Eleição e Junta Eleitoral
+(`raHtmlListaFlat`).** Sem agrupar por local (a maioria de `auxiliar_
+eleicao` nunca tem `secao_id` — checado em produção, 0/30 na 7ª Zona —
+então agrupar por prédio devolveria quase só "Sem local definido"): uma
+lista só, Inscrição|Nome|Função|Assinatura, ordenada por nome. **Auxiliares
+de Eleição sai em DUAS páginas no MESMO clique** — "Sábado (D-1)" e
+"Domingo (Dia D)" — mesma lista de pessoas repetida nas duas, porque este
+grupo trabalha e recebe auxílio nos dois dias (pedido explícito: "os dos
+auxiliares de eleição tem que ser um para o sabado e um para o domingo").
+Cada página carrega seu próprio bloco de substituições/fechamento — são
+dois pagamentos distintos, não um só. Junta Eleitoral usa o mesmo
+gerador, sem o segundo parâmetro de dia — um recibo só, nenhuma menção a
+sábado/domingo (o pedido não distinguiu dia pra este grupo).
+
+**Bloco de SUBSTITUIÇÕES + fechamento, em TODOS os 4 modelos, replicando
+literalmente a última página do modelo real do ELO** (`raHtmlSubstituicoes()`/
+`raHtmlRodapeTotal()`) — pedido explícito: "o recibo deve prever possivel
+substituições de ultima hora. deixando o campo para assinatura em
+branco." Seis linhas em branco (Seção|Inscrição|Nome|Função|Data|Assinatura,
+"preencher com letra de forma") pra registrar uma troca de última hora
+sem precisar de outro documento, seguidas de "Total pago: R$______",
+"Local: [nome do local]", "Data: [hoje]", "Suprido (carimbo e
+assinatura): ________" — assinatura SEMPRE em branco (nunca preenchida
+pelo sistema, é campo físico de papel). Nos documentos "por local"
+(Mesa/Coord.), o fechamento é POR LOCAL — cada página tem seu próprio
+"Suprido", já que na prática é gente diferente assinando o recebimento em
+cada prédio; nos documentos "lista geral" (Auxiliares/Junta), o
+fechamento cita a zona inteira, um "Suprido" só por página.
+
+**Impressão sem popup, mesmo mecanismo de sempre** — `#print-area`
+(elemento já existente, compartilhado com Correspondência/Oficial de
+Justiça), `raImprimirDocumento()` escreve o HTML e chama `window.print()`
+direto. Cada impressão grava log de auditoria
+(`recibo_alimentacao_mesa_impresso`/`_coord_impresso`/
+`_auxiliares_impresso`/`_junta_impresso`, com autor e quantidade) — mesmo
+critério de sempre: não é confirmação de que o auxílio foi entregue, só
+de que o cartório gerou o documento. Botão de cada grupo fica
+`disabled` quando não há ninguém ativo naquela função — nunca gera um
+recibo vazio.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (39 checks): contagem
+dos 4 grupos e defaults de valor/forma; salvar configuração grava em
+`sime_eleicoes`; mesa receptora agrupa por local, ordena por cargo, mostra
+SUBSTITUIÇÕES+fechamento, exclui inativo, loga com a quantidade certa;
+coordenador agrupa por local e mostra "Sem local definido" pra quem não
+resolveu seção; auxiliares gera 2 páginas (Sábado/Domingo) num só
+`window.print()`, com as duas pessoas repetidas nas duas páginas; junta
+gera 1 página só, sem menção a dia; grupo vazio desabilita o botão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

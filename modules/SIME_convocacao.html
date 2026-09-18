@@ -242,6 +242,36 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .oj-col-assinatura{width:22%;}
   .oj-col-data{width:10%;}
   .oj-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+
+  /* ── Recibo de Auxílio Alimentação (18/09/2026) — layout batido contra o
+     modelo real do ELO ("Controle de Entrega de Auxílio Alimentação /
+     Lista de presença": Seção|Inscrição|Nome|Função|Assinatura, agrupado
+     por local de votação, terminando com SUBSTITUIÇÕES + "Total pago"/
+     "Suprido"). `.ra-pagina:not(:last-child)` (não um page-break
+     incondicional) — mesmo cuidado já usado em `.tk-page` (SIME_tokens.html,
+     cartão de visita) pra nunca deixar uma página em branco sobrando
+     depois da última, já que aqui várias páginas nascem concatenadas num
+     `innerHTML` só. ── */
+  .ra-pagina:not(:last-child){page-break-after:always;}
+  .ra-pagina{padding:8mm;font-family:Arial,Helvetica,sans-serif;}
+  .ra-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
+  .ra-titulo{font-weight:800;font-size:12pt;}
+  .ra-sub{font-size:8pt;color:#333;margin-top:1mm;}
+  .ra-linha-info{display:flex;gap:8mm;flex-wrap:wrap;font-size:8.5pt;margin-bottom:4mm;}
+  .ra-tabela{width:100%;border-collapse:collapse;font-size:8.5pt;line-height:1.4;table-layout:fixed;}
+  .ra-tabela th,.ra-tabela td{border:1px solid #000;padding:2mm 2.5mm;vertical-align:top;text-align:left;}
+  .ra-tabela th{background:#eee;font-size:8pt;}
+  .ra-col-secao{width:9%;}
+  .ra-col-insc{width:16%;}
+  .ra-col-func{width:20%;}
+  .ra-col-assin{width:24%;}
+  .ra-linha-assin{position:relative;}
+  .ra-linha-assin::after{content:'';position:absolute;left:2mm;right:2mm;bottom:2.2mm;border-bottom:1px solid #000;}
+  .ra-substituicoes{margin-top:6mm;}
+  .ra-sub-titulo{font-weight:700;font-size:8.5pt;margin-bottom:2mm;}
+  .ra-tabela-sub td{height:5.5mm;}
+  .ra-rodape-total{margin-top:6mm;font-size:8.5pt;line-height:1.8;}
+  .ra-rodape-linha{display:flex;gap:8mm;flex-wrap:wrap;margin-top:1.5mm;}
 }
 </style>
 </head>
@@ -274,6 +304,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="tab active" id="tab-dashboard-btn" role="tab" tabindex="0" aria-selected="true" onclick="goTab('dashboard',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📊 Dashboard</div>
     <div class="tab" id="tab-contatar-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('contatar',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📞 Contatar mesários</div>
     <div class="tab" id="tab-oficial-justica-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('oficial-justica',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">⚖️ Oficial de Justiça</div>
+    <div class="tab" id="tab-alimentacao-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('alimentacao',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🍽️ Auxílio Alimentação</div>
     <div class="tab" id="tab-correspondencia-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('correspondencia',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">📬 Correspondência</div>
     <div class="tab" id="tab-voluntarios-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('voluntarios',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🙋 Voluntários</div>
     <div class="tab" id="tab-turmas-btn" role="tab" tabindex="0" aria-selected="false" onclick="goTab('turmas',this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">🎓 Treinamento</div>
@@ -306,6 +337,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <script src="./sime_voluntarios.js"></script>
 <script src="./sime_turmas.js"></script>
 <script src="./sime_oficial_justica.js"></script>
+<script src="./sime_recibo_alimentacao.js"></script>
 <script type="module">
 import { createClient } from './vendor/supabase-js.esm.js';
 import { SIME_CONFIG } from './sime_config.js';
@@ -439,6 +471,7 @@ function goTab(tab, btn) {
   if (tab === 'correspondencia' && typeof coDados !== 'undefined') coDados = null;
   if (tab === 'voluntarios' && typeof vlDados !== 'undefined') vlDados = null;
   if (tab === 'oficial-justica' && typeof ojDados !== 'undefined') ojDados = null;
+  if (tab === 'alimentacao' && typeof raDados !== 'undefined') raDados = null;
   if (tab === 'turmas' && typeof tuDados !== 'undefined') tuDados = null;
   if (tab === 'pendencias' && typeof pcDados !== 'undefined') pcDados = null;
   render();
@@ -452,6 +485,7 @@ function render() {
   if (curTab === 'correspondencia') { renderCorrespondencia(); return; }
   if (curTab === 'voluntarios') { renderVoluntarios(); return; }
   if (curTab === 'oficial-justica') { renderOficialJustica(); return; }
+  if (curTab === 'alimentacao') { renderReciboAlimentacao(); return; }
   if (curTab === 'turmas') { renderTurmas(); return; }
   if (curTab === 'pendencias') { renderPendenciasConvocacao(); return; }
 }
