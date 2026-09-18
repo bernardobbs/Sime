@@ -5972,6 +5972,68 @@ regressão nos demais comportamentos (agrupamento do coordenador, 2
 páginas dos auxiliares, 1 página da junta, log de auditoria, grupo vazio
 desabilitando o botão).
 
+**Revisado uma 3ª vez no mesmo dia — a marca "SIME" saiu do documento, e a
+imagem da campanha eleitoral entrou no lugar; a nota "controle interno"
+foi retirada; "Eleição:" ganhou texto certo com data do 1º turno.** Pedido
+direto, com a imagem real da campanha "Eleições 2026 #VotoNaDemocracia"
+anexada: "use essa imagem como logo, não mencione o sime, retire [a nota
+de controle interno], em Eleição: coloque Eleições Gerais de 2026 - 1º
+turno e a data do 1º turno" — e o contexto que motivou as três mudanças:
+"esse modelo do sime será o documento enviado às seções". Diferente das
+duas rodadas anteriores (que tinham deliberadamente EVITADO usar o brasão
+da Justiça Eleitoral e ADICIONADO uma nota "controle interno... não
+substitui documento oficial", mesmo critério de Correspondência/Oficial de
+Justiça), esta rodada reverte as duas coisas — não por contradizer aquele
+critério (o SIME continua nunca reproduzindo o brasão/selo da Justiça
+Eleitoral em lugar nenhum, e continua nunca se apresentando como um
+sistema oficial da Justiça Eleitoral), mas porque a imagem fornecida NÃO é
+um selo de órgão público — é uma peça de campanha civil de incentivo ao
+voto, do tipo normalmente distribuído/reaproveitado por cartórios e
+zonas eleitorais em material de apoio — e o documento em si é um recibo
+administrativo de pagamento do próprio cartório (equivalente ao papel que
+o ELO já gera), não uma peça judicial; a nota de "controle interno" fazia
+sentido enquanto o documento era só um espelho interno do SIME, mas deixa
+de fazer sentido no documento que de fato viaja até a mesa receptora.
+
+- **Marca (`raHtmlTimbre()`)** — o círculo placeholder "SIME" e a linha de
+  texto "SIME — Sistema de Monitoramento Eleitoral" saíram; a marca virou
+  `<img class="ra-timbre-logo" src="./assets/logo_eleicoes2026.png">`, um
+  arquivo real (`modules/assets/logo_eleicoes2026.png`, 260×166px,
+  redimensionado a partir da imagem fornecida) — primeiro asset binário
+  deste repositório (o projeto até aqui só desenhava marcas/ícones em
+  SVG/CSS/emoji, ver QR codes vendorizados e o círculo "S" do cabeçalho da
+  tela; uma foto de campanha com fita e numerais dourados não tem como ser
+  redesenhada em SVG sem perder a identidade visual real da peça). Nenhuma
+  outra tela do sistema referencia esse arquivo — é específico deste
+  documento.
+- **Nenhuma menção a "SIME" sobra no documento impresso** — verificado por
+  teste (`!/SIME/.test(txt)` sobre o `#print-area` inteiro); o rótulo
+  "🍽️ Recibo de Auxílio Alimentação" da TELA (fora do `#print-area`)
+  continua existindo normalmente — a mudança é só no que sai no papel.
+- **`raHtmlRodapeInstitucional()` removida** — função e as 3 chamadas
+  (Mesa Receptora, Coordenador, Lista Flat) junto com a CSS
+  `.ra-timbre-disclaimer`, agora morta.
+- **`raEleicaoTexto(eleicao)`** (nova) — monta "Eleições Gerais de {ano} -
+  {turno} turno ({data})" a partir de `sime_eleicoes.turno`/`data_d`
+  (os dois adicionados ao `select()` de `raCarregar()`, que antes só
+  trazia `nome`). Sem `data_d` cadastrado ainda, cai no valor real já
+  documentado no topo deste arquivo pro 1º turno (04/10/2026) — nunca um
+  "a definir" vago, já que essa data já é certa e pública; só o 2º turno
+  (sem data legal fixa) ficaria sem data se `data_d` não estiver
+  preenchido. Substitui o texto livre de `sime_eleicoes.nome` (que na 7ª
+  Zona hoje está como "Eleições Municipais 2026", incorreto — não é
+  eleição municipal — mas corrigir esse campo em produção é tarefa
+  separada de cadastro, fora do escopo desta mudança de exibição; a
+  função nunca lê `nome` pra montar esta linha).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (51 checks): timbre
+aponta pra `assets/logo_eleicoes2026.png` em vez de citar "SIME"; nenhuma
+ocorrência de "SIME" no HTML impresso; linha "Eleição:" mostra "Eleições
+Gerais de 2026 - 1º turno (04/10/2026)"; nenhuma regressão nos demais 47
+checks já existentes (agrupamento, ordem de cargo, substituições/OBS/
+rodapé, páginas por dia dos auxiliares, log de auditoria, botão
+desabilitado sem gente).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

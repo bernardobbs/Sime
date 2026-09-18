@@ -85,7 +85,7 @@ function mock(opts = {}) {
     escritas: [], rpcChamadas: [],
     sime_usuarios: [{ id: 'u-maria', nome: 'Maria', perfil: 'coordenador', zona_id: 'z7', ativo: true, auth_user_id: 'auth-maria' }],
     sime_zonas: [{ id: 'z7', numero: 7, estado: 'PI', municipio: 'Campo Maior' }],
-    sime_eleicoes: [{ id: 'el7', zona_id: 'z7', turno: 1, ativa: true, nome: 'Eleições Municipais 2026' }],
+    sime_eleicoes: [{ id: 'el7', zona_id: 'z7', turno: 1, data_d: '2026-10-04', ativa: true, nome: 'Eleições Municipais 2026' }],
     sime_secoes: secoes,
     sime_atores: opts.semJunta ? atores.filter(a => a.funcao !== 'junta_eleitoral') : atores,
   };
@@ -171,7 +171,8 @@ async function login(p) {
   check('uma página por SEÇÃO (2 seções, não 1 página agrupando as duas por local)', paginas === 2, String(paginas));
   const html = await p.locator('#print-area').innerHTML();
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  check('timbre institucional (marca SIME + órgão/zona)', /SIME — Sistema de Monitoramento Eleitoral/.test(txt) && /7ª Zona Eleitoral — Campo Maior/.test(txt), txt.slice(0, 300));
+  check('timbre institucional com a logo da campanha (não a marca SIME) + órgão/zona', /assets\/logo_eleicoes2026\.png/.test(html) && /7ª Zona Eleitoral — Campo Maior/.test(txt), txt.slice(0, 300));
+  check('linha "Eleição:" mostra Eleições Gerais 2026 - 1º turno com a data', /Eleição:\s*Eleições Gerais de 2026 - 1º turno \(04\/10\/2026\)/.test(txt), txt.slice(0, 300));
   check('mostra as duas seções no cabeçalho (Seção: 5 e Seção: 12)', /Seção: 5\b/.test(txt) && /Seção: 12\b/.test(txt), txt.slice(0, 400));
   check('mostra os dois locais (Escola A e Escola B)', /Escola A/.test(txt) && /Escola B/.test(txt), txt.slice(0, 500));
   check('mostra nome/inscrição dos 3 mesários ativos', /111111111111.*PRESIDENTE MARIA/.test(txt) && /MESARIO 1 JOAO/.test(txt) && /333333333333.*MESARIO 2 ANA/.test(txt), txt.slice(0, 800));
@@ -181,7 +182,7 @@ async function login(p) {
   check('coluna "Seção Origem" nas substituições (documento é por seção)', /Seção\s*Origem/.test(txt));
   check('linha "OBS:" presente', /OBS:/.test(txt));
   check('rodapé Total pago / Local / Data / Suprido presente', /Total pago/.test(txt) && /Suprido \(carimbo e assinatura\)/.test(txt));
-  check('nota de documento de controle interno (nunca oficial da Justiça Eleitoral)', /controle interno do SIME/.test(txt) && /não substitui documento oficial/.test(txt));
+  check('nenhuma menção a "SIME" no documento impresso (é o documento entregue às seções)', !/SIME/.test(txt), txt.slice(0, 400));
   check('mostra forma/valor do auxílio (default)', /DINHEIRO/.test(txt) && /R\$ 65,00/.test(txt));
 
   const escritas = await p.evaluate(() => window.__mock.escritas);

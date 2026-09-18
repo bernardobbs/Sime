@@ -38,6 +38,26 @@
 // `forma_auxilio_alimentacao`, sql/SIME_eleicoes_auxilio_alimentacao.sql)
 // são editáveis pelo cartório, nunca cravados como fato — mesmo padrão já
 // usado por `minutos_por_eleitor_fila` em SIME_admin.html.
+//
+// Revisado uma 3ª vez no mesmo dia — pedido direto: "esse modelo do sime
+// será o documento enviado às seções... use essa imagem como logo, não
+// mencione o sime, retire [a nota de controle interno], em Eleição:
+// coloque Eleições Gerais de 2026 - 1º turno e a data do 1º turno".
+// Como o documento passa a ser entregue de fato às seções (não só um
+// espelho interno do cartório), o timbre trocou a marca placeholder
+// "SIME" pela imagem real da campanha civil "Eleições 2026
+// #VotoNaDemocracia" (`assets/logo_eleicoes2026.png`, arquivo fornecido
+// pelo cartório) e nenhuma menção a "SIME" aparece mais no documento
+// impresso; a nota "documento de controle interno... não substitui
+// documento oficial" (`raHtmlRodapeInstitucional`, existia desde a
+// revisão de timbre) saiu junto — não fazia sentido continuar dizendo
+// isso de um documento que passou a ser exatamente o que vai às mãos das
+// mesas. A linha "Eleição:" (Mesa Receptora e Coordenador) virou
+// `raEleicaoTexto()`: "Eleições Gerais de {ano} - {turno} turno
+// ({data})", turno/ano/data vindos de `sime_eleicoes.turno`/`data_d`
+// quando cadastrados — sem `data_d` preenchido, cai no valor real já
+// documentado no CLAUDE.md pro 1º turno (04/10/2026), nunca um "a
+// definir" vago, já que essa data já é certa.
 
 let raDados = null; // { zona, eleicao, mesarios, coord, auxiliares, junta }
 
@@ -73,6 +93,25 @@ function raFmtDataHora(d) {
   return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
 }
 
+// "AAAA-MM-DD" (formato de data do Postgres) -> "DD/MM/AAAA".
+function raFmtDataISO(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+// Texto da linha "Eleição:" — sempre "Eleições Gerais de <ano> - Nº turno",
+// com a data do turno (18/09/2026, pedido direto). O ano/turno vêm de
+// sime_eleicoes quando cadastrados; a data do 1º turno cai no valor
+// conhecido da eleição real (04/10/2026, ver "Números da operação" no
+// CLAUDE.md) quando a linha ainda não tem `data_d` preenchido — nunca um
+// "a definir" vago, já que o 1º turno já tem data oficial certa.
+function raEleicaoTexto(eleicao) {
+  const turno = Number(eleicao?.turno) === 2 ? '2º' : '1º';
+  const ano = eleicao?.data_d ? eleicao.data_d.slice(0, 4) : '2026';
+  const data = raFmtDataISO(eleicao?.data_d) || (turno === '1º' ? '04/10/2026' : '');
+  return `Eleições Gerais de ${ano} - ${turno} turno${data ? ` (${data})` : ''}`;
+}
+
 async function raCarregar() {
   const sb = window.supabaseAtores;
   const zonaId = await zonaDoUsuario();
@@ -80,7 +119,7 @@ async function raCarregar() {
 
   const [{ data: zona }, { data: eleicao }, { data: atores, error }] = await Promise.all([
     sb.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle(),
-    sb.from('sime_eleicoes').select('id, nome, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
+    sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
       .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral')
@@ -113,7 +152,7 @@ function raCfg() {
   const dataHoraStr = raFmtDataHora(hoje);
   const valor = Number(raDados.eleicao?.valor_auxilio_alimentacao ?? 65);
   const forma = raDados.eleicao?.forma_auxilio_alimentacao || 'DINHEIRO';
-  const eleicaoNome = raDados.eleicao?.nome || 'Eleição';
+  const eleicaoNome = raEleicaoTexto(raDados.eleicao);
   const zonaTexto = raDados.zona?.numero ? `${raDados.zona.numero}ª Zona Eleitoral${raDados.zona.municipio ? ` — ${raDados.zona.municipio}` : ''}` : 'Zona Eleitoral';
   return { valor, forma, eleicaoNome, dataStr, dataHoraStr, zonaTexto };
 }
@@ -213,35 +252,27 @@ function raHtmlRodapeTotal(localTexto, dataStr) {
     </div>`;
 }
 
-// Nota de rodapé em todo documento — mesmo critério já usado na relação
-// de Oficial de Justiça/AR dos Correios: por mais que o LAYOUT siga de
-// perto um modelo oficial, o texto deixa explícito que isto é um
-// documento de controle interno do cartório, não uma peça da Justiça
-// Eleitoral (o SIME nunca reproduz o brasão/selo oficial em lugar nenhum
-// — ver `.ra-timbre-brasao` abaixo, identidade própria do SIME).
-function raHtmlRodapeInstitucional() {
-  return `<div class="ra-timbre-disclaimer">Documento de controle interno do SIME — não substitui documento oficial da Justiça Eleitoral.</div>`;
-}
-
 // Timbre institucional (18/09/2026, pedido direto com print anexado do
 // modelo real do ELO: "quero um recibo, mais institucional... com
 // timbre"). Reproduz a ESTRUTURA do cabeçalho oficial (marca à esquerda,
-// nome do órgão/sistema, título do documento, data/hora e paginação à
-// direita, régua horizontal) — deliberadamente SEM o brasão da Justiça
-// Eleitoral: mesmo critério já usado em Correspondência (etiqueta/AR "sem
-// a marca/logo dos Correios") e Oficial de Justiça ("não existe um
-// mandado/certidão do TJ-PI de referência pra copiar... inventar um
-// formato que parecesse oficial seria o oposto do critério de sempre") —
-// usar o selo oficial de um órgão público num documento gerado pelo SIME
-// pareceria uma peça oficial da Justiça Eleitoral, que não é. A marca é a
-// própria identidade do SIME (mesmo círculo "S" do cabeçalho da tela).
+// nome do órgão, título do documento, data/hora e paginação à direita,
+// régua horizontal).
+//
+// Marca revisada em 18/09/2026, pedido direto ("use essa imagem como
+// logo... não mencione o sime"): a marca placeholder "SIME" e a linha de
+// texto "SIME — Sistema de Monitoramento Eleitoral" saíram — este
+// documento é entregue às seções como parte da própria operação da
+// eleição, não referenciando o sistema que o gerou. A marca virou a
+// imagem oficial da campanha civil "Eleições 2026 #VotoNaDemocracia"
+// (`assets/logo_eleicoes2026.png`, arquivo real fornecido pelo cartório —
+// diferente do brasão/selo da Justiça Eleitoral, nunca reproduzido aqui,
+// isto é material de campanha, não uma peça judicial).
 function raHtmlTimbre(titulo, subtitulo, cfg, numeroPagina) {
   return `
     <div class="ra-timbre">
-      <div class="ra-timbre-brasao">SIME</div>
+      <img class="ra-timbre-logo" src="./assets/logo_eleicoes2026.png" alt="Eleições 2026">
       <div class="ra-timbre-texto">
         <div class="ra-timbre-orgao">${raEsc(cfg.zonaTexto)}</div>
-        <div class="ra-timbre-sistema">SIME — Sistema de Monitoramento Eleitoral</div>
         <div class="ra-timbre-titulo">${raEsc(titulo)}</div>
         ${subtitulo ? `<div class="ra-timbre-sub">${raEsc(subtitulo)}</div>` : ''}
       </div>
@@ -282,7 +313,6 @@ function raHtmlMesaReceptora(secoes, cfg) {
       ${raHtmlSubstituicoes(true)}
       ${raHtmlObs()}
       ${raHtmlRodapeTotal(`Seção ${s.numero} — ${s.local_nome}`)}
-      ${raHtmlRodapeInstitucional()}
     </div>`).join('');
 }
 
@@ -315,7 +345,6 @@ function raHtmlPorLocal(titulo, locais, cfg) {
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
       ${raHtmlRodapeTotal(loc.local_nome)}
-      ${raHtmlRodapeInstitucional()}
     </div>`).join('');
 }
 
@@ -342,7 +371,6 @@ function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroP
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
       ${raHtmlRodapeTotal(localTexto)}
-      ${raHtmlRodapeInstitucional()}
     </div>`;
 }
 
