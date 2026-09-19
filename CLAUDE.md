@@ -6232,6 +6232,63 @@ contando seções/locais fora do padrão).
 
 ---
 
+## CHAVE PIX — CADASTRO E PAGAMENTO DE AUXÍLIO ALIMENTAÇÃO (19/09/2026)
+
+Pedido direto: "Atualize o pix dos Mesários" — depois de cruzar as respostas
+de um formulário Google (nome/CPF/PIX) contra `sime_atores` por CPF
+(via `sime_mesarios_raw`, o único lugar que guarda CPF — `sime_atores` não
+tem essa coluna, ver "CPF nunca é verificado sozinho" alhures), 92 mesários
+ativos da 7ª Zona ganharam PIX de imediato; o pedido evoluiu pra "cadastre
+também as 15 outras funções" (coordenadores/auxiliares que bateram no
+mesmo formulário) e, depois de uma planilha antiga de 2024 ser verificada
+("Verifique nesse arquivo se tem informações de pix de algum mesario
+atual"), mais 27+16 registros com valor limpo/extraível — 15 casos com
+texto sujo ("OK PIX 08453684359", "pix do marido") ficaram de fora,
+listados à parte pro cartório confirmar manualmente antes de cadastrar
+(nunca adivinha um valor ambíguo, mesmo critério de sempre).
+
+**`sime_atores.pix`** (`sql/SIME_atores_pix.sql`) — texto livre, nunca
+formatado/validado por regex (a chave pode ser CPF, telefone, e-mail ou
+aleatória), mesmo critério já usado em `codigo_rastreio`/`uc_equatorial`.
+
+**Cadastro manual, direto no modal de "📞 Contatar mesários"
+(`SIME_convocacao.html`, pedido direto: "pode incluir no modal do módulo
+de convocação?").** Campo "Chave PIX (auxílio alimentação)" na seção "📇
+Contato" do modal — mesmo padrão onblur-salva-sozinho já usado pelo nome/
+telefone do substituto (`cmSalvarPix()`, grava `mesario_editar_pix` em
+`sime_logs`, aparece em "📜 Atualizações"). Não é exclusivo de mesário —
+o mesmo modal já atende mesário + coordenador de acessibilidade + auxiliar
+de eleição (ver "apoio logístico ganha o mesmo modal" acima), então o
+campo PIX vale pros três de graça, sem UI nem lógica separada.
+
+**"🧩 Rodar script conversacional" removida do modal no mesmo pedido**
+("Inclusive excluindo no Modal a parte de rodar script conversacional") —
+seção inteira (select de script salvo + campo de número extra + botão
+Enviar + prévia da etapa 1) tirada de `cmRenderModal()`, junto com o
+estado e as funções que só ela usava (`cmScriptAberto`/`cmToggleScript`,
+`cmScriptCampanhas`/`cmScriptCampanhaId`/`cmScriptEtapa1`/
+`cmScriptEtapa1Imagem`, `cmScriptSelecionarCampanha`, `cmPersonalizarScript`,
+`cmEnviarScript`) e a consulta a `sime_campanhas`/`sime_campanha_etapas`
+que só alimentava essa seção em `cmCarregar()` — confirmado por busca no
+repositório que nenhum outro arquivo/teste dependia dessas funções antes
+de remover. **O rótulo `mesario_script_enviado` foi mantido em
+`CM_LOG_LABEL`** (não removido) — mesmo critério já documentado pra
+`mesario_convocacao_recebida` alhures: só pra continuar renderizando
+corretamente o histórico de quem usou essa seção antes da remoção; nada
+novo grava esse `acao` daqui em diante. O motor de script conversacional
+em si (campanhas em massa, `api/hermes-campanhas.js`,
+`sime_campanha_etapas`) continua existindo — só o atalho de rodar um
+script avulso a partir deste modal específico foi removido; quem quiser
+mandar um script continua tendo o Disparo em massa de `SIME_atores.html`.
+
+Coberto por `tests/test_convocacao_mesarios.mjs` (bloco 2.96, reescrito):
+confirma que a seção "Rodar script conversacional" e o `<select>` de
+script não existem mais no modal; campo de PIX aparece vazio quando a
+pessoa não tem chave cadastrada; sair do campo grava sozinho (onblur) e
+loga com autor; reabrir o modal mostra o valor já salvo.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
