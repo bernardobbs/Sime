@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     const porId = Object.fromEntries(secoes.map((s) => [s.id, s]));
     const { data, error } = await supabase
       .from('sime_notificacoes')
-      .select('id, evento, secao_id, mensagem, tentativas, created_at')
+      .select('id, evento, secao_id, destinatarios, mensagem, tentativas, created_at')
       .eq('status', 'pendente')
       .in('secao_id', Object.keys(porId))
       .order('created_at', { ascending: true })   // mais antigas primeiro
@@ -107,6 +107,13 @@ export default async function handler(req, res) {
         secao: s.numero ? String(s.numero).padStart(4, '0') : null,
         local: s.local_nome || null,
         municipio: s.municipio || null,
+        // [{nome, telefone, funcao}] já resolvido pelo SIME (ex.: auxiliar de
+        // eleição do local da seção) — até agora esta coluna era gravada mas
+        // nunca devolvida aqui, então nada no Hermes tinha como lê-la; quem
+        // decidia destinatário sempre foi o próprio Hermes (ADMIN_NUMBERS).
+        // Continua não-obrigatório: '[]' pros eventos que nunca resolveram
+        // destinatário nenhum (a maioria), até hoje.
+        destinatarios: n.destinatarios || [],
         payload,
       };
     });

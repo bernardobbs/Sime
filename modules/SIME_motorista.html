@@ -244,6 +244,7 @@ import { SIME_CONFIG } from './sime_config.js';
 let campoClient = null;
 let eleicaoId = null;
 const secaoIdPorNumero = {}; // numero (63) -> UUID de sime_secoes
+const rotaIdPorCodigo = {}; // codigo ('001') -> UUID de sime_rotas
 
 function esconderLogin() { document.getElementById('login-overlay').style.display = 'none'; }
 
@@ -260,7 +261,10 @@ async function resolverEscopo(rotasToken) {
   const rotas = await getRotas({ fallback: null });
   if (rotas) {
     window.ROTA_META = {};
-    for (const r of rotas) window.ROTA_META[r.codigo] = { itinerario: r.itinerario, urnas: r.urnas_estimadas };
+    for (const r of rotas) {
+      window.ROTA_META[r.codigo] = { itinerario: r.itinerario, urnas: r.urnas_estimadas };
+      rotaIdPorCodigo[r.codigo] = r.id;
+    }
     if (window.aplicarMetaRota) window.aplicarMetaRota();
   }
   if (rotasToken?.[0] && window.aplicarRotaToken) window.aplicarRotaToken(rotasToken[0]);
@@ -280,6 +284,33 @@ async function sincronizarOuEnfileirar(dados) {
   }
 }
 
+// Posição estimada no mapa da TV Dia (08/09/2026) — "a cada informe ele
+// atualiza a localização": NÃO é rastreamento contínuo em segundo plano, só
+// captura a geolocalização do navegador no exato momento em que o motorista
+// já ia confirmar uma ação (entrega/recolhimento/chegada ao cartório) de
+// qualquer forma. Melhor-esforço puro — nunca aguardado por quem chama
+// (fire-and-forget) e nunca enfileirado offline (sincronizarOuEnfileirar():
+// posição é um dado de "agora", não uma ação que precise ser preservada até
+// a rede voltar; se falhar, o próximo informe tenta de novo). Sem permissão
+// de localização, sem sessão, ou fora de faixa de rota conhecida: não grava
+// nada — "nunca adivinha" vale aqui também, cargo não aparece no mapa em vez
+// de aparecer errado.
+function atualizarPosicaoMotorista(rotaCodigo) {
+  if (!campoClient || !eleicaoId) return;
+  const rotaId = rotaIdPorCodigo[rotaCodigo];
+  if (!rotaId || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      campoClient.rpc('sime_rota_estado_upsert', {
+        p_eleicao_id: eleicaoId, p_rota_id: rotaId,
+        p_lat: pos.coords.latitude, p_lng: pos.coords.longitude,
+      }).catch(() => {});
+    },
+    () => {}, // permissão negada / indisponível — segue sem posição
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+  );
+}
+
 // Exposto pro <script> clássico (confirmarEntrega/Recolhimento/Cartório).
 // secaoNumero é o número da seção como string (ex.: '0135').
 window.simeCampo = {
@@ -289,6 +320,7 @@ window.simeCampo = {
     if (!secaoId) return;
     sincronizarOuEnfileirar({ p_secao_id: secaoId, p_eleicao_id: eleicaoId, p_origem: 'motorista', ...partial });
   },
+  atualizarPosicao: atualizarPosicaoMotorista,
 };
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -646,6 +678,7 @@ function confirmarEntrega(sec, paradaN, paradaLoc){
   rst.entregue[sec] = Date.now();
   patchRotaState(curRota, {entregue:rst.entregue});
   if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_entregue: true });
+  if (window.simeCampo) window.simeCampo.atualizarPosicao(curRota);
   vib([30,10,30]);
   showToast(`✓ Seção ${parseInt(sec)} entregue`);
   renderRota();
@@ -671,6 +704,7 @@ function confirmarRecolhimento(sec, paradaN, paradaLoc){
   mesa[sec].urna = true;
   saveMesa(mesa);
   if (window.simeCampo) window.simeCampo.syncMesa(sec, { p_urna_recolhida: true });
+  if (window.simeCampo) window.simeCampo.atualizarPosicao(curRota);
   vib([30,10,30]);
   showToast(`✓ Seção ${parseInt(sec)} recolhida`);
   renderRota();
@@ -714,6 +748,7 @@ function confirmarChegadaCartorio(){
         if (window.simeCampo) window.simeCampo.syncMesa(s, { p_urna_recolhida: true, p_urna_cartorio: true });
       }));
       saveMesa(mesa);
+      if (window.simeCampo) window.simeCampo.atualizarPosicao(curRota);
       vib([80,40,80,40,80]);
       showToast('🏁 Chegada ao cartório confirmada!');
       renderRota();
