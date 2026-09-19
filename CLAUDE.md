@@ -6287,6 +6287,100 @@ script não existem mais no modal; campo de PIX aparece vazio quando a
 pessoa não tem chave cadastrada; sair do campo grava sozinho (onblur) e
 loga com autor; reabrir o modal mostra o valor já salvo.
 
+**Auditoria de PIX importado em lote (19/09/2026) — corrigido um par de
+chaves cruzadas entre pessoas diferentes e um valor com texto sujo.** Ao
+revisar um lote adicional de PIX colado pelo cartório, o dono do projeto
+sinalizou desconfiança explícita ("não estou convencido que a última
+importação atualizou corretamente os mesários") — investigado direto no
+banco, não só reassegurado de boca. Achados reais: duas pessoas diferentes
+(Antonio Hiago Barbosa Borges e Eliézio Félix Silva Eugênio) tinham o
+**mesmo** valor de PIX gravado, uma colisão que não faz sentido (chave PIX
+é pessoal); e Vanessa Neves da Silva tinha o CPF gravado com texto solto
+em volta ("CPF - 620.248.223-04 Nubank") em vez do valor limpo. Pra a
+colisão, perguntado ao dono do projeto se ele sabia de quem era o valor
+correto ou se devíamos zerar os dois pendente confirmação — escolhida a
+segunda opção: os dois campos foram limpos (`pix=null`), cada um com um
+carimbo em `observacao` explicando o motivo, até o cartório confirmar
+manualmente com as duas pessoas qual delas é a dona real do número. O
+texto sujo da Vanessa foi normalizado pro valor limpo (`620.248.223-04`).
+Nenhuma mudança de schema — é o mesmo padrão "texto livre, nunca validado"
+de sempre pra este campo.
+
+---
+
+## SINCRONIZAÇÃO COMPLETA CONTRA "RELATÓRIO DE MESÁRIOS POR SITUAÇÃO" DO ELO (19/09/2026)
+
+Pedido direto, com 6 PDFs anexados (3 relatórios MRV — Campo Maior, Jatobá
+do Piauí, Sigefredo Pacheco — + 3 relatórios de Coordenador de
+Acessibilidade dos mesmos 3 municípios): "Esse é o cenário mais atualizado,
+quero que o sime reflita esse cenário" / "Veridique com os 6 arquivos" —
+diferente das cargas anteriores (roster de 81 colunas, CSV "MRV simples"),
+este é um formato de PDF NOVO do ELO ("Relatório de Mesários por
+Situação"), nunca antes lido pelo SIME: agrupado por
+município→local→(pra MRV) seção→os 4 cargos de mesa, ou (pra AL) um bloco
+"Coordenador de Acessibilidade" com as pessoas designadas; colunas
+Nome/Inscrição/Sit. eleitor/Sit. mesário/**Resposta**
+(Confirmado/Sem resposta/Pedido de dispensa)/Edital.
+
+**Extração** — `pdftotext -layout` + parser Python dedicado (state machine
+por linha, rastreando município/local/seção atual, absorvendo linhas de
+continuação de nome). Validado contra os totais que o PRÓPRIO relatório
+declara em cada página (585 mesário + 61 coordenador, com as subcontagens
+de Confirmado/Sem resposta/Pedido de dispensa por bloco) — sinal de
+validação incomum e forte, usado como critério de aceite antes de tocar
+produção. **Achado real no parser, corrigido antes de aplicar**: o texto
+"Pedido de\ndispensa" às vezes quebra numa linha visual que o
+`pdftotext -layout` atribui à pessoa ERRADA (a anterior na tabela, por
+causa de como o layout intercala linhas de altura diferente) — a primeira
+tentativa de correção (`'Pedido' in cauda and 'de' in cauda`) causou um
+falso positivo simétrico (a pessoa anterior "roubava" o rótulo mesmo sem
+ter "dispensa" na própria linha); corrigido checando só o token único
+`dispensa`, verificado bater exatamente com os totais declarados em todas
+as 6 páginas.
+
+**Carga em staging, não direto em query gigante** — as ~650 linhas foram
+inseridas numa tabela temporária (`tmp_situacao_all6_19_09`, dropada ao
+fim) via INSERTs em lote, e toda a reconciliação foi feita por JOIN SQL
+contra ela — evita tanto estourar contexto de conversa com uma query
+monolítica gigante quanto expor nome/CPF/telefone em massa fora de
+parâmetro de ferramenta, mesmo critério já documentado no topo deste
+arquivo ("nome/CPF/telefone nunca passam pelo console").
+
+**Diagnóstico apresentado ANTES de aplicar** — contagem agregada por
+categoria (reativação de inativo, remanejamento de seção/cargo, designação
+nova, "Pedido de dispensa"→`precisa_substituir`, e — a categoria de maior
+risco — inativação de quem sumiu do relatório mais novo) foi mostrada ao
+dono do projeto, que então decidiu explicitamente: **"Aplique as alterações
+como esta no último relatório"** — aplicar todas as categorias, inclusive
+as inativações.
+
+**Migração aplicada** (`sime_atores_sync_relatorio_situacao_elo_19_09_2026`),
+mesmo critério de sempre desta função de sincronização — nunca reativa
+quem tem `dispensado_manual=true` (mesmo que reapareça como designação
+ativa num relatório novo; ver "PAULO JOSE MACEDO BRITO..." acima), sempre
+carimba `observacao` com autoria "Sistema" + data + motivo específico de
+cada ação, nunca some com ninguém (inativação é sempre `ativo=false`, nunca
+DELETE). Resultado, verificado após a aplicação:
+
+| | Mesário | Coord. Acessibilidade |
+|---|---|---|
+| Reativados (voltaram a aparecer) | 18 | 1 |
+| Remanejados (seção/cargo mudou) | 3 | — |
+| Designações novas (nunca existiram) | 3 | 0 |
+| "Pedido de dispensa" → `precisa_substituir` | 2 | 0* |
+| Inativados (sumiram do relatório) | 4 | 9 |
+| Protegidos por `dispensado_manual` (não tocados) | 4 | 1 |
+
+\* o único caso de "Pedido de dispensa" do lado Coordenador de
+Acessibilidade (Hillyen de Carvalho Santos) já estava protegido por
+`dispensado_manual=true` — a flag venceu, mesmo comportamento de sempre:
+nunca reabre nem reprocessa quem o cartório já dispensou manualmente,
+mesmo que o ELO ainda o liste.
+
+Verificado por reconsulta às mesmas agregações depois da migração: 100%
+das 646 pessoas do relatório batem com o cadastro (ativas, seção/cargo
+corretos) ou estão deliberadamente protegidas por `dispensado_manual`.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
