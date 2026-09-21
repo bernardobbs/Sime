@@ -6383,6 +6383,117 @@ corretos) ou estão deliberadamente protegidas por `dispensado_manual`.
 
 ---
 
+## PWA — INSTALÁVEL NA TELA INICIAL, PARA OS 6 MÓDULOS DE CAMPO (21/09/2026)
+
+Pergunta exploratória: "qual o custo para adicionar na parte de problemas,
+no controle do mesário como pwa?" — respondida com o custo real (manifesto
++ ícones + um service worker mínimo, sem mexer em lógica) e a recomendação
+de escopo (as 6 telas QR+PIN, não só o painel de pânico). Pedido direto na
+sequência: **"implente, sem que o botão polua demais o controle, o pwa
+pode enviar notificações para o celular? todas as telas que necessitem de
+interação com os mesários quero como pwa."**
+
+**Escopo: os 6 módulos de campo (QR+PIN)** — `SIME_mesario.html`,
+`SIME_motorista.html`, `SIME_conferente.html`, `SIME_instalador.html`,
+`SIME_acessibilidade.html`, `SIME_midias.html`. Deliberadamente fora:
+painéis de TV (sem interação de mesário, ficam ligados o dia todo, nunca
+"instalados" por ninguém) e telas admin/e-mail-senha (já são acessadas de
+computador, instalar como app não muda nada ali).
+
+**Um manifesto por papel** (`manifest_mesario.json` etc.) — `start_url` e
+`scope` foram deliberadamente OMITIDOS dos 6: o spec de Web App Manifest
+cai pro `start_url` = URL do documento atual quando ele não é declarado, o
+que é exatamente o comportamento certo aqui — cada operador instala a
+partir da própria URL com token (`?token=...`), e o ícone instalado abre
+DIRETO na seção/rota dele, sem precisar de um manifesto gerado
+dinamicamente no servidor pra cada token. Ícones (`assets/icon-192.png`/
+`icon-512.png`/`icon-maskable-512.png`, gerados a partir da própria marca
+do projeto — quadrado escuro `#2a2a2a` com "S" branco, mesma identidade do
+círculo `.logo` do cabeçalho) e `theme_color`/`background_color:#16161e`
+(mesmo dark theme já usado no resto do app).
+
+**Botão de instalar, deliberadamente discreto** (`sime_pwa_install.js`,
+compartilhado pelos 6 — auto-injeta CSS e os elementos, sem exigir nenhuma
+mudança de HTML além de um `<script src>`): ícone pequeno fixo no canto
+superior direito (`z-index:550` — checado por grep que é o maior já usado
+em qualquer uma das 6 telas + `sime_components.css`, então fica acima até
+do `#login-overlay` de tela cheia), só aparece quando o navegador de fato
+oferece `beforeinstallprompt` (Android/Chrome) ou, no iOS Safari (que
+nunca dispara esse evento), depois de 2,5s — e nunca aparece se a página já
+estiver rodando em modo `standalone` (já instalado). Clicar chama
+`.prompt()` nativo no Android; no iOS mostra um toast com a instrução
+manual (Compartilhar → Adicionar à Tela de Início), já que o navegador não
+expõe um jeito programático de instalar lá. Fica ativo mesmo ANTES do
+login/PIN — instalar é útil pro próprio aparelho de trabalho, e o ícone no
+canto não atrapalha o teclado numérico do PIN.
+
+**Notificação push — resposta à pergunta, não construído**: tecnicamente
+possível (Web Push via Service Worker + VAPID), mas exige infraestrutura
+nova que não foi pedida a construir agora — chave VAPID par pública/
+privada, uma tabela de inscrições (`sime_push_subscriptions` ou similar,
+por token/operador), um endpoint Vercel que envia (`web-push` no back-end)
+e um handler `push`/`notificationclick` no service worker. Nada disso
+existe hoje. Se um dia for pedido de verdade, o service worker já criado
+aqui (`sime_sw.js`) é o lugar certo pra acrescentar o handler.
+
+**`sime_sw.js` — Service Worker deliberadamente mínimo, nunca intercepta
+lógica de negócio.** Existe só pra (1) satisfazer o requisito de
+instalabilidade do Chrome/Android (precisa de um SW registrado com um
+`fetch` handler) e (2) deixar CSS/ícones do "esqueleto" disponíveis
+offline. **Nunca cacheia chamada ao Supabase** (REST/Realtime) — isso já é
+resolvido pela fila offline em IndexedDB, que é a única camada de
+"offline" sancionada por este projeto (ver "PADRÃO DE CÓDIGO —
+OFFLINE-FIRST"); um SW cacheando resposta de API por cima disso seria uma
+segunda camada de offline competindo com a primeira, arriscando servir
+dado velho sem o app saber. O `fetch` handler só age em dois casos: (1)
+navegação pra uma das páginas — network-first, só cai no cache se a rede
+falhar de verdade (nunca roda lógica de votação velha com sinal presente);
+(2) os arquivos exatos do `SHELL` (as 2 folhas de CSS + os 3 ícones) —
+cache-first com atualização em segundo plano. **Whitelist explícita de
+caminho, não regex por extensão** — a primeira versão usava
+`/\.(css|js|png|...)$/i`, que interceptava QUALQUER `.js`, inclusive
+`vendor/supabase-js.esm.js`/`sime_dados.js`/`sime_realtime.js`/
+`sime_campo_auth.js` — exatamente o risco que o comentário do arquivo
+promete evitar. Corrigido pra comparar contra os caminhos exatos do
+`SHELL` (`ehArquivoDoShell()`), nunca por sufixo de extensão — nenhum
+script de lógica de negócio, nem `vendor/*`, passa mais pelo SW.
+
+**Bug real, achado escrevendo o teste de regressão: 3 suítes existentes
+quebraram depois de ligar o Service Worker** (`test_acessibilidade.mjs`,
+`test_acessibilidade_realtime.mjs`, `test_veiculos_mapa.mjs`) —
+confirmado por `git stash`/`stash pop` que passavam limpo antes da
+mudança. Causa: `sime_pwa_install.js` registra o SW em `window.load`;
+`bootstrapCampoSession()` faz um `import()` DINÂMICO de
+`vendor/supabase-js.esm.js` só depois do PIN ser digitado, bem depois do
+SW já ter assumido controle da página (`clients.claim()`) — com a regex
+antiga, esse import dinâmico era interceptado pelo próprio `fetch()` do
+SW, e o stub de rede do Playwright (`page.route()`, que troca esse arquivo
+por um mock nos testes) não é confiavelmente respeitado por um `fetch`
+disparado de dentro da execução do Service Worker. Resolvido pela mesma
+correção do parágrafo acima (whitelist exata em vez de regex) — as 3
+suítes voltaram a passar (20/20, 20/20, 23/23) depois do fix, sem mudar
+nada nos testes em si.
+
+**Escala de instalação — nunca em massa, sempre pelo próprio operador no
+próprio aparelho** — diferente de token/PIN (que o cartório gera e
+imprime), instalar como app é uma ação pessoal de quem vai usar o celular
+todo dia em campo; não há (nem faz sentido ter) um botão administrativo
+"instalar pra todo mundo".
+
+Coberto por `tests/test_pwa_install.mjs` (48 checks): manifesto/ícones/
+tema corretos nos 6 módulos, `<link rel="manifest">`/`apple-touch-icon`
+presentes, botão nasce escondido e só aparece com `beforeinstallprompt`
+(ou, no iOS, sozinho depois do delay), clique chama `.prompt()` e some
+depois de usado, já instalado nunca cria o botão, iOS mostra instrução
+manual em vez de `.prompt()`. Sem regressão nas 3 suítes que o Service
+Worker tinha quebrado (`test_acessibilidade.mjs`,
+`test_acessibilidade_realtime.mjs`, `test_veiculos_mapa.mjs`) nem nas
+demais tocadas pelas 6 páginas (`test_mesario_panico_realtime.mjs`,
+`test_mesario_midia_realtime.mjs`, `test_campo_responsivo.mjs`,
+`test_campo_sem_bypass.mjs`).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
