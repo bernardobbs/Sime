@@ -849,15 +849,18 @@ const MODS = {
     {icon:'📋',title:'Coordenador de Preparação',sub:'Checklist de carga, preparação e lacre',href:'SIME_coordenador_preparacao.html',fase:'dx'},
     {icon:'📺',title:'TV Preparação',sub:'Telão do cartório — relógio e progresso',href:'SIME_tv_preparacao.html',fase:'dx'},
   ],
+  // Conferente/Instalador/Mesário/Motorista SAÍRAM daqui (22/09/2026, pedido
+  // direto: "toque que dependa de qrcode e token para entrar não precisa de
+  // botão" neste hub) — são os 4 papéis de Camada Campo (QR+PIN) cujo acesso
+  // real só existe pelo cartão impresso (SIME_tokens.html); clicar aqui sem
+  // já ter um token físico só abre a tela de PIN sem nenhum jeito de
+  // continuar, um beco sem saída pra quem está logado no hub. Recolhimento
+  // de Mídias (Coletor de Mídias) é o mesmo caso, ver grupo `adm` abaixo.
   d1:[
-    {icon:'🚚',title:'Conferente',sub:'Embarque das urnas por rota',href:'SIME_conferente.html',fase:'d1'},
-    {icon:'🔧',title:'Instalador',sub:'Instalação das seções por técnico',href:'SIME_instalador.html',fase:'d1'},
     {icon:'🖥️',title:'TV Véspera',sub:'Acompanhamento da instalação',href:'SIME_tv_vespera.html',fase:'d1'},
     {icon:'🚗',title:'TV Distribuição',sub:'Acompanhamento do embarque das rotas',href:'SIME_tv_distribuicao.html',fase:'d1'},
   ],
   d:[
-    {icon:'🗳️',title:'Mesário',sub:'Controle remoto da seção — Dia D',href:'SIME_mesario.html',fase:'d'},
-    {icon:'🚐',title:'Motorista',sub:'Entrega e recolhimento de urnas',href:'SIME_motorista.html',fase:'d'},
     {icon:'📊',title:'Dashboard Operacional',sub:'Visão consolidada de todas as seções',href:'SIME_admin.html',fase:'d'},
   ],
   // Só o que é televisão/telão de verdade — os demais TV_* (Preparação,
@@ -872,7 +875,6 @@ const MODS = {
   // próprio de ferramentas do cartório (admin, cadastro, convocação, etc.).
   adm:[
     {icon:'🔧',title:'Administração',sub:'Gestão de seções, equipe e ocorrências',href:'SIME_admin.html',fase:null},
-    {icon:'📦',title:'Recolhimento de Mídias',sub:'Controle do fluxo de mídias eleitorais',href:'SIME_midias.html',fase:'d'},
     {icon:'👥',title:'Cadastro de Atores',sub:'Contatos e Modo Guerra por seção',href:'SIME_atores.html',fase:null},
     {icon:'🗳️',title:'Convocação de Mesários',sub:'Sincronizar planilha, dashboard e contato com mesários',href:'SIME_convocacao.html',fase:null},
     {icon:'🗺️',title:'Rotas',sub:'Distribuição, recolhimento de urna/mídia e instalação de seção',href:'SIME_rotas.html',fase:null},
