@@ -1188,7 +1188,7 @@ let faseAtual='ab',curPage=0,rotDelay=10,vCd=10,vPaused=false,vTicker=null,autoS
 // sem isso, sair manualmente da aba de Problemas puxaria a tela de volta a
 // cada 5s enquanto o mesmo problema continuasse ativo.
 let probAutoArmado=true;
-function setFase(f){faseAtual=f;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Alertas ativos — clique num item para ver o detalhe e contatar a mesa'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
+function setFase(f){faseAtual=f;if(f==='prob')curPage=0;['ab','enc','prob'].forEach(id=>{const b=document.getElementById('fase-'+id);b.className='fase-btn '+id+(f===id?' active':'');});const info={ab:'4 arcos: chegou · completa · zerésima · votação',enc:'3 arcos: fila · encerrada · urna recolhida',prob:'Alertas ativos — clique num item para ver o detalhe e contatar a mesa'};document.getElementById('fase-info').textContent=info[f]||'';updateLeg();buildPages();renderCurrent();}
 function checkAutoSwitch(){const val=document.getElementById('auto-switch').value;if(!val)return;const[h,m]=val.split(':').map(Number);const isTime=nowMin()>=h*60+m;document.getElementById('auto-lbl').className='auto-label '+(isTime?'auto-on':'auto-off');document.getElementById('auto-lbl').textContent=isTime?'Ativo':'Auto';if(isTime&&faseAtual==='ab'&&!autoSwitchDone){autoSwitchDone=true;setFase('enc');}}
 // ── BARRA DE PROGRESSO DE URNAS (fase encerramento) ───────
 function mkUrnaBar(states){

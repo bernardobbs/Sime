@@ -6536,6 +6536,50 @@ já tocam esses arquivos).
 
 ---
 
+## BUG REAL — ABA "⚠ PROBLEMAS" DO TV DIA FICAVA INVISÍVEL (`SIME_tv_dia.html`, 22/09/2026)
+
+Reportado direto, logo depois do TV box rodar ao vivo com um pânico real
+ativo (print anexado mostrando "🆘 Seção 3 — Problema na urna" no ticker):
+"no painel tv dia, tem uma aba de problemas, mas não apareceu nada". Não era
+"nenhum problema no momento" — a área de conteúdo ficava literalmente em
+branco, nem o estado vazio ("✅ Nenhum problema ativo") aparecia.
+
+**Causa raiz.** `renderCurrent()` (`document.querySelectorAll('.v-page').
+forEach((p,i)=>p.classList.toggle('active', i===curPage))`) decide qual
+`.v-page` fica visível comparando o ÍNDICE de cada uma no DOM com `curPage`
+— a variável que a rotação automática de cidades (`startTicker()`, avança
+via `goPage(curPage+1)` a cada `rotDelay` segundos) deixa em 0, 1 ou 2
+dependendo de em qual das 3 cidades a TV estava parada. `buildProbView()`
+sempre monta um ÚNICO `.v-page` (a lista de alertas, sem paginação por
+cidade) — que fica no índice 0 do DOM. `setFase('prob')` nunca resetava
+`curPage`, então sempre que a troca pra "⚠ Problemas" acontecia com
+`curPage` diferente de 0 (o caso comum — é praticamente garantido depois de
+alguns segundos de rotação automática), `renderCurrent()` comparava
+`0 === curPage` (falso) e **removia** a classe `.active` do próprio painel
+de Problemas que tinha acabado de ser criado já ativo — `.v-page` sem
+`.active` é `opacity:0;pointer-events:none` (CSS), então a tela ficava
+vazia mesmo com o conteúdo renderizado por baixo. Afeta os dois caminhos:
+clique manual no botão "⚠ Problemas" e a troca automática que já existe
+pra quando um pânico surge (`if(totProb>0){if(probAutoArmado){...
+setFase('prob');...}}` dentro de `buildPages()`).
+
+Corrigido com uma linha em `setFase(f)`: `if(f==='prob')curPage=0;` antes de
+montar os botões/chamar `buildPages()` — a troca pra Problemas sempre entra
+com `curPage=0`, batendo com o índice único que `buildProbView()` usa,
+então `renderCurrent()` nunca mais desativa o painel que acabou de criar.
+Sair de volta pra "ab"/"enc" com `curPage` agora em 0 é comportamento
+aceitável (mostra a 1ª cidade), não uma regressão.
+
+Coberto por `tests/test_tv_dia.mjs` (Caso 4, 7 checks novos): simula a
+rotação já ter avançado (`goPage(1)`) antes de trocar de aba, confirma que
+o painel de Problemas continua com `opacity:1`/visível pro Playwright e que
+`curPage` volta pra 0 — sem o fix, o teste reproduzia o bug exato
+(`opacity:0`). Sem regressão em `test_tv_dia_previsao.mjs` (12/12),
+`test_tv_panel_nav.mjs` (32/32), `test_tv_distribuicao_mapa.mjs` (17/17) e
+`test_veiculos_mapa.mjs` (23/23).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
