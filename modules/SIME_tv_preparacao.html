@@ -127,6 +127,10 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
   if (secoes) window.SIME_TOTAL_REAL = secoes.length;
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
   if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
+  // Total de urnas configurado pelo cartório (22/09/2026, ver
+  // sql/SIME_eleicoes_urnas_total.sql) — quando presente, calcTotal() o
+  // prefere sobre a contagem de seções.
+  window.ELEICAO_ATIVA = eleicao;
 
   function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   async function refetch() {
@@ -155,10 +159,21 @@ function tick() {
 }
 tick(); setInterval(tick,1000);
 
-// Total real vem do Supabase (window.SIME_TOTAL_REAL, zona-scoped via RLS);
-// sem sessão de TV configurada ainda, cai no total local (sime_lacre_v3) e,
-// por fim, no fallback histórico da 7ª Zona/PI (174) — offline-first.
+// Total de urnas — prioridade (22/09/2026, pedido direto: "serão preparadas
+// 147 urnas de seções, 27 contigencias, 174 urnas ao todo"):
+//   1. urnas_secoes+urnas_contingencia configurado em sime_eleicoes (o
+//      número operacional real, guardado separado — ver
+//      sql/SIME_eleicoes_urnas_total.sql), quando o cartório já preencheu
+//      os dois;
+//   2. window.SIME_TOTAL_REAL (nº de seções da zona via Supabase, o
+//      comportamento de sempre quando ainda não há configuração);
+//   3. total local (sime_lacre_v3) e, por fim, o fallback histórico da
+//      7ª Zona/PI (174) — offline-first.
 function calcTotal(){
+  const e = window.ELEICAO_ATIVA;
+  if (e && Number.isFinite(e.urnas_secoes) && Number.isFinite(e.urnas_contingencia)) {
+    return e.urnas_secoes + e.urnas_contingencia;
+  }
   if (window.SIME_TOTAL_REAL) return window.SIME_TOTAL_REAL;
   try{ const d=localStorage.getItem('sime_lacre_v3'); if(d){ const t=Object.keys(JSON.parse(d)).length; return t>0?t:174; }}catch(e){} return 174;
 }

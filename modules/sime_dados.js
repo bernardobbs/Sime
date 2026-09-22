@@ -228,7 +228,7 @@ export async function getEleicaoAtiva({ fallback = null, zonaId = null } = {}) {
   return withFallback(`eleicaoAtiva:${zonaId || 'minha'}`, async (c) => {
     let q = c
       .from('sime_eleicoes')
-      .select('id, turno, zona_id, data_d, data_d1, horario_ab, horario_enc, nome, dist_inicio, intervalo_saidas_min, minutos_por_eleitor_fila')
+      .select('id, turno, zona_id, data_d, data_d1, horario_ab, horario_enc, nome, dist_inicio, intervalo_saidas_min, minutos_por_eleitor_fila, urnas_secoes, urnas_contingencia')
       .eq('ativa', true);
     if (zonaId) q = q.eq('zona_id', zonaId);
     const { data, error } = await q

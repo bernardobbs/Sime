@@ -6604,6 +6604,70 @@ asserta tamanho de fonte, só comportamento/dado.
 
 ---
 
+## TOTAL DE URNAS CONFIGURÁVEL (`sime_eleicoes`, TV Preparação/Coordenador de Preparação, 22/09/2026)
+
+Pedido direto, mandado como dado solto: "serão preparadas 147 urnas de
+seções, 27 contigencias, 174 urnas ao todo". Esclarecido via
+`AskUserQuestion` (a única opção que batia com "os dois números guardados
+separadamente"): ajustar a fonte do "Total" mostrado nas telas de carga/
+lacre (TV Preparação, Coordenador de Preparação) pra refletir esses 174
+(147+27), em vez de continuar derivando de `sime_secoes.length`.
+
+**O "Total" dessas duas telas nunca foi "quantas urnas serão preparadas" de
+verdade — era só a contagem de seções da zona** (`SECOES.length`/
+`getSecoes().length`, 176 na 7ª Zona desde a Seção 263 — Penitenciária, ver
+seção própria acima). O cartório trouxe o número operacional real, que não
+bate com o de seções (147 urnas de seção + 27 de contingência — mais
+contingência do que a diferença entre 176 seções e 147, então os dois
+números não são deriváveis um do outro; guardados como veio, sem tentar
+reconciliar).
+
+`sql/SIME_eleicoes_urnas_total.sql` — `sime_eleicoes.urnas_secoes`/
+`urnas_contingencia` (INTEGER, **nullable, sem default**, mesmo padrão já
+usado por `valor_auxilio_alimentacao`/`minutos_por_eleitor_fila`: um
+número configurável pelo cartório, nunca cravado como fato). Dois campos
+separados, não um `urnas_total` só — o pedido veio como dois números
+distintos, e um total único perderia a distinção se o cartório quiser ver
+cada um separadamente no futuro. Aplicado só na eleição **ATIVA da 7ª
+Zona** (147/27) — mesma prioridade documentada em "PENDÊNCIAS" (a 94ª
+segue zerada, fora do foco atual); sem configuração (94ª, ou qualquer
+eleição nova), o Total continua exatamente como sempre foi (derivado de
+`SECOES.length`), nunca um número inventado.
+
+**`getEleicaoAtiva()` (`sime_dados.js`)** passou a trazer os dois campos no
+`select()` — mudança aditiva, nenhum chamador existente precisou mudar.
+
+**TV Preparação** — `window.ELEICAO_ATIVA` (novo, populado pelo `<script
+type="module">` assim que a eleição real chega, mesmo padrão já usado em
+`window.SIME_TOTAL_REAL`) é lido por `calcTotal()`, que ganhou um degrau
+novo no topo da prioridade: `urnas_secoes+urnas_contingencia` (quando os
+dois vêm preenchidos) vence `window.SIME_TOTAL_REAL` (nº de seções via
+Supabase) vence o total local (`sime_lacre_v3`) vence o fallback histórico
+174.
+
+**Coordenador de Preparação** — mesmo padrão: `window.ELEICAO_ATIVA` é
+setado em `carregarDadosReais()` assim que `getEleicaoAtiva()` resolve.
+`totalUrnasAtual()` (nova, compartilhada) centraliza a mesma prioridade —
+usada tanto por `recarregarAppComSecoesNovas()` (o "Total" do rodapé,
+`.f-count.total .f-val`) quanto por `updateStats()` (o denominador das 3
+barras de progresso do cabeçalho, `mb-carga`/`mb-prep`/`mb-lacre`) — os
+dois **nunca podem divergir entre si**, por isso uma função só, não duas
+cópias da mesma conta. O cabeçalho (`.h-sub`, "X seções · Y locais...")
+continua mostrando `SECOES.length` sem mudança — é uma contagem diferente
+(seções cadastradas, não urnas a preparar), o pedido foi só sobre o Total.
+
+Coberto por `tests/test_tv_preparacao.mjs` (Caso 4, 3 checks novos —
+`window.ELEICAO_ATIVA` populado, Total vira a soma configurada em vez de
+`SECOES.length`/174, valores de teste deliberadamente diferentes dos dois
+pra não dar falso positivo por coincidência) e `tests/test_coord_prep.mjs`
+(Caso 7, 4 checks novos — mesma verificação, mais a barra de progresso do
+cabeçalho usando o mesmo denominador do rodapé). Sem regressão em
+`tests/test_sime_dados.mjs` (23/23), `tests/test_tv_preparacao_realtime.mjs`
+(16/16), `tests/test_admin_previsao.mjs` (20/20) e
+`tests/test_eleicao_banco.mjs` (26/26).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

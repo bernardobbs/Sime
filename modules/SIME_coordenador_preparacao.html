@@ -274,6 +274,11 @@ async function carregarDadosReais(){
   await carregarMenuUsuario();
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  // Total de urnas configurado pelo cartório (22/09/2026, ver
+  // sql/SIME_eleicoes_urnas_total.sql) — window.ELEICAO_ATIVA é lido por
+  // totalUrnasAtual() (script clássico), mesmo padrão já usado em
+  // window.SIME_TOTAL_REAL/window.aoEscopoResolvido() noutras telas.
+  window.ELEICAO_ATIVA = eleicao;
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
     for (const s of secoesReais) secaoIdPorNumero[s.numero] = s.id;
@@ -643,10 +648,26 @@ function buildList(){
 
 function toggleMun(h){ h.parentElement.classList.toggle('collapsed'); }
 
+// Total de urnas — prioridade (22/09/2026, pedido direto: "serão preparadas
+// 147 urnas de seções, 27 contigencias, 174 urnas ao todo"): quando o
+// cartório já configurou urnas_secoes+urnas_contingencia em sime_eleicoes
+// (window.ELEICAO_ATIVA, populado pelo <script type="module"> do topo),
+// usa a soma; sem configuração, cai no comportamento de sempre (nº de
+// seções da zona) — nunca um número inventado. Mesma fonte pro footer
+// "Total" (recarregarAppComSecoesNovas) e pras barras de progresso do
+// cabeçalho (updateStats), pra nunca divergir entre os dois.
+function totalUrnasAtual(){
+  const e = window.ELEICAO_ATIVA;
+  if (e && Number.isFinite(e.urnas_secoes) && Number.isFinite(e.urnas_contingencia)) {
+    return e.urnas_secoes + e.urnas_contingencia;
+  }
+  return SECOES.length;
+}
+
 function updateStats(){
   let c=0, p=0, l=0, eleitLacr=0;
   SECOES.forEach(s=>{ if(state[s.n].carga)c++; if(state[s.n].prep)p++; if(state[s.n].lacre){l++; eleitLacr+=s.aptos;} });
-  const T=SECOES.length; const pct=v=>Math.round(v/T*100);
+  const T=totalUrnasAtual(); const pct=v=>Math.round(v/T*100);
   document.getElementById('mb-carga').style.width=pct(c)+'%'; document.getElementById('mp-carga').textContent=pct(c)+'%';
   document.getElementById('mb-prep').style.width=pct(p)+'%';  document.getElementById('mp-prep').textContent=pct(p)+'%';
   document.getElementById('mb-lacre').style.width=pct(l)+'%'; document.getElementById('mp-lacre').textContent=pct(l)+'%';
@@ -716,7 +737,7 @@ function recarregarAppComSecoesNovas(zona, cargaLacreReal){
     document.getElementById('h-time').textContent = fmtNow();
   }
   const footTotalEl = document.querySelector('.f-count.total .f-val');
-  if (footTotalEl) footTotalEl.textContent = SECOES.length;
+  if (footTotalEl) footTotalEl.textContent = totalUrnasAtual();
 
   load(); buildList(); updateStats();
 }
