@@ -6494,6 +6494,48 @@ demais tocadas pelas 6 páginas (`test_mesario_panico_realtime.mjs`,
 
 ---
 
+## TROCAR PAINEL DE TV DIRETO DO APARELHO (`sime_tv_nav.js`, 22/09/2026)
+
+Pedido direto, depois de ver o TV Dia rodando ao vivo no TV box: "pode criar
+uma especie de menu para cada um dos paineis de tv" → esclarecido como
+"trocar entre os 4 paineis (Preparação/Véspera/Distribuição/Dia) direto do
+proprio tv box". Até aqui, mudar de painel exigia reconfigurar a URL/QR na
+mão — ou, no app Android (`sime-tv`, repositório separado), o atalho nativo
+de 5x Voltar (que abre `?config=1`, tela própria pra configuração inicial do
+aparelho, não pra trocar de painel no dia a dia).
+
+**`modules/sime_tv_nav.js` (novo)** — botão flutuante (`▦`, canto inferior
+esquerdo) + overlay com os 4 painéis, injetado via `<script src="./
+sime_tv_nav.js">` clássico nos 4 arquivos `SIME_tv_*.html`. Self-contido
+(CSS próprio injetado, `z-index:900/901` — acima de qualquer overlay
+existente nos 4 painéis, o maior anterior era 100 em TV Véspera) de
+propósito — os 4 painéis têm temas/layouts bem diferentes entre si (TV
+Preparação é branco/minimalista sem topbar nenhuma; os outros três têm
+topbars com paletas e tamanhos de botão diferentes), então um componente
+com estilo fixo próprio é mais simples e mais consistente do que tentar
+encaixar num `.gear-btn`/`.cfg-btn` que muda de arquivo pra arquivo.
+
+**Não depende de sessão nem de `sime_tv_auth.js`** — só precisa saber em
+qual dos 4 arquivos está (`location.pathname`, pra destacar o painel atual
+com "✓ atual" e desabilitar o clique nele) e montar os links dos outros 3.
+Clicar num outro painel navega via `location.href = './ARQUIVO' +
+location.search` — **preserva a query string atual** (tipicamente
+`?tv_token=...`), cobrindo o caso raro de trocar de painel antes de
+`bootstrapTvSession()` já ter persistido a sessão em `localStorage`
+(`sime_tv_session_v1`, mesma chave/origem nos 4 painéis — a troca de token
+só precisa acontecer uma vez, no 1º boot de cada aparelho; nos boots
+seguintes o token nem precisa estar na URL, mas preservá-lo nunca
+atrapalha).
+
+Coberto por `tests/test_tv_panel_nav.mjs` (32 checks): botão visível nos 4
+painéis; overlay abre/fecha; lista os 4 painéis com o atual marcado; clicar
+num outro painel navega pro arquivo certo preservando `tv_token` na URL.
+Sem regressão em `test_tv_dia.mjs`, `test_tv_dia_previsao.mjs`,
+`test_tv_distribuicao_mapa.mjs`, `test_veiculos_mapa.mjs` (as 4 suítes que
+já tocam esses arquivos).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
