@@ -6580,6 +6580,30 @@ o painel de Problemas continua com `opacity:1`/visível pro Playwright e que
 
 ---
 
+## DATA/HORA COMO DADO PRINCIPAL NO TV PREPARAÇÃO (`SIME_tv_preparacao.html`, 22/09/2026)
+
+Pedido direto: "os dados principais são data e hora, eles devem ser as
+maiores informações". A data (`.data`) nascia como um subtítulo fino
+(`font-weight:300`) e cinza-claro (`#999`) acima do relógio — lia como
+legenda decorativa, bem menor até que o status de carga/lacre logo abaixo
+(3.2rem de máximo contra 3.6rem do `.status-hero`). Aumentada pra
+`clamp(2.2rem,8.5vw,6.2rem)`, negrito (`800`) e escura (`#222`) — continua
+menor que o relógio (`.hora-hm`, que segue sendo o maior elemento da tela,
+até 11rem), mas agora é claramente a 2ª maior informação, acima do status.
+
+`.status-hero` (o dado que uma auditoria anterior já tinha promovido de
+"minúsculo no rodapé" pra "hero", ver comentário original no CSS) recuou
+de `clamp(1.6rem,5.5vw,3.6rem)` pra `clamp(1.4rem,4.5vw,2.8rem)` — continua
+em negrito/destacado (nunca volta a ser cinza-claro/pequeno como era antes
+daquela auditoria), só cede o topo da hierarquia pra data+hora, que é o que
+foi pedido agora. Sem mudança de schema, layout ou lógica — só CSS.
+Verificado com screenshot em 1920×1080 (`data`: 51px→99px computado;
+`status`: 58px→45px) e sem regressão em `tests/test_tv_preparacao.mjs`
+(11/11) e `tests/test_tv_preparacao_realtime.mjs` (16/16) — nenhum dos dois
+asserta tamanho de fonte, só comportamento/dado.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
