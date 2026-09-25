@@ -63,6 +63,15 @@ let raDados = null; // { zona, eleicao, mesarios, coord, auxiliares, junta }
 
 const RA_ORDEM_MESA = ['Presidente', '1º Mesário', '2º Mesário', '1º Secretário'];
 
+// ── Controle de pagamento (25/09/2026, pedido direto: "essas pessoas já
+// receberam o pix" → "criar um controle de pagamento no SIME") — ver
+// sql/SIME_atores_auxilio_pago.sql. Estado da seção "💰 Controle de
+// pagamento", separada da geração de recibo acima (que continua só
+// documento, sem status). ──
+let raPagBusca = '';
+let raPagBuscaTimer = null;
+let raPagFiltroStatus = 'pendente'; // '' (todos) | 'pago' | 'pendente' — abre em "pendente" (visão mais acionável)
+
 function raEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -136,7 +145,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -156,6 +165,9 @@ async function raCarregar() {
     coord: (atores || []).filter(a => a.funcao === 'coord_acessibilidade'),
     auxiliares: (atores || []).filter(a => a.funcao === 'auxiliar_eleicao'),
     junta: (atores || []).filter(a => a.funcao === 'junta_eleitoral' && !raEhJuizEleitoral(a)),
+    // Lista única pro controle de pagamento (abaixo) — mesmo critério do
+    // recibo: o Juiz Eleitoral nunca entra (não recebe esse auxílio).
+    todos: (atores || []).filter(a => !raEhJuizEleitoral(a)),
   };
   render();
 }
@@ -446,6 +458,124 @@ async function raSalvarConfig() {
   render();
 }
 
+// ── Controle de pagamento (25/09/2026) — ver comentário/estado no topo do
+// arquivo. Marca/desmarca `sime_atores.auxilio_alimentacao_pago` e edita o
+// valor pago por pessoa — nunca mexe no documento impresso acima (são
+// coisas separadas: um é o papel assinado pra prestação de contas, o outro
+// é "quem já recebeu de verdade" pro cartório acompanhar). ──
+function raPagFiltrar() {
+  const q = raPagBusca.trim().toLowerCase();
+  return (raDados.todos || []).filter(a => {
+    if (raPagFiltroStatus === 'pago' && !a.auxilio_alimentacao_pago) return false;
+    if (raPagFiltroStatus === 'pendente' && a.auxilio_alimentacao_pago) return false;
+    if (q) {
+      const secaoTxt = a.sec ? String(a.sec.numero) : '';
+      if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+}
+function raOnPagBuscaInput(v) {
+  raPagBusca = v;
+  clearTimeout(raPagBuscaTimer);
+  raPagBuscaTimer = setTimeout(renderControlePagamento, 250);
+}
+function raPagMudarFiltroStatus(v) {
+  raPagFiltroStatus = v;
+  renderControlePagamento();
+}
+function raPagResumo() {
+  const todos = raDados.todos || [];
+  const pagos = todos.filter(a => a.auxilio_alimentacao_pago);
+  const totalPago = pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
+  return { total: todos.length, pagos: pagos.length, totalPago };
+}
+
+// Checkbox "Pago" — marcar grava o VALOR já digitado no campo ao lado
+// (nunca um valor cravado: cada função recebe um valor diferente na
+// prática — mesário R$260, coordenador/auxiliar R$65, visto no lote real
+// de pagamentos de 25/09/2026 — bem diferente do
+// `sime_eleicoes.valor_auxilio_alimentacao` único usado só como sugestão
+// inicial no campo). Desmarcar limpa a data (deixou de estar pago agora),
+// mas mantém o valor no campo — é só um número de referência, não afirma
+// nada sozinho sem o checkbox marcado.
+async function raTogglePago(atorId, marcarPago) {
+  const sb = window.supabaseAtores;
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa) return;
+  const valorEl = document.getElementById(`ra-pag-valor-${atorId}`);
+  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  const payload = marcarPago
+    ? { auxilio_alimentacao_pago: true, auxilio_alimentacao_valor_pago: (valorDigitado >= 0 ? valorDigitado : raCfg().valor), auxilio_alimentacao_pago_em: new Date().toISOString() }
+    : { auxilio_alimentacao_pago: false, auxilio_alimentacao_pago_em: null };
+  const { error } = await sb.from('sime_atores').update(payload).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); renderControlePagamento(); return; }
+  Object.assign(pessoa, payload);
+  await log(marcarPago ? 'mesario_auxilio_alimentacao_pago' : 'mesario_auxilio_alimentacao_despago', '', { ator_id: atorId, nome: pessoa.nome_completo, valor: pessoa.auxilio_alimentacao_valor_pago });
+  showToast(marcarPago ? '✓ Marcado como pago' : '↺ Voltou a pendente');
+  renderControlePagamento();
+}
+
+// Valor editável independente do checkbox (onblur salva sozinho, mesmo
+// padrão já usado pro campo de PIX no modal de Contatar Mesários) — dá pra
+// corrigir o valor de alguém já marcado como pago sem precisar desmarcar e
+// marcar de novo.
+async function raSalvarValorPago(atorId, valorStr) {
+  const valor = parseFloat(String(valorStr).replace(',', '.'));
+  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); renderControlePagamento(); return; }
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa || Number(pessoa.auxilio_alimentacao_valor_pago) === valor) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_valor_pago: valor }).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  pessoa.auxilio_alimentacao_valor_pago = valor;
+  await log('mesario_auxilio_alimentacao_valor_editado', '', { ator_id: atorId, nome: pessoa.nome_completo, valor });
+}
+
+function renderControlePagamento() {
+  const alvo = document.getElementById('ra-controle-pagamento');
+  if (!alvo) return;
+  const buscaEl = document.getElementById('ra-pag-busca');
+  const buscaAtiva = document.activeElement === buscaEl;
+  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
+  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
+
+  const lista = raPagFiltrar();
+  const resumo = raPagResumo();
+  const cfg = raCfg();
+
+  alvo.innerHTML = `
+    <div class="ic-sub" style="margin:0 0 8px">${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <input type="text" id="ra-pag-busca" value="${raEsc(raPagBusca)}" oninput="raOnPagBuscaInput(this.value)" placeholder="Buscar por nome ou seção…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+      <select onchange="raPagMudarFiltroStatus(this.value)" style="padding:8px 10px;border-radius:7px">
+        <option value="pendente" ${raPagFiltroStatus === 'pendente' ? 'selected' : ''}>Pendentes</option>
+        <option value="pago" ${raPagFiltroStatus === 'pago' ? 'selected' : ''}>Pagos</option>
+        <option value="" ${raPagFiltroStatus === '' ? 'selected' : ''}>Todos</option>
+      </select>
+    </div>
+    <div class="m-hist" style="max-height:480px;overflow-y:auto">
+      ${lista.length ? lista.map(a => `
+      <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>
+          <b>${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+          ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
+        </span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:.75rem">R$</span>
+          <input type="text" id="ra-pag-valor-${a.id}" value="${a.auxilio_alimentacao_valor_pago != null ? Number(a.auxilio_alimentacao_valor_pago).toFixed(2) : cfg.valor.toFixed(2)}" onblur="raSalvarValorPago('${a.id}', this.value)" style="width:70px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;cursor:pointer">
+            <input type="checkbox" ${a.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePago('${a.id}', this.checked)"> Pago
+          </label>
+        </span>
+      </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
+    </div>`;
+  if (buscaAtiva) {
+    const el = document.getElementById('ra-pag-busca');
+    if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
+  }
+}
+
 function renderReciboAlimentacao() {
   const c = document.getElementById('content');
   if (!window.supabaseAtores) {
@@ -511,5 +641,14 @@ function renderReciboAlimentacao() {
         por lei) nunca entra aqui — ele não assina esse auxílio.</div>
       <button class="btn btn-dark" style="margin-top:8px" ${!raDados.junta.length ? 'disabled' : ''} onclick="raImprimirJunta()">🖨️ Imprimir recibo — Junta Eleitoral</button>
     </div>
+
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">💰 Controle de pagamento</div>
+      <div class="ic-sub">Quem já recebeu o auxílio de verdade — separado do documento impresso acima (aquele é só
+        o papel pra assinatura, este é o controle interno do cartório). Valor por pessoa, editável (varia por
+        função — ex.: mesário e coordenador/auxiliar costumam receber valores diferentes).</div>
+      <div id="ra-controle-pagamento" style="margin-top:8px"></div>
+    </div>
   `;
+  renderControlePagamento();
 }

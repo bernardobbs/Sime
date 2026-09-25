@@ -6753,6 +6753,74 @@ texto de confirmação mostrando os km/min certos de cada lado.
 
 ---
 
+## CONTROLE DE PAGAMENTO DO AUXÍLIO ALIMENTAÇÃO (`sime_recibo_alimentacao.js`, 25/09/2026)
+
+Pedido direto, disparado por uma lista real colada no chat ("essas pessoas
+já receberam o pix", CPF/nome/valor/zona/tipo de 58 pagamentos): "criar um
+controle de pagamento no SIME". Até aqui, o módulo 🍽️ Auxílio Alimentação
+(18/09/2026) só gerava o DOCUMENTO impresso — deliberadamente sem status
+por pessoa, a confirmação de entrega era a própria assinatura no papel (ver
+seção própria acima). Esse critério nunca mudou pro documento em si; o que
+faltava era um controle SEPARADO, à parte do papel, pro cartório saber quem
+já recebeu de verdade.
+
+**`sql/SIME_atores_auxilio_pago.sql`** — 3 colunas novas em `sime_atores`:
+`auxilio_alimentacao_pago` (boolean), `auxilio_alimentacao_valor_pago`
+(numeric) e `auxilio_alimentacao_pago_em` (timestamptz). Mesmo cadastro de
+sempre (mesário/coordenador de acessibilidade/auxiliar de eleição/junta
+eleitoral) — nenhuma tabela nova.
+
+**Card "💰 Controle de pagamento"**, dentro da mesma aba, abaixo dos 4
+grupos de impressão — lista única combinando os 4 grupos (Juiz Eleitoral
+sempre excluído, mesmo critério do recibo: ele não recebe esse auxílio),
+com busca por nome/seção e filtro por status (Pendentes/Pagos/Todos — abre
+em "Pendentes", a visão mais acionável). Cada linha tem um campo de valor
+(texto livre, pré-preenchido com `sime_eleicoes.valor_auxilio_alimentacao`
+só como sugestão inicial) e um checkbox "Pago".
+
+**Valor por pessoa, nunca um único valor cravado** — achado real ao
+processar o lote de 58 pagamentos que motivou o pedido: mesário recebeu
+R$260,00, coordenador de acessibilidade e auxiliar de eleição receberam
+R$65,00 — bem diferente do valor único de `sime_eleicoes.
+valor_auxilio_alimentacao` (usado só como *sugestão* no recibo impresso).
+O campo de valor deste controle é sempre livre, por pessoa, exatamente
+pelo mesmo motivo de não travar em número nenhum.
+
+**Marcar "Pago" grava o valor JÁ DIGITADO no campo ao lado** (não um valor
+fixo) + a data/hora atual; desmarcar limpa a data (deixou de estar pago
+agora) mas mantém o valor no campo — é só um número de referência, não
+afirma nada sozinho sem o checkbox marcado. O valor também é editável
+independente do checkbox (onblur salva sozinho, mesmo padrão já usado pro
+campo de PIX no modal de Contatar Mesários) — dá pra corrigir o valor de
+alguém já pago sem precisar desmarcar/marcar de novo. Toda marcação/
+desmarcação/edição de valor grava log de auditoria (`mesario_auxilio_
+alimentacao_pago`/`_despago`/`_valor_editado`) com autor, nome e valor.
+
+**Lote inicial de 58 pagamentos, casado por NOME + função** (não por CPF)
+— tentativa inicial de casar pelas mesmas colunas de CPF usadas no lote de
+PIX de 19/09/2026 (`sime_mesarios_raw.cpf_eleitor`/`cpf_dados_mesario`
+→ `ator_id`) deu **zero casamentos**: `ator_id` nunca foi preenchido nessa
+tabela (0 de 828 linhas) e o CPF ali perdeu zeros à esquerda num import
+anterior (mesmo bug de perda de zero à esquerda já documentado pra título
+de eleitor). Casado direto contra `sime_atores.nome_completo` + `funcao`
+(mrv→mesario, coord→coord_acessibilidade, aux→auxiliar_eleicao) + zona —
+bateu certinho nas 58 linhas, sempre filtrando `ativo = true` (cada nome
+tem uma 2ª linha inativa duplicada, mesmo bug de sempre — nunca marcada).
+Duas pessoas (Anita Alves de Oliveira, Luiz Carlos Santiago Junior) têm
+DUAS linhas pagas cada, uma por função (mesário + auxiliar de eleição) —
+os dois cargos, os dois valores, do mesmo jeito que a planilha original
+já separava.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 8, 71 checks no
+total no arquivo): resumo conta certo excluindo o juiz; abre em
+"Pendentes" por padrão; marcar grava pago+valor+data+log; some da lista de
+pendentes assim que marcado, resumo atualiza sozinho; filtro "Pagos"
+mostra só quem já recebeu; busca por seção filtra certo; desmarcar limpa
+a data mas mantém o valor, com log próprio; editar só o valor (sem mexer
+no checkbox) grava sozinho, sem tocar no status.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

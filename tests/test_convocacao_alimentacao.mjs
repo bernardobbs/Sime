@@ -335,6 +335,89 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 8. Controle de pagamento (25/09/2026) — abre em "Pendentes", conta
+// certo, marcar/desmarcar grava sime_atores + log de auditoria, valor
+// editável independente do checkbox, busca por nome/seção, filtro por
+// status. Juiz eleitoral nunca entra (mesmo critério do recibo). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // PRESIDENTE MARIA já paga de antemão, pra testar o filtro "Pagos"/"Todos"
+  // e o resumo sem depender só de marcações feitas durante o teste.
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago = true;
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_valor_pago = 260;
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago_em = '2026-09-24T18:00:00.000Z';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  const resumoTxt = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('resumo mostra 1 de 12 pagos (13 pessoas - 1 juiz eleitoral excluído)', /1 de 12 já pagos/.test(resumoTxt), resumoTxt.slice(0, 200));
+  check('juiz eleitoral (CARLOS MARCELLO) nunca aparece no controle de pagamento', !/CARLOS MARCELLO/.test(resumoTxt));
+
+  check('abre filtrado em "Pendentes" por padrão — PRESIDENTE MARIA (já paga) não aparece na lista', !/PRESIDENTE MARIA —/.test(resumoTxt), resumoTxt);
+  check('MESARIO 1 JOAO (pendente) aparece na lista', /MESARIO 1 JOAO/.test(resumoTxt), resumoTxt);
+
+  // Marca MESARIO 1 JOAO como pago, com valor digitado antes de marcar. Usa
+  // click() (não check()) de propósito: marcar como pago faz a própria
+  // linha sumir da tela (filtro padrão é "Pendentes"), então o checkbox
+  // literalmente deixa de existir no DOM logo depois do clique — check()
+  // ficaria esperando pra sempre por um "confirmado marcado" que nunca
+  // chega a ser observável ali.
+  await p.fill('#ra-pag-valor-m2', '260,00'.replace(',', '.'));
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("MESARIO 1 JOAO") input[type=checkbox]');
+  await p.waitForTimeout(200);
+
+  // find (não a última) filtrando por auxilio_alimentacao_pago===true: o
+  // fill() acima já dispara um onblur (raSalvarValorPago) antes do clique no
+  // checkbox — duas escritas em sime_atores pro mesmo id, a 1ª só com o
+  // valor, a 2ª (esta) com pago+valor+data.
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm2' && e.payload.auxilio_alimentacao_pago === true));
+  check('marcar como pago grava pago=true, valor e data em sime_atores', upd?.payload?.auxilio_alimentacao_pago === true && Number(upd?.payload?.auxilio_alimentacao_valor_pago) === 260 && !!upd?.payload?.auxilio_alimentacao_pago_em, JSON.stringify(upd));
+
+  const logPago = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_auxilio_alimentacao_pago' && l.payload.ator_id === 'm2'));
+  check('grava log de auditoria com o valor', logPago?.payload?.valor === 260, JSON.stringify(logPago));
+
+  // Some da lista "Pendentes" (padrão) depois de marcado — reflete direto,
+  // sem precisar trocar de filtro.
+  const resumoTxt2 = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('depois de marcar, some da lista de pendentes e o resumo sobe pra 2 de 12', /2 de 12 já pagos/.test(resumoTxt2) && !/MESARIO 1 JOAO/.test(resumoTxt2), resumoTxt2.slice(0, 200));
+
+  // Filtro "Pagos" mostra os 2 marcados.
+  await p.selectOption('#ra-controle-pagamento select', 'pago');
+  await p.waitForTimeout(200);
+  const resumoPagos = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('filtro "Pagos" mostra PRESIDENTE MARIA e MESARIO 1 JOAO', /PRESIDENTE MARIA/.test(resumoPagos) && /MESARIO 1 JOAO/.test(resumoPagos), resumoPagos);
+
+  // Busca por seção — volta pro "Todos" pra não competir com o filtro de status.
+  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.fill('#ra-pag-busca', '63');
+  await p.waitForTimeout(350);
+  const resumoBusca = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('busca por número de seção filtra só quem está nela (seção 63, 4 pessoas)', /PRESIDENTE MARIA DA SILVA/.test(resumoBusca) && /JOAO PEDRO OLIVEIRA/.test(resumoBusca) && !/COORDENADORA BEATRIZ/.test(resumoBusca), resumoBusca);
+  await p.fill('#ra-pag-busca', '');
+  await p.waitForTimeout(350);
+
+  // Desmarcar volta pra pendente e limpa a data (mas não o valor).
+  await p.uncheck('#ra-controle-pagamento .m-hist-item:has-text("MESARIO 1 JOAO") input[type=checkbox]');
+  await p.waitForTimeout(200);
+  const updDesfeito = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'm2'));
+  check('desmarcar limpa a data de pagamento', updDesfeito.auxilio_alimentacao_pago === false && updDesfeito.auxilio_alimentacao_pago_em === null, JSON.stringify(updDesfeito));
+  const logDespago = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_auxilio_alimentacao_despago' && l.payload.ator_id === 'm2'));
+  check('grava log de auditoria ao desmarcar', !!logDespago);
+
+  // Editar só o valor (sem mexer no checkbox) grava sozinho, onblur.
+  await p.fill('#ra-pag-valor-m3', '260,00'.replace(',', '.'));
+  await p.locator('#ra-pag-valor-m3').blur();
+  await p.waitForTimeout(200);
+  const updValor = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm3' && e.payload.auxilio_alimentacao_valor_pago === 260 && e.payload.auxilio_alimentacao_pago === undefined));
+  check('editar só o valor (sem marcar pago) grava sozinho o campo, sem mexer no status', !!updValor, JSON.stringify(updValor));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
