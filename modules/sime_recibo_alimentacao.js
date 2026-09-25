@@ -166,8 +166,15 @@ async function raCarregar() {
     auxiliares: (atores || []).filter(a => a.funcao === 'auxiliar_eleicao'),
     junta: (atores || []).filter(a => a.funcao === 'junta_eleitoral' && !raEhJuizEleitoral(a)),
     // Lista única pro controle de pagamento (abaixo) — mesmo critério do
-    // recibo: o Juiz Eleitoral nunca entra (não recebe esse auxílio).
-    todos: (atores || []).filter(a => !raEhJuizEleitoral(a)),
+    // recibo quanto ao Juiz Eleitoral (nunca entra, não recebe esse
+    // auxílio), MAIS uma regra própria (25/09/2026, pedido direto: "só
+    // faremos pagamento para os presidente... que se encarregará de
+    // repassar os outros membros da mesa"): da mesa receptora, só o
+    // PRESIDENTE recebe pagamento direto do cartório — 1º/2º Mesário e 1º
+    // Secretário nunca aparecem aqui (o presidente repassa em mãos, fora do
+    // sistema). Coordenador de acessibilidade e auxiliar de eleição
+    // continuam todos, sem essa restrição — o pedido foi só sobre a mesa.
+    todos: (atores || []).filter(a => !raEhJuizEleitoral(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente')),
   };
   render();
 }
@@ -491,6 +498,23 @@ function raPagResumo() {
   return { total: todos.length, pagos: pagos.length, totalPago };
 }
 
+// Valor SUGERIDO no campo (só um ponto de partida — o valor de fato salvo é
+// sempre o que está no input na hora, nunca cravado). Regra real (25/09/2026,
+// pedido direto): Presidente R$260 (repassa aos outros da mesa, que por isso
+// nem aparecem aqui — ver filtro de `todos` em raCarregar); Auxiliar de
+// Eleição R$65 por dia trabalhado — sugestão parte de 1 dia (só domingo),
+// o seletor 🗓️ ao lado ajusta pra R$130 (sábado + domingo) quando for o
+// caso; Coordenador de Acessibilidade continua no valor único configurado
+// em `sime_eleicoes.valor_auxilio_alimentacao` (nunca teve distinção de dia
+// nem de cargo, diferente dos outros dois).
+const RA_VALOR_AUXILIAR_1_DIA = 65;
+const RA_VALOR_AUXILIAR_2_DIAS = 130;
+function raValorSugerido(a, cfg) {
+  if (a.funcao === 'mesario') return 260; // só Presidente chega aqui
+  if (a.funcao === 'auxiliar_eleicao') return RA_VALOR_AUXILIAR_1_DIA;
+  return cfg.valor; // coordenador de acessibilidade
+}
+
 // Checkbox "Pago" — marcar grava o VALOR já digitado no campo ao lado
 // (nunca um valor cravado: cada função recebe um valor diferente na
 // prática — mesário R$260, coordenador/auxiliar R$65, visto no lote real
@@ -532,6 +556,19 @@ async function raSalvarValorPago(atorId, valorStr) {
   await log('mesario_auxilio_alimentacao_valor_editado', '', { ator_id: atorId, nome: pessoa.nome_completo, valor });
 }
 
+// Seletor "🗓️ dias…" do auxiliar de eleição — atalho que só preenche e
+// salva o campo de valor (65 ou 130), nunca guarda "quantos dias" como um
+// dado à parte: o valor em si já é a fonte de verdade (mesmo critério de
+// "nunca um valor cravado" de tudo isso). Reaproveita raSalvarValorPago
+// pra não duplicar a lógica de gravação/log.
+function raPagAplicarDias(atorId, dias) {
+  if (!dias) return;
+  const valor = dias === '2' ? RA_VALOR_AUXILIAR_2_DIAS : RA_VALOR_AUXILIAR_1_DIA;
+  const el = document.getElementById(`ra-pag-valor-${atorId}`);
+  if (el) el.value = valor.toFixed(2);
+  raSalvarValorPago(atorId, String(valor));
+}
+
 function renderControlePagamento() {
   const alvo = document.getElementById('ra-controle-pagamento');
   if (!alvo) return;
@@ -562,8 +599,14 @@ function renderControlePagamento() {
           ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
         </span>
         <span style="display:flex;align-items:center;gap:6px">
+          ${a.funcao === 'auxiliar_eleicao' ? `
+          <select onchange="raPagAplicarDias('${a.id}', this.value)" style="font-size:.72rem;padding:4px 6px;border-radius:6px" title="Só ajusta o campo de valor ao lado — o que vale de verdade é o valor, não esta escolha">
+            <option value="">🗓️ dias…</option>
+            <option value="1">Só domingo (R$65)</option>
+            <option value="2">Sáb. + dom. (R$130)</option>
+          </select>` : ''}
           <span style="font-size:.75rem">R$</span>
-          <input type="text" id="ra-pag-valor-${a.id}" value="${a.auxilio_alimentacao_valor_pago != null ? Number(a.auxilio_alimentacao_valor_pago).toFixed(2) : cfg.valor.toFixed(2)}" onblur="raSalvarValorPago('${a.id}', this.value)" style="width:70px">
+          <input type="text" id="ra-pag-valor-${a.id}" value="${a.auxilio_alimentacao_valor_pago != null ? Number(a.auxilio_alimentacao_valor_pago).toFixed(2) : raValorSugerido(a, cfg).toFixed(2)}" onblur="raSalvarValorPago('${a.id}', this.value)" style="width:70px">
           <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;cursor:pointer">
             <input type="checkbox" ${a.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePago('${a.id}', this.checked)"> Pago
           </label>
@@ -645,8 +688,10 @@ function renderReciboAlimentacao() {
     <div class="import-card">
       <div class="ic-title" style="font-size:.85rem">💰 Controle de pagamento</div>
       <div class="ic-sub">Quem já recebeu o auxílio de verdade — separado do documento impresso acima (aquele é só
-        o papel pra assinatura, este é o controle interno do cartório). Valor por pessoa, editável (varia por
-        função — ex.: mesário e coordenador/auxiliar costumam receber valores diferentes).</div>
+        o papel pra assinatura, este é o controle interno do cartório). Da mesa receptora, só o Presidente recebe
+        pagamento direto (R$260 — repassa aos outros 3 da mesa fora do sistema, por isso só ele aparece aqui).
+        Auxiliar de eleição recebe por dia trabalhado (R$65 só domingo, R$130 sábado + domingo — use o seletor
+        🗓️ ao lado do valor). Valor sempre editável, nunca travado.</div>
       <div id="ra-controle-pagamento" style="margin-top:8px"></div>
     </div>
   `;

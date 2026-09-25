@@ -6819,6 +6819,48 @@ mostra só quem já recebeu; busca por seção filtra certo; desmarcar limpa
 a data mas mantém o valor, com log próprio; editar só o valor (sem mexer
 no checkbox) grava sozinho, sem tocar no status.
 
+**Revisado no mesmo dia — regra real de quem recebe pagamento direto,
+pedido explícito**: "só faremos pagamento para os presidente, no valor de
+260,00 que se encarregará de repassar os outros membros da mesa, aos
+coordenadores de acessibilidade, e ao auxiliares de eleição. alguns
+auxiliares trabalharão sabado e domingo devem receber 130, outros devem
+receber 65,00 que trabalharem somente no domingo". Duas mudanças, as duas
+só no CONTROLE (`raDados.todos`/render) — o documento impresso continua
+mostrando a mesa inteira (Presidente + 1º/2º Mesário + 1º Secretário),
+porque esse papel é a lista de presença de quem assina no local, não de
+quem recebe do cartório:
+
+- **Da mesa receptora, só o Presidente entra no controle de pagamento**
+  (`raDados.todos` ganhou `a.funcao !== 'mesario' || a.funcao_mesa ===
+  'Presidente'`) — 1º/2º Mesário e 1º Secretário nunca aparecem mais na
+  lista de "quem falta pagar": o Presidente recebe os R$260 e repassa em
+  mãos aos outros três, fora do sistema. Coordenador de acessibilidade e
+  auxiliar de eleição continuam todos, sem essa restrição — o pedido foi
+  só sobre a mesa.
+- **Valor sugerido (`raValorSugerido()`) passou a variar por função** em
+  vez de sempre partir do único `sime_eleicoes.valor_auxilio_alimentacao`
+  (65 por padrão): Presidente sugere R$260 direto; Auxiliar de Eleição
+  sugere R$65 (1 dia, o mínimo — só domingo); Coordenador de Acessibilidade
+  continua no valor único configurado, sem distinção de cargo/dia (nunca
+  teve essa variação, o pedido não mudou isso). **Continua só uma
+  SUGESTÃO** — o valor salvo de fato é sempre o que estiver no campo no
+  momento de marcar/editar, nunca cravado.
+- **Seletor "🗓️ dias…" ao lado do valor, só nas linhas de auxiliar de
+  eleição** (`raPagAplicarDias()`) — "Só domingo (R$65)" / "Sáb. + dom.
+  (R$130)" preenche E SALVA o campo de valor sozinho (reaproveita
+  `raSalvarValorPago()`, mesmo log de auditoria) — não guarda "quantos dias
+  trabalhou" como dado à parte nenhum, é só um atalho pro valor, que
+  continua sendo a única fonte de verdade.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 8 revisado, 78
+checks no total): total agora é 7 (2 Presidentes + 2 coordenadores + 2
+auxiliares + 1 junta, sem os 5 outros cargos de mesa do mock nem o juiz);
+1º/2º Mesário/1º Secretário nunca aparecem, nem com filtro "Todos"; valor
+sugerido do Presidente vem 260 (não o 65 de `sime_eleicoes`); valor
+sugerido do auxiliar vem 65; seletor de dias só existe na linha do
+auxiliar (ausente em coordenador/Presidente); escolher "Sáb. + dom." põe
+130 no campo e já salva sozinho, sem precisar de onblur manual.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
