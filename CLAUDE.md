@@ -6668,6 +6668,91 @@ cabeçalho usando o mesmo denominador do rodapé). Sem regressão em
 
 ---
 
+## ROTA REAL VIA GOOGLE DIRECTIONS — INTEGRAÇÃO COMPLETADA (`SIME_rotas.html`, 24/09/2026)
+
+Pedido direto: "confira a parte de rotas, se consegue otimizar as rotas — a
+última conferência não deu certo, está configurado um token do Google
+Maps". Investigado antes de mexer em qualquer coisa: a chave
+`GOOGLE_MAPS_API_KEY` já estava configurada na Vercel, o endpoint proxy
+(`api/rotas-directions.js`) e as colunas de cache (`sime_rotas.rota_real_*`,
+`sql/SIME_rotas_google_directions.sql`) já existiam desde **09/09/2026** —
+mas nenhuma tela nunca chamava esse endpoint. O texto que aparecia pro
+cartório continuava dizendo literalmente "não é o Google calculando de
+verdade, isso exigiria API paga" (`sime_rotas_modulo.js`), mesmo com a
+metade paga já pronta e paga. Por isso "a última conferência não deu
+certo": qualquer teste continuava mostrando a estimativa em linha reta de
+sempre, porque o token configurado nunca era de fato usado.
+
+**Ligado agora, sempre por clique explícito do cartório** (nunca em loop/
+realtime — mesmo critério de sempre pra não estourar o crédito grátis
+mensal do Google):
+
+1. **Botão "📏 Calcular rota real (Google)"** (`rtRenderParadas()`, ao lado
+   de "🔀 Otimizar ordem" e "🗺️ Ver rota completa no mapa") — aparece com
+   2+ paradas todas geolocalizadas. Chama `rtCalcularRotaReal()` →
+   `rtChamarGoogleDirections()` (sessão Supabase no header, mesmo endpoint
+   já existente) → cacheia `rota_real_polyline/distancia_m/duracao_s` +
+   `rota_real_paradas_assinatura` (ids das paradas na ordem, "id1,id2,...")
+   + `rota_real_calculada_em` em `sime_rotas`. Log de auditoria
+   `rota_real_calculada` com km/min.
+2. **Cache com validade por assinatura** (`rtRotaRealValida()`) — só vale
+   pra ESTA ordem/conjunto exato de paradas; qualquer add/remove/mover
+   invalida (mesmo critério já usado pra sugestão de otimização), a tela
+   avisa "havia uma rota real calculada, mas a lista mudou" em vez de
+   mostrar um número que já não corresponde à rota atual.
+3. **Previsão de chegada** (`rtChegadaEstimada`) — usa a distância/duração
+   REAIS cacheadas em vez da estimativa em linha reta (÷40km/h assumidos)
+   quando o cache é válido; rotulada "(rota real do Google...)" em vez de
+   "ESTIMADA". Nunca chama o Google sozinha — só lê o que já foi calculado
+   e cacheado pelo botão acima. Como o resto do formulário da rota, só
+   recalcula quando o modal reabre (mesmo comportamento de sempre — nem
+   reordenar parada com ▲/▼ atualiza a previsão ao vivo dentro da mesma
+   sessão do modal).
+4. **Ficha impressa** (`rtHtmlFicha`/`rtStaticMapInfo`/`rtLinhaOverlaySVG`)
+   — desenha o traçado REAL devolvido pelo Google (centenas de pontos
+   seguindo a estrada) por cima do mapa, em vez da linha reta entre
+   paradas, quando o cache é válido; o enquadramento (bounding box/zoom) do
+   mapa passa a considerar os pontos do traçado real também, não só as
+   paradas (uma estrada pode curvar bem mais longe que a linha reta entre
+   dois pontos — contornar um rio, uma serra). Bloco de informações da
+   ficha ganha "Distância/tempo de deslocamento (Google, rota real)".
+   Sem cache válido, cai de volta pro esquema de sempre, sem regressão.
+5. **"🔀 Otimizar ordem" confirma com o Google** (pedido explícito no mesmo
+   dia, ao ser perguntado se a otimização deveria usar o Google também) —
+   o algoritmo em si **não mudou** (vizinho-mais-próximo + 2-opt, linha
+   reta, já provado em produção nas 42 rotas de 10/09/2026): continua
+   decidindo a ordem sugerida sem custo nenhum. Só DEPOIS de achar uma
+   melhoria de verdade a aplicar (nunca quando a ordem já é ótima — nesse
+   caso não gasta a API confirmando um no-op), consulta o Google DUAS vezes
+   (ordem atual + ordem sugerida, em paralelo) e mostra "📏 Confirmado pelo
+   Google (rota real): Xkm/Ymin → X'km/Y'min" ao lado da estimativa em
+   linha reta, antes do cartório decidir aplicar. Reaproveita o cache do
+   item 1 pro "antes" quando ainda vale, economizando uma das duas
+   chamadas. Resposta chegando depois da sugestão ter sido descartada/
+   aplicada/substituída (paradas mudaram no meio-tempo) é ignorada em
+   silêncio — mesma defesa já usada pra invalidação de sugestão de sempre.
+
+**Por que não usar Distance Matrix pra otimização "de verdade" com
+distância real** — cogitado e descartado: reordenar por distância REAL de
+estrada exigiria uma matriz NxN entre todas as paradas candidatas (até
+~35×35 numa rota grande), múltiplos requests batched, custo por elemento
+bem mais alto que os 2 requests do item 5 acima. A linha reta já é uma
+aproximação boa o suficiente pra DECIDIR a ordem (validado nas 42 rotas
+reais de 10/09/2026); o que faltava não era um algoritmo melhor, era
+confirmar o resultado com números reais — que é exatamente o que o item 5
+faz, por uma fração do custo.
+
+Coberto por `tests/test_rotas.mjs` (blocos 36-39, cobrindo os 5 pontos
+acima): botão aparece/calcula/cacheia; log de auditoria; resumo aparece na
+tela sem precisar reabrir o modal; previsão de chegada troca pra "rota real
+do Google" com os números certos e volta pra "ESTIMADA" quando a lista de
+paradas muda; ficha impressa desenha o polyline real (4 pontos, não as 2
+paradas) com a legenda certa; otimização chama o Google só quando há
+melhoria real (2 chamadas) e nunca quando já é ótima (0 chamadas), com o
+texto de confirmação mostrando os km/min certos de cada lado.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

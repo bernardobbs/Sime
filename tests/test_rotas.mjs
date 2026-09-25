@@ -1546,6 +1546,204 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 36. "📏 Calcular rota real" (Google Directions, 24/09/2026) — botão
+// aparece com 2+ paradas com geo completa, chama o endpoint (mockado aqui
+// via page.route, nunca a chave de verdade), cacheia em sime_rotas.rota_real_*,
+// e a previsão de chegada passa a usar a distância/duração REAIS (em vez da
+// estimativa em linha reta) enquanto o cache continuar válido pra ordem
+// atual — cai de volta pra linha reta assim que a lista de paradas muda. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  // Escola B (s3) também ganha geo aqui de propósito — é a parada usada mais
+  // abaixo pra "mudar a lista" e invalidar o cache; se ficasse sem geo, o
+  // eta inteiro sumiria (rtChegadaEstimada exige geo em TODAS as paradas),
+  // o que testaria outra coisa (ausência de geo) em vez da invalidação do
+  // cache por mudança de conjunto, que é o que este bloco quer provar.
+  m.sime_secoes.find(s => s.id === 's3').latitude = -4.829;
+  m.sime_secoes.find(s => s.id === 's3').longitude = -42.159;
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.horario_saida = '07:00';
+  r1.tempo_parada_min = 10;
+  const { p, erros } = await abrir(ctx, m);
+  await p.route('**/api/rotas-directions', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, distanciaM: 12000, duracaoS: 1200, polyline: [[-4.83, -42.16], [-4.831, -42.161]] }),
+  }));
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  check('botão "📏 Calcular rota real (Google)" aparece com 2+ paradas geo completas', await p.locator('#rt-paradas-secao button:has-text("📏 Calcular rota real")').count() === 1);
+
+  await p.click('#rt-paradas-secao button:has-text("📏 Calcular rota real")');
+  await p.waitForTimeout(200);
+
+  const updReal = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1' && e.payload.rota_real_distancia_m != null));
+  check('cacheia distância/duração/polyline/assinatura em sime_rotas', updReal?.payload?.rota_real_distancia_m === 12000 && updReal?.payload?.rota_real_duracao_s === 1200 && updReal?.payload?.rota_real_paradas_assinatura === 's1,s2' && Array.isArray(updReal?.payload?.rota_real_polyline) && updReal.payload.rota_real_polyline.length === 2, JSON.stringify(updReal));
+
+  const logReal = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_real_calculada'));
+  check('grava log de auditoria com km/min calculados', logReal?.payload?.rota_id === 'r1' && logReal?.payload?.distancia_km === 12 && logReal?.payload?.duracao_min === 20, JSON.stringify(logReal));
+
+  const resumoTxt = (await p.locator('#rt-paradas-secao').textContent()).replace(/\s+/g, ' ');
+  check('resumo da rota real aparece na tela logo após calcular, sem precisar reabrir o modal', /Rota real \(Google\): 12\.0km, 20min/.test(resumoTxt), resumoTxt);
+
+  // ETA (fora de #rt-paradas-secao) só recalcula quando o modal reabre —
+  // mesmo comportamento de sempre pra previsão de chegada (nem reordenar
+  // parada com ▲/▼ recalcula ela ao vivo, ver bloco 20).
+  await p.click('#modal-body button:has-text("Cancelar")');
+  await p.waitForTimeout(100);
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  const modalTxtReal = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('previsão de chegada passa a citar "rota real do Google" em vez de "ESTIMADA"', /rota real do Google/.test(modalTxtReal) && !/ESTIMADA/.test(modalTxtReal), modalTxtReal);
+  // 12km/20min de deslocamento + 2×10min parado = 40min após 07:00 → 07:40.
+  check('previsão de chegada usa a distância/duração REAIS cacheadas (12.0km, 40min de deslocamento+parada) → 07:40', /12\.0km/.test(modalTxtReal) && /chega por volta de 07:40/.test(modalTxtReal), modalTxtReal);
+  check('"Previsão de chegada" pré-preenchida com o horário calculado a partir da rota real', (await p.locator('#rt-hora-chegada').inputValue()) === '07:40');
+
+  // Muda a lista de paradas (adiciona uma nova) — assinatura do cache não
+  // bate mais com a lista atual, então some a rota real, tanto na tela
+  // quanto na previsão de chegada.
+  await p.click('#rt-paradas-secao button:has-text("+")');
+  await p.fill('#rt-secao-busca', 'Escola B');
+  await p.waitForTimeout(350);
+  await p.click('#rt-paradas-secao .m-hist-item:has-text("Escola B")');
+  await p.waitForTimeout(150);
+  const resumoTxt2 = (await p.locator('#rt-paradas-secao').textContent()).replace(/\s+/g, ' ');
+  check('lista de paradas mudou: avisa que a rota real ficou desatualizada', /Havia uma rota real calculada, mas a lista de paradas mudou/.test(resumoTxt2), resumoTxt2);
+
+  await p.click('#modal-body button:has-text("Cancelar")');
+  await p.waitForTimeout(100);
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  const modalTxtDepois = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('com o cache desatualizado, previsão de chegada volta a ser a estimativa em linha reta (ESTIMADA)', /ESTIMADA/.test(modalTxtDepois) && !/rota real do Google/.test(modalTxtDepois), modalTxtDepois);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 37. Ficha impressa usa o traçado REAL do Google (não a linha reta entre
+// paradas) quando existe uma rota real cacheada e ainda válida pra ordem
+// atual (24/09/2026) — inclusive pro enquadramento do mapa, que precisa
+// caber o trajeto inteiro, não só as paradas. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  // Cache já calculado de propósito (evita depender do fluxo de clique) —
+  // 4 pontos no traçado real, mais do que as 2 paradas, pra provar que o
+  // desenho usa o POLYLINE real, não a contagem de paradas.
+  r1.rota_real_polyline = [[-4.83, -42.16], [-4.8305, -42.1605], [-4.8308, -42.1608], [-4.831, -42.161]];
+  r1.rota_real_distancia_m = 12000;
+  r1.rota_real_duracao_s = 1200;
+  r1.rota_real_paradas_assinatura = 's1,s2';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const pontosReais = await p.evaluate(() => {
+    const linha = document.querySelector('#rt-mapa-real-wrap svg polyline');
+    return linha ? linha.getAttribute('points').trim().split(/\s+/).length : null;
+  });
+  check('linha da ficha segue o traçado real do Google (4 pontos do polyline, não as 2 paradas)', pontosReais === 4, `pontos=${pontosReais}`);
+
+  const legendaTxt = (await p.locator('#rt-mapa-real-wrap').textContent()).replace(/\s+/g, ' ');
+  check('legenda deixa claro que a linha é o trajeto real calculado pelo Google', /trajeto REAL calculado pelo Google/.test(legendaTxt), legendaTxt);
+
+  const infoTxt = (await p.locator('.rt-info').textContent()).replace(/\s+/g, ' ');
+  check('ficha mostra a distância/tempo reais no bloco de informações', /Distância\/tempo de deslocamento \(Google, rota real\).*12\.0km, 20min/.test(infoTxt), infoTxt);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 38. "🔀 Otimizar ordem" confirma com o Google (Directions) quando acha
+// uma melhoria real (24/09/2026, pedido direto: "quero que o Otimizar ordem
+// use o Google Directions também") — o algoritmo de sempre (linha reta)
+// continua decidindo a ORDEM sugerida; o Google só confirma o km/tempo REAIS
+// das duas ordens (atual e sugerida), e só quando há mesmo uma melhoria a
+// aplicar (nunca gasta a API confirmando um "já está ótimo"). Mesma
+// geometria do bloco 30 (s1 fixo, s5 a 1km, s2 a 2km — ordem ótima
+// s1→s5→s2). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.83;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.14;
+  m.sime_secoes.push({ id: 's5', numero: 77, local_nome: 'Escola X', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83, longitude: -42.15 });
+  m.sime_rota_secoes.push({ id: 'rs5', rota_id: 'r1', secao_id: 's5', parada: 3 });
+  const { p, erros } = await abrir(ctx, m);
+  let chamadas = 0;
+  await p.route('**/api/rotas-directions', async (route) => {
+    chamadas++;
+    const body = route.request().postDataJSON();
+    // Distingue a ordem "atual" (s1,s2,s5) da "sugerida" (s1,s5,s2) pela
+    // 2ª parada enviada — cada uma tem uma longitude diferente.
+    const segunda = body.paradas[1];
+    const ehOrdemAtual = Math.abs(segunda.lon - (-42.14)) < 1e-6; // s2 é a 2ª na ordem atual
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(ehOrdemAtual
+        ? { ok: true, distanciaM: 3000, duracaoS: 300, polyline: [] }
+        : { ok: true, distanciaM: 2000, duracaoS: 200, polyline: [] }),
+    });
+  });
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(400);
+
+  check('confirma com o Google quando há melhoria de verdade (2 chamadas: ordem atual + sugerida)', chamadas === 2, `chamadas=${chamadas}`);
+  const previewTxt3 = (await p.locator('#rt-paradas-secao .import-result.ir-ok').textContent()).replace(/\s+/g, ' ');
+  check('mostra os números reais confirmados pelo Google ao lado da estimativa em linha reta', /Confirmado pelo Google \(rota real\): 3\.0km\/5min → 2\.0km\/3min/.test(previewTxt3), previewTxt3);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 39. Otimizar ordem — quando a ordem já é ótima (nada a aplicar), NÃO
+// chama o Google (evita gastar a API confirmando um no-op). Mesma geometria
+// do bloco 33. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.83;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.14;
+  m.sime_secoes.push({ id: 's6', numero: 88, local_nome: 'Escola Y', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: -4.83, longitude: -42.15 });
+  m.sime_rota_secoes.push({ id: 'rs6', rota_id: 'r1', secao_id: 's6', parada: 2 });
+  m.sime_rota_secoes.find(rs => rs.rota_id === 'r1' && rs.secao_id === 's2').parada = 3;
+  const { p, erros } = await abrir(ctx, m);
+  let chamadas2 = 0;
+  await p.route('**/api/rotas-directions', (route) => { chamadas2++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, distanciaM: 1, duracaoS: 1, polyline: [] }) }); });
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  await p.click('#rt-paradas-secao button:has-text("🔀 Otimizar ordem")');
+  await p.waitForTimeout(300);
+
+  check('ordem já ótima: nenhuma chamada ao Google', chamadas2 === 0, `chamadas=${chamadas2}`);
+  const previewTxt4 = (await p.locator('#rt-paradas-secao .import-result.ir-ok').textContent()).replace(/\s+/g, ' ');
+  check('continua mostrando só a mensagem de "já é a mais curta"', /já é a mais curta/.test(previewTxt4), previewTxt4);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

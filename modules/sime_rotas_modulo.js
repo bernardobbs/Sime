@@ -138,6 +138,17 @@ function rtSomarMinutos(horaStr, minutos) {
 // aproximada — nunca grava sozinha, só pré-preenche `#rt-hora-chegada`
 // quando esse campo ainda está vazio (mesmo critério de "sugestão, nunca
 // força" já usado pra ponto de partida/destino).
+//
+// 24/09/2026 — a API paga do Google (Directions, não Distance Matrix) foi
+// ligada de propósito: chave configurada na Vercel, endpoint
+// `api/rotas-directions.js` e as colunas `sime_rotas.rota_real_*` já
+// existiam desde 09/09/2026 (`sql/SIME_rotas_google_directions.sql`), mas
+// nunca tinham sido chamadas por nenhuma tela — o botão "📏 Calcular rota
+// real" (ver rtCalcularRotaReal) fecha esse buraco. Continua exigindo
+// clique explícito (nunca automático, mesmo critério de sempre pra não
+// estourar o crédito grátis) — só quando o cache está válido pra ordem
+// ATUAL das paradas (rtRotaRealValida) é que esta função troca a
+// estimativa em linha reta pela distância/duração real cacheada.
 const RT_VELOCIDADE_MEDIA_KMH = 40; // fixo nesta v1 — não é config por rota, é só uma aproximação de estrada rural sem asfalto
 function rtHaversineKm(a, b) {
   const R = 6371;
@@ -147,19 +158,51 @@ function rtHaversineKm(a, b) {
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.asin(Math.sqrt(h));
 }
+// Assinatura da lista de paradas NA ORDEM ("id1,id2,id3") — usada pra saber
+// se um cache calculado antes (rota real via Google, ver rtRotaRealValida
+// logo abaixo) ainda vale pra ordem/conjunto ATUAL, ou se ficou velho porque
+// alguém adicionou/removeu/reordenou parada desde então.
+function rtParadasAssinatura(paradas) {
+  return paradas.map(s => s.id).join(',');
+}
+// Cache de rota real (24/09/2026, ver rtCalcularRotaReal) ainda vale pra
+// estas paradas, nesta ordem? Mesmo critério de invalidação já usado pra
+// rtOtimizarSugestao — nunca reaproveita um cálculo de uma lista que já
+// mudou.
+function rtRotaRealValida(rota, paradas) {
+  return !!(rota.rota_real_paradas_assinatura && rota.rota_real_distancia_m != null && rota.rota_real_duracao_s != null
+    && rota.rota_real_paradas_assinatura === rtParadasAssinatura(paradas));
+}
+
 // Só calcula quando TODAS as paradas têm geo (nunca subestima em silêncio
 // pulando uma perna sem coordenada) e quando já há horário de saída e
 // tempo por parada preenchidos — sem os dois não tem o que somar.
+//
+// 24/09/2026 — quando existe uma rota real do Google já calculada
+// (rtCalcularRotaReal) E ainda válida pra ESTA ordem/conjunto de paradas
+// (rtRotaRealValida), usa a distância/duração REAL em vez da estimativa em
+// linha reta — mais precisa, sem custo adicional aqui (o cálculo já foi
+// pago e cacheado quando o cartório clicou "📏 Calcular rota real"). Sem
+// cache válido, cai de volta pro mesmo comportamento de sempre (linha
+// reta ÷ velocidade média assumida) — nunca chama o Google sozinho aqui,
+// só usa o que já está cacheado.
 function rtChegadaEstimada(rota, paradas) {
   if (!rota.horario_saida || rota.tempo_parada_min == null || !paradas.length) return null;
   if (paradas.some(s => s.latitude == null || s.longitude == null)) return null;
-  let travelKm = 0;
-  for (let i = 1; i < paradas.length; i++) travelKm += rtHaversineKm(paradas[i - 1], paradas[i]);
-  const travelMin = Math.round(travelKm / RT_VELOCIDADE_MEDIA_KMH * 60);
+  let travelKm, travelMin, viaGoogle = false;
+  if (rtRotaRealValida(rota, paradas)) {
+    travelKm = rota.rota_real_distancia_m / 1000;
+    travelMin = Math.round(rota.rota_real_duracao_s / 60);
+    viaGoogle = true;
+  } else {
+    travelKm = 0;
+    for (let i = 1; i < paradas.length; i++) travelKm += rtHaversineKm(paradas[i - 1], paradas[i]);
+    travelMin = Math.round(travelKm / RT_VELOCIDADE_MEDIA_KMH * 60);
+  }
   const dwellMin = rtTempoTotalParadasMin(rota, paradas.length) || 0;
   const horario = rtSomarMinutos(rota.horario_saida, travelMin + dwellMin);
   if (!horario) return null;
-  return { horario, travelKm, travelMin, dwellMin };
+  return { horario, travelKm, travelMin, dwellMin, viaGoogle };
 }
 
 // Otimização de ordem das paradas (10/09/2026, pedido direto: "como
@@ -232,6 +275,69 @@ function rtCalcularOrdemOtimizada(paradas) {
   const ordem = rtDoisOpt(rtVizinhoMaisProximo(paradas));
   const kmDepois = rtDistanciaTotal(ordem);
   return { ordem, kmAntes, kmDepois };
+}
+
+// Rota real via Google Directions (24/09/2026 — ver comentário grande em
+// cima de RT_VELOCIDADE_MEDIA_KMH). Proxy pro `api/rotas-directions.js`
+// (Vercel): a chave do Google NUNCA é usada direto no navegador, o
+// endpoint exige a sessão Supabase de quem está logado e chama o Google
+// por trás. `paradas` sempre na ordem em que devem ser visitadas — o
+// endpoint NÃO reordena nada (`optimize:true` de propósito desligado lá),
+// então quem decide a ordem continua sendo o cartório (▲/▼) ou a sugestão
+// de "🔀 Otimizar ordem", nunca o Google.
+async function rtChamarGoogleDirections(paradas) {
+  const sb = window.supabaseAtores;
+  let session;
+  try { session = (await sb.auth.getSession()).data.session; } catch (e) { session = null; }
+  if (!session) return { erro: 'Sem sessão — faça login de novo' };
+  let resp;
+  try {
+    resp = await fetch('/api/rotas-directions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ paradas: paradas.map(s => ({ lat: s.latitude, lon: s.longitude })) }),
+    });
+  } catch (e) {
+    return { erro: 'Falha de rede ao consultar o Google Maps: ' + e.message };
+  }
+  const dados = await resp.json().catch(() => null);
+  if (!resp.ok || !dados?.ok) return { erro: dados?.error || 'Falha ao consultar a rota real' };
+  return { distanciaM: dados.distanciaM, duracaoS: dados.duracaoS, polyline: dados.polyline };
+}
+
+// Botão "📏 Calcular rota real" (rtRenderParadas) — só CALCULA e CACHEIA em
+// sime_rotas.rota_real_* (ver sql/SIME_rotas_google_directions.sql, colunas
+// que existiam desde 09/09/2026 mas nunca eram escritas por nenhuma tela).
+// Clique explícito de propósito (mesmo critério "nunca em loop/realtime" do
+// próprio endpoint) — a API é paga acima do crédito grátis mensal.
+// Reaproveitado por rtChegadaEstimada (previsão de chegada) e rtHtmlFicha
+// (linha da ficha impressa) enquanto o cache continuar válido pra ordem
+// atual (rtRotaRealValida) — sem chamar o Google de novo à toa.
+async function rtCalcularRotaReal(rotaId) {
+  if (rtSomenteLeitura()) { showToast('👁️ Seu perfil só pode consultar rotas.'); return; }
+  const sb = window.supabaseAtores;
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  const atuais = rtDados.secoesPorRota.get(rotaId) || [];
+  if (atuais.length < 2) { showToast('⚠ Precisa de pelo menos 2 paradas pra calcular a rota real'); return; }
+  const semGeo = atuais.filter(s => s.latitude == null || s.longitude == null).length;
+  if (semGeo) { showToast(`⚠ ${semGeo} parada(s) sem geolocalização — não dá pra consultar o Google sem coordenada em todas.`); return; }
+
+  showToast('⏳ Consultando o Google Maps…');
+  const resultado = await rtChamarGoogleDirections(atuais);
+  if (resultado.erro) { showToast('⚠ ' + resultado.erro); return; }
+
+  const { error } = await sb.from('sime_rotas').update({
+    rota_real_polyline: resultado.polyline,
+    rota_real_distancia_m: resultado.distanciaM,
+    rota_real_duracao_s: resultado.duracaoS,
+    rota_real_paradas_assinatura: rtParadasAssinatura(atuais),
+    rota_real_calculada_em: new Date().toISOString(),
+  }).eq('id', rotaId);
+  if (error) { showToast('⚠ Calculado, mas falhou ao salvar: ' + error.message); return; }
+
+  await log('rota_real_calculada', '', { rota_id: rotaId, codigo: rota?.codigo, distancia_km: Number((resultado.distanciaM / 1000).toFixed(2)), duracao_min: Math.round(resultado.duracaoS / 60) });
+  showToast(`✓ Rota real calculada: ${(resultado.distanciaM / 1000).toFixed(1)}km, ${rtFmtMinutos(Math.round(resultado.duracaoS / 60))}`);
+  await rtRecarregarParadas();
 }
 
 // URL do Google Maps Directions (sem chave/custo) — usado tanto pro link
@@ -389,11 +495,20 @@ function rtSvgMinimapa(paradas) {
 // de fitBounds de mapas Mercator/256px), com ~15% de margem pra a rota não
 // ficar colada na borda. Mesmo limiar de rtSvgMinimapa (>=2 paradas com
 // geo) — 1 ponto sozinho não forma mapa nenhum.
-function rtStaticMapInfo(paradas) {
+//
+// 24/09/2026 — `polylineReal` (opcional, [[lat,lon],...] do Google, ver
+// rtCalcularRotaReal) entra no cálculo do enquadramento (bounding box) no
+// lugar das paradas cruas, quando fornecido: uma estrada de verdade pode
+// curvar BEM mais longe do que a linha reta entre duas paradas (contorna
+// um rio, uma serra), então enquadrar só pelas paradas cortaria pedaço da
+// linha real desenhada por cima (ver rtLinhaOverlaySVG). Sem polyline
+// (cache não calculado, ou desatualizado), continua exatamente como antes.
+function rtStaticMapInfo(paradas, polylineReal) {
   const comGeo = paradas.filter(s => s.latitude != null && s.longitude != null);
   if (comGeo.length < 2) return null;
   const W = 640, H = 420;
-  const lats = comGeo.map(s => s.latitude), lons = comGeo.map(s => s.longitude);
+  const pontosBbox = (polylineReal && polylineReal.length) ? polylineReal.map(([lat, lon]) => ({ latitude: lat, longitude: lon })) : comGeo;
+  const lats = pontosBbox.map(s => s.latitude), lons = pontosBbox.map(s => s.longitude);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
   const latRad = lat => { const s = Math.sin(lat * Math.PI / 180); return Math.log((1 + s) / (1 - s)) / 2; };
@@ -404,7 +519,7 @@ function rtStaticMapInfo(paradas) {
   const zoom = Math.max(1, Math.min(zoomPara(H, latFrac), zoomPara(W, lonFrac), 17));
   const centerLat = (minLat + maxLat) / 2, centerLon = (minLon + maxLon) / 2;
   const url = `https://staticmap.maptoolkit.net/?center=${centerLat},${centerLon}&zoom=${zoom}&size=${W}x${H}`;
-  return { url, centerLat, centerLon, zoom, W, H, paradas: comGeo };
+  return { url, centerLat, centerLon, zoom, W, H, paradas: comGeo, polylineReal: (polylineReal && polylineReal.length >= 2) ? polylineReal : null };
 }
 
 // Projeção Web Mercator padrão (EPSG:3857, a mesma de qualquer mapa de
@@ -449,14 +564,20 @@ function rtMarcadoresOverlayHTML(info) {
 // rtStaticMapInfo), só que como um <svg> com viewBox 0..100 e
 // preserveAspectRatio="none" — estica exatamente igual ao container
 // percentual dos pinos, então a linha passa certinho pelo centro de cada um,
-// mesmo a imagem não sendo quadrada. Não é o trajeto real pelas ruas (isso
-// continua sendo o QR/link do Google Maps) — é só a mesma linha reta, na
-// ordem das paradas, que o esquema de reserva (rtSvgMinimapa) já desenhava,
-// só que agora também em cima do mapa de verdade.
+// mesma a imagem não sendo quadrada.
+//
+// 24/09/2026 — quando `info.polylineReal` existe (rota real calculada e
+// ainda válida pra estas paradas, ver rtHtmlFicha), desenha o traçado REAL
+// devolvido pelo Google (centenas de pontos seguindo a estrada) em vez da
+// linha reta entre paradas — a mesma técnica de projeção, só que com mais
+// pontos. Sem cache válido, cai de volta pro comportamento de sempre: linha
+// reta na ordem das paradas, igual ao esquema de reserva (rtSvgMinimapa).
 function rtLinhaOverlaySVG(info) {
-  if (info.paradas.length < 2) return '';
+  const usaReal = info.polylineReal && info.polylineReal.length >= 2;
+  const fonte = usaReal ? info.polylineReal.map(([lat, lon]) => ({ latitude: lat, longitude: lon })) : info.paradas;
+  if (fonte.length < 2) return '';
   const centro = rtMercatorPixel(info.centerLat, info.centerLon, info.zoom);
-  const pontos = info.paradas.map(s => {
+  const pontos = fonte.map(s => {
     const p = rtMercatorPixel(s.latitude, s.longitude, info.zoom);
     const leftPct = 50 + (p.x - centro.x) / info.W * 100;
     const topPct = 50 + (p.y - centro.y) / info.H * 100;
@@ -531,7 +652,7 @@ async function rtCarregar(opts = {}) {
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
   const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min').eq('zona_id', zonaId).order('codigo'),
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
@@ -964,7 +1085,7 @@ function rtRenderModalRota() {
           <input type="number" id="rt-tempo-parada" min="0" value="${r?.tempo_parada_min ?? ''}" placeholder="ex.: 10"></div>
       </div>
       ${!isNovo && r?.tempo_parada_min != null && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">⏱️ Tempo total estimado parado: ${paradasAtuais.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, paradasAtuais.length))}${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, paradasAtuais.length))}` : ''}.</div>` : ''}
-      ${!isNovo && eta ? `<div class="ic-sub" style="margin:-6px 0 0">🧭 Previsão de chegada ESTIMADA (linha reta, ~${RT_VELOCIDADE_MEDIA_KMH}km/h assumidos — não é o Google calculando de verdade, isso exigiria API paga): ~${eta.travelKm.toFixed(1)}km de deslocamento (${rtFmtMinutos(eta.travelMin)}) + ${rtFmtMinutos(eta.dwellMin)} parado(a) → chega por volta de ${eta.horario}. Pode ficar bem diferente da estrada real — ajuste o campo acima se souber melhor.</div>` : ''}
+      ${!isNovo && eta ? `<div class="ic-sub" style="margin:-6px 0 0">🧭 Previsão de chegada${eta.viaGoogle ? ' (rota real do Google, calculada em 📍 Locais de votação)' : ' ESTIMADA (linha reta, ~' + RT_VELOCIDADE_MEDIA_KMH + 'km/h assumidos — não é o Google calculando de verdade, clique em "📏 Calcular rota real" abaixo pra usar a estrada de verdade)'}: ~${eta.travelKm.toFixed(1)}km de deslocamento (${rtFmtMinutos(eta.travelMin)}) + ${rtFmtMinutos(eta.dwellMin)} parado(a) → chega por volta de ${eta.horario}.${eta.viaGoogle ? '' : ' Pode ficar bem diferente da estrada real — ajuste o campo acima se souber melhor.'}</div>` : ''}
       <div class="form-group"><label for="rt-responsavel">Responsável pela rota (opcional)</label>
         <select id="rt-responsavel">
           <option value="">— sem responsável —</option>
@@ -1059,6 +1180,12 @@ function rtRenderParadas() {
   }
   const semGeoAgora = atuais.filter(s => s.latitude == null || s.longitude == null).length;
   const jaIgual = sugestao && sugestao.ordem.every((s, idx) => s.id === atuais[idx]?.id);
+  // Cache de rota real (24/09/2026, ver rtCalcularRotaReal) — só mostra o
+  // resultado quando ainda vale pra ordem/conjunto ATUAL das paradas; senão
+  // avisa que ficou desatualizado (mesmo add/remove/mover que invalida a
+  // sugestão de otimização acima).
+  const realValida = rtRotaRealValida(r, atuais);
+  const temRealDesatualizada = !realValida && r.rota_real_distancia_m != null;
 
   const soLeitura = rtSomenteLeitura();
   alvo.innerHTML = `
@@ -1066,12 +1193,19 @@ function rtRenderParadas() {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
       ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-out" style="font-size:.7rem;padding:5px 10px;text-decoration:none" title="Usa a Partida/Destino digitados, quando preenchidos, e as paradas geolocalizadas no meio">🗺️ Ver rota completa no mapa</a>` : ''}
       ${(!soLeitura && atuais.length >= 3) ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtOtimizarOrdem('${r.id}')" title="Sugere uma ordem mais curta por distância em linha reta entre as paradas (não é a estrada real) — 1ª parada fica fixa">🔀 Otimizar ordem</button>` : ''}
+      ${(!soLeitura && atuais.length >= 2 && !semGeoAgora) ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtCalcularRotaReal('${r.id}')" title="Consulta o Google Maps pela distância/tempo REAIS de estrada, na ordem atual das paradas — usa a API paga, só por clique explícito">📏 Calcular rota real (Google)</button>` : ''}
     </div>
+    ${realValida ? `<div class="ic-sub" style="margin:0 0 8px">📏 Rota real (Google): ${(r.rota_real_distancia_m / 1000).toFixed(1)}km, ${rtFmtMinutos(Math.round(r.rota_real_duracao_s / 60))} — calculada em ${rtFmtTs(r.rota_real_calculada_em) || '?'}. Usada na previsão de chegada e na ficha impressa.</div>`
+      : (temRealDesatualizada ? `<div class="ic-sub" style="margin:0 0 8px">📏 Havia uma rota real calculada, mas a lista de paradas mudou desde então — clique em "Calcular rota real" de novo pra atualizar.</div>` : '')}
     ${sugestao ? (jaIgual ? `
     <div class="import-result ir-ok">✓ A ordem atual já é a mais curta que encontramos por linha reta (nenhuma redução possível) — nada pra aplicar.
       <div style="margin-top:6px"><button type="button" class="btn btn-out" style="font-size:.68rem;padding:3px 8px;font-weight:400" onclick="rtDescartarOtimizacao()">Fechar</button></div>
     </div>` : `
-    <div class="import-result ir-ok">🔀 Sugestão (linha reta, ~${RT_VELOCIDADE_MEDIA_KMH}km/h — não é a estrada real): ${sugestao.kmAntes.toFixed(1)}km → ${sugestao.kmDepois.toFixed(1)}km (${Math.round((1 - sugestao.kmDepois / sugestao.kmAntes) * 100)}% menor). 1ª parada continua a mesma; nova ordem das demais:
+    <div class="import-result ir-ok">🔀 Sugestão (linha reta, ~${RT_VELOCIDADE_MEDIA_KMH}km/h — não é a estrada real): ${sugestao.kmAntes.toFixed(1)}km → ${sugestao.kmDepois.toFixed(1)}km (${Math.round((1 - sugestao.kmDepois / sugestao.kmAntes) * 100)}% menor).
+      ${sugestao.realCarregando ? '<div style="margin-top:4px">⏳ Consultando o Google Maps pela distância/tempo reais…</div>' : ''}
+      ${sugestao.realAntes && sugestao.realDepois ? `<div style="margin-top:4px">📏 Confirmado pelo Google (rota real): ${(sugestao.realAntes.distanciaM / 1000).toFixed(1)}km/${rtFmtMinutos(Math.round(sugestao.realAntes.duracaoS / 60))} → ${(sugestao.realDepois.distanciaM / 1000).toFixed(1)}km/${rtFmtMinutos(Math.round(sugestao.realDepois.duracaoS / 60))}.</div>` : ''}
+      ${sugestao.realErro ? `<div style="margin-top:4px">⚠️ Não foi possível confirmar com o Google: ${rtEsc(sugestao.realErro)} — a sugestão acima (linha reta) continua valendo.</div>` : ''}
+      1ª parada continua a mesma; nova ordem das demais:
       <ol style="margin:6px 0 8px 18px;padding:0;font-weight:400">
         ${sugestao.ordem.slice(1).map(s => `<li>${rtEsc(String(s.numero))} — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}</li>`).join('')}
       </ol>
@@ -1317,14 +1451,48 @@ async function rtMoverParada(rotaId, secaoId, direcao) {
 // "sugestão, nunca força" já usado em partida/destino/chegada estimada.
 // Ver rtCalcularOrdemOtimizada() acima pro algoritmo (vizinho-mais-próximo
 // + 2-opt, distância em linha reta, 1ª parada fixa).
-function rtOtimizarOrdem(rotaId) {
+//
+// 24/09/2026, pedido direto: "quero que o Otimizar ordem use o Google
+// Directions também" — o algoritmo continua o mesmo (rápido, de graça,
+// já validado em produção nas 42 rotas), mas depois de achar uma melhoria
+// de verdade, confirma o km/tempo REAIS de estrada com o Google pras duas
+// ordens (atual e sugerida) e mostra os dois números lado a lado — só
+// então o cartório decide se aplica. Só 2 chamadas por clique (reaproveita
+// o cache de rtCalcularRotaReal pro "antes", quando ainda vale), e só
+// quando há mesmo uma ordem diferente pra sugerir — nunca gasta a API pra
+// confirmar um "já está ótimo, nada a aplicar".
+async function rtOtimizarOrdem(rotaId) {
   const atuais = rtDados.secoesPorRota.get(rotaId) || [];
   if (atuais.length < 3) { showToast('⚠ Otimização de ordem só faz sentido com 3 ou mais paradas'); return; }
   const semGeo = atuais.filter(s => s.latitude == null || s.longitude == null).length;
   if (semGeo) { showToast(`⚠ ${semGeo} parada(s) sem geolocalização — otimização automática exige coordenadas em todas. Posicione manualmente com ▲/▼, ou complete a geo primeiro.`); return; }
   const resultado = rtCalcularOrdemOtimizada(atuais);
   if (!resultado) { showToast('⚠ Não foi possível calcular uma sugestão'); return; }
-  rtOtimizarSugestao = { rotaId, idsOriginais: atuais.map(s => s.id), ordem: resultado.ordem, kmAntes: resultado.kmAntes, kmDepois: resultado.kmDepois };
+  const sugestao = { rotaId, idsOriginais: atuais.map(s => s.id), ordem: resultado.ordem, kmAntes: resultado.kmAntes, kmDepois: resultado.kmDepois };
+  rtOtimizarSugestao = sugestao;
+  rtRenderParadas();
+
+  const jaIgual = resultado.ordem.every((s, idx) => s.id === atuais[idx]?.id);
+  if (jaIgual) return; // nada a aplicar — não gasta a API do Google confirmando um no-op
+
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  sugestao.realCarregando = true;
+  rtRenderParadas();
+  const [realAntes, realDepois] = await Promise.all([
+    rtRotaRealValida(rota, atuais) ? Promise.resolve({ distanciaM: rota.rota_real_distancia_m, duracaoS: rota.rota_real_duracao_s }) : rtChamarGoogleDirections(atuais),
+    rtChamarGoogleDirections(resultado.ordem),
+  ]);
+  // A sugestão pode ter sido descartada, aplicada, ou substituída (paradas
+  // mudaram enquanto esperava o Google) — resposta chegando tarde demais
+  // pra uma sugestão que não é mais a atual, ignora em silêncio.
+  if (rtOtimizarSugestao !== sugestao) return;
+  sugestao.realCarregando = false;
+  if (realAntes.erro || realDepois.erro) {
+    sugestao.realErro = realAntes.erro || realDepois.erro;
+  } else {
+    sugestao.realAntes = realAntes;
+    sugestao.realDepois = realDepois;
+  }
   rtRenderParadas();
 }
 function rtDescartarOtimizacao() {
@@ -1413,7 +1581,15 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   // distribuição; mostrar o texto aqui não depende de coordenada nenhuma).
   const mapsUrl = rtMapsUrl(rota, paradas, zona);
   const svgMapa = rtSvgMinimapa(paradas);
-  const staticMapInfo = rtStaticMapInfo(paradas);
+  // 24/09/2026 — usa o traçado real do Google (rota_real_polyline) quando
+  // já foi calculado (📏 Calcular rota real, ver rtCalcularRotaReal) E
+  // ainda vale pra ESTA ordem/conjunto de paradas (rtRotaRealValida) — a
+  // ficha então mostra a estrada de verdade em vez do esquema em linha
+  // reta. Paradas mudaram desde o último cálculo? Cai de volta pra linha
+  // reta, igual sempre foi — nunca mistura um traçado real com uma ordem
+  // que já não é mais essa.
+  const rotaRealValidaAgora = rtRotaRealValida(rota, paradas);
+  const staticMapInfo = rtStaticMapInfo(paradas, rotaRealValidaAgora ? rota.rota_real_polyline : null);
   const marcadoresOverlay = staticMapInfo ? rtMarcadoresOverlayHTML(staticMapInfo) : '';
   const linhaOverlay = staticMapInfo ? rtLinhaOverlaySVG(staticMapInfo) : '';
   const origemLabel = rota.ponto_partida || (paradas[0] ? rtNomeLocalParada(paradas[0]) : '—');
@@ -1442,7 +1618,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
             ${linhaOverlay}
             ${marcadoresOverlay}
           </div>
-          <div class="rt-sub">Mapa real (OpenStreetMap) — linha e pinos das paradas desenhados sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); é a ordem das paradas em linha reta, não o trajeto real pelas ruas — pra isso, use o link/QR do Google Maps abaixo.</div>
+          <div class="rt-sub">Mapa real (OpenStreetMap) — pinos das paradas desenhados sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); ${staticMapInfo.polylineReal ? 'a linha segue o trajeto REAL calculado pelo Google (rota real, ver 📏 Calcular rota real no módulo de Rotas).' : 'a linha é a ordem das paradas em linha reta, não o trajeto real pelas ruas — pra isso, use o link/QR do Google Maps abaixo, ou calcule a "rota real" no módulo de Rotas.'}</div>
         </div>` : ''}
         <div id="rt-mapa-esquema-wrap" style="${staticMapInfo ? 'display:none' : ''}">
           ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar um mapa — use o QR/link abaixo.</div>'}
@@ -1472,6 +1648,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
         ${rota.municipios?.length ? `<div><b>Municípios:</b> ${rota.municipios.map(rtEsc).join(', ')}</div>` : ''}
         ${rota.urnas_estimadas != null ? `<div><b>Urnas estimadas:</b> ${rota.urnas_estimadas}</div>` : ''}
         ${rota.tempo_parada_min != null && paradas.length ? `<div><b>Tempo estimado parado:</b> ${paradas.length} × ${rota.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(rota, paradas.length))} (sem contar deslocamento entre paradas)</div>` : ''}
+        ${rotaRealValidaAgora ? `<div><b>Distância/tempo de deslocamento (Google, rota real):</b> ${(rota.rota_real_distancia_m / 1000).toFixed(1)}km, ${rtFmtMinutos(Math.round(rota.rota_real_duracao_s / 60))}</div>` : ''}
         ${rota.itinerario ? `<div><b>Observações:</b> ${rtEsc(rota.itinerario)}</div>` : ''}
       </div>
       <table class="rt-tabela">
