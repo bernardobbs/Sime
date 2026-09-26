@@ -6861,6 +6861,44 @@ sugerido do auxiliar vem 65; seletor de dias só existe na linha do
 auxiliar (ausente em coordenador/Presidente); escolher "Sáb. + dom." põe
 130 no campo e já salva sozinho, sem precisar de onblur manual.
 
+**Aviso de papel duplicado por título de eleitor (26/09/2026)** — pedido
+direto depois de uma auditoria (`select`/`group by inscricao_eleitoral`
+sobre `raDados.todos` de verdade, no Supabase de produção, não hipotética):
+achadas **3 pessoas** na 7ª Zona segurando dois papéis ativos ao mesmo
+tempo no universo elegível a pagamento. Duas delas (Anita Alves de
+Oliveira, Luiz Carlos Santiago Junior) já eram um caso CONHECIDO e
+aceito — Presidente + Auxiliar de Eleição, pagas nos dois de propósito,
+mesmo critério já documentado acima ("a própria planilha original
+separava os dois cargos"). A terceira, **Adriana Paz Oliveira**, é
+diferente: Presidente de uma seção **e** Coordenadora de Acessibilidade de
+outra ao mesmo tempo — fisicamente não dá pra fazer as duas coisas no Dia
+D (Presidente fica fixo, coordenador circula por outro local), mesmo
+"conflito de papel" que o Dashboard de Convocação já sinaliza como alerta
+(`rsConflitoMesarioComoCoord`, `sime_resumo_secoes.js`) — só que aqui, no
+controle de pagamento, as duas linhas apareciam soltas, sem nenhuma
+referência cruzada: dava pra marcar as duas como pagas sem perceber que é
+a mesma pessoa recebendo por um trabalho que só vai fazer uma vez.
+
+`raCalcularConflitosPorTitulo(todos)` (nova) agrupa `raDados.todos` por
+`inscricao_eleitoral` logo depois de `raCarregar()` montar a lista —
+`raDados.conflitosPorTitulo`, só os títulos com mais de 1 linha.
+`raOutrosPapeis(a)` devolve os outros registros da mesma pessoa (`[]`
+quando não há conflito). Cada linha da lista ganha um aviso (mesmo padrão
+visual `import-result ir-warn` já usado pra "🔁 Precisa substituto" em
+Contatar Mesários) — "⚠️ mesma pessoa também está em: {papel} (Seção N)" —
+e o resumo do topo ganha uma contagem em vermelho ("⚠️ N com papel
+duplicado — confira antes de marcar como pago") quando há pelo menos 1.
+**Nunca bloqueia** — mesmo critério de sempre: o cartório decide qual dos
+dois papéis de fato paga (ou confirma que os dois são legítimos, como no
+caso de Anita/Luiz Carlos); o aviso é só pra não deixar passar batido.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 9, novo, 5
+checks — 84 no total no arquivo): resumo conta 2 pessoas com papel
+duplicado; a linha do Presidente avisa a seção da Coordenadora e
+vice-versa; quem não tem conflito não mostra aviso nenhum; o aviso
+continua depois de marcar um dos dois como pago (é sobre a existência do
+papel duplicado, não sobre status de pagamento).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

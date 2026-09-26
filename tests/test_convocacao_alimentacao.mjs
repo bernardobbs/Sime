@@ -445,6 +445,50 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 9. Aviso de conflito de papel por título de eleitor (26/09/2026,
+// achado real em auditoria: Adriana Paz Oliveira é Presidente de uma seção
+// E Coordenadora de Acessibilidade de outra ao mesmo tempo, sem nenhum
+// aviso cruzado entre as duas linhas — risco de marcar as duas como pagas
+// sem perceber que é a mesma pessoa recebendo por um trabalho que só vai
+// fazer uma vez). Nunca bloqueia — só avisa, e conta no resumo. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // COORDENADORA DUPLICADA compartilha o MESMO título de PRESIDENTE MARIA
+  // (m1, Seção 5) — mesma pessoa segurando dois papéis ativos ao mesmo
+  // tempo (m1 continua sem pagamento marcado, mock() de base não mexe
+  // nisso — só o bloco 8 faz essa mutação, isolada dele).
+  m.sime_atores.push({ id: 'c3', nome_completo: 'COORDENADORA DUPLICADA MARIA', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's2', inscricao_eleitoral: '111111111111', zona_id: 'z7', ativo: true });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.waitForTimeout(200);
+
+  const resumoTxt = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('resumo avisa 2 pessoas com papel duplicado', /2 com papel duplicado/.test(resumoTxt), resumoTxt.slice(0, 250));
+
+  const linhaPresidente = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —")').textContent()).replace(/\s+/g, ' ');
+  check('linha do Presidente avisa que a mesma pessoa também é Coordenadora, com a seção dela', /mesma pessoa também está em: Coordenador de Acessibilidade \(Seção 12\)/.test(linhaPresidente), linhaPresidente);
+
+  const linhaCoord = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
+  check('linha da Coordenadora avisa que a mesma pessoa também é Presidente, com a seção dele', /mesma pessoa também está em: Presidente \(Seção 5\)/.test(linhaCoord), linhaCoord);
+
+  const linhaSemConflito = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ")').textContent()).replace(/\s+/g, ' ');
+  check('quem não tem conflito não mostra nenhum aviso', !/mesma pessoa também está em/.test(linhaSemConflito), linhaSemConflito);
+
+  // Marcar um dos dois como pago não afeta o aviso do outro — o aviso é
+  // sobre a EXISTÊNCIA do papel duplicado, não sobre o status de pagamento.
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
+  await p.waitForTimeout(200);
+  const linhaCoordDepois = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
+  check('aviso continua depois de um dos dois ser marcado como pago', /mesma pessoa também está em: Presidente \(Seção 5\)/.test(linhaCoordDepois), linhaCoordDepois);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

@@ -176,7 +176,44 @@ async function raCarregar() {
     // continuam todos, sem essa restrição — o pedido foi só sobre a mesa.
     todos: (atores || []).filter(a => !raEhJuizEleitoral(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente')),
   };
+  raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   render();
+}
+
+// Mesma pessoa (mesmo título de eleitor) segurando mais de um papel ATIVO
+// ao mesmo tempo no universo de pagamento (26/09/2026, achado real em
+// auditoria): Adriana Paz Oliveira é Presidente de uma seção E
+// Coordenadora de Acessibilidade de outra ao mesmo tempo — sem nenhum
+// aviso cruzado entre as duas linhas, dava pra marcar as duas como pagas
+// sem perceber que é a mesma pessoa recebendo por um trabalho que só vai
+// fazer uma vez (fisicamente não dá pra presidir mesa fixa e circular como
+// coordenador ao mesmo tempo — mesmo "conflito de papel" que o Dashboard
+// de Convocação já sinaliza como alerta, `rsConflitoMesarioComoCoord`).
+// Diferente do caso de Anita Alves de Oliveira/Luiz Carlos Santiago
+// Junior, que legitimamente acumulam Presidente + Auxiliar de Eleição e
+// são pagos nos dois de propósito (a própria planilha original do lote
+// real de pagamentos já separava os dois cargos) — nunca bloqueia aqui,
+// só avisa; o cartório decide qual papel de fato paga.
+function raCalcularConflitosPorTitulo(todos) {
+  const porTitulo = {};
+  for (const a of todos) {
+    if (!a.inscricao_eleitoral) continue;
+    (porTitulo[a.inscricao_eleitoral] = porTitulo[a.inscricao_eleitoral] || []).push(a);
+  }
+  const conflitos = {};
+  for (const [titulo, lista] of Object.entries(porTitulo)) {
+    if (lista.length > 1) conflitos[titulo] = lista;
+  }
+  return conflitos;
+}
+
+// Outros papéis ATIVOS da MESMA pessoa (mesmo título) no universo de
+// pagamento, exceto o próprio — [] quando não há nenhum conflito.
+function raOutrosPapeis(a) {
+  if (!a.inscricao_eleitoral) return [];
+  const lista = raDados.conflitosPorTitulo?.[a.inscricao_eleitoral];
+  if (!lista) return [];
+  return lista.filter(o => o.id !== a.id);
 }
 
 function raCfg() {
@@ -495,7 +532,8 @@ function raPagResumo() {
   const todos = raDados.todos || [];
   const pagos = todos.filter(a => a.auxilio_alimentacao_pago);
   const totalPago = pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
-  return { total: todos.length, pagos: pagos.length, totalPago };
+  const conflitos = todos.filter(a => raOutrosPapeis(a).length > 0).length;
+  return { total: todos.length, pagos: pagos.length, totalPago, conflitos };
 }
 
 // Valor SUGERIDO no campo (só um ponto de partida — o valor de fato salvo é
@@ -582,7 +620,7 @@ function renderControlePagamento() {
   const cfg = raCfg();
 
   alvo.innerHTML = `
-    <div class="ic-sub" style="margin:0 0 8px">${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.</div>
+    <div class="ic-sub" style="margin:0 0 8px">${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.${resumo.conflitos ? ` <b style="color:var(--red)">⚠️ ${resumo.conflitos} com papel duplicado — confira antes de marcar como pago.</b>` : ''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <input type="text" id="ra-pag-busca" value="${raEsc(raPagBusca)}" oninput="raOnPagBuscaInput(this.value)" placeholder="Buscar por nome ou seção…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       <select onchange="raPagMudarFiltroStatus(this.value)" style="padding:8px 10px;border-radius:7px">
@@ -592,11 +630,14 @@ function renderControlePagamento() {
       </select>
     </div>
     <div class="m-hist" style="max-height:480px;overflow-y:auto">
-      ${lista.length ? lista.map(a => `
+      ${lista.length ? lista.map(a => {
+        const outros = raOutrosPapeis(a);
+        return `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <span>
           <b>${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
           ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
+          ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
         </span>
         <span style="display:flex;align-items:center;gap:6px">
           ${a.funcao === 'auxiliar_eleicao' ? `
@@ -611,7 +652,8 @@ function renderControlePagamento() {
             <input type="checkbox" ${a.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePago('${a.id}', this.checked)"> Pago
           </label>
         </span>
-      </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
+      </div>`;
+      }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
     </div>`;
   if (buscaAtiva) {
     const el = document.getElementById('ra-pag-busca');
