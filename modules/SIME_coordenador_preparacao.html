@@ -152,6 +152,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="h-sub">7ª Zona/PI · 174 seções · 63 locais · 34.967 eleitores · <span id="h-time">—</span></div>
       </div>
       <div class="sync-badge sync-ok" id="sync-badge" style="display:none">🟢 Sync</div>
+      <span id="sime-um-slot" style="display:none"></span>
     </div>
     <div class="prereq-legend">
       <span class="step c">📦 Carga</span><span class="arrow">→</span>
@@ -237,10 +238,47 @@ window.simeCoordPrep = {
   },
 };
 
+// Melhor-esforço: uma falha aqui (rede, sessão velha) nunca deve travar o
+// carregamento dos dados de carga/lacre, que é o que de fato importa nesta
+// tela — mesmo critério do restante do app pra código "extra" sobre o fluxo
+// principal.
+async function carregarMenuUsuario(){
+  try {
+    if (!window.initSimeUserMenu) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: meu } = await supabase.from('sime_usuarios').select('nome, perfil').eq('auth_user_id', user.id).maybeSingle();
+    window.initSimeUserMenu(supabase, {
+      slotEl: document.getElementById('sime-um-slot'),
+      nome: meu?.nome || user.email || 'Usuário',
+      perfil: meu?.perfil,
+    });
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
+}
+
 async function carregarDadosReais(){
   initSimeDados(supabase);
+  // Auxiliar de Eleição não tem acesso a este módulo (só Problemas/Rotas) —
+  // ver sime_acesso_perfil.js. Try/catch próprio (não o mesmo de
+  // carregarMenuUsuario(), que é só pro menu): uma falha aqui NUNCA deve
+  // travar o carregamento de carga/lacre pra todo mundo — mesmo critério
+  // "melhor-esforço" já documentado pro resto da identidade nesta tela;
+  // só bloqueia de fato quando a checagem resolve com sucesso.
+  try {
+    if (window.simeExigirAcesso) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: meuAcesso } = await supabase.from('sime_usuarios').select('perfil').eq('auth_user_id', user?.id).maybeSingle();
+      if (!window.simeExigirAcesso(meuAcesso?.perfil)) return;
+    }
+  } catch (e) { /* melhor-esforço — ver comentário acima */ }
+  await carregarMenuUsuario();
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  // Total de urnas configurado pelo cartório (22/09/2026, ver
+  // sql/SIME_eleicoes_urnas_total.sql) — window.ELEICAO_ATIVA é lido por
+  // totalUrnasAtual() (script clássico), mesmo padrão já usado em
+  // window.SIME_TOTAL_REAL/window.aoEscopoResolvido() noutras telas.
+  window.ELEICAO_ATIVA = eleicao;
   const secoesReais = await getSecoes({ fallback: null });
   if (secoesReais) {
     for (const s of secoesReais) secaoIdPorNumero[s.numero] = s.id;
@@ -297,6 +335,8 @@ document.getElementById('login-offline').addEventListener('click', () => { escon
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script>
 // Ordenado por município (Campo Maior → Jatobá do Piauí → Sigefredo Pacheco)
 // e por número de seção crescente dentro de cada município
@@ -608,10 +648,26 @@ function buildList(){
 
 function toggleMun(h){ h.parentElement.classList.toggle('collapsed'); }
 
+// Total de urnas — prioridade (22/09/2026, pedido direto: "serão preparadas
+// 147 urnas de seções, 27 contigencias, 174 urnas ao todo"): quando o
+// cartório já configurou urnas_secoes+urnas_contingencia em sime_eleicoes
+// (window.ELEICAO_ATIVA, populado pelo <script type="module"> do topo),
+// usa a soma; sem configuração, cai no comportamento de sempre (nº de
+// seções da zona) — nunca um número inventado. Mesma fonte pro footer
+// "Total" (recarregarAppComSecoesNovas) e pras barras de progresso do
+// cabeçalho (updateStats), pra nunca divergir entre os dois.
+function totalUrnasAtual(){
+  const e = window.ELEICAO_ATIVA;
+  if (e && Number.isFinite(e.urnas_secoes) && Number.isFinite(e.urnas_contingencia)) {
+    return e.urnas_secoes + e.urnas_contingencia;
+  }
+  return SECOES.length;
+}
+
 function updateStats(){
   let c=0, p=0, l=0, eleitLacr=0;
   SECOES.forEach(s=>{ if(state[s.n].carga)c++; if(state[s.n].prep)p++; if(state[s.n].lacre){l++; eleitLacr+=s.aptos;} });
-  const T=SECOES.length; const pct=v=>Math.round(v/T*100);
+  const T=totalUrnasAtual(); const pct=v=>Math.round(v/T*100);
   document.getElementById('mb-carga').style.width=pct(c)+'%'; document.getElementById('mp-carga').textContent=pct(c)+'%';
   document.getElementById('mb-prep').style.width=pct(p)+'%';  document.getElementById('mp-prep').textContent=pct(p)+'%';
   document.getElementById('mb-lacre').style.width=pct(l)+'%'; document.getElementById('mp-lacre').textContent=pct(l)+'%';
@@ -681,7 +737,7 @@ function recarregarAppComSecoesNovas(zona, cargaLacreReal){
     document.getElementById('h-time').textContent = fmtNow();
   }
   const footTotalEl = document.querySelector('.f-count.total .f-val');
-  if (footTotalEl) footTotalEl.textContent = SECOES.length;
+  if (footTotalEl) footTotalEl.textContent = totalUrnasAtual();
 
   load(); buildList(); updateStats();
 }

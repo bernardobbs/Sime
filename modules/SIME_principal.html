@@ -431,6 +431,10 @@ async function carregarZonas(){
 
   window.SIME_PERFIL = meu.perfil;
   window.MINHA_ZONA_ID = meu.zona_id || null;
+  // Re-renderiza o hub de módulos agora que o perfil é conhecido — a
+  // primeira chamada (na carga da página, antes do login resolver) sempre
+  // mostra tudo, já que simeAcessoPermitido() sem perfil nunca restringe.
+  if (window.renderModulos) window.renderModulos();
 
   // Topbar mostrava "Rafael A." fixo no HTML — sobrevivência de antes do login
   // real existir. Agora reflete quem de fato autenticou.
@@ -440,6 +444,12 @@ async function carregarZonas(){
   if (nomeEl) nomeEl.textContent = meu.nome || user.email || 'Sem nome';
   if (perfilEl) perfilEl.textContent = (window.PERFIL_LABEL && window.PERFIL_LABEL[meu.perfil]) || meu.perfil;
   if (avatarEl && window.iniciais) avatarEl.textContent = window.iniciais(meu.nome);
+
+  // Clicar no nome/perfil abre o menu (trocar senha / sair) — mesmo componente
+  // compartilhado por toda a camada Admin, ver sime_user_menu.js.
+  if (window.initSimeUserMenu) {
+    window.initSimeUserMenu(supabase, { chipEl: document.querySelector('.user-pill') });
+  }
 
   // A aba Zonas é do super_admin: um admin de zona não gerencia zona nenhuma,
   // só opera a sua. Mesma regra já usada em SIME_admin.html.
@@ -584,6 +594,8 @@ function abrirAbaDaUrl() {
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
+<script src="./sime_user_menu.js"></script>
+<script src="./sime_acesso_perfil.js"></script>
 <script>
 const ELEICAO_KEY = 'sime_eleicao_v1';
 function loadEl(){ try{return JSON.parse(localStorage.getItem(ELEICAO_KEY)||'{}')}catch(e){return{}} }
@@ -837,15 +849,18 @@ const MODS = {
     {icon:'📋',title:'Coordenador de Preparação',sub:'Checklist de carga, preparação e lacre',href:'SIME_coordenador_preparacao.html',fase:'dx'},
     {icon:'📺',title:'TV Preparação',sub:'Telão do cartório — relógio e progresso',href:'SIME_tv_preparacao.html',fase:'dx'},
   ],
+  // Conferente/Instalador/Mesário/Motorista SAÍRAM daqui (22/09/2026, pedido
+  // direto: "toque que dependa de qrcode e token para entrar não precisa de
+  // botão" neste hub) — são os 4 papéis de Camada Campo (QR+PIN) cujo acesso
+  // real só existe pelo cartão impresso (SIME_tokens.html); clicar aqui sem
+  // já ter um token físico só abre a tela de PIN sem nenhum jeito de
+  // continuar, um beco sem saída pra quem está logado no hub. Recolhimento
+  // de Mídias (Coletor de Mídias) é o mesmo caso, ver grupo `adm` abaixo.
   d1:[
-    {icon:'🚚',title:'Conferente',sub:'Embarque das urnas por rota',href:'SIME_conferente.html',fase:'d1'},
-    {icon:'🔧',title:'Instalador',sub:'Instalação das seções por técnico',href:'SIME_instalador.html',fase:'d1'},
     {icon:'🖥️',title:'TV Véspera',sub:'Acompanhamento da instalação',href:'SIME_tv_vespera.html',fase:'d1'},
     {icon:'🚗',title:'TV Distribuição',sub:'Acompanhamento do embarque das rotas',href:'SIME_tv_distribuicao.html',fase:'d1'},
   ],
   d:[
-    {icon:'🗳️',title:'Mesário',sub:'Controle remoto da seção — Dia D',href:'SIME_mesario.html',fase:'d'},
-    {icon:'🚐',title:'Motorista',sub:'Entrega e recolhimento de urnas',href:'SIME_motorista.html',fase:'d'},
     {icon:'📊',title:'Dashboard Operacional',sub:'Visão consolidada de todas as seções',href:'SIME_admin.html',fase:'d'},
   ],
   // Só o que é televisão/telão de verdade — os demais TV_* (Preparação,
@@ -860,9 +875,9 @@ const MODS = {
   // próprio de ferramentas do cartório (admin, cadastro, convocação, etc.).
   adm:[
     {icon:'🔧',title:'Administração',sub:'Gestão de seções, equipe e ocorrências',href:'SIME_admin.html',fase:null},
-    {icon:'📦',title:'Recolhimento de Mídias',sub:'Controle do fluxo de mídias eleitorais',href:'SIME_midias.html',fase:'d'},
     {icon:'👥',title:'Cadastro de Atores',sub:'Contatos e Modo Guerra por seção',href:'SIME_atores.html',fase:null},
     {icon:'🗳️',title:'Convocação de Mesários',sub:'Sincronizar planilha, dashboard e contato com mesários',href:'SIME_convocacao.html',fase:null},
+    {icon:'🗺️',title:'Rotas',sub:'Distribuição, recolhimento de urna/mídia e instalação de seção',href:'SIME_rotas.html',fase:null},
     {icon:'🔖',title:'Tokens & QR Codes',sub:'Gera e imprime QR + PIN dos operadores de campo',href:'SIME_tokens.html',fase:null},
     {icon:'🚨',title:'Problemas',sub:'Assumir, contatar quem resolve e encerrar',href:'SIME_problemas.html',fase:null},
     {icon:'📄',title:'Relatórios',sub:'Seções, distribuição de urnas e ocorrências',href:'SIME_relatorios.html',fase:null},
@@ -871,9 +886,16 @@ const MODS = {
 
 function renderModulos(){
   const fid=getFase();
+  // Perfis restritos (hoje só auxiliar_eleicao — ver sime_acesso_perfil.js)
+  // só enxergam os módulos que de fato podem abrir; sem SIME_PERFIL ainda
+  // resolvido (antes do login, ou offline) simeAcessoPermitido() sempre
+  // devolve true, então nada muda pra ninguém nesse meio-tempo.
   Object.entries(MODS).forEach(([g,mods])=>{
     const el=document.getElementById('mods-'+g); if(!el) return;
-    el.innerHTML=mods.map(m=>{
+    const modsFiltrados = window.simeAcessoPermitido
+      ? mods.filter(m => !m.href || window.simeAcessoPermitido(window.SIME_PERFIL, m.href))
+      : mods;
+    el.innerHTML=modsFiltrados.map(m=>{
       const ativo=m.fase===fid;
       const cls=['mod-card',ativo?'fase-ativa':'',m.dis?'disabled':''].filter(Boolean).join(' ');
       const badge=m.dis?'<span class="mod-badge" style="background:var(--bg2);color:var(--text3)">Em desenvolvimento</span>':ativo?'<span class="mod-badge" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd)">Fase atual</span>':'';
@@ -881,6 +903,14 @@ function renderModulos(){
       const href=m.href?'href="'+m.href+'" target="_blank"':'';
       return '<'+tag+' class="'+cls+'" '+href+'><div class="mod-icon">'+m.icon+'</div><div class="mod-title">'+m.title+'</div><div class="mod-sub">'+m.sub+'</div>'+badge+'</'+tag+'>';
     }).join('');
+    // Grupo inteiro some (cabeçalho junto) quando nenhum módulo sobra nele —
+    // um "D-X · Preparação das urnas" sem nenhum card embaixo pareceria
+    // quebrado, não intencional (ex.: Auxiliar de Eleição só vê Problemas/
+    // Rotas, os dois no grupo "Ferramentas do cartório").
+    const tituloEl = el.previousElementSibling;
+    const temModulo = modsFiltrados.length > 0;
+    if (tituloEl && tituloEl.classList.contains('sec-title')) tituloEl.style.display = temModulo ? '' : 'none';
+    el.style.display = temModulo ? '' : 'none';
   });
 }
 

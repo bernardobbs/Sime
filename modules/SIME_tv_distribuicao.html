@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SIME TV Distribuição</title>
 <link rel="stylesheet" href="./sime_theme_purple.css">
+<link rel="stylesheet" href="./vendor/leaflet.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
@@ -101,6 +102,24 @@ body{display:flex;flex-direction:column;}
   display:flex;align-items:center;justify-content:center;gap:18px;padding:0 16px;}
 .li{display:flex;align-items:center;gap:4px;font-size:.6rem;color:var(--text2);}
 .lid{width:8px;height:8px;border-radius:2px;}
+
+/* ── MAPA — posição estimada dos veículos (15/09/2026), mesmo padrão de
+   SIME_tv_dia.html ── */
+.gear-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;color:var(--text2);flex-shrink:0;}
+.gear-btn:hover{background:var(--border);}
+.map-overlay{position:fixed;inset:0;background:rgba(30,27,46,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .2s;}
+.map-overlay.open{opacity:1;pointer-events:all;}
+.map-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;width:min(880px,94vw);max-height:88vh;box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;}
+.sp-hdr{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.sp-title{font-size:.9rem;font-weight:800;}
+.sp-close{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;color:var(--text2);}
+.map-body{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px;}
+.map-hint{font-size:.68rem;color:var(--text3);}
+#mapa-rotas{width:100%;height:min(64vh,560px);border-radius:10px;border:1px solid var(--border);background:var(--bg2);}
+.map-legenda{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.68rem;color:var(--text2);}
+.rt-pin{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--blue);color:#fff;font-size:.62rem;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);}
+.rt-pin span{transform:rotate(45deg);}
+.leaflet-popup-content{font-size:.78rem;}
 </style>
 </head>
 <body>
@@ -114,6 +133,22 @@ body{display:flex;flex-direction:column;}
   <div class="t-stats" id="t-stats"></div>
   <div class="t-right">
     <div class="t-clock" id="clock">--:--:--</div>
+    <button class="gear-btn" id="mapa-rotas-btn" onclick="toggleMapaRotas()" title="Posição estimada dos veículos">🗺️</button>
+  </div>
+</div>
+
+<!-- MAPA — posição estimada dos veículos das rotas de distribuição (15/09/2026) -->
+<div class="map-overlay" id="mapa-overlay" onclick="closeMapaRotasIfOut(event)">
+  <div class="map-panel">
+    <div class="sp-hdr">
+      <div class="sp-title">🗺️ Posição estimada dos veículos</div>
+      <button class="sp-close" onclick="toggleMapaRotas()">✕</button>
+    </div>
+    <div class="map-body">
+      <div class="map-hint">Só rotas de distribuição de urna — atualiza a cada confirmação do motorista (entrega, chegada ao cartório), não é rastreamento contínuo, é a última posição informada.</div>
+      <div id="mapa-rotas"></div>
+      <div class="map-legenda" id="mapa-legenda"></div>
+    </div>
   </div>
 </div>
 
@@ -130,9 +165,10 @@ body{display:flex;flex-direction:column;}
   <div class="li" style="color:var(--text3)">Atualiza a cada 3s · Alarme sonoro em caso de alerta</div>
 </div>
 
+<script src="./vendor/leaflet.js"></script>
 <script type="module">
 import { bootstrapTvSession } from './sime_tv_auth.js';
-import { initSimeDados, getRotas, getRotasEstadoMap, refreshRotasEstadoMap } from './sime_dados.js';
+import { initSimeDados, getRotas, getRotasEstadoMap, refreshRotasEstadoMap, getRotasPosicaoMap, getZonaInfo } from './sime_dados.js';
 import { subscribeRotasEstado, subscribeRotasUrnas } from './sime_realtime.js';
 
 // Preenchido pelo Admin ao provisionar esta TV.
@@ -158,6 +194,26 @@ function adaptarParaRotasShape(rotas) {
   const rotas = await getRotas({ fallback: null });
   if (rotas) window.ROTAS_SUPABASE = adaptarParaRotasShape(rotas);
 
+  // Mapa — posição estimada dos veículos (15/09/2026, mesmo padrão de
+  // SIME_tv_dia.html/getRotasPosicaoMap). Escopado só a rotas de tipo
+  // 'distribuicao' — esta TV é sobre embarque/saída de urna, não faz
+  // sentido misturar posição de rota de recolhimento de mídia ou de
+  // instalação aqui; getRotasPosicaoMap() em si não filtra por tipo.
+  try {
+    const rotasDistribuicao = (rotas || []).filter((r) => (r.tipos || []).includes('distribuicao'));
+    window.__metaPorRotaId = Object.fromEntries(rotasDistribuicao.map((r) => [r.id, { codigo: r.codigo, nome: r.nome }]));
+    const posicaoInicial = await getRotasPosicaoMap({ fallback: {} });
+    window.__posicaoRotas = {};
+    for (const [rotaId, p] of Object.entries(posicaoInicial || {})) {
+      if (window.__metaPorRotaId[rotaId]) window.__posicaoRotas[rotaId] = p;
+    }
+    if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+    // Centro padrão do mapa (sede da zona) — só até o 1º veículo informar
+    // posição; com pelo menos um ponto, o mapa sempre enquadra os veículos.
+    const zona = await getZonaInfo({ fallback: null });
+    if (zona && zona.lat != null && zona.lon != null) window.__centroMapaZona = [zona.lat, zona.lon];
+  } catch (e) { /* mapa fica indisponível — o resto da TV segue normal */ }
+
   // Realtime: snapshot inicial do embarque de urnas (sime_rotas_estado +
   // sime_rotas_urnas) + assinatura pras 2 tabelas — um embarque completo
   // muda ambas (abrir rota / marcar urna / confirmar pronta / saída). Como
@@ -180,7 +236,22 @@ function adaptarParaRotasShape(rotas) {
       if (window.render) window.render();
     }, 300);
   }
-  subscribeRotasEstado(client, agendarRefresh);
+  // Uma assinatura só pra sime_rotas_estado (não duas): todo UPDATE já
+  // dispara o refresh de embarque de sempre, e — quando traz posição de
+  // veículo nova pra uma rota de distribuição conhecida — também atualiza
+  // o mapa, sem precisar de um segundo canal na mesma tabela.
+  subscribeRotasEstado(client, (row) => {
+    agendarRefresh();
+    const meta = window.__metaPorRotaId?.[row.rota_id];
+    if (!meta || row.motorista_lat == null || row.motorista_lng == null) return;
+    window.__posicaoRotas = window.__posicaoRotas || {};
+    window.__posicaoRotas[row.rota_id] = {
+      codigo: meta.codigo, nome: meta.nome,
+      lat: row.motorista_lat, lng: row.motorista_lng,
+      ts: row.motorista_pos_ts ? new Date(row.motorista_pos_ts).getTime() : null,
+    };
+    if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
+  });
   subscribeRotasUrnas(client, agendarRefresh);
 })();
 </script>
@@ -520,6 +591,74 @@ function startCd(){
 }
 
 
+// ── MAPA — posição estimada dos veículos (15/09/2026) ──────
+// window.__posicaoRotas ({rotaId:{codigo,nome,lat,lng,ts}}, já filtrado a
+// rotas de tipo 'distribuicao') e window.__centroMapaZona são preenchidos
+// pelo <script type="module"> acima; este bloco só desenha — mesmo padrão
+// de SIME_tv_dia.html, duplicado aqui porque os dois arquivos não
+// compartilham <script> clássico.
+let mapaLeaflet = null;
+const marcadoresMapaRotas = new Map(); // rotaId -> L.marker
+const CORES_ROTA = ['#2d50a0','#1e7048','#5c3a98','#a0522d','#0891b2','#be123c','#7c3aed','#166534'];
+function corDaRota(codigo){
+  let h = 0; for (const c of String(codigo)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CORES_ROTA[h % CORES_ROTA.length];
+}
+function iconPinRota(codigo){
+  return L.divIcon({
+    className: '', html: `<div class="rt-pin" style="background:${corDaRota(codigo)}"><span>${codigo}</span></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28],
+  });
+}
+function fmtHoraPosicao(ts){
+  return ts ? new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+function garantirMapaLeaflet(){
+  if (mapaLeaflet || typeof L === 'undefined') return mapaLeaflet;
+  const centro = window.__centroMapaZona || [-4.8252, -42.1733]; // sede da 7ª Zona — só até o 1º ponto real chegar
+  mapaLeaflet = L.map('mapa-rotas', { attributionControl: false }).setView(centro, 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(mapaLeaflet);
+  L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap').addTo(mapaLeaflet);
+  return mapaLeaflet;
+}
+function renderMarcadoresMapa(){
+  if (!mapaLeaflet) return;
+  const pontos = window.__posicaoRotas || {};
+  for (const [rotaId, marker] of [...marcadoresMapaRotas]) {
+    if (!pontos[rotaId]) { mapaLeaflet.removeLayer(marker); marcadoresMapaRotas.delete(rotaId); }
+  }
+  for (const [rotaId, p] of Object.entries(pontos)) {
+    const popup = `<b>Rota ${p.codigo}${p.nome ? ' — ' + p.nome : ''}</b><br>Última posição: ${fmtHoraPosicao(p.ts)}`;
+    if (marcadoresMapaRotas.has(rotaId)) {
+      marcadoresMapaRotas.get(rotaId).setLatLng([p.lat, p.lng]).setPopupContent(popup);
+    } else {
+      const m = L.marker([p.lat, p.lng], { icon: iconPinRota(p.codigo) }).addTo(mapaLeaflet).bindPopup(popup);
+      marcadoresMapaRotas.set(rotaId, m);
+    }
+  }
+  const legenda = document.getElementById('mapa-legenda');
+  const lista = Object.values(pontos);
+  if (legenda) {
+    legenda.innerHTML = lista.length
+      ? lista.map((p) => `<span>🚗 Rota ${p.codigo} — ${fmtHoraPosicao(p.ts)}</span>`).join('')
+      : '<span>Nenhum veículo de rota de distribuição informou posição ainda.</span>';
+  }
+  if (lista.length) mapaLeaflet.fitBounds(lista.map((p) => [p.lat, p.lng]), { padding: [30, 30], maxZoom: 14 });
+}
+window.renderMarcadoresMapa = renderMarcadoresMapa;
+function toggleMapaRotas(){
+  const ov = document.getElementById('mapa-overlay');
+  const vaiAbrir = !ov.classList.contains('open');
+  ov.classList.toggle('open');
+  if (vaiAbrir) {
+    garantirMapaLeaflet();
+    setTimeout(() => { if (mapaLeaflet) { mapaLeaflet.invalidateSize(); renderMarcadoresMapa(); } }, 60);
+  }
+}
+function closeMapaRotasIfOut(e){
+  if (e.target === document.getElementById('mapa-overlay')) toggleMapaRotas();
+}
+
 // ══════════════════════════════════════════════
 // RELÓGIO
 // ══════════════════════════════════════════════
@@ -533,5 +672,6 @@ startCd();
 setInterval(render, 3000);
 document.addEventListener('click', () => { initAudio(); }, { once: true });
 </script>
+<script src="./sime_tv_nav.js"></script>
 </body>
 </html>

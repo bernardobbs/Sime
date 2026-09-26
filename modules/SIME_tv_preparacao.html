@@ -35,16 +35,24 @@ body.tudo-lacrado .fc.lacre .fc-val,
 body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
 
 .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 40px 16px; }
-.data { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
+/* Data e hora são o dado principal desta tela — o que qualquer um precisa
+   enxergar de longe primeiro (22/09/2026, pedido direto: "os dados
+   principais são data e hora, eles devem ser as maiores informações").
+   Antes a data era um subtítulo fino e cinza-claro acima do relógio — lia
+   como legenda, não como informação principal; agora é escura, em negrito
+   e bem maior (ainda menor que a hora, que continua sendo o maior elemento
+   da tela — as duas juntas dominam, o status/contadores ficam menores). */
+.data { font-size:clamp(2.2rem,8.5vw,6.2rem); font-weight:800; color:#222; letter-spacing:0.01em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(6px,1.6vh,20px); }
 .hora { display:flex; align-items:baseline; line-height:1; }
 .hora-hm { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
 .hora-sep { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.07} }
 .hora-s { font-size:clamp(1.8rem,6vw,4.5rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(6px,1vw,16px); margin-left:clamp(4px,0.5vw,12px); }
 
-/* Dado que mais importa (status de carga/preparação/lacre) — antes minúsculo
-   e cinza claro no rodapé, atrás de um relógio gigante que domina a tela. */
-.status-hero { font-size:clamp(1.6rem,5.5vw,3.6rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
+/* Status de carga/preparação/lacre — continua com destaque (achado "alto"
+   da auditoria original: nunca mais minúsculo/cinza no rodapé), mas agora
+   é secundário a data+hora, que passaram a ser o dado principal da tela. */
+.status-hero { font-size:clamp(1.4rem,4.5vw,2.8rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
 .status-hero.done { color:#0a7a3d; }
 
 .footer { padding:10px 52px 14px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #efefef; flex-shrink:0; }
@@ -119,6 +127,10 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
   if (secoes) window.SIME_TOTAL_REAL = secoes.length;
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
   if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
+  // Total de urnas configurado pelo cartório (22/09/2026, ver
+  // sql/SIME_eleicoes_urnas_total.sql) — quando presente, calcTotal() o
+  // prefere sobre a contagem de seções.
+  window.ELEICAO_ATIVA = eleicao;
 
   function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   async function refetch() {
@@ -147,10 +159,21 @@ function tick() {
 }
 tick(); setInterval(tick,1000);
 
-// Total real vem do Supabase (window.SIME_TOTAL_REAL, zona-scoped via RLS);
-// sem sessão de TV configurada ainda, cai no total local (sime_lacre_v3) e,
-// por fim, no fallback histórico da 7ª Zona/PI (174) — offline-first.
+// Total de urnas — prioridade (22/09/2026, pedido direto: "serão preparadas
+// 147 urnas de seções, 27 contigencias, 174 urnas ao todo"):
+//   1. urnas_secoes+urnas_contingencia configurado em sime_eleicoes (o
+//      número operacional real, guardado separado — ver
+//      sql/SIME_eleicoes_urnas_total.sql), quando o cartório já preencheu
+//      os dois;
+//   2. window.SIME_TOTAL_REAL (nº de seções da zona via Supabase, o
+//      comportamento de sempre quando ainda não há configuração);
+//   3. total local (sime_lacre_v3) e, por fim, o fallback histórico da
+//      7ª Zona/PI (174) — offline-first.
 function calcTotal(){
+  const e = window.ELEICAO_ATIVA;
+  if (e && Number.isFinite(e.urnas_secoes) && Number.isFinite(e.urnas_contingencia)) {
+    return e.urnas_secoes + e.urnas_contingencia;
+  }
   if (window.SIME_TOTAL_REAL) return window.SIME_TOTAL_REAL;
   try{ const d=localStorage.getItem('sime_lacre_v3'); if(d){ const t=Object.keys(JSON.parse(d)).length; return t>0?t:174; }}catch(e){} return 174;
 }
@@ -195,5 +218,6 @@ function updateRtStatus(){
 }
 setInterval(updateRtStatus,1000); updateRtStatus();
 </script>
+<script src="./sime_tv_nav.js"></script>
 </body>
 </html>

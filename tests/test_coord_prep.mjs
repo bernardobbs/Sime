@@ -244,6 +244,44 @@ const STUB_SUPABASE_JS = stubSupabaseJs();
   await ctx.close();
 }
 
+// ── Caso 7 (22/09/2026, pedido direto: "serão preparadas 147 urnas de
+// seções, 27 contigencias, 174 urnas ao todo") — com urnas_secoes/
+// urnas_contingencia configurados na eleição ativa, o "Total" do rodapé e o
+// denominador das barras de progresso do cabeçalho passam a ser a SOMA dos
+// dois, não mais SECOES.length (3, no mock) — valores de teste (10+5=15)
+// deliberadamente diferentes de 3 e de 174 pra não dar falso positivo. ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({
+    eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04', urnas_secoes: 10, urnas_contingencia: 5 },
+  });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  check('zero erros JS', erros.length === 0, erros.join('; '));
+  const eleicaoAtiva = await p.evaluate(() => window.ELEICAO_ATIVA);
+  check('window.ELEICAO_ATIVA populado com urnas_secoes/urnas_contingencia', eleicaoAtiva?.urnas_secoes === 10 && eleicaoAtiva?.urnas_contingencia === 5, JSON.stringify(eleicaoAtiva));
+  const footTotal = await p.locator('.f-count.total .f-val').textContent();
+  check('rodapé "Total" = urnas_secoes + urnas_contingencia (15), não SECOES.length (3)', footTotal.trim() === '15', 'total=' + footTotal);
+
+  await p.click('.sec-card[data-sec="0001"] .ck.carga');
+  await p.waitForTimeout(200);
+  const pctCarga = await p.locator('#mp-carga').textContent();
+  check('barra de progresso usa o mesmo total (1/15 = 7%, não 1/3 = 33%)', pctCarga.trim() === '7%', 'pct=' + pctCarga);
+
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

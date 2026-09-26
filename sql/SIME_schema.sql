@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS sime_usuarios (
   email         TEXT UNIQUE,
   perfil        TEXT NOT NULL CHECK(perfil IN (
                   'coordenador','monitor','gestor_prob','gestor_dist','observador',
-                  'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin')),
+                  'coord_motoristas','coord_acessibilidade','coletor_midias','auxiliar_eleicao','super_admin')),
   empresa_id    UUID REFERENCES sime_empresas(id),  -- Coord. de Motoristas (preposto): só vê rotas da empresa
   local_id      UUID,                               -- Coord. de Acessibilidade: só vê seções do local
   auth_user_id  UUID UNIQUE,                        -- sub do JWT (login real via auth.users OU
@@ -140,7 +140,7 @@ ALTER TABLE sime_usuarios ADD COLUMN IF NOT EXISTS auth_user_id UUID UNIQUE;
 ALTER TABLE sime_usuarios DROP CONSTRAINT IF EXISTS sime_usuarios_perfil_check;
 ALTER TABLE sime_usuarios ADD CONSTRAINT sime_usuarios_perfil_check CHECK (perfil IN (
   'coordenador','monitor','gestor_prob','gestor_dist','observador',
-  'coord_motoristas','coord_acessibilidade','coletor_midias','super_admin'));
+  'coord_motoristas','coord_acessibilidade','coletor_midias','auxiliar_eleicao','super_admin'));
 
 -- Tokens de acesso para operadores de campo E para as TVs (tipo='tv').
 -- Trocados por uma sessão JWT via a Edge Function supabase/functions/sime-login
