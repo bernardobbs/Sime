@@ -6901,6 +6901,82 @@ papel duplicado, não sobre status de pagamento).
 
 ---
 
+## INDICADOR "DADO PARADO HÁ Xs" REDESENHADO NAS 4 TVs (27/09/2026)
+
+Depois do print de um mockup de totalização estadual (estilo TSE, parede de
+TVs) mandado como inspiração — "veja o modelo do painel" — e uma rodada de
+`AskUserQuestion` esclarecendo que o pedido era inspiração visual pros
+painéis de TV do SIME, não recriar aquele mockup específico, três melhorias
+concretas foram propostas e aprovadas: este indicador (o mais barato — já
+existia em 3 das 4 TVs, faltava só portar + deixar mais legível), um
+gráfico esperado×real na Previsão do TV Dia (ainda não implementado, segue
+como pendência) e um mosaico por município (idem). Pedido explícito pra
+começar por este: "começe pelo mais barato, melhore o visual para ficar
+mais compreensivel".
+
+**O que já existia (TV Dia, TV Véspera, TV Preparação) era pouco legível à
+distância** — uma pilulazinha pequena (`.58rem`/`.66rem`) com emoji cru +
+número seco ("🟢 agora", "🟡 12s atrás", "🔴 3min atrás"). Bom o bastante pra
+detectar visualmente que algo mudou de cor, ruim pra entender o que
+significa sem se aproximar da tela — e **TV Distribuição nunca teve esse
+indicador nenhuma vez** (confirmado por grep vazio antes de mexer: um canal
+Realtime caído prendia o embarque de urnas num dado velho sem nenhum aviso,
+mesma classe de risco já corrigida nas outras 3 há tempos).
+
+**Redesenho, reaproveitando um padrão já provado na própria tela** — o
+mesmo par bolinha+texto (`.tsd`/`.ts`) que o `#t-stats` de cada TV já usa
+pros contadores principais (ex.: "🟢 12 votando"), legível a distância
+porque já é o padrão visual dominante da tela. `#rt-status` ganhou uma
+bolinha (`<span class="tsd">`, 7px, cor inline igual ao `.tsd` de sempre) e
+o texto virou palavra por extenso em vez de emoji+número cru:
+- **Verde, <30s**: "Atualizado agora" / "Atualizado há Ns".
+- **Laranja, 30-89s**: mesmo texto, cor de aviso — ainda não é alarmante,
+  só "começando a atrasar".
+- **Vermelho, ≥90s**: "Sem atualização há Nmin" — texto deliberadamente
+  diferente do resto ("Sem atualização", não "Atualizado há") porque este
+  é o estado que precisa ler como alarme, não como só mais uma cor — é o
+  estado que justifica ir checar o Realtime/a rede antes de confiar no
+  que a tela mostra.
+Fonte subiu de `.58/.66rem` pra `.7/.82rem` (tamanho da própria fonte dos
+contadores principais do topbar) — não é mais o menor elemento da tela.
+
+**TV Preparação (tema claro) ganhou a mesma bolinha**, com as mesmas 3
+cores (`#16a34a`/`#c2410c`/`#dc2626`) sobre o fundo claro que já tinha
+(`#f0f0f0`/`#fff3e0`/`#fde8e6`) — só o texto/bolinha mudaram, a paleta de
+fundo por estado é a mesma de antes.
+
+**TV Distribuição ganhou o indicador do zero** — CSS (`.rt-status`/`.tsd`,
+mesmo padrão das outras 3), `<div id="rt-status">` no `.t-right` do topbar
+(ao lado do relógio, antes do botão 🗺️), e a mesma função `updateRtStatus()`
+duplicada (não importada — os 4 arquivos não compartilham `<script>`
+clássico, mesmo critério de sempre). `marcarAtualizado()` (nova, dentro do
+`<script type="module">`) chama `window.__ultimaAtualizacaoTs = Date.now()`
+em 3 pontos: no snapshot inicial de `sime_rotas_estado`, e dentro dos
+callbacks de `subscribeRotasEstado`/`subscribeRotasUrnas` (o segundo
+passava `agendarRefresh` direto como callback antes — precisou virar uma
+arrow function pra encaixar a chamada extra).
+
+Coberto por `tests/test_tv_distribuicao_mapa.mjs` (blocos 5b/5c, 7 checks
+novos — 27 no total no arquivo): sessão de TV ativa mostra "Atualizado" por
+extenso; 30-89s vira aviso com classe `warn`; um evento Realtime novo
+reseta o relógio de volta pra "agora"; ≥90s vira "Sem atualização" com
+classe `stale`; sem `tv_token`, o indicador nunca sai de "sem sessão". Sem
+regressão em `test_tv_dia_realtime.mjs` (20/20), `test_tv_vespera_realtime.mjs`
+(19/19), `test_tv_preparacao_realtime.mjs` (16/16), `test_tv_preparacao.mjs`
+(14/14), `test_tv_dia.mjs` (15/15), `test_tv_dia_previsao.mjs` (12/12),
+`test_veiculos_mapa.mjs` (23/23) e `test_tv_panel_nav.mjs` (32/32).
+
+**Pendências da mesma rodada de inspiração, ainda não implementadas**: o
+gráfico esperado×real na Previsão do TV Dia (esperando confirmação de
+abordagem — `sime_mesa_estado` só guarda um `updated_at` por linha, sem
+histórico por evento, então uma curva real exigiria decidir entre um
+buffer client-side por sessão ou um novo log persistido) e o mosaico por
+município no TV Dia (design já entendido — reaproveitar `cityDone`/
+`cityTotal` que `buildPages()` já calcula por município — mas ainda sem
+código escrito).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

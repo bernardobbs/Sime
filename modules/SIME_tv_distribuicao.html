@@ -23,6 +23,14 @@ body{display:flex;flex-direction:column;}
 .tsd{width:6px;height:6px;border-radius:50%;}
 .t-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .t-clock{font-size:.8rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;}
+/* Indicador de saúde do Realtime (27/09/2026) — esta TV nunca tinha isso,
+   diferente do TV Dia/TV Véspera/TV Preparação (achado ao revisar as 4
+   telas); sem ele, um canal Realtime caído prende o embarque num dado
+   velho sem nenhum aviso visível. Mesmo padrão bolinha+texto das outras 3. */
+.rt-status{font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.rt-status .tsd{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.rt-status.warn{background:#fff7ed;color:#c2410c;}
+.rt-status.stale{background:#fef2f2;color:#dc2626;}
 
 /* ── GRID DE ROTAS ── */
 .routes-grid{
@@ -132,6 +140,7 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="t-stats" id="t-stats"></div>
   <div class="t-right">
+    <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor"><span class="tsd" style="background:var(--text3,#999)"></span>— sem sessão</div>
     <div class="t-clock" id="clock">--:--:--</div>
     <button class="gear-btn" id="mapa-rotas-btn" onclick="toggleMapaRotas()" title="Posição estimada dos veículos">🗺️</button>
   </div>
@@ -227,6 +236,12 @@ function adaptarParaRotasShape(rotas) {
     if (window.render) window.render();
   }
 
+  // window.__ultimaAtualizacaoTs alimenta o indicador do topbar (#rt-status,
+  // atualizado a cada segundo pelo <script> clássico) — mesmo padrão das
+  // outras 3 TVs. Só entra em jogo com sessão de TV ativa (client != null).
+  function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
+  marcarAtualizado();
+
   let rerenderTimer = null;
   function agendarRefresh() {
     clearTimeout(rerenderTimer);
@@ -241,6 +256,7 @@ function adaptarParaRotasShape(rotas) {
   // veículo nova pra uma rota de distribuição conhecida — também atualiza
   // o mapa, sem precisar de um segundo canal na mesma tabela.
   subscribeRotasEstado(client, (row) => {
+    marcarAtualizado();
     agendarRefresh();
     const meta = window.__metaPorRotaId?.[row.rota_id];
     if (!meta || row.motorista_lat == null || row.motorista_lng == null) return;
@@ -252,7 +268,7 @@ function adaptarParaRotasShape(rotas) {
     };
     if (window.renderMarcadoresMapa) window.renderMarcadoresMapa();
   });
-  subscribeRotasUrnas(client, agendarRefresh);
+  subscribeRotasUrnas(client, () => { marcarAtualizado(); agendarRefresh(); });
 })();
 </script>
 <script src="./sime_ui_utils.js"></script>
@@ -663,6 +679,24 @@ function closeMapaRotasIfOut(e){
 // RELÓGIO
 // ══════════════════════════════════════════════
 iniciarRelogio('clock', { comSegundos: true, intervaloMs: 1000 });
+
+// Indicador de saúde do Realtime — window.__ultimaAtualizacaoTs vem do
+// <script type="module"> acima (marcarAtualizado(), a cada evento recebido
+// de sime_rotas_estado/sime_rotas_urnas). Mesmo padrão do TV Dia/TV
+// Véspera/TV Preparação — esta TV nunca tinha isso (achado ao revisar as 4
+// telas em 27/09/2026).
+function updateRtStatus(){
+  const el=document.getElementById('rt-status');
+  if(!el) return;
+  const ts=window.__ultimaAtualizacaoTs;
+  if(!ts){ el.innerHTML='<span class="tsd" style="background:var(--text3,#999)"></span>— sem sessão'; el.className='rt-status'; return; }
+  const s=Math.floor((Date.now()-ts)/1000);
+  const tempo = s<5?'agora':s<60?('há '+s+'s'):('há '+Math.floor(s/60)+'min');
+  if(s>=90){ el.innerHTML='<span class="tsd" style="background:#dc2626"></span>Sem atualização '+tempo; el.className='rt-status stale'; }
+  else if(s>=30){ el.innerHTML='<span class="tsd" style="background:#c2410c"></span>Atualizado '+tempo; el.className='rt-status warn'; }
+  else{ el.innerHTML='<span class="tsd" style="background:#16a34a"></span>Atualizado '+tempo; el.className='rt-status'; }
+}
+setInterval(updateRtStatus,1000); updateRtStatus();
 
 // ══════════════════════════════════════════════
 // INIT

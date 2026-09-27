@@ -184,6 +184,61 @@ function baseMockConfig() {
   await ctx.close();
 }
 
+// ── 5b. Indicador de saúde do Realtime (27/09/2026) — esta TV nunca tinha
+//        isso; o clique/evento deve marcar "Atualizado", e um evento novo
+//        deve resetar o relógio de novo (não ficar preso no primeiro). ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tv_distribuicao.html?tv_token=TVTOKENX');
+  await p.waitForTimeout(1200);
+
+  const rtTxt1 = await p.locator('#rt-status').textContent();
+  check('sessão de TV ativa: indicador sai de "sem sessão"', !rtTxt1.includes('sem sessão'), rtTxt1);
+  check('sessão de TV ativa: mostra "Atualizado" por extenso (não só emoji)', rtTxt1.includes('Atualizado'), rtTxt1);
+
+  await p.evaluate(() => { window.__ultimaAtualizacaoTs = Date.now() - 40000; window.updateRtStatus(); });
+  const rtTxt2 = await p.locator('#rt-status').textContent();
+  check('30-89s sem evento novo: vira aviso ("Atualizado há Ns")', rtTxt2.includes('Atualizado há'), rtTxt2);
+  const cls2 = await p.locator('#rt-status').getAttribute('class');
+  check('30-89s: classe warn', cls2.includes('warn'), cls2);
+
+  await p.evaluate(() => {
+    window.__mockConfig.sime_rotas_estado[0].status = 'pronta';
+    window.__mockConfig.realtimeCallbacks.sime_rotas_estado({ new: window.__mockConfig.sime_rotas_estado[0], eventType: 'UPDATE' });
+  });
+  await p.waitForTimeout(150);
+  const rtTxt3 = await p.locator('#rt-status').textContent();
+  check('evento Realtime novo reseta o relógio de volta pra "Atualizado agora"', rtTxt3.includes('Atualizado agora'), rtTxt3);
+
+  await p.evaluate(() => { window.__ultimaAtualizacaoTs = Date.now() - 95000; window.updateRtStatus(); });
+  const rtTxt4 = await p.locator('#rt-status').textContent();
+  const cls4 = await p.locator('#rt-status').getAttribute('class');
+  check('≥90s: vira alerta explícito ("Sem atualização", não só um número maior)', rtTxt4.includes('Sem atualização'), rtTxt4);
+  check('≥90s: classe stale', cls4.includes('stale'), cls4);
+
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
+// ── 5c. Sem tv_token: indicador nunca sai de "sem sessão" ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tv_distribuicao.html');
+  await p.waitForTimeout(500);
+  const rtTxt = await p.locator('#rt-status').textContent();
+  check('sem tv_token: indicador continua em "sem sessão"', rtTxt.includes('sem sessão'), rtTxt);
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
 // ── 5. Sem tv_token: mapa nunca tenta carregar, sem quebrar a TV ──
 {
   const ctx = await b.newContext();
