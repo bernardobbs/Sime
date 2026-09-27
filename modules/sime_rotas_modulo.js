@@ -130,6 +130,16 @@ function rtSomarMinutos(horaStr, minutos) {
   const hFinal = Math.floor((total % (24 * 60)) / 60), mFinal = total % 60;
   return `${String(hFinal).padStart(2, '0')}:${String(mFinal).padStart(2, '0')}`;
 }
+function rtHoraParaMin(horaStr) {
+  const h = rtFmtHora(horaStr);
+  if (!h) return null;
+  const [hh, mm] = h.split(':').map(Number);
+  return hh * 60 + mm;
+}
+function rtMinParaHora(totalMin) {
+  const t = ((totalMin % (24 * 60)) + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
 
 // Previsão de chegada estimada (08/09/2026, pedido direto: "como o sistema
 // calcula a rota pelo google maps e tempo medio de espera de 10 minutos em
@@ -181,6 +191,50 @@ function rtRotaRealValida(rota, paradas) {
     && rota.rota_real_paradas_assinatura === rtParadasAssinatura(paradas));
 }
 
+// Piso por parada — previsão de encerramento (27/09/2026, planilha real do
+// cartório "Tempo de Transmissão", ver sql/SIME_secoes_horario_encerramento_
+// previsto.sql): "o horario de finalização da seção mais demorada deve
+// impactar o horario de saída do primeiro lugar da rota e de cada uma das
+// paradas". `sime_secoes.horario_encerramento_previsto` é opcional por
+// seção — sem ele, a parada simplesmente não impõe piso nenhum (nunca
+// inventa um horário de fechamento que não veio da fonte real).
+function rtPisoParada(s) {
+  return rtFmtHora(s?.horario_encerramento_previsto) || null;
+}
+
+// Calcula, EM CASCATA, o horário estimado de chegada/espera/saída em CADA
+// parada da rota — sempre em linha reta por trecho (mesmo critério já
+// usado em rtCalcularOrdemOtimizada: o Google só devolve o TOTAL agregado
+// da rota, nunca por perna, então não dá pra usar o real aqui sem chamar a
+// API de novo por trecho). O veículo nunca SAI de uma parada antes do
+// horário de encerramento previsto ali — mesmo que a viagem+carregamento
+// tenha sido mais rápidos, ele ESPERA até esse horário; essa espera se
+// propaga pra frente, atrasando a chegada nas paradas seguintes. Mesmas
+// precondições de sempre (horário de saída, tempo por parada, geo em
+// todas as paradas) — sem elas, retorna null (nunca estima parcial).
+function rtCalcularHorariosParadas(rota, paradas) {
+  if (!rota.horario_saida || rota.tempo_parada_min == null || !paradas.length) return null;
+  if (paradas.some(s => s.latitude == null || s.longitude == null)) return null;
+  const linhas = [];
+  let relogioMin = rtHoraParaMin(rota.horario_saida);
+  let esperaTotalMin = 0;
+  for (let i = 0; i < paradas.length; i++) {
+    if (i > 0) {
+      const travelMin = Math.round(rtHaversineKm(paradas[i - 1], paradas[i]) / RT_VELOCIDADE_MEDIA_KMH * 60);
+      relogioMin += travelMin;
+    }
+    const chegadaMin = relogioMin;
+    const piso = rtPisoParada(paradas[i]);
+    const pisoMin = piso ? rtHoraParaMin(piso) : null;
+    const esperaMin = (pisoMin != null && pisoMin > chegadaMin) ? pisoMin - chegadaMin : 0;
+    const saidaMin = chegadaMin + esperaMin + rota.tempo_parada_min;
+    esperaTotalMin += esperaMin;
+    linhas.push({ secao: paradas[i], chegada: rtMinParaHora(chegadaMin), piso, esperaMin, saida: rtMinParaHora(saidaMin) });
+    relogioMin = saidaMin;
+  }
+  return { linhas, esperaTotalMin, chegadaFinalMin: relogioMin };
+}
+
 // Só calcula quando TODAS as paradas têm geo (nunca subestima em silêncio
 // pulando uma perna sem coordenada) e quando já há horário de saída e
 // tempo por parada preenchidos — sem os dois não tem o que somar.
@@ -193,9 +247,15 @@ function rtRotaRealValida(rota, paradas) {
 // cache válido, cai de volta pro mesmo comportamento de sempre (linha
 // reta ÷ velocidade média assumida) — nunca chama o Google sozinho aqui,
 // só usa o que já está cacheado.
+//
+// 27/09/2026 — passou a somar `esperaMin` (rtCalcularHorariosParadas) ao
+// total: o tempo parado esperando o encerramento previsto de alguma
+// seção no meio do caminho atrasa a chegada final tanto quanto viagem ou
+// carregamento — mesmo com a rota real do Google (que só tem o
+// deslocamento, não sabe de espera nenhuma).
 function rtChegadaEstimada(rota, paradas) {
-  if (!rota.horario_saida || rota.tempo_parada_min == null || !paradas.length) return null;
-  if (paradas.some(s => s.latitude == null || s.longitude == null)) return null;
+  const calc = rtCalcularHorariosParadas(rota, paradas);
+  if (!calc) return null;
   let travelKm, travelMin, viaGoogle = false;
   if (rtRotaRealValida(rota, paradas)) {
     travelKm = rota.rota_real_distancia_m / 1000;
@@ -207,9 +267,9 @@ function rtChegadaEstimada(rota, paradas) {
     travelMin = Math.round(travelKm / RT_VELOCIDADE_MEDIA_KMH * 60);
   }
   const dwellMin = rtTempoTotalParadasMin(rota, paradas.length) || 0;
-  const horario = rtSomarMinutos(rota.horario_saida, travelMin + dwellMin);
+  const horario = rtSomarMinutos(rota.horario_saida, travelMin + dwellMin + calc.esperaTotalMin);
   if (!horario) return null;
-  return { horario, travelKm, travelMin, dwellMin, viaGoogle };
+  return { horario, travelKm, travelMin, dwellMin, esperaMin: calc.esperaTotalMin, viaGoogle, paradas: calc.linhas };
 }
 
 // Otimização de ordem das paradas (10/09/2026, pedido direto: "como
@@ -665,7 +725,7 @@ async function rtCarregar(opts = {}) {
 
   const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }] = await Promise.all([
     sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
-    sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
+    sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude, horario_encerramento_previsto').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
     // (não só mesário; um responsável de rota pode ser motorista, apoio
@@ -987,6 +1047,20 @@ function rtUsarSugestaoDestino() {
   if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
   rtSetDestinoValor(rtNomeLocalParada(atuais[atuais.length - 1]));
 }
+// Sugestão de horário de saída (27/09/2026, ver rtPisoParada) — o veículo
+// não deveria sair da 1ª parada antes dela mesma fechar; preenche
+// `#rt-hora-saida` com o horário de encerramento previsto do 1º local,
+// mesmo padrão "sugestão, nunca força" de partida/destino/chegada — o
+// campo continua editável por cima.
+function rtUsarSugestaoSaida() {
+  const r = rtDados.rotas.find(x => x.id === rtModalId);
+  const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
+  if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
+  const piso = rtPisoParada(atuais[0]);
+  if (!piso) { showToast('⚠ A 1ª parada não tem previsão de encerramento cadastrada'); return; }
+  const el = document.getElementById('rt-hora-saida');
+  if (el) el.value = piso;
+}
 // Recalcula a previsão de chegada ESTIMADA sob demanda (mesmo padrão de
 // rtUsarSugestaoPartida/Destino) — lê horário de saída/tempo por parada
 // DIGITADOS na hora (não só o valor salvo), pra já refletir o que a pessoa
@@ -1036,6 +1110,12 @@ function rtRenderModalRota() {
   const paradasAtuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
   const partidaSugerida = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[0]) : '';
   const destinoSugerido = paradasAtuais.length ? rtNomeLocalParada(paradasAtuais[paradasAtuais.length - 1]) : '';
+  // Piso de saída (27/09/2026, ver rtPisoParada) — previsão de encerramento
+  // da 1ª parada, usada só como SUGESTÃO editável pro horário de saída
+  // (rtUsarSugestaoSaida) e pra avisar quando o horário já digitado é mais
+  // cedo do que isso (nunca bloqueia — mesma filosofia de sempre).
+  const pisoSaida = paradasAtuais.length ? rtPisoParada(paradasAtuais[0]) : null;
+  const horarioSaidaAtual = rtFmtHora(r?.horario_saida);
   // Previsão de chegada estimada (08/09/2026, pedido direto — ver
   // rtChegadaEstimada) — mesmo critério de sugestão de partida/destino:
   // só entra como valor default do campo quando ele ainda está vazio,
@@ -1097,7 +1177,11 @@ function rtRenderModalRota() {
       ${!isNovo && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">📍 Sugestão a partir das paradas: 1º = ${rtEsc(partidaSugerida)} · último = ${rtEsc(destinoSugerido)} — clique em ↻ pra usar, ou digite outro valor (ex.: um endereço que não é local de votação).</div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-saida">Horário de saída</label>
-          <input type="time" id="rt-hora-saida" value="${rtFmtHora(r?.horario_saida) || ''}"></div>
+          <div style="display:flex;gap:4px">
+            <input type="time" id="rt-hora-saida" value="${horarioSaidaAtual || ''}" style="flex:1">
+            ${!isNovo && pisoSaida ? `<button type="button" id="rt-saida-sugerir" class="btn btn-out" style="font-size:.68rem;padding:0 8px" onclick="rtUsarSugestaoSaida()" title="Usar a previsão de encerramento da 1ª parada">↻</button>` : ''}
+          </div>
+        </div>
         <div class="form-group" style="flex:1;min-width:120px"><label for="rt-hora-chegada">Previsão de chegada</label>
           <div style="display:flex;gap:4px">
             <input type="time" id="rt-hora-chegada" value="${rtFmtHora(r?.horario_chegada_previsto) || eta?.horario || ''}" style="flex:1">
@@ -1108,7 +1192,11 @@ function rtRenderModalRota() {
           <input type="number" id="rt-tempo-parada" min="0" value="${r?.tempo_parada_min ?? ''}" placeholder="ex.: 10"></div>
       </div>
       ${!isNovo && r?.tempo_parada_min != null && paradasAtuais.length ? `<div class="ic-sub" style="margin:-6px 0 0">⏱️ Tempo total estimado parado: ${paradasAtuais.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, paradasAtuais.length))}${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, paradasAtuais.length))}` : ''}.</div>` : ''}
-      ${!isNovo && eta ? `<div class="ic-sub" style="margin:-6px 0 0">🧭 Previsão de chegada${eta.viaGoogle ? ' (rota real do Google, calculada em 📍 Locais de votação)' : ' ESTIMADA (linha reta, ~' + RT_VELOCIDADE_MEDIA_KMH + 'km/h assumidos — não é o Google calculando de verdade, clique em "📏 Calcular rota real" abaixo pra usar a estrada de verdade)'}: ~${eta.travelKm.toFixed(1)}km de deslocamento (${rtFmtMinutos(eta.travelMin)}) + ${rtFmtMinutos(eta.dwellMin)} parado(a) → chega por volta de ${eta.horario}.${eta.viaGoogle ? '' : ' Pode ficar bem diferente da estrada real — ajuste o campo acima se souber melhor.'}</div>` : ''}
+      ${!isNovo && pisoSaida ? (horarioSaidaAtual && horarioSaidaAtual < pisoSaida
+        ? `<div class="import-result ir-warn" style="margin:-6px 0 0;padding:6px 10px;font-size:.78rem">⚠️ A 1ª parada (${rtEsc(partidaSugerida)}) só tem previsão de encerramento às ${rtEsc(pisoSaida)} — sair às ${rtEsc(horarioSaidaAtual)} é antes disso. Clique em ↻ pra usar ${rtEsc(pisoSaida)}, ou mantenha se souber que a votação já deve ter fechado antes.</div>`
+        : `<div class="ic-sub" style="margin:-6px 0 0">⏰ Previsão de encerramento da 1ª parada (${rtEsc(partidaSugerida)}): ${rtEsc(pisoSaida)} — o veículo não deveria sair de lá antes disso.</div>`
+      ) : ''}
+      ${!isNovo && eta ? `<div class="ic-sub" style="margin:-6px 0 0">🧭 Previsão de chegada${eta.viaGoogle ? ' (rota real do Google, calculada em 📍 Locais de votação)' : ' ESTIMADA (linha reta, ~' + RT_VELOCIDADE_MEDIA_KMH + 'km/h assumidos — não é o Google calculando de verdade, clique em "📏 Calcular rota real" abaixo pra usar a estrada de verdade)'}: ~${eta.travelKm.toFixed(1)}km de deslocamento (${rtFmtMinutos(eta.travelMin)}) + ${rtFmtMinutos(eta.dwellMin)} parado(a)${eta.esperaMin > 0 ? ` + ${rtFmtMinutos(eta.esperaMin)} de espera (previsão de encerramento de alguma parada no meio do caminho)` : ''} → chega por volta de ${eta.horario}.${eta.viaGoogle ? '' : ' Pode ficar bem diferente da estrada real — ajuste o campo acima se souber melhor.'}</div>` : ''}
       <div class="form-group"><label for="rt-responsavel">Responsável pela rota (opcional)</label>
         <select id="rt-responsavel">
           <option value="">— sem responsável —</option>
@@ -1210,6 +1298,13 @@ function rtRenderParadas() {
   const realValida = rtRotaRealValida(r, atuais);
   const temRealDesatualizada = !realValida && r.rota_real_distancia_m != null;
 
+  // Horário por parada (27/09/2026, ver rtCalcularHorariosParadas) — null
+  // quando falta horário de saída/tempo por parada/geo (mesmas precondições
+  // de sempre); nesse caso cada parada ainda mostra só a previsão de
+  // encerramento, quando tiver, sem chegada/espera/saída calculadas.
+  const horariosCalc = rtCalcularHorariosParadas(r, atuais);
+  const horarioPorSecaoId = new Map((horariosCalc?.linhas || []).map(l => [l.secao.id, l]));
+
   const soLeitura = rtSomenteLeitura();
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 6px">${atuais.length} local(is) nesta rota, em ordem${rtRotaTemTipoLegado(r) ? ' — também usada por Motorista/Conferente/TV Distribuição' : ''}.</div>
@@ -1238,18 +1333,33 @@ function rtRenderParadas() {
       </div>
     </div>`) : (semGeoAgora && atuais.length >= 3 ? `<div class="ic-sub" style="margin:0 0 8px">⚠️ ${semGeoAgora} parada(s) sem geolocalização — "Otimizar ordem" avisa e não calcula enquanto isso.</div>` : '')}
     <div class="m-hist">
-      ${atuais.length ? atuais.map((s, idx) => `
+      ${atuais.length ? atuais.map((s, idx) => {
+        const h = horarioPorSecaoId.get(s.id);
+        const piso = rtPisoParada(s);
+        // Linha de horário (27/09/2026) — com o cálculo em cascata completo
+        // (rtCalcularHorariosParadas), mostra chegada/espera/saída
+        // estimadas; sem ele (falta horário de saída, tempo por parada ou
+        // geo em alguma parada), mostra só a previsão de encerramento
+        // quando a seção tiver — nunca inventa o resto sem precondição.
+        const linhaHorario = h
+          ? `⏰ chega ~${h.chegada}${h.esperaMin > 0 ? ` · espera ${rtFmtMinutos(h.esperaMin)} (fecha ${h.piso}) · sai ${h.saida}` : (h.piso ? ` · fecha ${h.piso} · sai ${h.saida}` : ` · sai ${h.saida}`)}`
+          : (piso ? `⏰ previsão de encerramento: ${piso}` : '');
+        return `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span style="display:flex;align-items:center;gap:6px">
-          ${soLeitura ? '' : `
-          <span style="display:inline-flex;flex-direction:column;gap:2px">
-            <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',-1)" ${idx === 0 ? 'disabled' : ''} title="Mover pra cima (mais cedo na rota)">▲</button>
-            <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',1)" ${idx === atuais.length - 1 ? 'disabled' : ''} title="Mover pra baixo (mais tarde na rota)">▼</button>
-          </span>`}
-          <span><b>${idx + 1}º</b> — <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
+        <span style="display:flex;flex-direction:column;gap:2px">
+          <span style="display:flex;align-items:center;gap:6px">
+            ${soLeitura ? '' : `
+            <span style="display:inline-flex;flex-direction:column;gap:2px">
+              <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',-1)" ${idx === 0 ? 'disabled' : ''} title="Mover pra cima (mais cedo na rota)">▲</button>
+              <button class="btn btn-out" style="font-size:.6rem;padding:1px 6px;line-height:1.4" onclick="rtMoverParada('${r.id}','${s.id}',1)" ${idx === atuais.length - 1 ? 'disabled' : ''} title="Mover pra baixo (mais tarde na rota)">▼</button>
+            </span>`}
+            <span><b>${idx + 1}º</b> — <b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}, ${rtEsc(s.municipio)}${s.latitude != null && s.longitude != null ? ` <a href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" rel="noopener" title="Ver no mapa">📍</a>` : ''}</span>
+          </span>
+          ${linhaHorario ? `<span class="rt-parada-horario ic-sub" style="margin:0 0 0 ${soLeitura ? '0' : '20px'}">${rtEsc(linhaHorario)}</span>` : ''}
         </span>
         ${soLeitura ? '' : `<button class="btn btn-out" style="font-size:.68rem;padding:3px 8px" onclick="rtRemoverSecao('${r.id}','${s.id}')">✕</button>`}
-      </div>`).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
+      </div>`;
+      }).join('') : '<div class="ic-sub" style="margin:0">Nenhum local vinculado ainda.</div>'}
     </div>
     ${soLeitura ? '' : (rtAdicionarAberto ? `
     <div style="margin-top:8px">
@@ -1585,14 +1695,29 @@ async function rtRecarregarParadas() {
 function rtHtmlFicha(rota, paradas, responsavel, zona) {
   const hoje = new Date();
   const dataEmissao = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
-  const linhas = paradas.map((s, i) => `
+  // Horário por parada (27/09/2026, ver rtCalcularHorariosParadas) — quando
+  // dá pra calcular (horário de saída + tempo por parada + geo em todas),
+  // a ficha mostra chegada/espera/saída ESTIMADAS por baixo do nome do
+  // local; a coluna "Chegada" continua em branco de propósito, é pro
+  // motorista anotar o horário REAL em campo, nunca sobrescrita por uma
+  // estimativa do sistema.
+  const horariosCalc = rtCalcularHorariosParadas(rota, paradas);
+  const horarioPorSecaoId = new Map((horariosCalc?.linhas || []).map(l => [l.secao.id, l]));
+  const linhas = paradas.map((s, i) => {
+    const h = horarioPorSecaoId.get(s.id);
+    const piso = rtPisoParada(s);
+    const subLinha = h
+      ? `<div class="rt-sub">${h.esperaMin > 0 ? `chega ~${h.chegada} · espera até ${h.piso} · sai ${h.saida}` : `chega ~${h.chegada} · sai ${h.saida}`}</div>`
+      : (piso ? `<div class="rt-sub">previsão de encerramento: ${piso}</div>` : '');
+    return `
     <tr>
       <td class="rt-col-num">${i + 1}</td>
-      <td><b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}</td>
+      <td><b>${rtEsc(String(s.numero))}</b> — ${rtEsc(s.local_nome)}${subLinha}</td>
       <td>${rtEsc(s.municipio)}</td>
       <td>${s.latitude != null && s.longitude != null ? `${rtEsc(String(s.latitude))}, ${rtEsc(String(s.longitude))}` : '<span class="rt-sub">sem geo</span>'}</td>
       <td class="rt-col-chegada"></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   // Mapa (08/09/2026, pedido direto: "em imprimir ficha conseguimos gerar
   // para imprimir um mapa da rota?") — esquema desenhado das coordenadas

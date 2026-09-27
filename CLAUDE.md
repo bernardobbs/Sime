@@ -7330,6 +7330,116 @@ várias seções compartilhando a mesma coordenada (mesmo prédio, mesma
 localização — ex.: as 10 paradas de "G.E. Monsenhor Mateus" na Rota 020,
 as 9 de "Centro Ed. JA Mulata Lima" na Rota 021).
 
+**As duas coordenadas que faltavam foram fornecidas pelo cartório no mesmo
+dia** — "1716 - CRECHE TIA MEDEIROS" (seções 74, 197, 206, 219, 224, 229,
+236, 257, 261) em `-4.8427676, -42.1712742`, e "1074 - SECRETARIA
+MUNICIPAL DE EDUCAÇÃO" (seções 6, 12, 149) em `-4.829996, -42.1686255` —
+gravadas em `sime_secoes.latitude/longitude` pra todas as seções do
+respectivo prédio (mesmo padrão de repetir a coordenada por LOCAL, não por
+seção individual). Com isso, as rotas 024/RU4/UR4 (só/também Creche Tia
+Medeiros) ficaram com geo completa; 032/RU6/UR6 continuam N/D até uma
+coordenada da Secretaria Municipal de Educação bater com TODAS as paradas
+delas — o que já aconteceu, então as 6 rotas inteiras saíram do N/D.
+
+---
+
+## PISO DE HORÁRIO POR PARADA — PREVISÃO DE ENCERRAMENTO POR SEÇÃO (`SIME_rotas.html`, 27/09/2026)
+
+Pedido direto, com um arquivo real anexado ("Tempo_de_Transmissão.xlsx",
+aba "Previsão 2026" — mesma planilha que já tem histórico desde 2016, com
+modelo estatístico de comparecimento/tempo médio de votação por seção):
+"tem a previsão de finalização de cada uma das seções para 2026. o
+horario de finalização da seção mais demorada deve impactar o horario de
+saída do primeiro lugar da rota e de cada uma das paradas."
+
+**Verificação feita ANTES de gravar qualquer coisa.** A planilha agrupa
+seções em 146 "grupos" (uma seção PRINCIPAL + outras seções agregadas do
+mesmo prédio, coluna `SECOES_AGREGADAS`) — confirmado contra
+`sime_rota_secoes` que essa agregação bate exatamente com o cadastro real
+(ex.: o grupo do local 1074 lista as seções 12+149+6, as MESMAS 3 seções
+já cadastradas em "SECRETARIA MUNICIPAL DE EDUCAÇÃO" no SIME). Das 175
+seções que a planilha cobre, 174 bateram por NÚMERO contra a 7ª Zona — só
+uma (262) não corresponde a nenhuma seção real, nem ativa nem inativa,
+descartada sem inventar. A seção 263 (Penitenciária, cadastrada só depois
+da vistoria do TSE, ver seção própria acima) fica de fora da planilha por
+não existir ainda quando o modelo histórico foi gerado — sem previsão,
+como sempre.
+
+**Achado no caminho, fora do escopo desta feature: 84 das 522 vinculações
+`sime_rota_secoes` apontam pra seções com `sime_secoes.ativo=false`** —
+`rtCarregar()` já filtra por `ativo=true` no `select()`, então essas
+paradas ficam silenciosamente FORA da lista exibida em qualquer rota que
+as referencie (o cadastro tem várias seções "duplicadas" por prédio, uma
+ativa e uma inativa, cada uma com um `numero` diferente — não investigado
+a fundo por não ser o pedido desta sessão). A planilha nova trata 28
+dessas 29 seções inativas como válidas para 2026, o que sugere que esse
+`ativo=false` pode estar desatualizado em parte do cadastro — sinalizado
+aqui como pendência a investigar, não corrigido nesta sessão. O backfill
+abaixo grava o horário em TODAS as 174 seções que bateram, ativas ou não —
+sem custo, e já preparado se esse cadastro for revisado depois.
+
+**`sql/SIME_secoes_horario_encerramento_previsto.sql`** —
+`sime_secoes.horario_encerramento_previsto` (TIME, nullable) — mesmo
+padrão de campo opcional livre já usado por `uc_equatorial`/
+`codigo_rastreio`: nunca cravado, sempre dado real trazido pelo cartório.
+Backfill rodado uma vez via SQL Editor/MCP (não é migração, não reaplica
+sozinha).
+
+**Consumida só no módulo 🗺️ Rotas, sempre como SUGESTÃO/PISO — nunca
+bloqueia nada, mesma filosofia de sempre.**
+
+- **`rtCalcularHorariosParadas(rota, paradas)`** (nova, `sime_rotas_modulo.js`)
+  — calcula, EM CASCATA, chegada/espera/saída em CADA parada: o veículo
+  nunca SAI de uma parada antes do horário de encerramento previsto ali,
+  mesmo que a viagem+carregamento tenham sido mais rápidos — ele ESPERA
+  até esse horário, e essa espera se PROPAGA pra frente, atrasando a
+  chegada nas paradas seguintes. Sempre em linha reta por trecho (mesmo
+  critério já usado em `rtCalcularOrdemOtimizada` — o Google só devolve o
+  TOTAL agregado da rota, nunca por perna, então não dá pra usar o real
+  aqui sem chamar a API de novo por trecho). Mesmas precondições de sempre
+  (horário de saída, tempo por parada, geo em todas as paradas) — sem
+  elas, retorna `null` (nunca estima parcial). `horario_encerramento_previsto`
+  é opcional por seção — sem ele, aquela parada simplesmente não impõe
+  piso nenhum.
+- **`rtChegadaEstimada()` passou a somar o tempo de espera total** (da
+  cascata acima) ao total já existente (deslocamento + tempo parado) —
+  continua preferindo a distância/duração REAIS do Google quando há cache
+  válido (24/09/2026) pro deslocamento, só a espera é sempre calculada em
+  linha reta (não tem como vir do Google, que não sabe de fechamento de
+  seção nenhum). A nota no modal ganhou a cláusula "+ Xmin de espera
+  (previsão de encerramento de alguma parada no meio do caminho)" só
+  quando há espera de verdade.
+- **"↻" novo ao lado de "Horário de saída"** (`rtUsarSugestaoSaida()`) —
+  preenche o campo com a previsão de encerramento da 1ª parada (o veículo
+  não deveria sair de lá antes disso), mesmo padrão "sugestão, nunca
+  força" de partida/destino/chegada — editável por cima, nunca sobrescreve
+  sozinho.
+- **Aviso quando o horário de saída JÁ SALVO é mais cedo que a previsão de
+  encerramento da 1ª parada** — pill amarela (`.ir-warn`), nunca bloqueia:
+  "sair às HH:MM é antes disso... ou mantenha se souber que a votação já
+  deve ter fechado antes" (o modelo é estatístico, não uma certeza — o
+  cartório pode saber de algo que a planilha não sabe). Sem conflito, mostra
+  só uma nota informativa (`ic-sub`) com a mesma previsão, sem o tom de
+  alerta.
+- **Cada parada, na lista "📍 Locais de votação" e na ficha impressa**,
+  ganha uma linha com a previsão de encerramento — sempre que tiver o
+  dado, mesmo SEM horário de saída/tempo por parada preenchidos
+  (informativo puro, "previsão de encerramento: HH:MM"); quando as
+  precondições do cálculo completo estão presentes, mostra chegada/espera/
+  saída estimadas (ex.: "chega ~15:20 · espera 25min (fecha 15:45) · sai
+  15:55"). A coluna "Chegada" da ficha impressa continua em branco de
+  propósito — é pro motorista anotar o horário REAL em campo, nunca
+  sobrescrita por uma estimativa do sistema.
+
+Coberto por `tests/test_rotas.mjs` (blocos 40-44, 264 checks no total no
+arquivo inteiro): previsão de encerramento aparece por parada mesmo sem
+horário de saída (informativo); sugestão de horário de saída a partir da
+1ª parada; aviso quando o horário salvo é mais cedo que o piso, e nota
+neutra quando não há conflito; espera em cascata empurrando a previsão de
+chegada final e a chegada/saída de cada parada seguinte; ficha impressa
+mostra o mesmo cálculo por baixo do nome do local, sem tocar na coluna
+"Chegada" em branco.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

@@ -1744,6 +1744,162 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 40. Previsão de encerramento por parada (27/09/2026,
+// sime_secoes.horario_encerramento_previsto — planilha real do cartório
+// "Tempo de Transmissão", ver sql/SIME_secoes_horario_encerramento_
+// previsto.sql) — mostrada por parada MESMO sem horário de saída/tempo por
+// parada preenchidos (informativo, não depende do cálculo em cascata);
+// seção sem previsão cadastrada não mostra nada. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').horario_encerramento_previsto = '07:45:00';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  const listaTxt = (await p.locator('#rt-paradas-secao').textContent()).replace(/\s+/g, ' ');
+  check('parada com previsão cadastrada mostra "previsão de encerramento: 07:45" mesmo sem horário de saída', /previsão de encerramento: 07:45/.test(listaTxt), listaTxt);
+  const linhaS1 = await p.locator('.m-hist-item:has-text("30")').textContent();
+  check('parada sem previsão cadastrada (seção 30) não mostra nenhuma linha de horário', !/previsão de encerramento/.test(linhaS1) && !/chega/.test(linhaS1), linhaS1);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 41. Sugestão de horário de saída a partir da previsão de encerramento
+// da 1ª parada ("↻" ao lado de Horário de saída) — mesmo padrão de
+// sugestão de partida/destino/chegada: nunca sobrescreve sozinho, só
+// preenche por clique explícito. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's1').horario_encerramento_previsto = '08:00:00';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  check('botão "↻" de horário de saída aparece (1ª parada tem previsão cadastrada)', await p.locator('#rt-saida-sugerir').count() === 1);
+  check('campo de horário de saída começa vazio', (await p.locator('#rt-hora-saida').inputValue()) === '');
+  await p.click('#rt-saida-sugerir');
+  check('clicar preenche com a previsão de encerramento da 1ª parada (08:00)', (await p.locator('#rt-hora-saida').inputValue()) === '08:00');
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 42. Aviso quando o horário de saída SALVO é mais cedo do que a
+// previsão de encerramento da 1ª parada — nunca bloqueia, só avisa
+// (mesma filosofia de sempre); sem esse conflito, mostra só a nota
+// informativa (sem o tom de alerta). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's1').horario_encerramento_previsto = '08:00:00';
+  m.sime_rotas.find(r => r.id === 'r1').horario_saida = '07:00';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  const avisoTxt = (await p.locator('.import-result.ir-warn').textContent()).replace(/\s+/g, ' ');
+  check('avisa que a saída salva (07:00) é antes da previsão de encerramento da 1ª parada (08:00)', /07:00/.test(avisoTxt) && /08:00/.test(avisoTxt), avisoTxt);
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's1').horario_encerramento_previsto = '08:00:00';
+  m.sime_rotas.find(r => r.id === 'r1').horario_saida = '08:30'; // depois do piso — sem conflito
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  check('sem conflito, não mostra o aviso de alerta', await p.locator('.import-result.ir-warn').count() === 0);
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('mostra só a nota informativa da previsão de encerramento', /Previsão de encerramento da 1ª parada[\s\S]*?08:00/.test(modalTxt), modalTxt);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 43. Espera em cascata — o veículo não sai de uma parada antes da
+// previsão de encerramento dela; a espera empurra a chegada nas paradas
+// seguintes e entra no total da previsão de chegada. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Mesmas coordenadas do bloco 20 — deslocamento em linha reta arredonda
+  // pra 0min a 40km/h, isolando o efeito da espera do efeito de viagem.
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  m.sime_secoes.find(s => s.id === 's2').horario_encerramento_previsto = '07:45:00'; // depois da chegada natural (07:10)
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.horario_saida = '07:00';
+  r1.tempo_parada_min = 10;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  // Sem espera: saída 07:00 + 20min parado (2×10) + ~0min de deslocamento =
+  // chegaria às 07:20; com a espera de 35min na 2ª parada (chega 07:10,
+  // só libera às 07:45), o total passa a ser 07:55.
+  check('"Previsão de chegada" já soma a espera (07:55, não os 07:20 de antes)', (await p.locator('#rt-hora-chegada').inputValue()) === '07:55');
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('nota menciona os 35min de espera', /35min de espera/.test(modalTxt), modalTxt);
+
+  const linhaS1 = (await p.locator('.m-hist-item:has-text("30")').textContent()).replace(/\s+/g, ' ');
+  check('1ª parada (sem previsão cadastrada): chega 07:00 e sai 07:10, sem espera', /chega ~07:00/.test(linhaS1) && /sai 07:10/.test(linhaS1) && !/espera/.test(linhaS1), linhaS1);
+  const linhaS2 = (await p.locator('.m-hist-item:has-text("31")').textContent()).replace(/\s+/g, ' ');
+  check('2ª parada: chega 07:10, espera 35min até fechar às 07:45, sai 07:55', /chega ~07:10/.test(linhaS2) && /espera 35min/.test(linhaS2) && /fecha 07:45/.test(linhaS2) && /sai 07:55/.test(linhaS2), linhaS2);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 44. Ficha impressa mostra chegada/espera/saída estimadas (ou só a
+// previsão de encerramento, sem o cálculo completo) por baixo do nome de
+// cada local — nunca sobrescreve a coluna "Chegada" (em branco, pro
+// motorista anotar o horário real em campo). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  m.sime_secoes.find(s => s.id === 's2').horario_encerramento_previsto = '07:45:00';
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.horario_saida = '07:00';
+  r1.tempo_parada_min = 10;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const printHtml = (await p.locator('#print-area').innerHTML()).replace(/\s+/g, ' ');
+  check('ficha mostra chega/sai estimados da 1ª parada', /chega ~07:00 · sai 07:10/.test(printHtml), printHtml);
+  check('ficha mostra a espera até o encerramento previsto da 2ª parada', /chega ~07:10 · espera até 07:45 · sai 07:55/.test(printHtml), printHtml);
+  check('coluna "Chegada" continua em branco (sem estimativa sobrescrevendo o campo de anotação manual)', /<td class="rt-col-chegada"><\/td>/.test(printHtml), printHtml);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));
