@@ -7045,6 +7045,45 @@ cenário de compatibilidade que a correção acima garante).
 
 ---
 
+## ENDEREÇO DO LOCAL DE VOTAÇÃO (`sime_secoes.endereco`, 27/09/2026)
+
+Pedido direto, com um "Formulário de Vistoria" do TSE anexado (Campo Maior,
+Jatobá do Piauí e Sigefredo Pacheco — "Local de Votação: NNNN - NOME /
+Endereço: ... / Seções: ..."): "verifique os nomes dos locais cadastrados,
+quer que conste o numero e o endereço, os nome no anexo estão mais
+atualizados".
+
+**Verificação feita ANTES de reescrever qualquer nome** — cruzando o anexo
+contra `sime_secoes` por **número de seção** (a chave que já é única na zona,
+não o "código do local" do TSE, que se repete entre municípios diferentes:
+o mesmo "1031", por exemplo, é SAAE em Campo Maior, G.E. Prof. Francisco Luis
+em Jatobá do Piauí e G.E. Manoel Francisco em Sigefredo Pacheco — mesma
+armadilha já documentada alhures pro código do MaxLog/KML). Resultado: os
+nomes já cadastrados **batiam** com o anexo em praticamente tudo — a
+diferença era só a abreviação já convencionada no projeto (U.E./G.E./Esc.
+Mun./Col. Est., etc.), não desatualização de verdade. Achada só **1**
+divergência real: seções 17/18/19/20/157 tinham "Col. Est. Profª
+Raimundinho", faltando o sobrenome "Andrade" (anexo: "Colégio Estadual
+Professora Raimundinho Andrade") — corrigido pra "Col. Est. Profª
+Raimundinho Andrade".
+
+**`sime_secoes.endereco`** (novo, `sql/SIME_secoes_endereco.sql`) — texto
+livre, nunca validado por regex (mesmo critério de `uc_equatorial`/
+`codigo_rastreio`), repetido entre as seções do mesmo prédio (mesmo padrão
+de `latitude`/`longitude` — não existe tabela própria de "locais"). Populado
+por backfill único via SQL Editor/MCP, casando pelas ~175 seções do anexo
+contra as 176 da 7ª Zona. **Só 2 seções ficaram sem endereço** — as mesmas 2
+exceções já documentadas alhures: seção 146 (U.E. Antônio Rodrigues, nunca
+batido em nenhuma fonte — KML, MaxLog ou esta vistoria) e 263 (Penitenciária,
+cadastrada por um formulário de vistoria diferente, sem endereço de rua
+informado ali).
+
+Só schema + dado nesta rodada — nenhuma tela ainda lê `sime_secoes.endereco`.
+Se um dia for pedido, o lugar natural é a ficha impressa do módulo 🗺️ Rotas
+(`rtHtmlFicha`, que já lista número/local/município/coordenadas por parada).
+
+---
+
 ## "VOTAÇÃO ATRASADA"/"MESA INCOMPLETA" SÓ A PARTIR DO DIA D (`SIME_tv_dia.html`, 27/09/2026)
 
 Pedido direto: "o data do primeiro turno será 04/10/2026, então os
