@@ -150,6 +150,90 @@ export function createClient(url, key, opts) {
   await ctx.close();
 }
 
+// ── Caso 5 (27/09/2026, pedido direto: "os problemas com votação não
+// iniciada e mesa incompleta só deve ser indicado a partir daquela data"
+// [04/10/2026, sime_eleicoes.data_d]) — diaDaVotacaoChegou() passa a gatear
+// os dois alertas: sem ela, deixar a TV ligada QUALQUER dia antes da
+// eleição (mesmo sem tocar o relógio) sinalizava toda seção aberta como
+// "atraso" assim que o relógio de parede passasse do horário oficial +
+// 1h/2h, mesmo sem ser Dia D de verdade. ──
+{
+  const STUB_MESA_INCOMPLETA = (dataD) => STUB_SUPABASE_JS.replace(
+    "if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Cidade Teste', lat: -10.5, lon: -50.5 }, error: null });",
+    `if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Cidade Teste', lat: -10.5, lon: -50.5 }, error: null });
+          if (t === 'sime_eleicoes') return Promise.resolve({ data: { id: 'el-1', turno: 1, zona_id: 'zona-x', data_d: ${dataD ? `'${dataD}'` : 'null'}, data_d1: null, horario_ab: '00:00:00', horario_enc: '17:00:00', nome: 'Eleição Teste' }, error: null });`
+  ).replace(
+    "return resolve({ data: [], error: null });",
+    `if (t === 'sime_mesa_estado') return resolve({ data: [
+            { secao_id: 'sec-uuid-801', mesa_pres: 0, mesa_m1: 0, mesa_m2: 0, mesa_sec: 0,
+              zeresima: false, votacao: false, encerrada: false, bu_impresso: false,
+              material_recolhido: false, urna_recolhida: false, urna_cartorio: false, fila: 0,
+              panico_energia: false, panico_urna: false,
+              panico_energia_resolvido: false, panico_urna_resolvido: false,
+              updated_at: new Date().toISOString() },
+          ], error: null });
+          return resolve({ data: [], error: null });`
+  );
+
+  async function abrirComData(dataD) {
+    const ctx = await b.newContext();
+    const p = await ctx.newPage();
+    const erros = [];
+    p.on('pageerror', (e) => erros.push(String(e)));
+    await p.route('**/functions/v1/sime-login', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'x.y.z', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-x' }) });
+    });
+    await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_MESA_INCOMPLETA(dataD) });
+    });
+    await p.goto('http://localhost:8917/modules/SIME_tv_dia.html?tv_token=TVTOKENX');
+    await p.waitForTimeout(1800);
+    return { ctx, p, erros };
+  }
+
+  // (a) data_d no futuro distante — hoje ainda não chegou lá, os dois
+  // alertas (horário já bem passado da meia-noite) precisam ficar OFF.
+  {
+    const { ctx, p, erros } = await abrirComData('2099-01-01');
+    const stats = await p.locator('#t-stats').innerHTML();
+    check('data_d no futuro: NÃO conta "atraso vot." mesmo com o horário passado', !/atraso vot\./.test(stats), stats);
+    check('data_d no futuro: NÃO conta "mesa inc."', !/mesa inc\./.test(stats), stats);
+    const diaOk = await p.evaluate(() => window.diaDaVotacaoChegou());
+    check('diaDaVotacaoChegou() retorna false antes da data', diaOk === false);
+    check('zero erros JS', erros.length === 0, erros.join(' | '));
+    await ctx.close();
+  }
+
+  // (b) data_d no passado (equivalente a "hoje já é o Dia D ou depois") —
+  // os dois alertas devem aparecer, comportamento de sempre.
+  {
+    const { ctx, p, erros } = await abrirComData('2020-01-01');
+    const stats = await p.locator('#t-stats').innerHTML();
+    check('data_d no passado: conta "atraso vot."', /atraso vot\./.test(stats), stats);
+    check('data_d no passado: conta "mesa inc."', /mesa inc\./.test(stats), stats);
+    await p.click('#fase-prob');
+    await p.waitForTimeout(200);
+    const probTxt = await p.locator('.v-page.active').innerText();
+    check('aba Problemas lista "Votação não iniciada"', probTxt.includes('Votação não iniciada'), probTxt);
+    check('aba Problemas lista "Mesa incompleta"', probTxt.includes('Mesa incompleta'), probTxt);
+    const diaOk = await p.evaluate(() => window.diaDaVotacaoChegou());
+    check('diaDaVotacaoChegou() retorna true na/depois da data', diaOk === true);
+    check('zero erros JS', erros.length === 0, erros.join(' | '));
+    await ctx.close();
+  }
+
+  // (c) sem data_d cadastrado (Supabase sem essa coluna preenchida) — nunca
+  // bloqueia, cai no comportamento de sempre (só o horário decide).
+  {
+    const { ctx, p, erros } = await abrirComData(null);
+    const stats = await p.locator('#t-stats').innerHTML();
+    check('sem data_d: continua contando "atraso vot." (nunca esconde por falta de dado)', /atraso vot\./.test(stats), stats);
+    check('sem data_d: continua contando "mesa inc."', /mesa inc\./.test(stats), stats);
+    check('zero erros JS', erros.length === 0, erros.join(' | '));
+    await ctx.close();
+  }
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

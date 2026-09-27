@@ -7045,6 +7045,64 @@ cenário de compatibilidade que a correção acima garante).
 
 ---
 
+## "VOTAÇÃO ATRASADA"/"MESA INCOMPLETA" SÓ A PARTIR DO DIA D (`SIME_tv_dia.html`, 27/09/2026)
+
+Pedido direto: "o data do primeiro turno será 04/10/2026, então os
+problemas com votação não iniciada e mesa incompleta só deve ser indicado
+a partir daquela data".
+
+**Causa raiz — os dois alertas só olhavam a HORA do relógio, nunca o DIA.**
+`buildPages()` computa `limVot`/`limMesa` (o horário oficial de abertura +
+2h/1h) a partir de `nowMin()` — que só devolve `getHours()*60+getMinutes()`,
+sem nenhuma ideia de que dia é hoje. Isso quer dizer que deixar a TV Dia
+ligada (ou só testando o sistema) em QUALQUER dia antes da eleição, assim
+que o relógio de parede passasse desse horário, sinalizava toda seção
+aberta como "⏱ Votação atrasada"/"👥 Mesa incompleta" — mesmo sem ser Dia D
+de verdade, já que nenhuma seção tem votação real rodando ainda mesmo.
+
+**`diaDaVotacaoChegou()`** (nova, ao lado de `nowMin()`/`getHor()`) compara
+o dia de hoje (`new Date()`, só pra ler o calendário local — não é
+timestamp de ação nenhum, então não é o `sime_now()` que a filosofia de
+sempre exige) contra `window.ELEICAO_ATIVA.data_d` (`sime_eleicoes.data_d`,
+já confirmado em produção como `2026-10-04` nas duas zonas). **Sem `data_d`
+cadastrado, nunca bloqueia** — cai no comportamento de sempre (só o
+horário decide), mesmo critério "nunca esconde problema por falta de dado"
+do resto do projeto.
+
+**Ponto único de aplicação** — em vez de espalhar a checagem pelas ~6
+ocorrências de `nm>=limVot`/`nm>=limMesa` (contador do topbar, badge por
+seção, `buildProbView`, texto do card do local), `limMesa`/`limVot` viram
+`Infinity` quando `!diaDaVotacaoChegou()` — como as duas variáveis são a
+ÚNICA fonte desses limiares em todo o arquivo, `nm>=Infinity` nunca é
+verdadeiro em lugar nenhum, desligando os dois alertas inteiros de uma vez
+só, sem tocar cada ocorrência individualmente (menos risco de esquecer uma).
+
+Coberto por `tests/test_tv_dia.mjs` (Caso 5, 17 checks novos — 28 no total
+no arquivo): `data_d` no futuro distante nunca conta "atraso vot."/"mesa
+inc." mesmo com o horário de abertura bem passado (meia-noite);
+`diaDaVotacaoChegou()` retorna `false`; `data_d` no passado conta os dois
+normalmente e a aba "⚠ Problemas" lista "Votação não iniciada"/"Mesa
+incompleta"; sem `data_d` cadastrado, continua contando os dois (nunca
+esconde por falta de dado). Sem regressão em `test_tv_contato_problema.mjs`
+(39/39), `test_tv_dia_previsao.mjs` (12/12), `test_tv_dia_realtime.mjs`
+(20/20), `test_tv_panel_nav.mjs` (32/32), `test_veiculos_mapa.mjs` (23/23)
+e `test_problemas.mjs` (126/126).
+
+> **Não afeta `sime_ocorrencias.tipo IN ('votacao_atrasada','mesa_incompleta')`**
+> — esses dois valores existem no CHECK da tabela e nos rótulos de
+> `SIME_problemas.html`, mas nunca são inseridos por nada em produção hoje
+> (só via `sime_ocorrencia_abrir()`, RPC sem nenhum caller no frontend, ver
+> "🚦 PENDÊNCIAS DE CONVOCAÇÃO"/seções anteriores sobre esse mesmo achado) —
+> os dois alertas de que o cartório reclamou são os badges/contadores
+> live da TV Dia, não registros de banco.
+>
+> **Também não afeta o chip "Mesa incompleta" de `SIME_mesario.html`** —
+> aquele é o próprio status REAL da mesa (quantos dos 4 cargos já
+> chegaram), sempre correto independente da data; não é um alerta pra
+> terceiros, é o mesário vendo o próprio painel.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
