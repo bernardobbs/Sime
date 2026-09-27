@@ -67,11 +67,18 @@ const RT_TIPOS_LEGADO = ['distribuicao'];
 // diferentes ("U.E. Miguel Rocha, Sigefredo Pacheco" e "Creche Mamãe Lima
 // M. Oliveira") — por isso o campo continua aceitando texto livre via
 // "Outro (digitar)", nunca travado só nesta lista fixa.
+// 27/09/2026 — cruzando 17 rotas de recolhimento de mídia do MaxLog contra
+// o cadastro (ver CLAUDE.md, "CORRESPONDÊNCIA DE ROTAS COM O MAXLOG"), as
+// Rotas 014/015/016 (todas em Sigefredo Pacheco) tinham `destino` gravado
+// como "Escola Monsenhor Mateus" mas o MaxLog mostra as 3 convergindo pra
+// "Câmara de Vereadores de Sigefredo Pacheco" — 5º ponto fixo real, além
+// dos 4 já documentados.
 const RT_DESTINOS_CONHECIDOS = [
   'Cartório Eleitoral da 7ª Zona Eleitoral',
   'Creche Mamãe Lima (Jatobá)',
   'Escola Monsenhor Mateus (Sigefredo Pacheco)',
   'Escola da Baixinha (Sigefredo Pacheco)',
+  'Câmara de Vereadores de Sigefredo Pacheco',
 ];
 const RT_DESTINO_OUTRO = '__outro__';
 

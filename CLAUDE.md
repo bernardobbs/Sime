@@ -7142,6 +7142,87 @@ e `test_problemas.mjs` (126/126).
 
 ---
 
+## CORRESPONDÊNCIA DE ROTAS COM O MAXLOG (27/09/2026)
+
+Pedido direto, com um PDF de 17 páginas anexado ("Rota de Recolhimento de
+Mídia", uma rota por página, exportado do MaxLog/TRE): "verifique se cada
+uma das rotas do pdf corresponde a uma rota do sime, caso seja preciso,
+renomeie as rotas do sime para coincidir... elabora uma planilha com as
+rotas restantes do sime para serem lançadas no maxlog... nenhum local de
+votação deve ficar sem rota".
+
+**Cruzamento feito por NOME de local (nunca pelo código do MaxLog)** —
+mesmo critério de sempre: o código de local do MaxLog não é chave confiável
+(já documentado alhures que o mesmo código se repete entre municípios
+diferentes); aqui achou-se, além disso, que o PRÓPRIO PDF do MaxLog tem
+códigos inconsistentes entre si — ex.: código "1058" aparece como "Igreja
+Católica" numa rota e como local completamente diferente noutra checagem;
+o número "4" foi usado como nome de **duas rotas fisicamente diferentes**
+no mesmo PDF (Corredores e Tangará) — um problema do lado do MaxLog, não do
+SIME.
+
+**16 das 37 rotas de `recolhimento_midia` bateram com uma rota do PDF** —
+`sql/SIME_rotas_maxlog_correspondencia.sql`, `nome` ganhou o sufixo
+"— MaxLog Rota N" (código interno do SIME preservado, é referenciado
+noutros lugares): 001↔Rota 1, 002↔rota 2, 003↔Rota 3, 004↔rota 4
+(Corredores), 006↔Rota 06, 007↔rota 7, 008↔rota 8, 009↔rota 9 (resolve de
+vez a dúvida antiga sobre "1090 - Posto de Saude Bela Vista" — é a mesma
+seção 178/U.E. José Cândido Gaioso, só que via um posto de saúde no mesmo
+povoado), 010↔rota 10, 011↔rota 11 (parcial, ver abaixo), 014↔Rota 14,
+015↔rota 15, 016↔Rota 16, 017↔Rota 17, 018↔Rota 18, 036↔rota 4 (Tangará).
+
+**Destino corrigido em 3 rotas de Sigefredo Pacheco (014/015/016)** — as
+3 convergem no MaxLog pra "Câmara de Vereadores de Sigefredo Pacheco", não
+pra "Escola Monsenhor Mateus" (o valor que o SIME tinha, herdado do
+backfill de 04/09/2026 sem essa informação ainda). Virou o **5º ponto fixo**
+em `RT_DESTINOS_CONHECIDOS` (`sime_rotas_modulo.js`), ao lado de Cartório/
+Creche Mamãe Lima/Monsenhor Mateus/Escola da Baixinha.
+
+**Achados que NÃO foram corrigidos sozinhos — ficam pro cartório decidir,
+mesmo critério "nunca adivinha" de sempre:**
+- **MaxLog "rota 11"** encadeia Posto Saúde M. Sousa Dié → Salão
+  Comunitário → **G.E. Prof. Francisco Luis** como ponto de passagem (não
+  como destino final) — no SIME hoje isso está partido em duas rotas
+  separadas (011 e 012), as duas terminando direto em "Creche Mamãe Lima".
+  Fundir ou manter separado é uma decisão de logística real, não só de
+  nome.
+- **MaxLog "Rota 13"** cita "1082 - Igreja Evangélica" (Jatobá do Piauí)
+  como ponto de partida — **não existe nenhum local com esse nome em
+  `sime_secoes`**, nem no KML, nem na vistoria do TSE, nem em nenhuma rota
+  já cadastrada. É um local de votação genuinamente ausente do cadastro.
+- **MaxLog "rota 10"** cita "Igreja Católica" (código 1155, Sigefredo
+  Pacheco) — o mesmo código, na vistoria do TSE, é "Unidade Escolar Ivon
+  Pacheco". Pode ser o mesmo prédio com nome trocado pelo MaxLog, ou uma
+  capela diferente sem seção própria — tratado como o mesmo (Rota 010,
+  U.E. Ivon Pacheco) só porque destino/município/contagem batem
+  aproximadamente, mas fica marcado como incerto.
+- **MaxLog "rota 7"** cita "Escola Municipal Feliciano Pereira" (código
+  1112, Jatobá) — nome muito parecido com "U.E. Francisco **F**eliciano
+  **P**ereira Oliveira" (código 1171, mesmo município, já cadastrado) —
+  pode ser o mesmo prédio citado duas vezes com nomes diferentes.
+
+**Seção sem NENHUMA rota — a pendência mais grave do pedido "nenhum local
+de votação deve ficar sem rota":** seção **146** (U.E. Antônio Rodrigues,
+Campo Maior) nunca apareceu em nenhuma fonte usada até hoje — nem no KML de
+georreferência (documentado desde 04/09/2026), nem na vistoria do TSE
+(13/09/2026), nem neste PDF do MaxLog. Sem endereço, sem coordenada, sem
+rota — não dá pra criar uma rota pra ela sem antes saber onde ela fica de
+verdade; fica destacada no topo da planilha abaixo.
+
+**Planilha entregue ao cartório** (`rotas_restantes_maxlog.csv`) — as 20
+rotas de `recolhimento_midia` do SIME que **não bateram com nenhuma das 17
+páginas do PDF** (005, 013, 019-037), com partida/destino/locais/seções de
+cada uma, prontas pra lançar no MaxLog; a seção 146 (sem rota nenhuma)
+encabeça a lista com destaque próprio. `Rota 005` está sem `ponto_partida`/
+`destino` cadastrados no SIME — precisa ser preenchida antes de virar rota
+no MaxLog também.
+
+Nenhum teste de regressão dedicado — é dado de produção (nome/destino de
+rota), mesmo critério das demais correções de `sime_sync_atores_from_raw`
+já documentadas (verificado direto no Supabase antes/depois de aplicar).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
