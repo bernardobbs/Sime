@@ -7257,6 +7257,51 @@ o `codigo` continua distinguindo as duas por baixo (004 ≠ 036).
 
 ---
 
+## URNAS ESTIMADAS RECALCULADAS EM LOTE (27/09/2026)
+
+Pedido direto, na sequência do trabalho de correspondência com o MaxLog:
+"atualize a quantidade estimada de urnas, atualize a distancia estimada de
+cada rota, o tempo de deslocamento". Duas partes bem diferentes — uma
+direta, outra travada por uma restrição de arquitetura deliberada.
+
+**`sime_rotas.urnas_estimadas` — recalculado por CONTAGEM DIRETA, não
+estimativa.** `urnas_estimadas` vinha, pra boa parte das 63 rotas ativas da
+7ª Zona, de um valor antigo carregado no export original do MaxLog
+(31/08/2026) ou simplesmente `NULL` — desatualizado depois de várias
+reestruturações de rota (renomeação/correspondência com o PDF do MaxLog,
+inserção de paradas confirmadas por coordenada, geração de rotas de
+recolhimento por inversão, etc.), sem nenhum recálculo automático nunca ter
+acontecido. Como cada `sime_rota_secoes` é uma seção, e cada seção tem
+exatamente 1 urna, "quantidade estimada de urnas" de uma rota é sempre
+igual à sua contagem de paradas — não uma estimativa, um COUNT direto do
+que já está cadastrado (mesmo critério "nunca adivinha" de sempre: não é
+inventado, é derivado do próprio dado). Rodado via SQL Editor/MCP (não é
+migração, não reaplica sozinha) pras 63 rotas ativas da zona (as 37 de
+`recolhimento_midia` + as 26 de `distribuicao`/`recolhimento_urna`) — 61
+tiveram o valor corrigido (2 já batiam por coincidência). Logado em
+`sime_logs` (`rota_urnas_estimadas_recalculadas_lote`).
+
+**Distância/tempo de deslocamento — NÃO calculado por aqui, por desenho
+deliberado do próprio módulo, não por limitação técnica meramente
+contornável.** O módulo 🗺️ Rotas já tem a integração completa com o Google
+Directions pra isso (ver "ROTA REAL VIA GOOGLE DIRECTIONS" acima,
+24/09/2026) — mas o próprio desenho daquela feature é **sempre por clique
+explícito do cartório dentro do navegador**, nunca em lote/automático,
+justamente pra não estourar o crédito grátis mensal do Google. Rodar isso
+eu mesmo, em lote, pras 63 rotas de uma vez, iria contra essa decisão já
+tomada (e documentada) — não é só que eu não conseguiria (sandbox sem
+acesso à URL da própria aplicação, e decisão deliberada de não extrair a
+`GOOGLE_MAPS_API_KEY` da Vercel sem pedido explícito pra isso
+especificamente), é que fazer isso seria o tipo de automação em lote que a
+feature foi desenhada pra impedir. O caminho certo continua sendo o
+cartório abrir cada rota no módulo e clicar "📏 Calcular rota real
+(Google)" (ou "🔀 Otimizar ordem", que já confirma com o Google sozinho
+quando aplica uma melhoria) — ou, se quiser mesmo assim que isso seja
+rodado em lote por script, isso precisa ser uma decisão explícita do dono
+do projeto, não algo que eu decida sozinho.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
