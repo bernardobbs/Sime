@@ -7082,6 +7082,29 @@ Só schema + dado nesta rodada — nenhuma tela ainda lê `sime_secoes.endereco`
 Se um dia for pedido, o lugar natural é a ficha impressa do módulo 🗺️ Rotas
 (`rtHtmlFicha`, que já lista número/local/município/coordenadas por parada).
 
+**Revisado no mesmo dia — a abreviação em si tinha que sumir, não só ganhar
+um campo de endereço ao lado.** Pedido direto, com os mesmos dois nomes do
+anexo citados como exemplo: "altere na base de dados os nomes dos locais
+tipo 1031 - SAAE - SERVICO AUTONOMO DE AGUA E ESGOTO / 1074 - SECRETARIA
+MUNICIPAL DE EDUCAÇÃO... sem resumo, nome completo e codigo do local".
+Diferente da rodada anterior (que concluiu que a abreviação já era
+convenção deliberada do projeto, não desatualização), aqui o pedido é
+explícito: `local_nome` (`sql/SIME_secoes_local_nome_completo.sql`) deixou
+de ser abreviado e virou literalmente **"CÓDIGO - NOME COMPLETO"**, copiado
+do próprio formulário de vistoria (ex.: "1031 - SAAE - SERVICO AUTONOMO DE
+AGUA E ESGOTO"). Mesmas 174 seções do backfill de endereço, mesma chave de
+casamento (número de seção); as 2 exceções (146, 263) continuam com o nome
+antigo, pelo mesmo motivo de sempre — não apareceram na fonte.
+
+**Efeito colateral conhecido, não corrigido nesta rodada**: rotas de
+recolhimento de mídia cujo `ponto_partida`/`destino` foi auto-sugerido a
+partir do nome ANTIGO (abreviado) de uma parada não são recasadas
+automaticamente contra o nome novo — o link do Google Maps dessas rotas
+(`rtMapsUrl()`) cai num tier de precisão mais baixo (texto+município) em
+vez da coordenada exata, mas nunca quebra. Documentado no próprio arquivo
+SQL; recasar é o mesmo tipo de backfill já feito em "LOCAL DE VOTAÇÃO
+SEMPRE 'NÚMERO — NOME, MUNICÍPIO'" (acima), só que ainda não pedido.
+
 ---
 
 ## "VOTAÇÃO ATRASADA"/"MESA INCOMPLETA" SÓ A PARTIR DO DIA D (`SIME_tv_dia.html`, 27/09/2026)
