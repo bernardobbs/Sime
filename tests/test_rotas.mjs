@@ -703,8 +703,8 @@ async function lerDestino(p) {
   await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
   await p.waitForTimeout(100);
 
-  check('Partida vem sugerida com o 1º local da lista de paradas', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
-  check('Destino vem sugerido com o último local da lista de paradas', (await lerDestino(p)) === 'Escola B, Campo Maior');
+  check('Partida vem sugerida com o 1º local da lista de paradas', (await p.locator('#rt-partida').inputValue()) === '30 — Grupo Escolar A, Campo Maior');
+  check('Destino vem sugerido com o último local da lista de paradas', (await lerDestino(p)) === '63 — Escola B, Campo Maior');
 
   // Cartório digita um valor próprio por cima da sugestão de partida (ex.:
   // um endereço que não é local de votação nenhum) — a sugestão nunca é
@@ -716,7 +716,7 @@ async function lerDestino(p) {
 
   const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1'));
   check('grava o valor digitado, não a sugestão, pra partida', upd?.payload?.ponto_partida === 'Cartório Eleitoral da 7ª Zona', JSON.stringify(upd));
-  check('grava o valor sugerido (nunca editado) pro destino', upd?.payload?.destino === 'Escola B, Campo Maior', JSON.stringify(upd));
+  check('grava o valor sugerido (nunca editado) pro destino', upd?.payload?.destino === '63 — Escola B, Campo Maior', JSON.stringify(upd));
   check('grava tempo_parada_min', upd?.payload?.tempo_parada_min === 10, JSON.stringify(upd));
 
   // Reabre e confere o cálculo do tempo total (2 paradas × 10 min = 20min).
@@ -733,7 +733,7 @@ async function lerDestino(p) {
   // campo por engano), sem depender de reabrir o modal.
   await p.fill('#rt-partida', '');
   await p.click('#rt-partida-sugerir');
-  check('clicar em "↻" preenche de novo com a sugestão atual (1º local)', (await p.locator('#rt-partida').inputValue()) === 'Grupo Escolar A, Campo Maior');
+  check('clicar em "↻" preenche de novo com a sugestão atual (1º local)', (await p.locator('#rt-partida').inputValue()) === '30 — Grupo Escolar A, Campo Maior');
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -906,7 +906,7 @@ async function lerDestino(p) {
   const printHtml = await p.locator('#print-area').innerHTML();
   check('ficha inclui um mapa esquemático (SVG desenhado das coordenadas)', /<svg/.test(printHtml), printHtml.slice(0, 300));
   check('legenda do mapa sempre mostra o Destino, mesmo sem coordenada pra ele', /Destino: Cartório Eleitoral da 7ª Zona/.test(printHtml), printHtml);
-  check('legenda também mostra a Partida (sugerida a partir da 1ª parada)', /Partida: Grupo Escolar A, Campo Maior/.test(printHtml), printHtml);
+  check('legenda também mostra a Partida (sugerida a partir da 1ª parada, com o número da seção)', /Partida: 30 — Grupo Escolar A, Campo Maior/.test(printHtml), printHtml);
   // 09/09/2026: o mapa real (staticmap.maptoolkit.net) virou o principal —
   // o esquema em linha reta agora é só o fallback, escondido por padrão
   // (ver rt-mapa-esquema-wrap) — a nota "não segue estrada" continua
@@ -1199,7 +1199,7 @@ async function lerDestino(p) {
   // pontos fixos, então deve cair em "Outro" com o nome sugerido já preenchido.
   await p.click('#rt-destino-sugerir');
   check('sugestão (↻) cai em "Outro" (nome de local de votação não é ponto fixo)', (await p.locator('#rt-destino-select').inputValue()) === '__outro__');
-  check('campo "Outro" mostra o local sugerido (1º/último da lista de paradas)', (await p.locator('#rt-destino-outro').inputValue()) === 'Grupo Escolar A, Campo Maior');
+  check('campo "Outro" mostra o local sugerido (1º/último da lista de paradas)', (await p.locator('#rt-destino-outro').inputValue()) === '31 — Grupo Escolar A, Campo Maior');
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

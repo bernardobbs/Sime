@@ -380,11 +380,16 @@ function rtMapsUrl(rota, paradas, zona) {
   // coordenada de uma seção-irmã do mesmo endereço é correto (é o mesmo
   // prédio); nunca perder uma coordenada boa só por causa de outra seção
   // do mesmo local ainda sem geo ter "ganhado" a chave por último.
+  // Indexado nas DUAS chaves (com e sem número da seção) — Partida/Destino
+  // salvos ANTES de 27/09/2026 (rtNomeLocalParadaSemNumero) continuam
+  // batendo certinho aqui, mesmo sem o cartório re-salvar a rota; a chave
+  // nova (rtNomeLocalParada) é o que passa a ser sugerido daqui em diante.
   const porNome = new Map();
   for (const s of paradas) {
-    const chave = norm(rtNomeLocalParada(s));
-    const atual = porNome.get(chave);
-    if (!atual || (atual.latitude == null && s.latitude != null)) porNome.set(chave, s);
+    for (const chave of [norm(rtNomeLocalParada(s)), norm(rtNomeLocalParadaSemNumero(s))]) {
+      const atual = porNome.get(chave);
+      if (!atual || (atual.latitude == null && s.latitude != null)) porNome.set(chave, s);
+    }
   }
 
   function resolverPonto(textoLivre, paradaFallback) {
@@ -914,7 +919,18 @@ function rtGerarRetorno(rotaId) {
 
 // "1º/último local da rota" — nome exibido pro local de uma parada (usado
 // tanto pra sugerir Partida/Destino quanto pra recalcular sob pedido).
+// 27/09/2026, pedido direto: "quero que todos os locais de votação
+// apareçam como numero - nome, e de preferencia com a localidade" — até
+// aqui só esta função (usada pras sugestões de Partida/Destino, pro
+// legenda do mapa e pro fallback da ficha) ficava sem o número da seção;
+// o resto do módulo (lista de paradas, painel de órfãs) já mostrava
+// "número — nome, município" desde sempre. Unificado no mesmo formato.
 function rtNomeLocalParada(s) {
+  return s ? `${s.numero} — ${s.local_nome}, ${s.municipio}` : '';
+}
+// Formato ANTIGO (sem número) — só pra reconhecer Partida/Destino salvos
+// antes desta mudança, em `rtMapsUrl()`; nunca usada pra exibir nada.
+function rtNomeLocalParadaSemNumero(s) {
   return s ? `${s.local_nome}, ${s.municipio}` : '';
 }
 // Partida/destino sugeridos a partir da lista de paradas (08/09/2026,

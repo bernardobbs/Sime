@@ -6977,6 +6977,74 @@ código escrito).
 
 ---
 
+## LOCAL DE VOTAÇÃO SEMPRE "NÚMERO — NOME, MUNICÍPIO" NO MÓDULO 🗺️ ROTAS (27/09/2026)
+
+Pedido direto, com dois PDFs anexados como referência — a ficha impressa da
+própria Rota 001 do SIME (mostrando "Partida: G.E. Manoel Francisco,
+Sigefredo Pacheco", sem número nenhum) e um relatório do MaxLog/TRE
+("Rota de Recolhimento de Mídia") que sempre cita o local como
+"1066 - Unidade Escolar Miguel Rocha [Município: ...]": "quero que todos os
+locais de votação apareçam como numero - nome, e de preferencia com a
+localidade".
+
+**Achado ao investigar: só UMA função ficava fora do padrão que o resto do
+módulo já seguia.** A lista de paradas (`rtRenderParadas()`), o painel de
+seções órfãs e a prévia da otimização de ordem já mostravam "número — nome,
+município" desde que o módulo nasceu (04-10/09/2026, ver seções acima) —
+só `rtNomeLocalParada(s)` (usada pra SUGERIR Partida/Destino a partir da
+1ª/última parada, pra legenda "🟢 Partida / 🔴 Destino" do mapa da ficha, e
+como fallback de exibição quando a rota não tem Partida/Destino salvos)
+devolvia só `"{local}, {município}"`, sem o número da seção — exatamente o
+que aparecia impresso na ficha da Rota 001 anexada.
+
+`rtNomeLocalParada(s)` passou a devolver `"{numero} — {local}, {município}"`
+— mesmo separador (" — ") e mesma ordem já usados em todo o resto do
+módulo, não um formato novo inventado. O "número" usado é o da própria
+SEÇÃO (`sime_secoes.numero`) — o único número que o SIME de fato guarda
+pra um local de votação (o schema não tem, e nunca teve, o código do
+"Local" do TRE/MaxLog, ver "Georreferência por LOCAL de votação" acima:
+"não existe tabela de 'locais' própria"); o "1066" do exemplo colado é o
+código do MaxLog, um sistema diferente, só usado aqui como referência do
+FORMATO desejado, não da fonte do número.
+
+**Bug evitado, achado ao revisar o próprio `rtMapsUrl()` antes de mexer:
+mudar o formato quebraria o casamento de Partida/Destino JÁ SALVOS contra
+as paradas da rota.** `rtMapsUrl()` (a função que monta o link/QR do Google
+Maps) casa o TEXTO salvo em `rota.ponto_partida`/`destino` contra o nome de
+cada parada pra decidir se usa a coordenada real dela (`porNome`, indexado
+por `rtNomeLocalParada()`) — como esse texto foi gravado usando o formato
+ANTIGO (sem número) em toda rota que já tinha Partida/Destino auto-sugeridos
+antes desta mudança, mudar só a função de formatação faria esse casamento
+parar de bater, e o link passaria a usar o fallback mais impreciso (texto +
+município) em vez da coordenada real — regressão silenciosa, do tipo que
+este projeto sempre tenta evitar. Corrigido indexando `porNome` nas DUAS
+chaves (`rtNomeLocalParada`/nova e `rtNomeLocalParadaSemNumero`/antiga,
+esta última só existe pra isso, nunca usada pra exibir nada) — Partida/
+Destino salvos antes ou depois desta mudança continuam casando certinho.
+
+**Backfill em produção (7ª Zona), rodado uma vez via MCP — mesmo critério
+"nunca sobrescreve o que o cartório já digitou" de sempre: só atualiza
+quando o valor salvo bate EXATAMENTE com o formato antigo do 1º/último
+local da própria rota** (ou seja, era mesmo um valor auto-sugerido e nunca
+editado à mão — um texto customizado como "Cartório Eleitoral..." ou
+"U.E. Miguel Rocha, Sigefredo Pacheco" digitado por cima nunca é tocado).
+**14 rotas** tiveram `ponto_partida` atualizado (001, 036, RU1, RU2, RU3,
+RU4, RU5, RU6, RU7, RU8, RU9, RU10, RU11, RU12) e **2** tiveram `destino`
+atualizado (001, UR9) — a própria Rota 001 da ficha anexada agora sai como
+"152 — G.E. Manoel Francisco, Sigefredo Pacheco" → "246 — U.E. Miguel
+Rocha, Sigefredo Pacheco". Logado em `sime_logs`
+(`rota_partida_destino_numero_backfill`).
+
+Coberto por `tests/test_rotas.mjs` (244 checks no arquivo, nenhum novo —
+os já existentes que verificavam o valor exato da sugestão de Partida/
+Destino, do campo "Outro" do destino e da legenda do mapa impresso foram
+atualizados pra incluir o número da seção; o teste que já cobria Partida/
+Destino salvos no formato ANTIGO continuando a casar com coordenada real
+via `rtMapsUrl()` segue passando sem mudança nenhuma — é exatamente o
+cenário de compatibilidade que a correção acima garante).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
