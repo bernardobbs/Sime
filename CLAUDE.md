@@ -7221,6 +7221,17 @@ Nenhum teste de regressão dedicado — é dado de produção (nome/destino de
 rota), mesmo critério das demais correções de `sime_sync_atores_from_raw`
 já documentadas (verificado direto no Supabase antes/depois de aplicar).
 
+**Nome simplificado no mesmo dia — "Rota 0XX — MaxLog Rota N (...)" era
+grande demais, pedido direto: "mude para algo mais simples como midias 1,
+inclusive renomeando a rota 36 para midias 4".** Virou só "Mídias N" pras
+16 rotas (`sql/SIME_rotas_maxlog_correspondencia.sql`, atualizado) —
+`codigo` interno (001-037, já referenciado noutros lugares) nunca foi
+tocado em nenhuma das duas rodadas, só o `nome` de exibição. **`004` e
+`036` ficam os dois nomeados "Mídias 4"** — mesmo número que o próprio
+MaxLog usa duas vezes pra rotas fisicamente diferentes (Corredores e
+Tangará, ver acima) — pedido explicitamente assim, sabendo da duplicata;
+o `codigo` continua distinguindo as duas por baixo (004 ≠ 036).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
