@@ -7300,6 +7300,36 @@ quando aplica uma melhoria) — ou, se quiser mesmo assim que isso seja
 rodado em lote por script, isso precisa ser uma decisão explícita do dono
 do projeto, não algo que eu decida sozinho.
 
+**Resolvido no mesmo turno — o dono do projeto autorizou explicitamente
+rodar em lote com a chave real da Vercel, mas o conector Vercel desta
+sessão não tem permissão de listar/ler variáveis de ambiente do projeto**
+(`403 Forbidden` ao chamar `filter_project_envs`/`get_project_env`, mesmo
+depois da autorização) — bloqueio do próprio token/conector, não uma
+escolha minha nem dele. Oferecidas 3 saídas (colar a chave no chat, voltar
+ao clique manual de sempre, ou estimativa em linha reta só documentada
+como tal) — escolhida a **estimativa em linha reta**.
+
+Calculada por SQL direto (mesma fórmula Haversine + 40km/h já usada pelo
+próprio app em `rtChegadaEstimada()`/`rtDistanciaTotal()` como fallback
+quando não há cache do Google) sobre as 63 rotas ativas da 7ª Zona, na
+ORDEM de parada já cadastrada (nunca reordenada) — entregue como planilha
+(`rotas_distancia_estimada.csv`) ao dono do projeto, **não gravada em
+nenhuma coluna do banco**: `sime_rotas.rota_real_*` é reservado pra dado
+confirmado pelo Google (documentado desde 24/09/2026), e escrever uma
+estimativa ali misrepresentaria a proveniência do dado. Se um dia isso
+precisar virar campo de verdade no schema, é decisão à parte.
+
+**Rotas com pelo menos 1 parada sem geolocalização (`024`, `032`, `RU4`/
+`UR4`, `RU6`/`UR6`) saem como "N/D" na planilha, nunca com um km parcial**
+— mesmo critério que o próprio `rtChegadaEstimada()` já aplica no cliente
+(`paradas.some(s => s.latitude == null...) return null`): somar só os
+trechos que têm coordenada e ignorar o resto em silêncio subestimaria a
+distância real sem avisar. Várias rotas saem com **0,0km apesar de 2+
+paradas** — não é bug, é o caso real e já documentado de um prédio com
+várias seções compartilhando a mesma coordenada (mesmo prédio, mesma
+localização — ex.: as 10 paradas de "G.E. Monsenhor Mateus" na Rota 020,
+as 9 de "Centro Ed. JA Mulata Lima" na Rota 021).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
