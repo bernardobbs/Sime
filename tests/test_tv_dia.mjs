@@ -175,11 +175,32 @@ export function createClient(url, key, opts) {
           return resolve({ data: [], error: null });`
   );
 
+  // nowMin()/diaDaVotacaoChegou() usam o relógio de PAREDE real (new Date()),
+  // e horario_ab do mock é fixo em '00:00:00' — sem congelar o relógio da
+  // página, "atraso vot."/"mesa inc." dependem de que HORA (UTC) o job de CI
+  // por acaso está rodando quando o teste executa (achado real: falha
+  // intermitente em CI, nunca reproduzida localmente, porque o job só cai
+  // dentro da janela 00:00-02:00 UTC às vezes). Congelado às 10:00 local —
+  // bem acima dos dois limiares (limVot=02:00, limMesa=01:00) — pra tornar o
+  // teste determinístico independente de quando ele roda de verdade. Sem
+  // sufixo 'Z' no ISO, o JS interpreta como hora LOCAL do processo, então
+  // `getHours()` sempre devolve 10, não importa o fuso do executor.
   async function abrirComData(dataD) {
     const ctx = await b.newContext();
     const p = await ctx.newPage();
     const erros = [];
     p.on('pageerror', (e) => erros.push(String(e)));
+    await p.addInitScript((fixedIso) => {
+      const FIXED = new Date(fixedIso).getTime();
+      const OrigDate = Date;
+      class FakeDate extends OrigDate {
+        constructor(...args) {
+          if (args.length === 0) { super(FIXED); } else { super(...args); }
+        }
+        static now() { return FIXED; }
+      }
+      window.Date = FakeDate;
+    }, '2026-06-15T10:00:00');
     await p.route('**/functions/v1/sime-login', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'x.y.z', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-x' }) });
     });
