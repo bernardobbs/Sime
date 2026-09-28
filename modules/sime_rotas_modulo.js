@@ -56,29 +56,37 @@ const RT_TIPOS_LEGADO = ['distribuicao'];
 
 // Locais finais conhecidos (10/09/2026, pedido direto: "em todas as rotas
 // quero poder escolher o local final a partir da lista, seja o cartório
-// eleitoral ou um ponto de transmissão") — mesmos 4 "pontos de transmissão
-// fixos" já documentados no CLAUDE.md desde 04/09/2026 (preenchimento de
-// Partida/Destino das rotas de mídia). Vale pra QUALQUER tipo de rota (o
-// pedido foi "em todas as rotas"), não só recolhimento_midia — é o mesmo
-// campo de texto único no formulário, sem distinção por tipo.
-// Checado contra produção antes de fixar a lista (SQL direto, 7ª Zona): os
-// valores reais de `destino` hoje são só esses 4 (Cartório em 36 rotas,
-// Monsenhor Mateus e Creche Mamãe Lima em 4 cada) + 2 valores avulsos
-// diferentes ("U.E. Miguel Rocha, Sigefredo Pacheco" e "Creche Mamãe Lima
-// M. Oliveira") — por isso o campo continua aceitando texto livre via
-// "Outro (digitar)", nunca travado só nesta lista fixa.
-// 27/09/2026 — cruzando 17 rotas de recolhimento de mídia do MaxLog contra
-// o cadastro (ver CLAUDE.md, "CORRESPONDÊNCIA DE ROTAS COM O MAXLOG"), as
-// Rotas 014/015/016 (todas em Sigefredo Pacheco) tinham `destino` gravado
-// como "Escola Monsenhor Mateus" mas o MaxLog mostra as 3 convergindo pra
-// "Câmara de Vereadores de Sigefredo Pacheco" — 5º ponto fixo real, além
-// dos 4 já documentados.
+// eleitoral ou um ponto de transmissão") — vale pra QUALQUER tipo de rota
+// (o pedido foi "em todas as rotas"), não só recolhimento_midia — é o
+// mesmo campo de texto único no formulário, sem distinção por tipo.
+//
+// 28/09/2026 — lista SUBSTITUÍDA pela relação OFICIAL de pontos de
+// transmissão da 7ª Zona, trazida pelo cartório (planilha de infraestrutura
+// de transmissão — coluna Local/Município/Tecnologia). Os "4 pontos fixos"
+// documentados desde 04/09/2026 (Cartório + Creche Mamãe Lima + Escola
+// Monsenhor Mateus + Escola da Baixinha) eram uma DEDUÇÃO informal a partir
+// de pra onde as rotas do MaxLog convergiam, não a lista oficial — batendo
+// contra a planilha real, só o Cartório (= "Sede da 7ª Zona Eleitoral" na
+// planilha, mesmo local, nome já canônico no resto do sistema) e a Câmara
+// de Vereadores de Sigefredo Pacheco (achado em 27/09/2026, ver
+// "CORRESPONDÊNCIA DE ROTAS COM O MAXLOG") sobrevivem; Creche Mamãe Lima e
+// Escola Monsenhor Mateus NÃO são pontos de transmissão de verdade — eram
+// só pontos de CONSOLIDAÇÃO informal assumidos sem confirmação oficial.
+// Pedido explícito sobre a lista oficial de 6: "menos o patronato todos
+// serão destinos da rotas de recolhimento de midias" — o Patronato N. S.
+// de Lourdes é só CONTINGÊNCIA (tecnologia "VPN/CT", plano B se o ponto
+// principal cair), não um destino de rota, então fica de fora desta lista.
+// Pendência real, não resolvida aqui: as 6 rotas que hoje apontam pra
+// Creche Mamãe Lima/Escola Monsenhor Mateus/valores avulsos (011, 012,
+// 013, 019, 034, 035, 001) precisam ser remapeadas pra um destes 5 pontos
+// reais — não adivinhado, fica pro cartório confirmar qual ponto cada uma
+// deveria usar de verdade.
 const RT_DESTINOS_CONHECIDOS = [
   'Cartório Eleitoral da 7ª Zona Eleitoral',
-  'Creche Mamãe Lima (Jatobá)',
-  'Escola Monsenhor Mateus (Sigefredo Pacheco)',
-  'Escola da Baixinha (Sigefredo Pacheco)',
   'Câmara de Vereadores de Sigefredo Pacheco',
+  'Grupo Escolar Manoel Francisco (Sigefredo Pacheco)',
+  'Escola do Reassentamento Corredores (Campo Maior)',
+  'SETI Francisco Luis (Jatobá do Piauí)',
 ];
 const RT_DESTINO_OUTRO = '__outro__';
 

@@ -1145,11 +1145,16 @@ async function lerDestino(p) {
 // ── 29. Destino virou <select> de locais conhecidos + "Outro (digitar)"
 // (10/09/2026, pedido direto: "em todas as rotas quero poder escolher o
 // local final a partir da lista, seja o cartório eleitoral ou um ponto de
-// transmissão") — dropdown mostra os 4 pontos fixos, pré-seleciona quando o
+// transmissão") — dropdown mostra os pontos fixos, pré-seleciona quando o
 // valor salvo bate com um deles, cai em "Outro" com o texto preenchido
 // quando não bate (preserva valor customizado já em produção), salva
 // corretamente nos dois casos, e a sugestão (↻) — que quase nunca bate com
-// um ponto fixo — cai em "Outro" com o nome do local sugerido. ──
+// um ponto fixo — cai em "Outro" com o nome do local sugerido.
+// 28/09/2026 — RT_DESTINOS_CONHECIDOS trocada pela lista OFICIAL de pontos
+// de transmissão trazida pelo cartório (menos o Patronato N.S. de Lourdes,
+// que é só contingência) — os antigos "Creche Mamãe Lima"/"Escola
+// Monsenhor Mateus"/"Escola da Baixinha" eram dedução informal, não a
+// lista real; ver comentário de `RT_DESTINOS_CONHECIDOS`. ──
 {
   const ctx = await b.newContext();
   const m = mock();
@@ -1163,18 +1168,18 @@ async function lerDestino(p) {
   await p.waitForTimeout(100);
 
   const opcoes = await p.locator('#rt-destino-select option').allTextContents();
-  check('dropdown lista os 4 pontos fixos conhecidos', ['Cartório Eleitoral da 7ª Zona Eleitoral', 'Creche Mamãe Lima (Jatobá)', 'Escola Monsenhor Mateus (Sigefredo Pacheco)', 'Escola da Baixinha (Sigefredo Pacheco)'].every(d => opcoes.includes(d)), opcoes.join(' | '));
+  check('dropdown lista os pontos de transmissão oficiais conhecidos', ['Cartório Eleitoral da 7ª Zona Eleitoral', 'Câmara de Vereadores de Sigefredo Pacheco', 'Grupo Escolar Manoel Francisco (Sigefredo Pacheco)', 'Escola do Reassentamento Corredores (Campo Maior)', 'SETI Francisco Luis (Jatobá do Piauí)'].every(d => opcoes.includes(d)), opcoes.join(' | '));
   check('dropdown também tem a opção "Outro (digitar)"', opcoes.includes('Outro (digitar)'), opcoes.join(' | '));
 
   check('valor salvo batendo com um ponto fixo vem pré-selecionado no <select>', (await p.locator('#rt-destino-select').inputValue()) === 'Cartório Eleitoral da 7ª Zona Eleitoral');
   check('campo "Outro" fica escondido quando o valor bate com um ponto fixo', await p.locator('#rt-destino-outro-wrap').evaluate(el => getComputedStyle(el).display) === 'none');
 
   // Troca pra outro ponto fixo e salva.
-  await p.selectOption('#rt-destino-select', 'Creche Mamãe Lima (Jatobá)');
+  await p.selectOption('#rt-destino-select', 'Câmara de Vereadores de Sigefredo Pacheco');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(150);
   let upd = await p.evaluate(() => window.__mock.escritas.filter(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1').pop());
-  check('salvar com um ponto fixo selecionado grava o texto exato dele', upd?.payload?.destino === 'Creche Mamãe Lima (Jatobá)', JSON.stringify(upd));
+  check('salvar com um ponto fixo selecionado grava o texto exato dele', upd?.payload?.destino === 'Câmara de Vereadores de Sigefredo Pacheco', JSON.stringify(upd));
 
   // Reabre, escolhe "Outro" e digita um valor customizado (preserva o caso
   // real de produção — "U.E. Miguel Rocha, Sigefredo Pacheco"/"Creche Mamãe

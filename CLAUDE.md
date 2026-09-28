@@ -7496,6 +7496,94 @@ MCP, com log de auditoria separado pro preenchimento
 
 ---
 
+## ROTA 005 DESMEMBRADA; PONTOS DE TRANSMISSÃO OFICIAIS (28/09/2026)
+
+**Desmembração da Rota 005, pedido direto: "a rota 5 deve ser desmembrada,
+cada local criado uma nova rota para a sede do cartório eleitoral".** A
+Rota 005 (recolhimento de mídia) juntava 4 prédios de Campo Maior numa
+rota só (Secretaria Estadual de Fazenda, Grupo Escolar Marion Saraiva,
+CAIC, IFPI — 14 urnas) sem nunca ter batido com o MaxLog. Virou **4 rotas
+independentes** (038-041), cada uma saindo direto do respectivo prédio pro
+Cartório Eleitoral da 7ª Zona, com horário de chegada recalculado pelo
+mesmo algoritmo de sempre (`rtCalcularHorariosParadas` — cascata por seção
+individual, piso pela previsão de encerramento quando cadastrada):
+
+| Código | Local de partida | Urnas | Chegada prevista |
+|---|---|---|---|
+| 038 | Secretaria Estadual de Fazenda | 2 | 17:20 |
+| 039 | Grupo Escolar Marion Saraiva | 6 | 18:00 |
+| 040 | CAIC | 4 | 17:49 (9min de espera — seção 71 fecha às 17:09) |
+| 041 | IFPI | 2 | 17:20 |
+
+A Rota 005 original virou `ativo=false` — nunca apagada, mesmo critério de
+sempre; `sime_rota_secoes` dela fica intacta como histórico. Rodado uma
+vez via SQL Editor/MCP (`rota_desmembrada_lote` em `sime_logs`), não é
+migração de schema. As 4 novas rotas continuam fora do MaxLog (a 005
+nunca tinha batido com o export do TRE) — entram na próxima rodada do
+relatório de pendências.
+
+**Pontos de transmissão oficiais — lista trazida pelo cartório, substitui
+a dedução informal de 04/09/2026.** Até aqui, `RT_DESTINOS_CONHECIDOS`
+(`sime_rotas_modulo.js`) tinha 4+1 pontos "fixos" assumidos por dedução
+(pra onde as rotas do MaxLog pareciam convergir): Cartório, Creche Mamãe
+Lima, Escola Monsenhor Mateus, Escola da Baixinha, Câmara de Vereadores
+de Sigefredo Pacheco. O cartório trouxe a planilha REAL de infraestrutura
+de transmissão da 7ª Zona (Local/Município/Tecnologia), com 6 pontos:
+
+| Local | Município | Tecnologia |
+|---|---|---|
+| Sede da 7ª Zona Eleitoral | Campo Maior | MPLS |
+| Câmara de Vereadores de Sigefredo Pacheco | Sigefredo Pacheco | VPN |
+| Grupo Escolar Manoel Francisco | Sigefredo Pacheco | VPN |
+| Escola do Reassentamento Corredores | Campo Maior | VPN |
+| SETI Francisco Luis | Jatobá do Piauí | VPN |
+| Unid. Esc. Patronato N. S. de Lourdes (contingência) | Campo Maior | VPN/CT |
+
+Pedido explícito sobre quais viram destino de rota: **"menos o patronato
+todos serão destinos da rotas de recolhimento de midias"** — o Patronato é
+só CONTINGÊNCIA (plano B se o ponto principal cair), nunca um destino
+escolhido de propósito. `RT_DESTINOS_CONHECIDOS` foi reescrita pros 5
+pontos reais (Sede = mesmo texto canônico já usado em todo o sistema,
+"Cartório Eleitoral da 7ª Zona Eleitoral" — não um nome novo, pra não
+quebrar o casamento por texto de `rtMapsUrl()`/o histórico de 30+ rotas já
+com esse valor).
+
+**Achado real, batendo a planilha contra produção: os "pontos fixos"
+antigos (Creche Mamãe Lima, Escola Monsenhor Mateus) NÃO são pontos de
+transmissão de verdade** — eram só um padrão de convergência observado nas
+rotas do MaxLog, nunca confirmado contra a fonte oficial. `Câmara de
+Vereadores` sobrevive (já confirmada em 27/09/2026 batendo com o MaxLog);
+`Cartório`/`Sede` sobrevive (é o mesmo prédio). Os outros 3 pontos reais
+(Grupo Escolar Manoel Francisco, Escola do Reassentamento Corredores, SETI
+Francisco Luis) nunca tinham sido usados como `destino` de rota nenhuma —
+só apareciam como `ponto_partida` (Grupo Escolar Manoel Francisco é a
+partida da Rota 001; Escola do Reassentamento Corredores é a partida da
+Rota 004).
+
+> **Pendência real, não resolvida nesta sessão — 8 rotas ativas hoje
+> apontam pra um destino que NÃO está na lista oficial, e remapear qual
+> ponto real cada uma deveria usar é decisão do cartório, nunca
+> adivinhada:**
+> - `Creche Mamãe Lima (Jatobá)` — rotas 011, 012, 013, 034 (todas em
+>   Jatobá do Piauí — candidato mais próximo geograficamente na lista
+>   oficial: **SETI Francisco Luis**, também em Jatobá, mas não confirmado).
+> - `Escola Monsenhor Mateus (Sigefredo Pacheco)` — rota 035.
+> - `246 — U.E. Miguel Rocha, Sigefredo Pacheco` — rota 001 (termina na
+>   própria última parada da rota, não num ponto de transmissão).
+> - `Creche Mamãe Lima M. Oliveira` — rota 019 (partida=destino, já
+>   sinalizada como pendência própria desde 27/09/2026).
+>
+> Essas 8 rotas continuam funcionando normalmente (destino é sempre texto
+> livre via "Outro" quando não bate com a lista fixa) — só não vão
+> aparecer pré-selecionadas no dropdown até o cartório confirmar o ponto
+> real de cada uma.
+
+Coberto por `tests/test_rotas.mjs` (bloco 29, atualizado — dropdown lista
+os 5 pontos oficiais, salvar com "Câmara de Vereadores de Sigefredo
+Pacheco" grava o texto exato) — 270 checks no arquivo, 0 falhas.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
