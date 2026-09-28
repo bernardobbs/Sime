@@ -7440,6 +7440,43 @@ chegada final e a chegada/saída de cada parada seguinte; ficha impressa
 mostra o mesmo cálculo por baixo do nome do local, sem tocar na coluna
 "Chegada" em branco.
 
+**Bug real, achado no dia seguinte recalculando em lote — piso aplicado a
+rota de `distribuicao` produzia "esperas" de 10+ horas.** Pedido direto:
+"consegue recalcular agora o horário final de cada uma das rotas?" —
+rodando o mesmo algoritmo contra as 27 rotas da 7ª Zona com horário de
+saída e tempo por parada preenchidos, as 12 rotas UR* (tipo `distribuicao`,
+saída às 05:00 do dia ANTERIOR à eleição) saíram com `esperaMin` de até
+800 minutos — o cálculo estava "esperando" a votação fechar (12h-19h do
+Dia D) antes de liberar um veículo que sai às 5h da manhã do dia anterior,
+pra uma votação que ainda nem começou. A previsão de encerramento é sobre
+o Dia D; só faz sentido pra quem RECOLHE algo depois da votação fechar.
+
+Corrigido com `rtRotaUsaPiso(rota)` (`sime_rotas_modulo.js`) —
+`(rota.tipos||[]).some(t => t==='recolhimento_urna' || t==='recolhimento_midia')`
+— `rtPisoParada(s, rota)` passou a receber a rota e devolver `null` sempre
+que a rota não usa piso, mesmo que a seção tenha
+`horario_encerramento_previsto` cadastrado. Isso desliga, pra rota de
+`distribuicao`/`instalacao`: o botão "↻" de horário de saída, o aviso/nota
+sobre a 1ª parada, a espera na previsão de chegada, e a linha "previsão de
+encerramento"/"espera" por parada — chegada/saída (só viagem + tempo
+parado, sem piso) continuam mostradas normalmente, únicas informações que
+fazem sentido pra uma rota que roda antes da votação fechar. Coberto por
+`tests/test_rotas.mjs` (bloco 45, 270 checks no total no arquivo).
+
+**Recalculado em lote na 7ª Zona, uma vez, via SQL Editor/MCP** (não é
+migração) — das 63 rotas ativas, 27 tinham horário de saída + tempo por
+parada preenchidos (precondição do cálculo): as 12 rotas UR*
+(`distribuicao`) recalculadas SEM piso (chegada = só viagem+parada, uma
+delas — UR9 — já batia exatamente com o valor salvo, confirmando que o
+valor antigo já era esse cálculo simples); as 12 RU* + 001/002/004
+(`recolhimento_urna`/`recolhimento_midia`) recalculadas COM piso — RU1/
+RU5/RU7 não tiveram nenhuma espera real (a viagem já chega depois do
+encerramento de toda seção no caminho), as demais ganharam de alguns
+minutos a quase 1h40 de espera cascateando pra frente. As 36 rotas
+restantes (sem horário de saída/tempo por parada, ou sem geo completa)
+ficaram de fora — precondição faltando, nunca estimado parcial, mesmo
+critério de sempre.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

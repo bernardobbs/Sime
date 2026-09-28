@@ -198,7 +198,24 @@ function rtRotaRealValida(rota, paradas) {
 // paradas". `sime_secoes.horario_encerramento_previsto` é opcional por
 // seção — sem ele, a parada simplesmente não impõe piso nenhum (nunca
 // inventa um horário de fechamento que não veio da fonte real).
-function rtPisoParada(s) {
+//
+// 28/09/2026 — bug real achado recalculando em lote as rotas da 7ª Zona:
+// a previsão é sobre o encerramento da VOTAÇÃO no Dia D, mas rota de
+// `distribuicao`/`instalacao` acontece ANTES disso (D-1/D-X — as 12 rotas
+// UR* saem às 05:00 do dia anterior, entregando urna pra uma votação que
+// ainda nem começou). Aplicar o piso ali produzia "esperas" de mais de 10
+// horas (o veículo "esperando" a seção fechar às 15h-19h antes de sair às
+// 5h da manhã do dia ANTERIOR) — sem sentido nenhum. O piso só faz sentido
+// pra rota que de fato RECOLHE algo depois da votação fechar
+// (`recolhimento_urna`/`recolhimento_midia`); `rtRotaUsaPiso()` restringe a
+// isso — uma rota só de `distribuicao`/`instalacao` nunca vê nem sugere
+// piso nenhum, mesmo que a seção tenha `horario_encerramento_previsto`
+// cadastrado.
+function rtRotaUsaPiso(rota) {
+  return (rota?.tipos || []).some(t => t === 'recolhimento_urna' || t === 'recolhimento_midia');
+}
+function rtPisoParada(s, rota) {
+  if (!rtRotaUsaPiso(rota)) return null;
   return rtFmtHora(s?.horario_encerramento_previsto) || null;
 }
 
@@ -224,7 +241,7 @@ function rtCalcularHorariosParadas(rota, paradas) {
       relogioMin += travelMin;
     }
     const chegadaMin = relogioMin;
-    const piso = rtPisoParada(paradas[i]);
+    const piso = rtPisoParada(paradas[i], rota);
     const pisoMin = piso ? rtHoraParaMin(piso) : null;
     const esperaMin = (pisoMin != null && pisoMin > chegadaMin) ? pisoMin - chegadaMin : 0;
     const saidaMin = chegadaMin + esperaMin + rota.tempo_parada_min;
@@ -1056,8 +1073,8 @@ function rtUsarSugestaoSaida() {
   const r = rtDados.rotas.find(x => x.id === rtModalId);
   const atuais = r ? (rtDados.secoesPorRota.get(r.id) || []) : [];
   if (!atuais.length) { showToast('⚠ Nenhum local de votação cadastrado ainda'); return; }
-  const piso = rtPisoParada(atuais[0]);
-  if (!piso) { showToast('⚠ A 1ª parada não tem previsão de encerramento cadastrada'); return; }
+  const piso = rtPisoParada(atuais[0], r);
+  if (!piso) { showToast('⚠ A 1ª parada não tem previsão de encerramento cadastrada (ou esta rota é de distribuição/instalação, que roda antes do fechamento da votação)'); return; }
   const el = document.getElementById('rt-hora-saida');
   if (el) el.value = piso;
 }
@@ -1114,7 +1131,7 @@ function rtRenderModalRota() {
   // da 1ª parada, usada só como SUGESTÃO editável pro horário de saída
   // (rtUsarSugestaoSaida) e pra avisar quando o horário já digitado é mais
   // cedo do que isso (nunca bloqueia — mesma filosofia de sempre).
-  const pisoSaida = paradasAtuais.length ? rtPisoParada(paradasAtuais[0]) : null;
+  const pisoSaida = paradasAtuais.length ? rtPisoParada(paradasAtuais[0], r) : null;
   const horarioSaidaAtual = rtFmtHora(r?.horario_saida);
   // Previsão de chegada estimada (08/09/2026, pedido direto — ver
   // rtChegadaEstimada) — mesmo critério de sugestão de partida/destino:
@@ -1335,7 +1352,7 @@ function rtRenderParadas() {
     <div class="m-hist">
       ${atuais.length ? atuais.map((s, idx) => {
         const h = horarioPorSecaoId.get(s.id);
-        const piso = rtPisoParada(s);
+        const piso = rtPisoParada(s, r);
         // Linha de horário (27/09/2026) — com o cálculo em cascata completo
         // (rtCalcularHorariosParadas), mostra chegada/espera/saída
         // estimadas; sem ele (falta horário de saída, tempo por parada ou
@@ -1705,7 +1722,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
   const horarioPorSecaoId = new Map((horariosCalc?.linhas || []).map(l => [l.secao.id, l]));
   const linhas = paradas.map((s, i) => {
     const h = horarioPorSecaoId.get(s.id);
-    const piso = rtPisoParada(s);
+    const piso = rtPisoParada(s, rota);
     const subLinha = h
       ? `<div class="rt-sub">${h.esperaMin > 0 ? `chega ~${h.chegada} · espera até ${h.piso} · sai ${h.saida}` : `chega ~${h.chegada} · sai ${h.saida}`}</div>`
       : (piso ? `<div class="rt-sub">previsão de encerramento: ${piso}</div>` : '');

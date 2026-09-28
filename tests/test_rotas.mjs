@@ -1900,6 +1900,45 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 45. Piso de encerramento NUNCA se aplica a rota só de `distribuicao`
+// (ou só `instalacao`) — bug real achado recalculando em lote as rotas da
+// 7ª Zona: essas rodam ANTES da votação fechar (D-1/D-X), então a previsão
+// de encerramento (que é sobre o Dia D) não tem nenhum sentido ali —
+// aplicá-la produzia "esperas" de mais de 10 horas numa rota que sai às
+// 5h da manhã. Só rota com `recolhimento_urna`/`recolhimento_midia` no
+// tipo usa o piso. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_secoes.find(s => s.id === 's1').horario_encerramento_previsto = '18:00:00';
+  m.sime_secoes.find(s => s.id === 's2').latitude = -4.831;
+  m.sime_secoes.find(s => s.id === 's2').longitude = -42.161;
+  m.sime_secoes.find(s => s.id === 's2').horario_encerramento_previsto = '18:30:00';
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.tipos = ['distribuicao']; // só distribuição, sem recolhimento_urna/midia
+  r1.horario_saida = '05:00';
+  r1.tempo_parada_min = 10;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+
+  check('sem botão "↻" de horário de saída (rota de distribuição não usa piso)', await p.locator('#rt-saida-sugerir').count() === 0);
+  check('sem aviso nem nota de previsão de encerramento sobre o horário de saída', await p.locator('.import-result.ir-warn').count() === 0 && !/Previsão de encerramento da 1ª parada/.test((await p.locator('#modal-body').textContent())));
+  check('"Previsão de chegada" continua a estimativa simples (05:20 = 20min parado, sem espera nenhuma)', (await p.locator('#rt-hora-chegada').inputValue()) === '05:20');
+  // Chegada/saída (viagem + tempo parado) continuam mostradas normalmente
+  // — são úteis pra qualquer rota; só o PISO (previsão de encerramento/
+  // espera) que nunca aparece pra distribuição/instalação.
+  const listaTxt = (await p.locator('#rt-paradas-secao').textContent()).replace(/\s+/g, ' ');
+  check('mostra chega/sai normalmente (05:00→05:10, 05:10→05:20 — sem espera)', /chega ~05:00 · sai 05:10/.test(listaTxt) && /chega ~05:10 · sai 05:20/.test(listaTxt), listaTxt);
+  check('mas nunca menciona previsão de encerramento nem espera (rota de distribuição)', !/previsão de encerramento/.test(listaTxt) && !/espera/.test(listaTxt), listaTxt);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));
