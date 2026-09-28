@@ -7477,6 +7477,23 @@ restantes (sem horário de saída/tempo por parada, ou sem geo completa)
 ficaram de fora — precondição faltando, nunca estimado parcial, mesmo
 critério de sempre.
 
+**As 36 rotas restantes preenchidas e recalculadas no mesmo dia, pedido
+direto: "preenche esses campos e recalcula de novo".** Nenhuma tinha geo
+faltando — o único bloqueio era `horario_saida`/`tempo_parada_min` vazios.
+Preenchido com o MESMO valor já usado por toda rota do mesmo tipo (nunca
+um número novo inventado): `tempo_parada_min=10` nas 36 (idêntico às
+outras 27 já calculadas); `horario_saida='17:00:00'` nas 29 que ainda não
+tinham (todas `recolhimento_midia` — mesmo horário de 001/002/004/015/
+018/019/036/037, que já usavam 17:00 antes disso); a única de
+`distribuicao` (UR13) já tinha `horario_saida='05:00:00'` — mesmo
+horário das outras 12 UR*, só faltava o tempo por parada. Recalculadas
+em seguida (35 das 36 — 037 e UR13 apontam pra mesma seção, a
+Penitenciária, sem `horario_encerramento_previsto` cadastrado, então nenhum
+piso entra em jogo pras duas mesmo assim). Rodado uma vez via SQL Editor/
+MCP, com log de auditoria separado pro preenchimento
+(`rota_horario_preenchido_lote`) e pro recálculo
+(`rota_chegada_recalculada_lote`, `origem:'recalculo_28-09-2026_lote2'`).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
