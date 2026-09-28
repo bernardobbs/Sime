@@ -77,7 +77,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 ```
 /
 ├── CLAUDE.md                          ← Este arquivo
-├── modules/                           ← 21 módulos HTML
+├── modules/                           ← 22 módulos HTML
 │   ├── SIME_coordenador_preparacao.html  D-X
 │   ├── SIME_tv_preparacao.html           D-X (TV)
 │   ├── SIME_conferente.html              D-1
@@ -93,6 +93,7 @@ HERMES_SECRET_ZONA_94=senha-forte-da-94a
 │   ├── SIME_atores.html                  Todos
 │   ├── SIME_convocacao.html              Pré-eleição (dashboard, contato e sincronização de mesários)
 │   ├── SIME_rotas.html                   Pré-eleição (cadastro de rotas — ver seção própria abaixo)
+│   ├── SIME_veiculos_disposicao.html     Pré-eleição (veículos cedidos por órgãos públicos — ver seção própria abaixo)
 │   ├── SIME_principal.html               Todos — landing padrão do site (/ redireciona pra cá)
 │   ├── SIME_tokens.html                  Pré-eleição
 │   ├── SIME_paineis.html                 Todos
@@ -7581,6 +7582,132 @@ Rota 004).
 Coberto por `tests/test_rotas.mjs` (bloco 29, atualizado — dropdown lista
 os 5 pontos oficiais, salvar com "Câmara de Vereadores de Sigefredo
 Pacheco" grava o texto exato) — 270 checks no arquivo, 0 falhas.
+
+---
+
+## MOTORISTAS/PLACAS DAS ROTAS DE URNA (`sime_rotas`, 28/09/2026)
+
+Pedido direto, mandado como uma segunda tabela colada logo depois da de
+Veículos à Disposição (ver seção seguinte): "esses são os contatos por
+rota" — 12 linhas (ROTA 1-12, MOTORISTA, TELEFONE, PLACA). Diferente da
+tabela de veículos (frota de plantão, sem rota fixa, ver abaixo), esta
+mapeia direto nas rotas de urna **já cadastradas** (UR1-UR13 distribuição,
+RU1-RU12 recolhimento, ver "🔀 OTIMIZAÇÃO DE ORDEM DAS PARADAS"/"MÓDULO
+🗺️ ROTAS" mais acima) — `sime_rotas.responsavel_ator_id` já existia desde
+04-08/09/2026, mas nunca tinha sido preenchido pra nenhuma das 24 rotas de
+urna da zona.
+
+`sime_rotas.placa` (nova coluna, texto livre — mesmo critério de
+`uc_equatorial`/`codigo_rastreio`: nunca validada por regex) — faltava um
+lugar pra guardar o veículo de cada rota junto do responsável; `rtCarregar()`
+já trazia/mostrava nome+telefone do responsável (card e ficha impressa),
+só a placa não tinha onde morar.
+
+**Mesmo motorista/placa em `UR{n}` e `RU{n}`** — é o mesmo veículo fazendo
+o trajeto de ida (distribuição) e volta (recolhimento, em outro dia — "o
+recolhimento de urnas é a rota de distribuição de urnas só que inversa e
+no outro dia", já documentado acima), não duas pessoas diferentes por
+padrão; a planilha só tinha uma linha por número de rota, não uma pra ida
+e outra pra volta.
+
+Os 12 motoristas viraram `sime_atores` novos (`funcao='motorista'`, já
+existia no enum `sime_ator_funcao` — nunca usado antes desta carga; nenhum
+nome batia com ator já cadastrado na zona, conferido antes de inserir).
+Telefone normalizado via `sime_normalizar_telefone_whatsapp()` — 2 dos 12
+vieram sem telefone na planilha original (Luciano Sousa Silva, rota 6;
+Antonio Willibaldo Machado, rota 11), ficou `NULL`, nunca inventado.
+Aplicado via `sql/SIME_rotas_motoristas_urnas.sql` (não é idempotente,
+não reaplica sozinho).
+
+**`UR13` (a 13ª rota de distribuição, sem `RU` correspondente) ficou de
+fora de propósito** — a lista colada só tinha 12 linhas ("ROTA 1" a "ROTA
+12"), sem motorista/placa informado pra ela ainda.
+
+**No módulo `SIME_rotas.html`**: card mostra a placa ao lado do
+responsável ("👤 Responsável: Fulano · 🚗 NHX1905"); modal de edição ganha
+um campo próprio "Placa do veículo (opcional)" logo abaixo do `<select>`
+de responsável (`#rt-placa`, mesmo padrão de normalização de placa já
+usado no módulo 🚙 Veículos à Disposição — maiúscula, sem espaço); ficha
+impressa (`rtHtmlFicha()`) inclui a placa na mesma linha do responsável.
+Modo somente-consulta (`auxiliar_eleicao`) já desabilita o campo junto com
+o resto do formulário, sem mudança nenhuma — é só mais um `<input>` dentro
+do bloco que `rtAplicarSomenteLeituraModal()` já percorre.
+
+Coberto por `tests/test_rotas.mjs` (bloco 9, estendido — grava/edita/exibe
+a placa no card; bloco 15, estendido — ficha impressa mostra a placa junto
+do responsável) — 273 checks no arquivo, 0 falhas.
+
+---
+
+## 🚙 VEÍCULOS À DISPOSIÇÃO DA JUSTIÇA ELEITORAL (`SIME_veiculos_disposicao.html`, 28/09/2026)
+
+Pedido direto, com uma tabela colada de 19 linhas (cidade/Qtd./Veículo/
+Placa/Lotação/RENAVAM/Motorista/Fone, cobrindo Sigefredo Pacheco, Jatobá
+do Piauí e Campo Maior): "precisamos cadastrar os veiculos dos orgãos
+publicos que ficarão a disposição da justiça eleitoral na vespera e dia
+da eleição". Cadastro genuinamente novo — nem `sime_rotas` (rota fixa,
+com paradas, ver módulo 🗺️ Rotas) nem `sime_empresas` (frota CONTRATADA
+especificamente pra motorista/rota, ver `sime_atores.funcao='preposto'`)
+cobrem "um veículo emprestado por uma secretaria/prefeitura/câmara/
+autarquia pra ficar de plantão no D-1/Dia D, sem rota nem paradas
+cadastradas" — reforço e imprevisto, não uma designação operacional.
+
+**`sql/SIME_veiculos_disposicao.sql`** — tabela `sime_veiculos_disposicao`
+(zona_id, municipio, quantidade default 1, veiculo, placa, lotacao —
+órgão cedente, texto livre —, renavam, motorista_nome/telefone, observacao,
+ativo default true — soft-delete, nunca apaga de verdade —, created_by,
+created_at/updated_at), índices por zona/município, RLS via
+`sime_zona_visivel(zona_id)` (mesmo padrão de toda tabela nova). As 19
+linhas da planilha original foram carregadas num backfill único (não é
+migração, não reaplica sozinha), telefone normalizado via
+`sime_normalizar_telefone_whatsapp()` — 3 veículos (IFPI/ADAPI/SEFAZ)
+vieram "sem motorista" na planilha, gravados com `motorista_nome=NULL`
+(nunca a string "sem motorista" — não é um nome).
+
+**Módulo próprio** (`modules/SIME_veiculos_disposicao.html` — casca fina,
+login/header/`#content`/modal/toast/`#print-area` compartilhados, mesmo
+padrão de `SIME_rotas.html` — + `modules/sime_veiculos_disposicao_modulo.js`,
+lógica separada com prefixo `vd`): lista agrupada por município (`vdAgrupar`),
+busca por veículo/motorista/lotação + filtro por município (`vdFiltrar`),
+checkbox "mostrar removidos" (soft-delete, mesmo padrão do resto do
+sistema), badge "sem motorista designado" pro veículo sem motorista
+cadastrado, link "💬" de WhatsApp do motorista quando há telefone
+(`vdCopiarLink`, mensagem contextual, mesmo mecanismo copiar-não-abrir já
+usado em Contatar Mesários). CRUD completo (criar/editar/remover/reativar)
+num modal único (`vdRenderModal`/`vdSalvar`) — placa/RENAVAM
+sempre normalizados (maiúscula, sem espaço) e telefone normalizado via
+`normalizarTelefoneWhatsapp()` ao salvar, município e veículo obrigatórios
+(nunca bloqueia por campo opcional — motorista/telefone/placa/RENAVAM/
+lotação/observação são todos livres pra ficar em branco). Toda escrita
+grava log de auditoria (`veiculo_disposicao_criado`/`_editado`/`_removido`/
+`_reativado`) em `sime_logs`.
+
+**Impressão sem popup** (`vdImprimir`, mesmo mecanismo `#print-area` +
+`window.print()` direto de todo o resto do sistema), lista agrupada por
+município — útil como relação física pro cartório levar/conferir no D-1.
+
+**Acesso**: mesma política de `SIME_rotas.html`/`SIME_convocacao.html` —
+sem trava de perfil, qualquer login da equipe cadastra/edita; gateado por
+`sime_acesso_perfil.js` do mesmo jeito que os demais módulos admin (o
+perfil `auxiliar_eleicao`, restrito a Problemas+Rotas, é redirecionado
+pra `SIME_principal.html` como qualquer outra página fora da lista
+permitida — nenhuma mudança em `sime_acesso_perfil.js` foi necessária,
+já que o módulo simplesmente não entrou no mapa de páginas permitidas
+daquele perfil).
+
+**Ligado ao hub de módulos** — `SIME_principal.html` (`MODS.adm`, logo
+depois de Rotas): "🚙 Veículos à Disposição — Veículos de órgãos públicos
+cedidos na véspera e no Dia D".
+
+Coberto por `tests/test_veiculos_disposicao.mjs` (40 checks): lista
+carrega agrupada por município com as contagens certas; badge "sem
+motorista designado"; busca e filtro por município; "mostrar removidos"
+revela o inativo com badge próprio; criar veículo novo (placa/telefone
+normalizados, quantidade default 1, log de auditoria); campos obrigatórios
+bloqueiam o salvar sem fechar o modal com erro; editar veículo existente;
+remover (soft-delete) e reativar, cada um com seu log; impressão lista os
+ativos com motorista/telefone e o badge "sem motorista"; Auxiliar de
+Eleição é redirecionado pra fora do módulo.
 
 ---
 

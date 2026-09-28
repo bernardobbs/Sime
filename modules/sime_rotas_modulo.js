@@ -749,7 +749,7 @@ async function rtCarregar(opts = {}) {
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
   const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude, horario_encerramento_previsto').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
@@ -953,7 +953,7 @@ function renderRotas() {
         ${(r.ponto_partida || r.destino) ? `<div class="ic-sub" style="margin:2px 0 0">📍 ${rtEsc(r.ponto_partida || '—')} → ${rtEsc(r.destino || '—')}</div>` : ''}
         ${(r.horario_saida || r.horario_chegada_previsto) ? `<div class="ic-sub" style="margin:2px 0 0">🕐 Sai ${rtFmtHora(r.horario_saida) || '—'} · chega (previsão) ${rtFmtHora(r.horario_chegada_previsto) || '—'}</div>` : ''}
         ${r.tempo_parada_min != null && secoes.length ? `<div class="ic-sub" style="margin:2px 0 0">⏱️ ${secoes.length} parada(s) × ${r.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(r, secoes.length))} parado(a)${r.horario_saida ? ` — sem contar deslocamento, libera por volta de ${rtSomarMinutos(r.horario_saida, rtTempoTotalParadasMin(r, secoes.length))}` : ''}</div>` : ''}
-        ${r.responsavel_ator_id ? `<div class="ic-sub" style="margin:2px 0 0">👤 Responsável: ${rtEsc(rtNomeAtor(r.responsavel_ator_id) || '—')}</div>` : ''}
+        ${r.responsavel_ator_id ? `<div class="ic-sub" style="margin:2px 0 0">👤 Responsável: ${rtEsc(rtNomeAtor(r.responsavel_ator_id) || '—')}${r.placa ? ` · 🚗 ${rtEsc(r.placa)}` : ''}</div>` : ''}
         ${conflitos.length ? `<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">⚠️ ${rtEsc(rtNomeAtor(r.responsavel_ator_id))} também está escalado na Rota ${conflitos.map(c => rtEsc(c.codigo)).join(', ')} nesse horário</div>` : ''}
         ${r.urnas_estimadas != null ? `<div class="ic-sub" style="margin:2px 0 0">Urnas estimadas: ${r.urnas_estimadas}</div>` : ''}
         ${r.rota_origem_id ? `<div class="ic-sub" style="margin:2px 0 0">↩️ Recolhimento gerado a partir da Rota ${rtEsc(rtDados.rotas.find(x => x.id === r.rota_origem_id)?.codigo || '—')}</div>` : ''}
@@ -1228,6 +1228,8 @@ function rtRenderModalRota() {
           ${(rtDados.atores || []).map(a => `<option value="${a.id}" ${r?.responsavel_ator_id === a.id ? 'selected' : ''}>${rtEsc(a.nome_completo)}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group"><label for="rt-placa">Placa do veículo (opcional)</label>
+        <input type="text" id="rt-placa" maxlength="10" value="${rtEsc(r?.placa || '')}" placeholder="ABC1D23"></div>
       <div class="form-group"><label for="rt-urnas">Urnas estimadas (opcional)</label>
         <input type="number" id="rt-urnas" min="0" value="${r?.urnas_estimadas ?? ''}"></div>
       ${!isNovo ? `
@@ -1439,6 +1441,7 @@ async function rtSalvarRota() {
   const horario_saida = document.getElementById('rt-hora-saida').value || null;
   const horario_chegada_previsto = document.getElementById('rt-hora-chegada').value || null;
   const responsavel_ator_id = document.getElementById('rt-responsavel').value || null;
+  const placa = document.getElementById('rt-placa').value.trim().toUpperCase().replace(/\s+/g, '') || null;
   const urnasRaw = document.getElementById('rt-urnas').value.trim();
   const urnas_estimadas = urnasRaw ? parseInt(urnasRaw, 10) : null;
   const tempoParadaRaw = document.getElementById('rt-tempo-parada').value.trim();
@@ -1453,7 +1456,7 @@ async function rtSalvarRota() {
 
   const zonaId = rtDados.zonaId;
   const rotaOrigemId = isNovo ? rtGerandoRetornoDe : null;
-  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, tempo_parada_min };
+  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, tempo_parada_min };
   try {
     if (isNovo) {
       const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true, rota_origem_id: rotaOrigemId || null });
@@ -1817,7 +1820,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
       <div class="rt-info">
         <div><b>Partida:</b> ${rtEsc(rota.ponto_partida || '—')}${rota.horario_saida ? ` — ${rtEsc(rtFmtHora(rota.horario_saida))}` : ''}</div>
         <div><b>Destino:</b> ${rtEsc(rota.destino || '—')}${rota.horario_chegada_previsto ? ` — previsão ${rtEsc(rtFmtHora(rota.horario_chegada_previsto))}` : ''}</div>
-        <div><b>Responsável:</b> ${responsavel ? `${rtEsc(responsavel.nome_completo)}${responsavel.telefone_whatsapp ? ` — ${rtEsc(fmtTelefone(responsavel.telefone_whatsapp))}` : ''}` : '—'}</div>
+        <div><b>Responsável:</b> ${responsavel ? `${rtEsc(responsavel.nome_completo)}${responsavel.telefone_whatsapp ? ` — ${rtEsc(fmtTelefone(responsavel.telefone_whatsapp))}` : ''}` : '—'}${rota.placa ? ` · <b>Placa:</b> ${rtEsc(rota.placa)}` : ''}</div>
         ${rota.municipios?.length ? `<div><b>Municípios:</b> ${rota.municipios.map(rtEsc).join(', ')}</div>` : ''}
         ${rota.urnas_estimadas != null ? `<div><b>Urnas estimadas:</b> ${rota.urnas_estimadas}</div>` : ''}
         ${rota.tempo_parada_min != null && paradas.length ? `<div><b>Tempo estimado parado:</b> ${paradas.length} × ${rota.tempo_parada_min} min ≈ ${rtFmtMinutos(rtTempoTotalParadasMin(rota, paradas.length))} (sem contar deslocamento entre paradas)</div>` : ''}

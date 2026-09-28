@@ -466,6 +466,7 @@ async function lerDestino(p) {
   await p.fill('#rt-hora-saida', '06:30');
   await p.fill('#rt-hora-chegada', '08:00');
   await p.selectOption('#rt-responsavel', 'a1');
+  await p.fill('#rt-placa', 'abc 1d23');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(150);
 
@@ -473,11 +474,13 @@ async function lerDestino(p) {
   check('grava ponto_partida/destino', upd?.payload?.ponto_partida === 'Sede da 7ª Zona' && upd?.payload?.destino === 'Escola B', JSON.stringify(upd));
   check('grava horário de saída/chegada prevista', upd?.payload?.horario_saida === '06:30' && upd?.payload?.horario_chegada_previsto === '08:00', JSON.stringify(upd));
   check('grava o responsável escolhido', upd?.payload?.responsavel_ator_id === 'a1', JSON.stringify(upd));
+  check('grava a placa normalizada (sem espaço, maiúscula)', upd?.payload?.placa === 'ABC1D23', JSON.stringify(upd));
 
   const txt = (await p.locator('.import-card:has-text("Rota 002")').textContent()).replace(/\s+/g, ' ');
   check('card mostra partida → destino', /Sede da 7ª Zona → Escola B/.test(txt), txt);
   check('card mostra horário de saída/chegada', /06:30/.test(txt) && /08:00/.test(txt), txt);
   check('card mostra o nome do responsável', /JOAO MOTORISTA/.test(txt), txt);
+  check('card mostra a placa junto do responsável', /ABC1D23/.test(txt), txt);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -634,6 +637,7 @@ async function lerDestino(p) {
   r1.responsavel_ator_id = 'a1';
   r1.ponto_partida = 'Sede da 7ª Zona'; r1.destino = 'Escola A';
   r1.horario_saida = '06:30'; r1.horario_chegada_previsto = '08:00';
+  r1.placa = 'NHX1905';
   m.sime_atores.find(a => a.id === 'a1').telefone_whatsapp = '5586999998888';
   const { p, erros } = await abrir(ctx, m);
   await login(p);
@@ -647,6 +651,7 @@ async function lerDestino(p) {
   check('ficha mostra código e nome da rota', /Ficha de Rota — 001 — Rota 001/.test(printHtml), printHtml.slice(0, 300));
   check('ficha mostra partida/destino/horários', /Sede da 7ª Zona/.test(printHtml) && /06:30/.test(printHtml) && /Escola A/.test(printHtml) && /08:00/.test(printHtml), printHtml);
   check('ficha mostra o responsável com telefone formatado', /JOAO MOTORISTA/.test(printHtml) && /\(86\) 99999-8888/.test(printHtml), printHtml);
+  check('ficha mostra a placa do veículo junto do responsável', /NHX1905/.test(printHtml), printHtml);
   check('ficha lista as 2 paradas em ordem, com coordenadas de quem tem geo', /Grupo Escolar A[\s\S]*?-4\.83, -42\.16[\s\S]*?Grupo Escolar A[\s\S]*?sem geo/.test(printHtml.replace(/\s+/g, ' ')), printHtml);
 
   const logImpressao = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_ficha_impressa'));
