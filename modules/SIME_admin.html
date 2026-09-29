@@ -2299,15 +2299,19 @@ function exportarDados(){
 // Problemas de teste E estado de Dia D de teste presos na tela pra sempre,
 // sem nenhuma forma de limpar antes da operação real.
 //
-// Cobre sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE) e
-// sime_mesa_estado (chegada de mesário, votação, urna, pânico) — as duas
-// únicas tabelas que um ciclo de teste normalmente suja. Escopo continua
-// restrito à zona do usuário (sime_mesa_estado não tem zona_id direto — filtra
-// pelas seções da zona). Ação irreversível: confirmação mostra a contagem de
-// cada tabela antes de apagar.
+// Cobre sime_ocorrencias (+ sime_ocorrencia_eventos, por ON DELETE CASCADE),
+// sime_mesa_estado (chegada de mesário, votação, urna, pânico) e
+// sime_carga_lacre (carga/preparação/lacre, ver TV Preparação/Coordenador de
+// Preparação — adicionada em 29/09/2026: reportado com print mostrando "9 de
+// 174 lacradas" de teste presas na TV; até então este botão nunca cobria essa
+// tabela, mesmo lacuna dos outros dois já cobertos desde a criação). Escopo
+// continua restrito à zona do usuário (sime_mesa_estado/sime_carga_lacre não
+// têm zona_id direto — filtram por seções/eleições da zona). Ação
+// irreversível: confirmação mostra a contagem de cada tabela antes de apagar.
 //
-// ⚠️ Isso é seguro só ENQUANTO sime_mesa_estado só tem dado de teste — a
-// partir do Dia D real (04/10), essa tabela vira a operação de verdade e este
+// ⚠️ Isso é seguro só ENQUANTO essas tabelas só têm dado de teste — a
+// partir do Dia D real (04/10), sime_mesa_estado vira a operação de verdade
+// (sime_carga_lacre é só D-X/D-1, já encerrada nessa altura) e este
 // botão não deve mais ser usado (fica registrado em sime_logs quem/quando
 // apagou, pra rastrear se alguém clicar por engano depois disso).
 async function resetarProblemas(){
@@ -2330,32 +2334,47 @@ async function resetarProblemas(){
   if(e0){ showToast('⚠ Falha ao carregar seções: ' + e0.message); return; }
   const secaoIds = (secoes || []).map(s => s.id);
 
-  const [{ count: countProb, error: e1 }, { count: countMesa, error: e2 }] = await Promise.all([
+  // sime_carga_lacre não tem zona_id direto (igual sime_mesa_estado) — escopa
+  // pelas eleições da zona (os dois turnos, não só a ativa: teste pode ter
+  // sujado qualquer um dos dois). Achado real em 29/09/2026: o botão nunca
+  // cobriu essa tabela desde que foi criado — carga/preparação/lacre de
+  // teste (10 seções "lacradas") ficaram presas na TV Preparação/Coordenador
+  // de Preparação pra sempre, sem nenhum jeito de limpar antes do Dia D real.
+  const { data: eleicoes, error: e3 } = await sb.from('sime_eleicoes').select('id').eq('zona_id', zonaId);
+  if(e3){ showToast('⚠ Falha ao carregar eleições: ' + e3.message); return; }
+  const eleicaoIds = (eleicoes || []).map(e => e.id);
+
+  const [{ count: countProb, error: e1 }, { count: countMesa, error: e2 }, { count: countCarga, error: e4 }] = await Promise.all([
     sb.from('sime_ocorrencias').select('id', { count: 'exact', head: true }).eq('zona_id', zonaId),
     secaoIds.length
       ? sb.from('sime_mesa_estado').select('secao_id', { count: 'exact', head: true }).in('secao_id', secaoIds)
       : Promise.resolve({ count: 0, error: null }),
+    eleicaoIds.length
+      ? sb.from('sime_carga_lacre').select('id', { count: 'exact', head: true }).in('eleicao_id', eleicaoIds)
+      : Promise.resolve({ count: 0, error: null }),
   ]);
   if(e1){ showToast('⚠ Falha ao contar ocorrências: ' + e1.message); return; }
   if(e2){ showToast('⚠ Falha ao contar estado de Dia D: ' + e2.message); return; }
-  const totalProb = countProb || 0, totalMesa = countMesa || 0;
-  if(!totalProb && !totalMesa){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
+  if(e4){ showToast('⚠ Falha ao contar carga/lacre: ' + e4.message); return; }
+  const totalProb = countProb || 0, totalMesa = countMesa || 0, totalCarga = countCarga || 0;
+  if(!totalProb && !totalMesa && !totalCarga){ showToast('ℹ Nenhum dado de teste pra apagar nesta zona'); return; }
 
   pedirConfirmacao(
-    `Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses dois.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`,
+    `Apagar PERMANENTEMENTE desta zona:\n\n• ${totalProb} problema${totalProb!==1?'s':''} (sime_ocorrencias)\n• ${totalMesa} seção${totalMesa!==1?'ões':''} com estado de Dia D — chegada, votação, urna, pânico (sime_mesa_estado)\n• ${totalCarga} seção${totalCarga!==1?'ões':''} com carga/preparação/lacre — TV Preparação (sime_carga_lacre)\n\nIsso NÃO pode ser desfeito. Não afeta cadastro de seções nem mesários — só o que já foi registrado nesses três.\n\n⚠️ Use isso só em teste. Depois que o Dia D real começar (04/10), isso apagaria a operação de verdade.`,
     async () => {
       const ops = [];
       if(totalProb) ops.push(sb.from('sime_ocorrencias').delete().eq('zona_id', zonaId));
       if(totalMesa) ops.push(sb.from('sime_mesa_estado').delete().in('secao_id', secaoIds));
+      if(totalCarga) ops.push(sb.from('sime_carga_lacre').delete().in('eleicao_id', eleicaoIds));
       const resultados = await Promise.all(ops);
       const falhou = resultados.find(r => r.error);
       if(falhou){ closeModal(); showToast('⚠ '+mensagemErroAmigavel(falhou.error, 'Falha ao apagar')); return; }
 
       const { data: ts } = await sb.rpc('sime_now');
-      await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa }, ts });
+      await sb.from('sime_logs').insert({ acao: 'reset_dados_teste', modulo: 'admin', payload: { zona_id: zonaId, problemas: totalProb, mesa_estado: totalMesa, carga_lacre: totalCarga }, ts });
 
       closeModal();
-      showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''} e ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D apagados`);
+      showToast(`✓ ${totalProb} problema${totalProb!==1?'s':''}, ${totalMesa} seção${totalMesa!==1?'ões':''} de Dia D e ${totalCarga} de carga/lacre apagados`);
       await atualizarBadgeProblemas();
     },
     { titulo:'Apagar dados de teste', labelOk:'🗑 Apagar permanentemente', classeOk:'btn-red' }

@@ -7711,6 +7711,45 @@ Eleição é redirecionado pra fora do módulo.
 
 ---
 
+## BUG REAL — "RESETAR DADOS DE TESTE" NUNCA COBRIA CARGA/LACRE (`SIME_admin.html`, 29/09/2026)
+
+Reportado com print da TV Preparação em produção, mostrando "9 de 174
+lacradas"/6%/6%/5% de carga-preparação-lacre — dados de teste (10 seções)
+gravados em `sime_carga_lacre` que nunca sumiam da tela. Pedido direto:
+"devemos zerar isso".
+
+**Causa raiz**: o botão "🗑 Resetar dados de teste" (`resetarProblemas()`,
+criado em 10/09/2026 pra substituir o antigo botão que virou no-op depois da
+migração pro Supabase — ver comentário original no código) só cobria
+`sime_ocorrencias` e `sime_mesa_estado`, as duas tabelas que motivaram a
+criação do botão na época — `sime_carga_lacre` (carga/preparação/lacre, a
+tabela que alimenta TV Preparação e Coordenador de Preparação) nunca tinha
+sido incluída, mesma classe de "esqueceu de cobrir uma tabela nova" já
+documentada alhures neste arquivo.
+
+**Zerado direto em produção** (7ª Zona, turno 1 — o único com dado: 10
+linhas) via SQL Editor/MCP, com log de auditoria
+(`reset_dados_teste_carga_lacre`) — não esperou o próximo clique no botão
+do Admin, já que o cartório queria a tela limpa na hora.
+
+**Corrigido pra não se repetir**: `resetarProblemas()` passou a contar e
+apagar `sime_carga_lacre` também, escopado pelas eleições da zona
+(`sime_carga_lacre` não tem `zona_id` direto, igual `sime_mesa_estado` —
+mesmo padrão de filtrar por FK indireta), com a contagem entrando no texto
+de confirmação e no log (`payload.carga_lacre`) junto das outras duas.
+Mesmo bloqueio automático a partir do Dia D real (04/10) já existia — não
+precisou de ajuste, já que `sime_carga_lacre` é dado só de D-X/D-1, sempre
+encerrado bem antes dessa data.
+
+Coberto por `tests/test_admin_reset_problemas.mjs` (18 checks, arquivo
+revisado — 5 casos): confirma e apaga as 3 tabelas juntas, escopado por
+zona (preserva `carga_lacre` de outra zona); zona sem nada pra apagar não
+pergunta nada; cancelar não apaga nenhuma das três; só `mesa_estado` de
+teste apaga só o que existe; só `carga_lacre` de teste (sem
+ocorrências/mesa_estado) também apaga só o que existe.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
