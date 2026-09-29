@@ -8005,6 +8005,58 @@ intacta, descrição ASCII sem acento, cidade, valor) e o CRC16 recalculado
 canvas e atualiza a legenda; sem chave, `raPixPayload()` sempre devolve
 `null`.
 
+**Confirmado em produção no mesmo dia** — screenshot real do cartório
+mostrando o QR desenhado com CPF já formatado como chave
+("072.580.733-45"), valor e "Auxílio Alimentação Eleições 2026 - Seção
+197" na legenda, exatamente como desenhado.
+
+---
+
+## FILTRO POR FUNÇÃO E MUNICÍPIO NO CONTROLE DE PAGAMENTO (30/09/2026)
+
+Pedido direto: "quero poder filtrar somente os presidentes, somente os
+coordenadores ou somente os auxiliares" + "e filtrar por municipio
+também" — a lista de `raPagFiltrar()` (aba "🍽️ Auxílio Alimentação" →
+"💰 Controle de pagamento") só tinha filtro por status
+(Pendentes/Pagos/Todos) e busca por nome/seção; ganhou dois `<select>`
+novos, mesmo padrão já usado em "Contatar mesários"
+(`CM_FUNCAO_FILTRO`/`cmFiltroMunicipio`, `sime_contatar_mesarios.js`) —
+os dois filtros são independentes e se combinam entre si e com o de
+status/busca já existentes.
+
+**`RA_FUNCAO_FILTRO`** — 4 grupos: "Presidente (Mesa Receptora)",
+"Coordenador(a) de Acessibilidade", "Auxiliar de Serviços Eleitorais",
+"Membro da Junta Eleitoral" (mais "Todas as funções", default). O rótulo
+é "Presidente", não "Mesário" — `raDados.todos` já filtra a mesa
+receptora só pro Presidente desde 25/09/2026 (os outros 3 cargos de mesa
+nunca aparecem no Controle de pagamento, ver "CONTROLE DE PAGAMENTO DO
+AUXÍLIO ALIMENTAÇÃO" acima), então todo registro `funcao==='mesario'`
+aqui já É um Presidente. Junta Eleitoral entrou na lista mesmo sem ter
+sido citada no pedido — `raDados.todos` já inclui esse grupo, e deixá-lo
+de fora faria "Todas as funções" incluir gente que nenhum filtro
+específico conseguiria isolar. Cada opção mostra a contagem entre
+parênteses (mesmo padrão de `CM_FUNCAO_FILTRO`), calculada sobre o
+universo inteiro (`raDados.todos`), não sobre o que já está filtrado por
+outro critério.
+
+**Filtro por município** — `<select>` com os municípios distintos das
+seções de quem está em `raDados.todos` (`a.sec?.municipio`, já resolvido
+por pessoa desde `raCarregar()` — não precisa de lookup por id como em
+`sime_contatar_mesarios.js`). Quem não tem seção resolvida (coordenador
+sem local, todo auxiliar de eleição — o TRE quase nunca traz esse dado
+pra essa função, ver Convocação — e a junta eleitoral) nunca casa com
+nenhum município específico e some da lista sempre que um é selecionado,
+só reaparecendo em "Todos os municípios" — mesmo comportamento já
+documentado pro filtro homônimo de Contatar Mesários.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 14, 10 checks
+novos — 134 no total no arquivo): as duas listas de opções com as
+contagens/municípios certos; cada filtro de função isolado (Presidente/
+Coordenador/Auxiliar) mostra só o grupo certo; filtro por município
+isolado (Campo Maior/Jatobá do Piauí) mostra só quem tem seção lá; os
+dois combinados mostram só quem bate nos dois ao mesmo tempo; voltar os
+dois pra "Todos" restaura a lista completa.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

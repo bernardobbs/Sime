@@ -72,6 +72,25 @@ let raPagBusca = '';
 let raPagBuscaTimer = null;
 let raPagFiltroStatus = 'pendente'; // '' (todos) | 'pago' | 'pendente' — abre em "pendente" (visão mais acionável)
 
+// Filtro por função (30/09/2026, pedido direto: "quero poder filtrar
+// somente os presidentes, somente os coordenadores ou somente os
+// auxiliares") + por município (mesmo pedido, "e filtrar por municipio
+// também") — mesmo padrão já usado em "Contatar mesários"
+// (CM_FUNCAO_FILTRO/cmFiltroMunicipio, sime_contatar_mesarios.js), dois
+// filtros independentes que se combinam com o de status e a busca.
+// "Presidente" continua sendo o rótulo, não "Mesário" — `raDados.todos`
+// já filtra a mesa receptora só pro Presidente (ver raCarregar()), então
+// todo registro `funcao==='mesario'` aqui É um Presidente.
+const RA_FUNCAO_FILTRO = [
+  { valor: '', label: 'Todas as funções' },
+  { valor: 'mesario', label: 'Presidente (Mesa Receptora)' },
+  { valor: 'coord_acessibilidade', label: 'Coordenador(a) de Acessibilidade' },
+  { valor: 'auxiliar_eleicao', label: 'Auxiliar de Serviços Eleitorais' },
+  { valor: 'junta_eleitoral', label: 'Membro da Junta Eleitoral' },
+];
+let raPagFiltroFuncao = '';
+let raPagFiltroMunicipio = '';
+
 function raEsc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -512,6 +531,8 @@ function raPagFiltrar() {
   return (raDados.todos || []).filter(a => {
     if (raPagFiltroStatus === 'pago' && !a.auxilio_alimentacao_pago) return false;
     if (raPagFiltroStatus === 'pendente' && a.auxilio_alimentacao_pago) return false;
+    if (raPagFiltroFuncao && a.funcao !== raPagFiltroFuncao) return false;
+    if (raPagFiltroMunicipio && (a.sec?.municipio || '') !== raPagFiltroMunicipio) return false;
     if (q) {
       const secaoTxt = a.sec ? String(a.sec.numero) : '';
       if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
@@ -526,6 +547,14 @@ function raOnPagBuscaInput(v) {
 }
 function raPagMudarFiltroStatus(v) {
   raPagFiltroStatus = v;
+  renderControlePagamento();
+}
+function raPagMudarFiltroFuncao(v) {
+  raPagFiltroFuncao = v;
+  renderControlePagamento();
+}
+function raPagMudarFiltroMunicipio(v) {
+  raPagFiltroMunicipio = v;
   renderControlePagamento();
 }
 function raPagResumo() {
@@ -996,6 +1025,9 @@ function renderControlePagamento() {
   const lista = raPagFiltrar();
   const resumo = raPagResumo();
   const cfg = raCfg();
+  const contagemFuncao = {};
+  for (const a of raDados.todos || []) contagemFuncao[a.funcao] = (contagemFuncao[a.funcao] || 0) + 1;
+  const municipios = [...new Set((raDados.todos || []).map(a => a.sec?.municipio).filter(Boolean))].sort();
 
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 8px">${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.${resumo.conflitos ? ` <b style="color:var(--red)">⚠️ ${resumo.conflitos} com papel duplicado — confira antes de marcar como pago.</b>` : ''}</div>
@@ -1005,6 +1037,13 @@ function renderControlePagamento() {
         <option value="pendente" ${raPagFiltroStatus === 'pendente' ? 'selected' : ''}>Pendentes</option>
         <option value="pago" ${raPagFiltroStatus === 'pago' ? 'selected' : ''}>Pagos</option>
         <option value="" ${raPagFiltroStatus === '' ? 'selected' : ''}>Todos</option>
+      </select>
+      <select onchange="raPagMudarFiltroFuncao(this.value)" style="padding:8px 10px;border-radius:7px">
+        ${RA_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${raPagFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${(raDados.todos || []).length})`}</option>`).join('')}
+      </select>
+      <select onchange="raPagMudarFiltroMunicipio(this.value)" style="padding:8px 10px;border-radius:7px">
+        <option value="" ${raPagFiltroMunicipio === '' ? 'selected' : ''}>Todos os municípios</option>
+        ${municipios.map(m => `<option value="${raEsc(m)}" ${raPagFiltroMunicipio === m ? 'selected' : ''}>${raEsc(m)}</option>`).join('')}
       </select>
     </div>
     <div class="m-hist" style="max-height:480px;overflow-y:auto">

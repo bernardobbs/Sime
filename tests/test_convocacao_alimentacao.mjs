@@ -691,6 +691,86 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 14. Filtro por função (Presidente/Coordenador/Auxiliar) e por
+// município no Controle de pagamento (30/09/2026, pedido direto: "quero
+// poder filtrar somente os presidentes, somente os coordenadores ou
+// somente os auxiliares e filtrar por municipio também") — dois filtros
+// independentes (RA_FUNCAO_FILTRO/raPagFiltroMunicipio), combinam entre si
+// e com o filtro de status/busca já existentes. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Só a mock() base tem "Campo Maior" no universo de pagamento (as
+  // Seções 5/63) — acrescenta uma coordenadora em Jatobá do Piauí (Seção
+  // 12) pra ter um segundo município de verdade pra filtrar.
+  m.sime_atores.push({ id: 'c4', nome_completo: 'COORDENADORA JATOBA', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's2', inscricao_eleitoral: '121212121212', zona_id: 'z7', ativo: true });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-pagamento select >> nth=0', ''); // status: Todos, pra ver o universo inteiro
+  await p.waitForTimeout(200);
+
+  const selects = p.locator('#ra-controle-pagamento select');
+  const selFuncao = selects.nth(1);
+  const selMunicipio = selects.nth(2);
+
+  const opcoesFuncao = (await selFuncao.textContent()).replace(/\s+/g, ' ');
+  check('select de função lista os 4 grupos com contagem certa', /Todas as funções \(8\)/.test(opcoesFuncao) && /Presidente \(Mesa Receptora\) \(2\)/.test(opcoesFuncao) && /Coordenador\(a\) de Acessibilidade \(3\)/.test(opcoesFuncao) && /Auxiliar de Serviços Eleitorais \(2\)/.test(opcoesFuncao) && /Membro da Junta Eleitoral \(1\)/.test(opcoesFuncao), opcoesFuncao);
+
+  const opcoesMunicipio = (await selMunicipio.textContent()).replace(/\s+/g, ' ');
+  check('select de município lista os municípios distintos (só quem tem seção)', /Todos os municípios/.test(opcoesMunicipio) && /Campo Maior/.test(opcoesMunicipio) && /Jatobá do Piauí/.test(opcoesMunicipio), opcoesMunicipio);
+
+  await selFuncao.selectOption('mesario');
+  await p.waitForTimeout(200);
+  let itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('filtro "Presidente" mostra só os 2 Presidentes, nenhum coordenador/auxiliar/junta', itens.length === 2 && itens.every(t => /PRESIDENTE/.test(t)), JSON.stringify(itens));
+
+  await selFuncao.selectOption('coord_acessibilidade');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('filtro "Coordenador" mostra as 3 coordenadoras/coordenador, ninguém mais', itens.length === 3 && itens.every(t => /COORDENAD/.test(t)), JSON.stringify(itens));
+
+  await selFuncao.selectOption('auxiliar_eleicao');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('filtro "Auxiliar" mostra só os 2 auxiliares de eleição', itens.length === 2 && itens.every(t => /AUXILIAR/.test(t)), JSON.stringify(itens));
+
+  // Volta pra "Todas as funções" e filtra só por município — Campo Maior
+  // tem 3 pessoas com seção lá (2 Presidentes + 1 coordenadora); a
+  // coordenadora de Jatobá e quem não tem seção nenhuma (2 auxiliares +
+  // junta + 1 coordenador sem local) ficam de fora.
+  await selFuncao.selectOption('');
+  await p.waitForTimeout(150);
+  await selMunicipio.selectOption('Campo Maior');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('filtro "Campo Maior" mostra as 3 pessoas com seção nesse município', itens.length === 3, JSON.stringify(itens));
+
+  await selMunicipio.selectOption('Jatobá do Piauí');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('filtro "Jatobá do Piauí" mostra só a coordenadora de lá', itens.length === 1 && /COORDENADORA JATOBA/.test(itens[0]), JSON.stringify(itens));
+
+  // Combina função + município — só quem bate nos dois ao mesmo tempo.
+  await selMunicipio.selectOption('Campo Maior');
+  await selFuncao.selectOption('coord_acessibilidade');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('função + município combinados mostram só quem bate nos dois (COORDENADORA BEATRIZ)', itens.length === 1 && /COORDENADORA BEATRIZ/.test(itens[0]), JSON.stringify(itens));
+
+  await selMunicipio.selectOption('');
+  await selFuncao.selectOption('');
+  await p.waitForTimeout(200);
+  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  check('voltando os dois pra "Todos"/"Todas as funções", a lista completa (8) volta', itens.length === 8, JSON.stringify(itens));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
