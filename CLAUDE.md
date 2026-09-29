@@ -7928,6 +7928,85 @@ Eduardo da Silva, mesmo padrão aceito.
 
 ---
 
+## QR CODE DO PIX NO MODAL DE PAGAMENTO (`sime_recibo_alimentacao.js`, 30/09/2026)
+
+Pedido direto: "conseguiriamos gerar o qrcode do pix ao abrir o modal com o
+valor preenchido e informação Auxilio alimentação eleições 2026 seção
+XXX?" — modal de detalhe do Controle de Pagamento (29/09/2026, ver acima)
+ganhou um BR Code (o payload padrão "Pix Copia e Cola", formato EMVCo/
+Bacen) montado inteiramente no cliente, sem nenhum serviço externo — mesmo
+offline-first de sempre.
+
+**CRC16 calculado na mão** (`raCrc16Ccitt`, polinômio 0x1021, semente
+0xFFFF — mesmo algoritmo que qualquer Pix estático real usa) — nenhuma lib
+de Pix foi adicionada; o payload (`raPixPayload`) é só concatenação de
+campos TLV (`raEmvTLV`) seguindo a estrutura oficial: GUI
+`br.gov.bcb.pix` (00) + chave (01) + informação adicional (02, dentro do
+campo 26), valor (54), país BR (58), nome/cidade do recebedor (59/60),
+txid `***` (62-05, sem referência específica), CRC (63). Desenhado com o
+**mesmo `vendor/qrcode.min.js`** já usado em `SIME_tokens.html`/
+`SIME_rotas.html` — `<script>` novo em `SIME_convocacao.html`, carregado
+antes de `sime_recibo_alimentacao.js`.
+
+**Nunca inventa uma chave** — `raPixPayload()` devolve `null` sem PIX
+cadastrado, e o modal mostra "Cadastre uma chave PIX acima pra gerar o QR
+Code" no lugar do QR (`raRenderModalQr`, chamado no fim de
+`raRenderModal()` — elemento `#ra-modal-qr` já existe no DOM nesse ponto,
+síncrono). A **chave em si nunca passa por normalização** (nem maiúscula,
+nem remoção de acento) — é um identificador funcional, precisa ficar
+exatamente como cadastrada; só nome/cidade/descrição (texto de exibição)
+passam por `raPixAscii()` (remove acento, filtra pra ASCII puro, maiúsculo
+— exigência do próprio padrão BR Code, que só aceita esse charset nesses
+campos).
+
+**"Informação" pedida vira o subcampo 02 do campo 26** (`raPixDescricao()`:
+"Auxílio Alimentação Eleições 2026 - Seção N", ou sem a seção quando a
+pessoa não tem uma resolvida — coordenador de acessibilidade sem local,
+auxiliar de eleição, junta eleitoral) — é o texto que os apps de banco
+mostram ao pagador como descrição da transação. **Cortado dinamicamente**
+pra nunca estourar o limite de 99 bytes do campo 26 inteiro (prefixo de
+tamanho de 2 dígitos) — sobra sempre espaço pro GUI + chave primeiro
+(prioridade: a chave nunca pode ser cortada), a descrição é que cede
+espaço quando a chave é mais longa (e-mail, chave aleatória de 36
+caracteres).
+
+**Valor e cidade vêm do que já existe, nunca inventados**: valor é o mesmo
+já mostrado no campo "Valor" do modal (sugerido por
+`raValorSugerido()`, ou o já salvo em `auxilio_alimentacao_valor_pago`);
+cidade é `sime_zonas.municipio` (a cidade da zona — não a cidade real de
+registro da conta bancária da pessoa, que o SIME não tem como saber; é a
+mesma aproximação que qualquer gerador de QR Pix de terceiro faz quando
+não conhece o banco do recebedor).
+
+**Atualiza sozinho quando a chave ou o valor mudam** — `raSalvarPix()`
+(onblur do campo Chave PIX) e `raModalSalvarValorPago()` (onblur do campo
+Valor, inclusive via o seletor "🗓️ dias…" do auxiliar) chamam
+`raRenderModal()` de novo depois de salvar (mesmo padrão que
+`raModalTogglePago()` já usava) — o QR e a legenda embaixo dele (valor +
+descrição) refletem a mudança sem precisar fechar/reabrir o modal, sem
+acumular canvas (`el.innerHTML = ''` no início de `raRenderModalQr()`).
+
+**Não testado contra um app de banco de verdade** — sandbox sem acesso a
+rede/celular pra escanear um QR real. O formato segue à risca o que
+qualquer BR Code real decodificado já mostrou (GUI minúsculo, estrutura
+TLV, CRC16-CCITT) e o CRC foi conferido em teste (recalculado à parte,
+mesmo algoritmo, bate com o gravado no fim do payload) — mas vale o
+cartório escanear um de teste (ex.: o modal de qualquer mesário com PIX
+cadastrado) antes de confiar nisso em massa. Se o escaneamento real
+revelar algo errado (campo fora de ordem, charset rejeitado por um banco
+específico), é ajuste pontual em `raPixPayload()`, não redesenho.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 13, 13 checks
+novos — 124 no total no arquivo): sem PIX não desenha QR nenhum e mostra a
+dica; salvar o PIX desenha o QR (1 canvas só); legenda mostra valor e
+seção certos; estrutura do payload (indicador de formato, GUI, chave
+intacta, descrição ASCII sem acento, cidade, valor) e o CRC16 recalculado
+à parte batendo com o gravado; editar o valor redesenha sem acumular
+canvas e atualiza a legenda; sem chave, `raPixPayload()` sempre devolve
+`null`.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

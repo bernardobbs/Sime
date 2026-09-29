@@ -617,6 +617,80 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 13. QR Code do PIX no modal (30/09/2026, pedido direto: "conseguiriamos
+// gerar o qrcode do pix ao abrir o modal com o valor preenchido e
+// informação Auxilio alimentação eleições 2026 seção XXX?") — BR Code
+// (Pix Copia e Cola) montado no cliente com vendor/qrcode.min.js (mesma lib
+// já usada em SIME_tokens.html/SIME_rotas.html, agora também carregada em
+// SIME_convocacao.html). Só aparece quando a pessoa já tem PIX cadastrado;
+// atualiza sozinho quando a chave ou o valor mudam. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.waitForTimeout(200);
+
+  // m5 = Presidente, Seção 63, ainda sem PIX cadastrado.
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.waitForTimeout(300);
+
+  check('sem PIX cadastrado, o modal não desenha QR nenhum', await p.locator('#ra-modal-qr canvas').count() === 0);
+  check('sem PIX, mostra a dica pra cadastrar em vez do QR', /Cadastre uma chave PIX acima pra gerar o QR Code/.test(await p.locator('#ra-modal-qr-wrap').textContent()));
+
+  await p.fill('#ra-modal-pix', '11122233344');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(300);
+
+  check('depois de salvar o PIX, o QR aparece (1 canvas só, não acumula)', await p.locator('#ra-modal-qr canvas').count() === 1);
+  const legenda1 = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('legenda mostra o valor sugerido (Presidente = R$260) e a seção', /R\$\s*260,00/.test(legenda1) && /Seção 63/.test(legenda1), legenda1);
+
+  // Payload EMV/BR Code em si — checa estrutura (GUI, chave, descrição
+  // ASCII sem acento, cidade da zona) e o CRC16 (recalculado à parte no
+  // teste, mesmo algoritmo, pra confirmar que bate com o que o app gravou
+  // no fim do payload).
+  const payload = await p.evaluate(() =>
+    window.raPixPayload('11122233344', 'PRESIDENTE MARIA DA SILVA SANTOS SOUSA OLIVEIRA', 'Campo Maior', 260, 'Auxílio Alimentação Eleições 2026 - Seção 63'));
+  check('payload começa com o indicador de formato padrão (000201)', payload.startsWith('000201'), payload);
+  check('payload contém o GUI oficial do Pix', payload.includes('br.gov.bcb.pix'), payload);
+  check('payload contém a chave PIX exata (sem alterar maiúscula/acento)', payload.includes('11122233344'), payload);
+  check('payload contém a descrição em ASCII maiúsculo, sem acento', payload.includes('AUXILIO ALIMENTACAO ELEICOES 2026 - SECAO 63'), payload);
+  check('payload contém a cidade da zona (também sem acento)', payload.includes('CAMPO MAIOR'), payload);
+  check('payload contém o valor formatado com 2 casas', payload.includes('260.00'), payload);
+  const crcRecalculado = await p.evaluate((pl) => {
+    let crc = 0xFFFF;
+    const str = pl.slice(0, -4);
+    for (let i = 0; i < str.length; i++) {
+      crc ^= (str.charCodeAt(i) & 0xFF) << 8;
+      for (let j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+    }
+    return crc.toString(16).toUpperCase().padStart(4, '0');
+  }, payload);
+  check('CRC16 no fim do payload bate com o recalculado (CCITT, poly 0x1021)', payload.slice(-4) === crcRecalculado, `${payload.slice(-4)} vs ${crcRecalculado}`);
+
+  // Editar o valor também redesenha o QR (não acumula canvas) e atualiza a
+  // legenda — mesmo padrão de "qualquer edição de chave/valor reflete na
+  // hora", sem precisar fechar/reabrir o modal.
+  await p.fill('#ra-modal-valor', '300.00');
+  await p.locator('#ra-modal-valor').blur();
+  await p.waitForTimeout(300);
+  check('editar o valor mantém 1 canvas só (redesenha, não acumula)', await p.locator('#ra-modal-qr canvas').count() === 1);
+  const legenda2 = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('legenda reflete o novo valor depois de editar', /R\$\s*300,00/.test(legenda2), legenda2);
+
+  // Sem chave nenhuma, o payload nunca é gerado (nunca inventa uma chave).
+  const semChave = await p.evaluate(() => window.raPixPayload('', 'FULANO', 'Campo Maior', 100, 'teste'));
+  check('sem chave PIX, raPixPayload devolve null (nunca inventa)', semChave === null);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

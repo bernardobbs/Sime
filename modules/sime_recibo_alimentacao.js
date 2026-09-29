@@ -623,6 +623,7 @@ async function raModalSalvarValorPago(atorId, valorStr) {
   if (!(valor >= 0)) { showToast('⚠ Valor inválido'); if (raModalId === atorId) raRenderModal(); return; }
   await raSalvarValorPagoCore(atorId, valor);
   renderControlePagamento();
+  if (raModalId === atorId) raRenderModal(); // redesenha o QR com o valor novo
 }
 
 // Seletor "🗓️ dias…" do auxiliar de eleição — atalho que só preenche e
@@ -712,6 +713,109 @@ async function raSalvarPix(id) {
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('mesario_editar_pix', '', { ator_id: id, pix: p.pix, autor });
   showToast('✓ Chave PIX salva');
+  if (raModalId === id) raRenderModal(); // redesenha o QR com a chave nova
+}
+
+// ── QR Code do PIX (30/09/2026, pedido direto: "conseguiriamos gerar o
+// qrcode do pix ao abrir o modal com o valor preenchido e informação
+// Auxilio alimentação eleições 2026 seção XXX?") — BR Code (o payload
+// "Pix Copia e Cola" padrão EMVCo/Bacen) montado inteiramente no cliente,
+// sem nenhum serviço externo (mesmo offline-first de sempre): CRC16
+// calculado na mão, desenhado com o MESMO `vendor/qrcode.min.js` já usado
+// em SIME_tokens.html/SIME_rotas.html (`<script>` novo em
+// SIME_convocacao.html). Só aparece quando a pessoa já tem uma chave PIX
+// cadastrada — sem chave não há o que codificar, nunca inventa uma.
+//
+// Não testado contra um app de banco de verdade (sandbox sem acesso a
+// rede/celular) — o formato segue o Manual de Padrões do Bacen à risca
+// (mesma estrutura de qualquer QR Pix estático real já visto em produção:
+// GUI "br.gov.bcb.pix" minúsculo, CRC16-CCITT com polinômio 0x1021 e
+// semente 0xFFFF), mas vale o cartório escanear um de teste antes de
+// confiar nele em massa. ──
+
+function raCrc16Ccitt(str) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= (str.charCodeAt(i) & 0xFF) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function raEmvTLV(id, valor) {
+  const v = String(valor);
+  return `${id}${String(v.length).padStart(2, '0')}${v}`;
+}
+
+// O BR Code só aceita ASCII (sem acento) nos campos de texto livre —
+// maiúsculas por convenção (não é exigência do padrão, mas é o que a
+// maioria dos apps de banco mostra). Nunca aplicado à CHAVE em si (essa
+// precisa ficar exatamente como cadastrada).
+function raPixAscii(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .toUpperCase().trim();
+}
+
+function raPixDescricao(p) {
+  return `Auxílio Alimentação Eleições 2026${p.sec ? ` - Seção ${p.sec.numero}` : ''}`;
+}
+
+// Monta o payload completo (com CRC), pronto pra virar QR ou ser colado
+// como "Pix Copia e Cola". `chave` nunca passa por raPixAscii — é um
+// identificador funcional, não texto de exibição.
+function raPixPayload(chave, nome, cidade, valor, descricao) {
+  const chaveTrim = String(chave || '').trim();
+  if (!chaveTrim) return null;
+
+  const guiField = raEmvTLV('00', 'br.gov.bcb.pix');
+  const chaveField = raEmvTLV('01', chaveTrim);
+  // "Informação adicional" (subcampo 02) — texto mostrado ao pagador. O
+  // campo 26 inteiro é limitado a 99 bytes (prefixo de tamanho de 2
+  // dígitos), então a descrição é cortada dinamicamente pra sempre sobrar
+  // espaço pro GUI + chave, nunca estourando o payload por causa de uma
+  // chave mais longa (e-mail, chave aleatória).
+  const maxDesc = Math.max(0, 99 - guiField.length - chaveField.length - 4);
+  const descAscii = raPixAscii(descricao).slice(0, maxDesc);
+  const descField = descAscii ? raEmvTLV('02', descAscii) : '';
+  const merchantAccount = raEmvTLV('26', guiField + chaveField + descField);
+
+  const nomeField = raEmvTLV('59', raPixAscii(nome).slice(0, 25) || 'AUXILIO ALIMENTACAO');
+  const cidadeField = raEmvTLV('60', raPixAscii(cidade).slice(0, 15) || 'BRASIL');
+  const valorField = valor > 0 ? raEmvTLV('54', Number(valor).toFixed(2)) : '';
+  const addData = raEmvTLV('62', raEmvTLV('05', '***'));
+
+  const semCrc =
+    raEmvTLV('00', '01') +
+    merchantAccount +
+    '52040000' +
+    '5303986' +
+    valorField +
+    '5802BR' +
+    nomeField +
+    cidadeField +
+    addData +
+    '6304';
+
+  return semCrc + raCrc16Ccitt(semCrc);
+}
+
+// Desenha (ou limpa) o QR dentro do `#ra-modal-qr` já presente no HTML do
+// modal — chamado logo depois de `raRenderModal()` montar o innerHTML
+// (elemento já existe no DOM nesse ponto, síncrono).
+function raRenderModalQr(p, valorAtual) {
+  const el = document.getElementById('ra-modal-qr');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!p.pix || !window.QRCode) return;
+  const payload = raPixPayload(p.pix, p.nome_completo, raDados?.zona?.municipio, valorAtual, raPixDescricao(p));
+  if (!payload) return;
+  try {
+    new QRCode(el, { text: payload, width: 190, height: 190, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } catch (e) { /* payload malformado — nunca trava o modal por causa do QR */ }
 }
 
 async function raAbrirModal(id) {
@@ -740,6 +844,7 @@ function raRenderModal() {
   const blocoObs = observacoes.length
     ? [...observacoes].reverse().map(txt => `<div class="m-hist-item">${raEsc(txt)}</div>`).join('')
     : '<div class="ic-sub" style="margin:0">Nenhuma observação registrada ainda.</div>';
+  const valorAtual = p.auxilio_alimentacao_valor_pago != null ? Number(p.auxilio_alimentacao_valor_pago) : raValorSugerido(p, cfg);
 
   modal.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -766,7 +871,7 @@ function raRenderModal() {
       <label style="font-size:.72rem;color:var(--text2)">Valor
         <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
           <span style="font-size:.85rem">R$</span>
-          <input id="ra-modal-valor" type="text" value="${p.auxilio_alimentacao_valor_pago != null ? Number(p.auxilio_alimentacao_valor_pago).toFixed(2) : raValorSugerido(p, cfg).toFixed(2)}" onblur="raModalSalvarValorPago('${p.id}', this.value)" style="width:90px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          <input id="ra-modal-valor" type="text" value="${valorAtual.toFixed(2)}" onblur="raModalSalvarValorPago('${p.id}', this.value)" style="width:90px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
         </div>
       </label>
       <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
@@ -774,6 +879,14 @@ function raRenderModal() {
       </label>
     </div>
     ${p.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(p.auxilio_alimentacao_pago_em))}</div>` : ''}
+
+    <div style="margin-top:4px;text-align:center" id="ra-modal-qr-wrap">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📱 QR Code do PIX</label>
+      <div id="ra-modal-qr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>
+      ${p.pix
+        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(raPixDescricao(p))}</div>`
+        : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>'}
+    </div>
 
     <div style="margin-top:12px">
       <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:3px">📝 Observação</label>
@@ -786,6 +899,7 @@ function raRenderModal() {
       <button class="btn btn-out" onclick="raFecharModal()">Fechar</button>
     </div>
   `;
+  raRenderModalQr(p, valorAtual);
 }
 
 // ── Sub-abas: Impressão × Controle de pagamento (29/09/2026, pedido
