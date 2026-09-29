@@ -8059,6 +8059,69 @@ dois pra "Todos" restaura a lista completa.
 
 ---
 
+## BUG REAL — QR DO PIX DAVA "CHAVE NÃO ENCONTRADA" (`sime_recibo_alimentacao.js`, 30/09/2026)
+
+Reportado com print: o cartório escaneou um QR real de produção (chave
+"86981083472", Seção 167) e o banco devolveu "chave não encontrada" — o
+QR em si estava correto estruturalmente (mesmo formato já confirmado
+funcionando horas antes com outra pessoa, ver "Confirmado em produção" no
+bloco acima), mas a CHAVE dentro dele nunca existiria no DICT (registro
+de chaves do Bacen) daquele jeito.
+
+**Causa raiz**: `raPixPayload()` sempre usava `sime_atores.pix` — texto
+livre, "nunca formatado, nunca validado por regex" por desenho (mesmo
+critério de `uc_equatorial`/`codigo_rastreio`) — exatamente como o
+cartório digitou, sem nenhuma normalização. Isso é seguro pro CAMPO
+armazenado (é só um dado de referência), mas deixou de ser inofensivo no
+dia em que esse valor passou a alimentar um payload de pagamento real: o
+cartório tinha digitado o TELEFONE da pessoa sem o prefixo "+55"
+("86981083472" — DDD 86 + 9 dígitos, mas o formato oficial de chave-
+telefone no DICT é sempre E.164 completo, "+5586981083472") — o banco
+comparou a chave literal contra o registro e não achou nada, porque não
+é assim que uma chave-telefone é de fato registrada.
+
+**Mesmo problema, achado ao investigar, também no caso já "confirmado
+funcionando" horas antes**: aquele PIX era um CPF digitado COM pontuação
+("072.580.733-45") — a chave-CPF registrada no DICT nunca tem ponto/
+traço ("07258073345"); o QR daquela pessoa também geraria "chave não
+encontrada" se de fato fosse escaneado por um app de pagamento pra
+completar a transferência (só não tinha sido testado até o fim).
+
+**Corrigido com `raPixChaveNormalizada()`** — só ajusta o valor usado pra
+MONTAR O PAYLOAD do QR, nunca `sime_atores.pix` em si (o campo salvo
+continua exatamente como o cartório digitou, mesma filosofia de sempre).
+Decide com segurança, nunca adivinha o resto:
+- **E-mail** (contém `@`), **já em E.164** (começa com `+`) e **chave
+  aleatória** (formato UUID) — nunca tocados, já estão no formato certo.
+- **14 dígitos** → CNPJ, só remove pontuação/barra.
+- **11 dígitos que passam no dígito verificador de CPF**
+  (`raCpfValido()`, algoritmo padrão) → CPF, só remove pontuação.
+- **10 ou 11 dígitos que NÃO passam no dígito verificador de CPF** →
+  telefone com DDD, ganha o prefixo `+55` — é exatamente a desambiguação
+  que resolve os dois casos reais: "86981083472" falha a validação de
+  CPF (dígito verificador não bate) e vira `+5586981083472`;
+  "07258073345" PASSA na validação (é um CPF de verdade) e fica só
+  com os dígitos, sem prefixo nenhum.
+- Qualquer outro formato (não bate com nenhum padrão conhecido) — devolve
+  exatamente como digitado, nunca força um ajuste sem certeza.
+
+**Modal avisa quando ajusta, nunca em silêncio** — quando a chave usada
+no QR difere da digitada, uma nota aparece abaixo da legenda ("🔧 chave
+usada no QR: +5586981083472 — ajustada pro formato que o banco
+reconhece") — o cartório vê exatamente o que o sistema decidiu, sem
+precisar adivinhar por que o QR "ficou diferente" do que foi digitado.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 15, 15 checks
+novos — 149 no total no arquivo): os dois casos reais (telefone sem
+"+55", CPF com pontuação) e mais 7 variações (CPF já limpo, outro CPF
+válido, CNPJ com pontuação, e-mail, já em E.164, UUID, vazio); o payload
+do QR usa a chave normalizada de ponta a ponta; a nota aparece no modal
+só quando a chave de fato muda; `sime_atores.pix` continua salvo
+exatamente como digitado (com pontuação inclusive) — a normalização é só
+pro QR.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

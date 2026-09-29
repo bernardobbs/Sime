@@ -793,9 +793,52 @@ function raPixDescricao(p) {
   return `Auxílio Alimentação Eleições 2026${p.sec ? ` - Seção ${p.sec.numero}` : ''}`;
 }
 
+// Validação real do dígito verificador de CPF (algoritmo padrão) — usada
+// só pra DESAMBIGUAR um número de 11 dígitos (ver `raPixChaveNormalizada`
+// abaixo): CPF e telefone com DDD têm o mesmo tamanho, mas só um dos dois
+// passa nessa conta.
+function raCpfValido(cpf) {
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false; // 11 dígitos repetidos nunca é CPF de verdade
+  const calcDv = (tamBase) => {
+    let soma = 0;
+    for (let i = 0; i < tamBase; i++) soma += Number(cpf[i]) * (tamBase + 1 - i);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return calcDv(9) === Number(cpf[9]) && calcDv(10) === Number(cpf[10]);
+}
+
+// A chave como o cartório digitou raramente já está no formato EXATO que
+// o DICT (registro de chaves do Bacen) exige — achado real, reportado
+// pelo cartório escaneando um QR de produção com "chave não encontrada":
+// um telefone digitado sem o "+55" (ex.: "86981083472") nunca bate com
+// nenhuma chave registrada, porque o formato oficial de chave-telefone é
+// sempre E.164 completo ("+5586981083472"); o mesmo vale pra CPF digitado
+// com pontuação ("072.580.733-45" em vez de "07258073345" — a chave
+// registrada nunca tem ponto/traço). Normaliza só o que dá pra decidir
+// com segurança — e-mail, chave aleatória (UUID) e qualquer coisa que já
+// comece com "+" nunca são tocados; um número de 11 dígitos só vira
+// telefone quando NÃO passa na validação de CPF (`raCpfValido`), nunca
+// adivinha o contrário. NUNCA reescreve `sime_atores.pix` em si — só o
+// valor usado pra montar o payload do QR, o dado salvo continua
+// exatamente como o cartório digitou.
+function raPixChaveNormalizada(chaveOriginal) {
+  const bruta = String(chaveOriginal || '').trim();
+  if (!bruta) return bruta;
+  if (bruta.includes('@')) return bruta; // e-mail — nunca mexe
+  if (bruta.startsWith('+')) return bruta; // já em E.164 — nunca mexe
+  if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(bruta)) return bruta; // chave aleatória (UUID) — nunca mexe
+
+  const digitos = bruta.replace(/\D/g, '');
+  if (digitos.length === 14) return digitos; // CNPJ — só dígitos, sem pontuação
+  if (digitos.length === 11 && raCpfValido(digitos)) return digitos; // CPF de verdade — só dígitos
+  if (digitos.length === 10 || digitos.length === 11) return `+55${digitos}`; // telefone com DDD, sem "+55" — mesma premissa de DDD único do PI já usada alhures pra WhatsApp
+  return bruta; // não bate com nenhum padrão conhecido — devolve exatamente como digitado
+}
+
 // Monta o payload completo (com CRC), pronto pra virar QR ou ser colado
-// como "Pix Copia e Cola". `chave` nunca passa por raPixAscii — é um
-// identificador funcional, não texto de exibição.
+// como "Pix Copia e Cola". `chave` já deve vir normalizada
+// (`raPixChaveNormalizada`) — esta função nunca reformata, só monta o TLV.
 function raPixPayload(chave, nome, cidade, valor, descricao) {
   const chaveTrim = String(chave || '').trim();
   if (!chaveTrim) return null;
@@ -840,7 +883,7 @@ function raRenderModalQr(p, valorAtual) {
   if (!el) return;
   el.innerHTML = '';
   if (!p.pix || !window.QRCode) return;
-  const payload = raPixPayload(p.pix, p.nome_completo, raDados?.zona?.municipio, valorAtual, raPixDescricao(p));
+  const payload = raPixPayload(raPixChaveNormalizada(p.pix), p.nome_completo, raDados?.zona?.municipio, valorAtual, raPixDescricao(p));
   if (!payload) return;
   try {
     new QRCode(el, { text: payload, width: 190, height: 190, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
@@ -874,6 +917,8 @@ function raRenderModal() {
     ? [...observacoes].reverse().map(txt => `<div class="m-hist-item">${raEsc(txt)}</div>`).join('')
     : '<div class="ic-sub" style="margin:0">Nenhuma observação registrada ainda.</div>';
   const valorAtual = p.auxilio_alimentacao_valor_pago != null ? Number(p.auxilio_alimentacao_valor_pago) : raValorSugerido(p, cfg);
+  const chaveQr = p.pix ? raPixChaveNormalizada(p.pix) : '';
+  const chaveQrMudou = p.pix && chaveQr !== String(p.pix).trim();
 
   modal.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -913,7 +958,8 @@ function raRenderModal() {
       <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📱 QR Code do PIX</label>
       <div id="ra-modal-qr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>
       ${p.pix
-        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(raPixDescricao(p))}</div>`
+        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(raPixDescricao(p))}</div>
+           ${chaveQrMudou ? `<div class="ic-sub" style="margin:2px 0 0">🔧 chave usada no QR: <b>${raEsc(chaveQr)}</b> — ajustada pro formato que o banco reconhece</div>` : ''}`
         : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>'}
     </div>
 

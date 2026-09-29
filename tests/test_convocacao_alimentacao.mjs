@@ -771,6 +771,81 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 15. Normalização da chave PIX pro formato que o DICT reconhece
+// (30/09/2026, achado real reportado pelo cartório: escaneou um QR de
+// produção com telefone digitado sem "+55" e o banco devolveu "chave não
+// encontrada") — `raPixChaveNormalizada()` só toca o valor usado pra
+// montar o payload do QR, nunca o `sime_atores.pix` salvo. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+
+  // Telefone de 11 dígitos (DDD+9) sem "+55" — o caso real reportado —
+  // vira E.164 completo; CPF com pontuação vira só dígitos; o resto (CPF
+  // já limpo, CNPJ, e-mail, UUID, já em "+") nunca é tocado.
+  const casos = await p.evaluate(() => ([
+    window.raPixChaveNormalizada('86981083472'),           // telefone sem "+55" (caso real)
+    window.raPixChaveNormalizada('072.580.733-45'),        // CPF com pontuação
+    window.raPixChaveNormalizada('07258073345'),           // o mesmo CPF, já limpo — não muda
+    window.raPixChaveNormalizada('11144477735'),           // outro CPF válido, sem pontuação — não muda
+    window.raPixChaveNormalizada('12.345.678/0001-95'),    // CNPJ com pontuação — vira só dígitos
+    window.raPixChaveNormalizada('fulano@exemplo.com'),    // e-mail — nunca mexe
+    window.raPixChaveNormalizada('+5586999998888'),        // já em E.164 — nunca mexe
+    window.raPixChaveNormalizada('a1b2c3d4-e5f6-7890-abcd-ef1234567890'), // chave aleatória (UUID) — nunca mexe
+    window.raPixChaveNormalizada(''),                      // vazio — devolve vazio
+  ]));
+  check('telefone sem "+55" (11 dígitos, DDD+9) vira E.164 completo', casos[0] === '+5586981083472', casos[0]);
+  check('CPF com pontuação vira só dígitos (a mesma chave real do cartório)', casos[1] === '07258073345', casos[1]);
+  check('CPF já limpo não muda', casos[2] === '07258073345', casos[2]);
+  check('outro CPF válido (11144477735) não muda', casos[3] === '11144477735', casos[3]);
+  check('CNPJ com pontuação vira só dígitos', casos[4] === '12345678000195', casos[4]);
+  check('e-mail nunca é tocado', casos[5] === 'fulano@exemplo.com', casos[5]);
+  check('chave já em E.164 (+55...) nunca é tocada', casos[6] === '+5586999998888', casos[6]);
+  check('chave aleatória (UUID) nunca é tocada', casos[7] === 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', casos[7]);
+  check('chave vazia devolve vazio (nunca inventa)', casos[8] === '');
+
+  // O payload do QR usa a chave NORMALIZADA — mesmo caso real, ponta a
+  // ponta: telefone cru no campo vira "+55..." dentro do payload.
+  const payloadTel = await p.evaluate(() =>
+    window.raPixPayload(window.raPixChaveNormalizada('86981083472'), 'CICERO DE PAULO', 'Sigefredo Pacheco', 260, 'teste'));
+  check('payload do telefone corrigido contém a chave em E.164, não o valor cru digitado', payloadTel.includes('+5586981083472') && !payloadTel.includes('011186981083472'), payloadTel);
+
+  // No modal, quando a chave normalizada difere da digitada, aparece uma
+  // nota explicando o ajuste — nunca em silêncio.
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.waitForTimeout(200);
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.waitForTimeout(300);
+
+  await p.fill('#ra-modal-pix', '86981083472');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(300);
+  const legendaTel = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('modal avisa a chave ajustada quando digita telefone sem "+55"', /chave usada no QR: \+5586981083472/.test(legendaTel), legendaTel);
+
+  await p.fill('#ra-modal-pix', '072.580.733-45');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(300);
+  const legendaCpf = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('modal avisa a chave ajustada quando digita CPF com pontuação', /chave usada no QR: 07258073345/.test(legendaCpf), legendaCpf);
+  const pessoaSalva = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'm5'));
+  check('sime_atores.pix continua salvo EXATAMENTE como digitado (com pontuação), a normalização é só pro QR', pessoaSalva?.pix === '072.580.733-45', pessoaSalva?.pix);
+
+  await p.fill('#ra-modal-pix', 'fulano@exemplo.com');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(300);
+  const legendaEmail = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('sem ajuste nenhum (e-mail), a nota "chave usada no QR" não aparece', !/chave usada no QR/.test(legendaEmail), legendaEmail);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
