@@ -145,7 +145,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -561,37 +561,68 @@ function raValorSugerido(a, cfg) {
 // inicial no campo). Desmarcar limpa a data (deixou de estar pago agora),
 // mas mantém o valor no campo — é só um número de referência, não afirma
 // nada sozinho sem o checkbox marcado.
-async function raTogglePago(atorId, marcarPago) {
+//
+// Núcleo compartilhado (29/09/2026) entre a linha da lista e o modal de
+// detalhe (raAbrirModal) — cada um só resolve QUAL input de valor ler
+// (ids diferentes, pra não colidir com o elemento da lista escondida atrás
+// do overlay) e QUANDO re-renderizar o quê.
+async function raTogglePagoCore(atorId, marcarPago, valorDigitado) {
   const sb = window.supabaseAtores;
   const pessoa = (raDados.todos || []).find(a => a.id === atorId);
-  if (!pessoa) return;
-  const valorEl = document.getElementById(`ra-pag-valor-${atorId}`);
-  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  if (!pessoa) return false;
   const payload = marcarPago
     ? { auxilio_alimentacao_pago: true, auxilio_alimentacao_valor_pago: (valorDigitado >= 0 ? valorDigitado : raCfg().valor), auxilio_alimentacao_pago_em: new Date().toISOString() }
     : { auxilio_alimentacao_pago: false, auxilio_alimentacao_pago_em: null };
   const { error } = await sb.from('sime_atores').update(payload).eq('id', atorId);
-  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); renderControlePagamento(); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
   Object.assign(pessoa, payload);
-  await log(marcarPago ? 'mesario_auxilio_alimentacao_pago' : 'mesario_auxilio_alimentacao_despago', '', { ator_id: atorId, nome: pessoa.nome_completo, valor: pessoa.auxilio_alimentacao_valor_pago });
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log(marcarPago ? 'mesario_auxilio_alimentacao_pago' : 'mesario_auxilio_alimentacao_despago', '', { ator_id: atorId, nome: pessoa.nome_completo, valor: pessoa.auxilio_alimentacao_valor_pago, autor });
   showToast(marcarPago ? '✓ Marcado como pago' : '↺ Voltou a pendente');
+  return true;
+}
+
+async function raTogglePago(atorId, marcarPago) {
+  const valorEl = document.getElementById(`ra-pag-valor-${atorId}`);
+  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  await raTogglePagoCore(atorId, marcarPago, valorDigitado);
   renderControlePagamento();
+}
+
+async function raModalTogglePago(atorId, marcarPago) {
+  const valorEl = document.getElementById('ra-modal-valor');
+  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  await raTogglePagoCore(atorId, marcarPago, valorDigitado);
+  renderControlePagamento();
+  if (raModalId === atorId) raRenderModal();
 }
 
 // Valor editável independente do checkbox (onblur salva sozinho, mesmo
 // padrão já usado pro campo de PIX no modal de Contatar Mesários) — dá pra
 // corrigir o valor de alguém já marcado como pago sem precisar desmarcar e
 // marcar de novo.
-async function raSalvarValorPago(atorId, valorStr) {
-  const valor = parseFloat(String(valorStr).replace(',', '.'));
-  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); renderControlePagamento(); return; }
+async function raSalvarValorPagoCore(atorId, valor) {
   const pessoa = (raDados.todos || []).find(a => a.id === atorId);
   if (!pessoa || Number(pessoa.auxilio_alimentacao_valor_pago) === valor) return;
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_valor_pago: valor }).eq('id', atorId);
   if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   pessoa.auxilio_alimentacao_valor_pago = valor;
-  await log('mesario_auxilio_alimentacao_valor_editado', '', { ator_id: atorId, nome: pessoa.nome_completo, valor });
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_valor_editado', '', { ator_id: atorId, nome: pessoa.nome_completo, valor, autor });
+}
+
+async function raSalvarValorPago(atorId, valorStr) {
+  const valor = parseFloat(String(valorStr).replace(',', '.'));
+  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); renderControlePagamento(); return; }
+  await raSalvarValorPagoCore(atorId, valor);
+}
+
+async function raModalSalvarValorPago(atorId, valorStr) {
+  const valor = parseFloat(String(valorStr).replace(',', '.'));
+  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); if (raModalId === atorId) raRenderModal(); return; }
+  await raSalvarValorPagoCore(atorId, valor);
+  renderControlePagamento();
 }
 
 // Seletor "🗓️ dias…" do auxiliar de eleição — atalho que só preenche e
@@ -605,6 +636,156 @@ function raPagAplicarDias(atorId, dias) {
   const el = document.getElementById(`ra-pag-valor-${atorId}`);
   if (el) el.value = valor.toFixed(2);
   raSalvarValorPago(atorId, String(valor));
+}
+
+function raModalAplicarDias(atorId, dias) {
+  if (!dias) return;
+  const valor = dias === '2' ? RA_VALOR_AUXILIAR_2_DIAS : RA_VALOR_AUXILIAR_1_DIA;
+  const el = document.getElementById('ra-modal-valor');
+  if (el) el.value = valor.toFixed(2);
+  raModalSalvarValorPago(atorId, String(valor));
+}
+
+// ── Modal de detalhe por pessoa (29/09/2026, pedido direto: "quero poder
+// clicar no nome do mesário, para verificar o pix, informar se o pix foi
+// feito, o valor e uma observação") — reaproveita o overlay/#modal-body
+// compartilhado por toda SIME_convocacao.html (mesmo padrão de
+// cmAbrirModal/vlRenderModal/rsAbrirVoluntarios). PIX e observação usam os
+// MESMOS campos (`sime_atores.pix`/`observacao`) e a MESMA ação de log
+// (`mesario_editar_pix`/`mesario_observacao_adicionada`) já usadas em
+// "Contatar mesários" — uma edição feita por aqui aparece certinho na
+// timeline daquele modal também, sem duplicar rótulo nenhum. Duplicado (não
+// importado) porque este arquivo tem seu próprio cache em memória
+// (`raDados.todos`), diferente de `cmDados.pessoas` — mesmo critério "nunca
+// compartilha estado entre módulos" já documentado alhures no projeto. ──
+let raModalId = null;
+
+function raPessoaModal() {
+  return (raDados?.todos || []).find(a => a.id === raModalId) || null;
+}
+
+function raParseObservacoes(texto) {
+  if (!texto) return [];
+  return texto.split(/(?=\[\d{4}-\d{2}-\d{2})/).map(s => s.trim()).filter(Boolean);
+}
+
+async function raAppendObservacao(id, texto) {
+  const sb = window.supabaseAtores;
+  const p = (raDados.todos || []).find(x => x.id === id);
+  if (!p) return false;
+  const [{ data: ts }, autor] = await Promise.all([
+    sb.rpc('sime_now'),
+    window.nomeDoUsuario ? window.nomeDoUsuario() : 'Cartório',
+  ]);
+  const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ${autor} (cartório): ${texto}`;
+  const nova = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
+  const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
+  p.observacao = nova;
+  await log('mesario_observacao_adicionada', '', { ator_id: id, autor });
+  return true;
+}
+
+async function raAdicionarObservacaoModal(id) {
+  const campo = document.getElementById('ra-modal-obs-nova');
+  const texto = (campo?.value || '').trim();
+  if (!texto) { showToast('⚠ Digite algo antes de adicionar'); return; }
+  const ok = await raAppendObservacao(id, texto);
+  if (!ok) return;
+  campo.value = '';
+  showToast('✓ Observação adicionada');
+  if (raModalId === id) raRenderModal();
+}
+
+// Mesmo padrão onblur-salva-sozinho já usado pro campo de PIX no modal de
+// Contatar Mesários (`cmSalvarPix`) — mesma coluna, mesma ação de log.
+async function raSalvarPix(id) {
+  const campo = document.getElementById('ra-modal-pix');
+  if (!campo) return;
+  const pix = campo.value.trim();
+  const p = raPessoaModal();
+  if (!p || pix === (p.pix || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ pix: pix || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  p.pix = pix || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_editar_pix', '', { ator_id: id, pix: p.pix, autor });
+  showToast('✓ Chave PIX salva');
+}
+
+async function raAbrirModal(id) {
+  raModalId = id;
+  document.getElementById('overlay')?.classList.add('open');
+  if (!raDados || !raDados.todos) { await raCarregar(); if (raModalId !== id) return; }
+  raRenderModal();
+}
+
+function raFecharModal(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay')?.classList.remove('open');
+    raModalId = null;
+  }
+}
+
+function raRenderModal() {
+  const modal = document.getElementById('modal-body');
+  if (!modal) return;
+  modal.classList.remove('cm-modal-wide'); // defensivo — #modal-body é compartilhado com o modal de Contatar Mesários
+  const p = raPessoaModal();
+  if (!p) { modal.innerHTML = ''; return; }
+  const cfg = raCfg();
+  const outros = raOutrosPapeis(p);
+  const observacoes = raParseObservacoes(p.observacao);
+  const blocoObs = observacoes.length
+    ? [...observacoes].reverse().map(txt => `<div class="m-hist-item">${raEsc(txt)}</div>`).join('')
+    : '<div class="ic-sub" style="margin:0">Nenhuma observação registrada ainda.</div>';
+
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <div style="font-weight:800">${raEsc(p.nome_completo)}</div>
+        <div class="ic-sub" style="margin-bottom:0">${raEsc(raFuncaoLabel(p))}${p.sec ? ` — Seção ${p.sec.numero} (${raEsc(p.sec.local_nome || '')}, ${raEsc(p.sec.municipio || '')})` : ''}</div>
+      </div>
+      <button onclick="raFecharModal()" aria-label="Fechar" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text2);line-height:1">✕</button>
+    </div>
+    ${outros.length ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
+
+    <div class="form-group" style="margin-top:12px">
+      <label>Chave PIX</label>
+      <input id="ra-modal-pix" type="text" value="${raEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="raSalvarPix('${p.id}')">
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
+      ${p.funcao === 'auxiliar_eleicao' ? `
+      <select onchange="raModalAplicarDias('${p.id}', this.value)" style="font-size:.78rem;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)" title="Só ajusta o campo de valor abaixo — o que vale de verdade é o valor, não esta escolha">
+        <option value="">🗓️ dias…</option>
+        <option value="1">Só domingo (R$65)</option>
+        <option value="2">Sáb. + dom. (R$130)</option>
+      </select>` : ''}
+      <label style="font-size:.72rem;color:var(--text2)">Valor
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="font-size:.85rem">R$</span>
+          <input id="ra-modal-valor" type="text" value="${p.auxilio_alimentacao_valor_pago != null ? Number(p.auxilio_alimentacao_valor_pago).toFixed(2) : raValorSugerido(p, cfg).toFixed(2)}" onblur="raModalSalvarValorPago('${p.id}', this.value)" style="width:90px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        </div>
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
+        <input type="checkbox" ${p.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raModalTogglePago('${p.id}', this.checked)"> PIX feito
+      </label>
+    </div>
+    ${p.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(p.auxilio_alimentacao_pago_em))}</div>` : ''}
+
+    <div style="margin-top:12px">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:3px">📝 Observação</label>
+      <textarea id="ra-modal-obs-nova" rows="2" placeholder="Anotação livre sobre o pagamento…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font:inherit"></textarea>
+      <button class="btn btn-out" style="margin-top:6px" onclick="raAdicionarObservacaoModal('${p.id}')">➕ Adicionar observação</button>
+      <div class="m-hist" style="margin-top:10px">${blocoObs}</div>
+    </div>
+
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn btn-out" onclick="raFecharModal()">Fechar</button>
+    </div>
+  `;
 }
 
 function renderControlePagamento() {
@@ -635,7 +816,7 @@ function renderControlePagamento() {
         return `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <span>
-          <b>${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+          <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX, marcar pagamento e anotar observação">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
           ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
           ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
         </span>

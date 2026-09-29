@@ -7750,6 +7750,73 @@ ocorrências/mesa_estado) também apaga só o que existe.
 
 ---
 
+## MODAL DE DETALHE NO CONTROLE DE PAGAMENTO (`sime_recibo_alimentacao.js`, 29/09/2026)
+
+Pedido direto: "no controle de pagamento quero poder clicar no nome do
+mesário, para verificar o pix, informar se o pix foi feito, o valor e uma
+observação". Até aqui a seção "💰 Controle de pagamento" (25/09/2026, ver
+acima) já tinha "Pago" (checkbox) + valor editável direto na linha da
+lista, mas nada de PIX nem de observação — e a linha, sem espaço pra tudo
+isso, ia ficar espremida.
+
+**Reaproveita o overlay/`#modal-body` compartilhado da página** (mesmo
+padrão de `cmAbrirModal`/`vlRenderModal`/`rsAbrirVoluntarios`) —
+`raAbrirModal(id)`/`raFecharModal(e)`/`raRenderModal()`, novos. O nome de
+cada pessoa na lista virou clicável (`cursor:pointer`, sublinhado, mesmo
+estilo visual já usado pro nome do mesário no Dashboard de Convocação).
+`#overlay` (elemento único da página) ganhou `raFecharModal(event)` na
+cadeia de `onclick` que já tinha `cmFecharModal`/`vlFecharModal`/
+`rsFecharModal` — clicar fora do modal fecha, não importa qual dos quatro
+o abriu.
+
+**PIX e observação usam as MESMAS colunas e as MESMAS ações de log já
+usadas no modal de "Contatar mesários"** (`sime_atores.pix`/`observacao`,
+`mesario_editar_pix`/`mesario_observacao_adicionada`) — uma edição feita
+por aqui aparece certinho na timeline "📜 Atualizações"/"📝 Observações"
+daquele modal também, sem duplicar rótulo nenhum. `raAppendObservacao()`
+replica o mesmo padrão append-only de `cmAppendObservacao()` (carimbo
+`[AAAA-MM-DD HH:MM] Autor (cartório): texto`, via `sime_now()`, nunca
+sobrescreve) — **duplicado, não importado**: este arquivo tem seu próprio
+cache em memória (`raDados.todos`), diferente de `cmDados.pessoas` de
+`sime_contatar_mesarios.js`, mesmo critério "cada módulo resolve a própria
+pessoa no próprio cache" já usado alhures pra scripts que não compartilham
+estado entre si (mesmo carregados na mesma página).
+
+**"Pago"/valor viraram funções "core" compartilhadas** entre a linha da
+lista e o modal (`raTogglePagoCore`/`raSalvarValorPagoCore`) — cada
+chamador (`raTogglePago`/`raModalTogglePago`,
+`raSalvarValorPago`/`raModalSalvarValorPago`) só resolve QUAL input de
+valor ler (`ra-pag-valor-${id}` na lista, `ra-modal-valor` no modal — ids
+diferentes de propósito, pra não colidir com o elemento da lista escondido
+atrás do overlay quando o modal está aberto) e QUANDO re-renderizar o quê.
+Marcar/editar pelo modal sempre chama `renderControlePagamento()` também
+(não só `raRenderModal()`) — sem isso, a linha por baixo do overlay
+ficaria com o valor ANTIGO até o modal fechar e algo mais forçasse um
+re-render (busca, filtro), o que pareceria "não salvou" pro cartório.
+O seletor "🗓️ dias…" do auxiliar de eleição (`raModalAplicarDias`) também
+existe no modal, mesma regra de sempre (só ajusta o campo de valor, nunca
+guarda "quantos dias" como dado à parte).
+
+**Log de autor, adicionado no caminho** — `raTogglePagoCore`/
+`raSalvarValorPagoCore` (e por consequência as duas funções da lista que
+já existiam) passaram a gravar `autor` no payload do log, coisa que
+faltava desde 25/09/2026 (só `raImprimirDocumento`/`raSalvarConfig` já
+faziam isso nesta tela) — mesmo critério de rastreabilidade já cobrado
+alhures no projeto ("quem fez X"), aproveitado enquanto as funções já
+estavam sendo tocadas pra virar "core".
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 10-11, 101
+checks no total no arquivo): clicar no nome abre o modal com PIX vazio,
+checkbox desmarcado e valor já sugerido; editar o PIX grava com a mesma
+ação de log de Contatar mesários; marcar "PIX feito" grava com o valor do
+campo do modal e o resumo da lista por baixo já reflete; adicionar
+observação grava o carimbo certo, aparece na lista do próprio modal e
+limpa a caixa; fechar o modal remove a classe `open` do overlay; o aviso
+de papel duplicado (26/09/2026) também aparece dentro do modal, mesmo
+texto da linha da lista.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

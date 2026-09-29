@@ -489,6 +489,95 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 10. Modal de detalhe (29/09/2026, pedido direto: "quero poder clicar
+// no nome do mesário, para verificar o pix, informar se o pix foi feito, o
+// valor e uma observação") — abre no clique do nome, na lista do Controle de
+// pagamento; edita PIX/valor/pago e adiciona observação, tudo persistindo em
+// sime_atores (mesmas colunas/ações de log já usadas em "Contatar
+// mesários" — mesario_editar_pix/mesario_observacao_adicionada). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.waitForTimeout(200);
+
+  // Clica no nome do Presidente pendente (m5, Seção 63) — abre o modal
+  // compartilhado (#overlay/#modal-body).
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.waitForTimeout(300);
+
+  check('overlay abre', await p.locator('#overlay').evaluate(el => el.classList.contains('open')));
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('modal mostra o nome e o papel/seção da pessoa', /PRESIDENTE MARIA DA SILVA/.test(modalTxt) && /Presidente/.test(modalTxt) && /Seção 63/.test(modalTxt), modalTxt.slice(0, 300));
+  check('campo de PIX começa vazio (ninguém cadastrou ainda)', await p.locator('#ra-modal-pix').inputValue() === '');
+  check('checkbox "PIX feito" começa desmarcado', !(await p.locator('#modal-body input[type=checkbox]').isChecked()));
+  check('valor já vem sugerido em 260.00 (Presidente)', await p.locator('#ra-modal-valor').inputValue() === '260.00');
+
+  // Editar o PIX — onblur salva sozinho, mesma coluna/ação de log já
+  // usadas no modal de "Contatar mesários" (mesario_editar_pix).
+  await p.fill('#ra-modal-pix', '11122233344');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(200);
+  const updPix = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && e.payload.pix === '11122233344'));
+  check('editar o PIX grava em sime_atores', !!updPix, JSON.stringify(updPix));
+  const logPix = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_editar_pix' && l.payload.ator_id === 'm5'));
+  check('grava log mesario_editar_pix (mesma ação já usada em Contatar mesários)', !!logPix, JSON.stringify(logPix));
+
+  // Marcar "PIX feito" — usa o valor do próprio campo do modal (260).
+  await p.click('#modal-body input[type=checkbox]');
+  await p.waitForTimeout(200);
+  const updPago = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && e.payload.auxilio_alimentacao_pago === true));
+  check('marcar "PIX feito" no modal grava pago=true com o valor certo', updPago?.payload?.auxilio_alimentacao_valor_pago === 260, JSON.stringify(updPago));
+  const resumoDepois = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  check('a lista por baixo (mesmo escondida atrás do overlay) já reflete o pagamento no resumo', /1 de 7 já pagos/.test(resumoDepois), resumoDepois.slice(0, 200));
+
+  // Observação — mesmo campo/ação de log usados em Contatar mesários
+  // (mesario_observacao_adicionada), com o carimbo de autor/data.
+  await p.fill('#ra-modal-obs-nova', 'Confirmado por telefone com o presidente');
+  await p.click('#modal-body button:has-text("➕ Adicionar observação")');
+  await p.waitForTimeout(200);
+  const pessoaObs = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'm5'));
+  check('observação gravada em sime_atores.observacao com carimbo de autor/data', /\[2026-09-18 15:30\] Maria \(cartório\): Confirmado por telefone com o presidente/.test(pessoaObs?.observacao || ''), pessoaObs?.observacao);
+  const logObs = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_observacao_adicionada' && l.payload.ator_id === 'm5'));
+  check('grava log mesario_observacao_adicionada', !!logObs);
+  const modalTxt2 = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('observação nova aparece na lista dentro do próprio modal', /Confirmado por telefone com o presidente/.test(modalTxt2), modalTxt2.slice(-300));
+  check('caixa de observação foi limpa depois de adicionar', await p.locator('#ra-modal-obs-nova').inputValue() === '');
+
+  // Fechar o modal via botão dedicado.
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+  check('fechar o modal remove a classe "open" do overlay', !(await p.locator('#overlay').evaluate(el => el.classList.contains('open'))));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 11. Modal de detalhe também mostra o aviso de papel duplicado, mesmo
+// texto já usado na linha da lista (26/09/2026) ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push({ id: 'c3', nome_completo: 'COORDENADORA DUPLICADA MARIA', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's2', inscricao_eleitoral: '111111111111', zona_id: 'z7', ativo: true });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.waitForTimeout(200);
+
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") b');
+  await p.waitForTimeout(300);
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('modal do Presidente com conflito avisa a Coordenadora duplicada', /mesma pessoa também está em: Coordenador de Acessibilidade \(Seção 12\)/.test(modalTxt), modalTxt.slice(0, 400));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
