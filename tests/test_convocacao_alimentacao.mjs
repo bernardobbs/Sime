@@ -351,6 +351,8 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
 
   // Total = 2 Presidentes (m1, m5) + 2 coordenadores + 2 auxiliares + 1
   // junta (não-juiz) = 7. Os demais 5 mesários (1º/2º Mesário, 1º
@@ -463,6 +465,8 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
   await p.selectOption('#ra-controle-pagamento select', '');
   await p.waitForTimeout(200);
 
@@ -501,6 +505,8 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
   await p.selectOption('#ra-controle-pagamento select', '');
   await p.waitForTimeout(200);
 
@@ -566,6 +572,8 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
   await p.selectOption('#ra-controle-pagamento select', '');
   await p.waitForTimeout(200);
 
@@ -573,6 +581,37 @@ async function login(p) {
   await p.waitForTimeout(300);
   const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
   check('modal do Presidente com conflito avisa a Coordenadora duplicada', /mesma pessoa também está em: Coordenador de Acessibilidade \(Seção 12\)/.test(modalTxt), modalTxt.slice(0, 400));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 12. Sub-abas "🖨️ Impressão" × "💰 Controle de pagamento" (29/09/2026,
+// pedido direto: "melhore a aba de auxilio alimentação, com uma parte
+// separada só para impressão") — nasce em "Impressão"; os botões de gerar
+// recibo somem quando troca pra "Controle de pagamento", e vice-versa; o
+// contador de pagamento no próprio botão da sub-aba já reflete o resumo
+// sem precisar clicar nela. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  check('nasce na sub-aba Impressão — botão de Mesa Receptora visível de cara', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 1);
+  check('controle de pagamento não está no DOM ainda (só aparece na outra sub-aba)', await p.locator('#ra-controle-pagamento').count() === 0);
+  check('botão da sub-aba de pagamento já mostra o resumo (0/7) sem precisar clicar', /Controle de pagamento — 0\/7/.test(await p.locator('button:has-text("💰 Controle de pagamento")').textContent()));
+
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+  check('trocando pra "Controle de pagamento", os botões de imprimir somem', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 0);
+  check('e a lista de pagamento aparece', await p.locator('#ra-controle-pagamento').count() === 1);
+
+  await p.click('button:has-text("🖨️ Impressão")');
+  await p.waitForTimeout(300);
+  check('voltando pra "Impressão", a lista de pagamento some de novo', await p.locator('#ra-controle-pagamento').count() === 0);
+  check('e os botões de imprimir voltam', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 1);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();

@@ -788,6 +788,89 @@ function raRenderModal() {
   `;
 }
 
+// ── Sub-abas: Impressão × Controle de pagamento (29/09/2026, pedido
+// direto: "melhore a aba de auxilio alimentação, com uma parte separada só
+// para impressão"). Antes, os 4 cards de gerar recibo e o card de controle
+// de pagamento ficavam todos numa coluna só, sem separação — a lista de
+// pagamento (que pode ter dezenas de linhas) empurrava os botões de
+// impressão pra bem longe de onde a aba abre. Virou um alternador de 2
+// botões (`.btn-dark`/`.btn-out`, mesmo par já usado em toda ação de status
+// rápido do projeto — não reaproveita `.tab`/`.tabs`, que é controlado por
+// `goTab()`/`document.querySelectorAll('.tab')` das abas PRINCIPAIS da
+// página; usar a mesma classe aqui faria esse seletor pegar estes botões
+// também) — nasce em "Impressão" (`raSubTab`), o mesmo comportamento de
+// sempre pra quem nunca trocou de sub-aba. ──
+let raSubTab = 'impressao'; // 'impressao' | 'pagamento'
+
+function raMudarSubTab(t) {
+  raSubTab = t;
+  renderReciboAlimentacao();
+}
+
+function raHtmlSecaoImpressao(cfg) {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">⚙️ Configuração do auxílio</div>
+      <div class="ic-sub">Documento de distribuição do auxílio alimentação — mesmo modelo já usado pelo cartório no
+        ELO (Seção/Inscrição/Nome/Função/Assinatura), com espaço em branco pra eventual substituição de última hora
+        e o fechamento de "Total pago"/"Suprido". Só gera o documento — a confirmação de entrega é a própria
+        assinatura no papel, no ato.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+        <div>
+          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Valor (R$)</label>
+          <input id="ra-valor" type="text" value="${cfg.valor.toFixed(2)}" style="width:100px">
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Forma de auxílio</label>
+          <input id="ra-forma" type="text" value="${raEsc(cfg.forma)}" style="width:160px">
+        </div>
+        <button class="btn btn-out" onclick="raSalvarConfig()">💾 Salvar</button>
+      </div>
+      ${!raDados.eleicao ? '<div class="import-result ir-warn" style="margin-top:8px">⚠ Nenhuma eleição ativa nesta zona — valor/forma não podem ser salvos ainda.</div>' : ''}
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">🗳️ Mesa Receptora (${raDados.mesarios.length})</div>
+      <div class="ic-sub">Presidente + 1º/2º Mesário + 1º Secretário — uma folha por seção, com timbre
+        institucional, mesmo modelo do ELO.</div>
+      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.mesarios.length ? 'disabled' : ''} onclick="raImprimirMesaReceptora()">🖨️ Imprimir recibos — Mesa Receptora</button>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">♿ Coordenador de Acessibilidade (${raDados.coord.length})</div>
+      <div class="ic-sub">Um recibo por coordenador, agrupado por local de votação.</div>
+      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.coord.length ? 'disabled' : ''} onclick="raImprimirCoordenadores()">🖨️ Imprimir recibos — Coordenadores</button>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">🧰 Auxiliares de Eleição (${raDados.auxiliares.length})</div>
+      <div class="ic-sub">Recibo geral, em lista única (sem agrupar por local — a maioria não tem seção
+        resolvida). Sai em duas folhas separadas no mesmo clique — Sábado (D-1) e Domingo (Dia D) — já que este
+        grupo trabalha e recebe auxílio nos dois dias.</div>
+      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.auxiliares.length ? 'disabled' : ''} onclick="raImprimirAuxiliares()">🖨️ Imprimir recibos — Sábado e Domingo</button>
+    </div>
+
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">⚖️ Junta Eleitoral (${raDados.junta.length})</div>
+      <div class="ic-sub">Recibo geral, em lista única, um único dia. O Presidente da Junta (o Juiz Eleitoral,
+        por lei) nunca entra aqui — ele não assina esse auxílio.</div>
+      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.junta.length ? 'disabled' : ''} onclick="raImprimirJunta()">🖨️ Imprimir recibo — Junta Eleitoral</button>
+    </div>`;
+}
+
+function raHtmlSecaoPagamento() {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">💰 Controle de pagamento</div>
+      <div class="ic-sub">Quem já recebeu o auxílio de verdade — separado do documento impresso na aba
+        "🖨️ Impressão" (aquele é só o papel pra assinatura, este é o controle interno do cartório). Da mesa
+        receptora, só o Presidente recebe pagamento direto (R$260 — repassa aos outros 3 da mesa fora do sistema,
+        por isso só ele aparece aqui). Auxiliar de eleição recebe por dia trabalhado (R$65 só domingo, R$130
+        sábado + domingo — use o seletor 🗓️ ao lado do valor). Valor sempre editável, nunca travado.</div>
+      <div id="ra-controle-pagamento" style="margin-top:8px"></div>
+    </div>`;
+}
+
 function renderControlePagamento() {
   const alvo = document.getElementById('ra-controle-pagamento');
   if (!alvo) return;
@@ -859,64 +942,23 @@ function renderReciboAlimentacao() {
   }
 
   const cfg = raCfg();
+  const resumoPag = raPagResumo();
   c.innerHTML = `
     <div class="import-card">
-      <div class="ic-title">🍽️ Recibo de Auxílio Alimentação</div>
-      <div class="ic-sub">Documento de distribuição do auxílio alimentação — mesmo modelo já usado pelo cartório no
-        ELO (Seção/Inscrição/Nome/Função/Assinatura), com espaço em branco pra eventual substituição de última
-        hora e o fechamento de "Total pago"/"Suprido". Só gera o documento — a confirmação de entrega é a própria
-        assinatura no papel, no ato.</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
-        <div>
-          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Valor (R$)</label>
-          <input id="ra-valor" type="text" value="${cfg.valor.toFixed(2)}" style="width:100px">
-        </div>
-        <div>
-          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Forma de auxílio</label>
-          <input id="ra-forma" type="text" value="${raEsc(cfg.forma)}" style="width:160px">
-        </div>
-        <button class="btn btn-out" onclick="raSalvarConfig()">💾 Salvar</button>
+      <div class="ic-title">🍽️ Auxílio Alimentação</div>
+      <div class="ic-sub">Gerar os recibos pra assinatura no papel (aba "🖨️ Impressão") é uma coisa; saber quem já
+        recebeu o auxílio de verdade (aba "💰 Controle de pagamento") é outra — as duas ficam separadas pra não
+        misturar o documento com o acompanhamento do cartório.</div>
+    </div>
+
+    <div class="import-card" style="padding:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ${raSubTab === 'impressao' ? 'btn-dark' : 'btn-out'}" style="flex:1;min-width:180px" onclick="raMudarSubTab('impressao')">🖨️ Impressão</button>
+        <button class="btn ${raSubTab === 'pagamento' ? 'btn-dark' : 'btn-out'}" style="flex:1;min-width:180px" onclick="raMudarSubTab('pagamento')">💰 Controle de pagamento — ${resumoPag.pagos}/${resumoPag.total}${resumoPag.conflitos ? ' ⚠️' : ''}</button>
       </div>
-      ${!raDados.eleicao ? '<div class="import-result ir-warn" style="margin-top:8px">⚠ Nenhuma eleição ativa nesta zona — valor/forma não podem ser salvos ainda.</div>' : ''}
     </div>
 
-    <div class="import-card">
-      <div class="ic-title" style="font-size:.85rem">🗳️ Mesa Receptora (${raDados.mesarios.length})</div>
-      <div class="ic-sub">Presidente + 1º/2º Mesário + 1º Secretário — uma folha por seção, com timbre
-        institucional, mesmo modelo do ELO.</div>
-      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.mesarios.length ? 'disabled' : ''} onclick="raImprimirMesaReceptora()">🖨️ Imprimir recibos — Mesa Receptora</button>
-    </div>
-
-    <div class="import-card">
-      <div class="ic-title" style="font-size:.85rem">♿ Coordenador de Acessibilidade (${raDados.coord.length})</div>
-      <div class="ic-sub">Um recibo por coordenador, agrupado por local de votação.</div>
-      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.coord.length ? 'disabled' : ''} onclick="raImprimirCoordenadores()">🖨️ Imprimir recibos — Coordenadores</button>
-    </div>
-
-    <div class="import-card">
-      <div class="ic-title" style="font-size:.85rem">🧰 Auxiliares de Eleição (${raDados.auxiliares.length})</div>
-      <div class="ic-sub">Recibo geral, em lista única (sem agrupar por local — a maioria não tem seção
-        resolvida). Sai em duas folhas separadas no mesmo clique — Sábado (D-1) e Domingo (Dia D) — já que este
-        grupo trabalha e recebe auxílio nos dois dias.</div>
-      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.auxiliares.length ? 'disabled' : ''} onclick="raImprimirAuxiliares()">🖨️ Imprimir recibos — Sábado e Domingo</button>
-    </div>
-
-    <div class="import-card">
-      <div class="ic-title" style="font-size:.85rem">⚖️ Junta Eleitoral (${raDados.junta.length})</div>
-      <div class="ic-sub">Recibo geral, em lista única, um único dia. O Presidente da Junta (o Juiz Eleitoral,
-        por lei) nunca entra aqui — ele não assina esse auxílio.</div>
-      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.junta.length ? 'disabled' : ''} onclick="raImprimirJunta()">🖨️ Imprimir recibo — Junta Eleitoral</button>
-    </div>
-
-    <div class="import-card">
-      <div class="ic-title" style="font-size:.85rem">💰 Controle de pagamento</div>
-      <div class="ic-sub">Quem já recebeu o auxílio de verdade — separado do documento impresso acima (aquele é só
-        o papel pra assinatura, este é o controle interno do cartório). Da mesa receptora, só o Presidente recebe
-        pagamento direto (R$260 — repassa aos outros 3 da mesa fora do sistema, por isso só ele aparece aqui).
-        Auxiliar de eleição recebe por dia trabalhado (R$65 só domingo, R$130 sábado + domingo — use o seletor
-        🗓️ ao lado do valor). Valor sempre editável, nunca travado.</div>
-      <div id="ra-controle-pagamento" style="margin-top:8px"></div>
-    </div>
+    ${raSubTab === 'pagamento' ? raHtmlSecaoPagamento() : raHtmlSecaoImpressao(cfg)}
   `;
-  renderControlePagamento();
+  if (raSubTab === 'pagamento') renderControlePagamento();
 }

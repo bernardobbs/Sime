@@ -7817,6 +7817,60 @@ texto da linha da lista.
 
 ---
 
+## SUB-ABAS "🖨️ IMPRESSÃO" × "💰 CONTROLE DE PAGAMENTO" (`sime_recibo_alimentacao.js`, 29/09/2026)
+
+Pedido direto, na sequência de "consta 6 com papel duplicado — confira
+antes de marcar como pago" (o próprio cartório citando de volta o aviso já
+exibido pelo resumo do controle de pagamento — 3 títulos duplicados × 2
+pessoas cada, confirmado direto no banco, não um bug: nenhuma ação
+precisou de correção ali): "melhore a aba de auxilio alimentação, com uma
+parte separada só para impressão".
+
+Até aqui os 5 cards (config + Mesa Receptora + Coordenador + Auxiliares +
+Junta) e o card de "💰 Controle de pagamento" ficavam todos numa coluna só
+— a lista de pagamento (que cresce até dezenas de linhas por zona) empurrava
+os botões de imprimir bem pra baixo, e não havia nenhuma separação visual
+entre "gerar o papel pra assinatura" e "controlar quem já recebeu de
+verdade" (duas coisas que o próprio módulo já trata como conceitos
+distintos desde 25/09/2026 — ver seção acima).
+
+`raSubTab` (`'impressao'`|`'pagamento'`, novo, nasce em `'impressao'` —
+mesmo comportamento de sempre pra quem nunca trocou de sub-aba) — dois
+botões (`.btn-dark`/`.btn-out`, mesmo par de qualquer alternador de status
+rápido do projeto) no topo do conteúdo da aba, `raMudarSubTab()` troca o
+estado e rechama `renderReciboAlimentacao()`. **Deliberadamente não
+reaproveita `.tab`/`.tabs`** — essas classes são controladas por
+`goTab()`/`document.querySelectorAll('.tab')`, que já governam as abas
+PRINCIPAIS da página (Dashboard, Contatar mesários, etc.); usar a mesma
+classe aqui faria esse seletor genérico pegar estes botões também.
+
+`raHtmlSecaoImpressao(cfg)`/`raHtmlSecaoPagamento()` — os HTMLs que já
+existiam (config+4 cards de recibo; card com `#ra-controle-pagamento`)
+foram extraídos pra funções próprias, sem mudar o CONTEÚDO de nenhum dos
+dois — só sua composição, que agora é condicional a `raSubTab`. Só um dos
+dois é montado por vez: trocar de sub-aba faz `#ra-controle-pagamento`
+literalmente sair/entrar do DOM (não só ficar escondido por CSS) — é o que
+mantém `renderControlePagamento()` seguro de chamar fora de hora, já que a
+função já tinha `if (!alvo) return;` como guarda defensiva desde que
+nasceu.
+
+Botão da sub-aba de pagamento já mostra o resumo (`Xpago/Ytotal`, com um
+`⚠️` extra quando há conflito de papel) **sem precisar clicar nela** —
+`raPagResumo()` já é chamado toda vez que a aba renderiza, então o número
+fica visível de relance, incentivando abrir a sub-aba quando há algo pra
+conferir.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 12, novo — 109
+checks no total no arquivo): nasce em Impressão com os botões de recibo
+visíveis e a lista de pagamento fora do DOM; o botão da sub-aba já mostra
+o resumo sem clicar; trocar pra Controle de pagamento esconde os botões de
+imprimir e mostra a lista; voltar pra Impressão inverte os dois. Os blocos
+8-11 (controle de pagamento/modal, já existentes) precisaram de um clique
+a mais no início — trocar pra a sub-aba de pagamento antes de interagir com
+`#ra-controle-pagamento` — sem mudança no que cada um verifica.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
