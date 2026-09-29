@@ -7871,6 +7871,63 @@ a mais no início — trocar pra a sub-aba de pagamento antes de interagir com
 
 ---
 
+## SINCRONIZAÇÃO — RELATÓRIO ELO DE APOIO LOGÍSTICO (29/09/2026)
+
+Pedido direto: "verifique se os coordenadores e auxiliares esta atualizado
+no sime", com um `.xls` real anexado (`Relatorio_de_Mesario_por_Funcao_7.xls`,
+mesmo formato "Relatório de Mesários por Situação" já documentado em
+19/09/2026, aqui a variante `Tipo função: AL` — Apoio Logístico inteiro da
+7ª Zona, Coordenador de Acessibilidade + Auxiliar de Serviços Eleitorais,
+todos os municípios num arquivo só, 119 pessoas). Extraído com `xlrd`
+(`.xls` legado, mesmo caminho já usado em 29/09/2026 pra conferir os
+Presidentes) e um parser Python state-machine — validado contra os totais
+que o próprio relatório declara por bloco (119 batendo exato) antes de
+cruzar contra produção.
+
+Cruzamento por título de eleitor contra `sime_atores` (coord_acessibilidade
++ auxiliar_eleicao, 7ª Zona): **102 já batiam** certinho (ativos, mesma
+função). Três categorias de divergência, cada uma resolvida com o mesmo
+critério de sempre (nunca adivinha, carimba `observacao`, nunca reabre
+`dispensado_manual`):
+
+- **2 reativações** — ANA BEATRIZ QUADROS e LANA GRASIELLY DA SILVA PAIVA
+  (Coord. Acessibilidade, Campo Maior): inativas no SIME, mas o ELO ainda
+  lista como "Nomeado" e nenhuma tinha `dispensado_manual` — reativadas.
+- **3 designações novas** — CARLOS EDUARDO DA SILVA (Auxiliar de Eleição;
+  já existia no SIME como mesário Presidente, mesmo acúmulo legítimo já
+  aceito de Anita Alves de Oliveira/Luiz Carlos Santiago Junior — ver
+  "CONTROLE DE PAGAMENTO DO AUXÍLIO ALIMENTAÇÃO"), MARIA GARDENIA PEREIRA
+  e VERÔNICA OLIVEIRA MELO (Coordenadoras de Acessibilidade) — as três
+  ainda "Convocado" no ELO, não "Confirmado": inseridas com `confirmacao`
+  no default `'pendente'`, nunca herdando o status do ELO diretamente (o
+  mesmo critério documentado desde sempre — "O 'Confirmou convocação' da
+  planilha não vira o status de confirmação do SIME").
+- **16 dispensas** — ELO já diz "Dispensado", SIME ainda tinha `ativo=true`
+  (10 auxiliares + 6 coordenadores, entre eles **ADRIANA PAZ OLIVEIRA**,
+  exatamente a pessoa já sinalizada como "papel duplicado" no Controle de
+  Pagamento — Presidente de Mesa + Coordenadora ao mesmo tempo — a dispensa
+  já resolve o conflito sozinha, sem precisar de nenhuma ação manual à
+  parte). Marcadas `ativo=false` + `dispensado_manual=true` (nunca
+  reabertas por um resync futuro do roster, mesmo critério de sempre).
+
+Os outros 11 casos "inativo no SIME, aparece no relatório" já estavam
+CONSISTENTES — ou o ELO também já diz "Dispensado" (correto ficar
+inativo), ou já protegidos por `dispensado_manual=true` de correções
+anteriores (FRANCISCO DAS CHAGAS MICHEL COSTA DE OLIVEIRA, FRANCISCO LUIZ
+NETO, HILLYEN DE CARVALHO SANTOS, MATHEUS COUTINHO DE ALMEIDA — o ELO
+mostrando "Nomeado" de novo pra Hillyen não reabre a dispensa manual já
+decidida em 19/09/2026, mesmo critério de sempre).
+
+Aplicado via SQL Editor/MCP (não é migração, não reaplica sozinha),
+`sime_logs.acao='apoio_logistico_sync_relatorio_situacao_elo_29_09_2026'`
+com os três lotes no payload. Verificado após aplicar: 91 ativos no total
+(24 auxiliares + 67 coordenadores) e o conflito de papel duplicado da
+Adriana já não aparece mais na consulta de auditoria — só sobram os dois
+acúmulos legítimos e já conhecidos (Anita, Luiz Carlos) mais o novo Carlos
+Eduardo da Silva, mesmo padrão aceito.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
