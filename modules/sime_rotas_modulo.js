@@ -689,9 +689,13 @@ function rtLinhaOverlaySVG(info) {
 // internet no momento da impressão, ou o serviço de terceiro fora do ar,
 // a ficha nunca fica sem NENHUM mapa: esconde a imagem quebrada e revela o
 // esquema offline (sempre presente no HTML, só oculto até aqui) no lugar.
-function rtFichaMapaFalhou() {
-  const real = document.getElementById('rt-mapa-real-wrap');
-  const esquema = document.getElementById('rt-mapa-esquema-wrap');
+// `idx` (30/09/2026, ver rtImprimirTodasPorTipo) sufixa os ids quando várias
+// fichas convivem no mesmo #print-area — cada onerror da <img> só precisa
+// mexer na SUA própria ficha, nunca na de outra rota impressa junto.
+function rtFichaMapaFalhou(idx) {
+  const suf = idx != null ? '-' + idx : '';
+  const real = document.getElementById('rt-mapa-real-wrap' + suf);
+  const esquema = document.getElementById('rt-mapa-esquema-wrap' + suf);
   if (real) real.style.display = 'none';
   if (esquema) esquema.style.display = '';
 }
@@ -897,6 +901,13 @@ function renderRotas() {
   const lista = rtFiltrar();
   const contagem = {};
   for (const r of rtDados.rotas) for (const t of (r.tipos || [])) contagem[t] = (contagem[t] || 0) + 1;
+  // Contagem ATIVA por tipo (30/09/2026) — separada de `contagem` acima (que
+  // soma ativa+inativa, valor do dropdown de sempre) porque o botão de
+  // impressão em lote só imprime rota ativa; usar o mesmo número do
+  // dropdown no botão mostraria uma contagem maior do que de fato sai
+  // impresso, quando há rota inativa daquele tipo.
+  const contagemAtiva = {};
+  for (const r of rtDados.rotas) if (r.ativo) for (const t of (r.tipos || [])) contagemAtiva[t] = (contagemAtiva[t] || 0) + 1;
   const orfasPorTipo = rtSecoesOrfasPorTipo();
   const tiposComOrfa = RT_TIPOS.filter(t => orfasPorTipo[t].length);
 
@@ -915,6 +926,7 @@ function renderRotas() {
         </select>
         <input type="text" id="rt-busca" value="${rtEsc(rtBusca)}" oninput="rtOnBuscaInput(this.value)" placeholder="Buscar por código, nome ou município…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
+      ${rtFiltroTipo ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirTodasPorTipo()" title="Imprime a ficha de todas as rotas ativas deste tipo, numa impressão só">🖨️ Imprimir todas (${RT_TIPO_LABEL[rtFiltroTipo]}) — ${contagemAtiva[rtFiltroTipo] || 0} rota(s)</button>` : ''}
       <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${rtDados.rotas.length} rota(s)</div>
     </div>
 
@@ -1720,7 +1732,13 @@ async function rtRecarregarParadas() {
 // costuma barrar. Documento de apoio operacional (não uma peça oficial):
 // paradas em ordem, com número/local/coordenadas quando existem, e o
 // contato do responsável pra quem estiver na estrada poder ligar.
-function rtHtmlFicha(rota, paradas, responsavel, zona) {
+// `idx` (30/09/2026, ver rtImprimirTodasPorTipo) — quando presente, sufixa
+// os 4 ids antes fixos (rt-mapa-real-wrap/rt-mapa-real-img/
+// rt-mapa-esquema-wrap/rt-ficha-qr) pra dar pra imprimir várias fichas de
+// uma vez sem colidir; omitido (impressão de 1 rota só, rtImprimirFicha),
+// mantém exatamente os ids antigos, sem quebrar nada que já dependia deles.
+function rtHtmlFicha(rota, paradas, responsavel, zona, idx) {
+  const suf = idx != null ? '-' + idx : '';
   const hoje = new Date();
   const dataEmissao = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
   // Horário por parada (27/09/2026, ver rtCalcularHorariosParadas) — quando
@@ -1788,22 +1806,22 @@ function rtHtmlFicha(rota, paradas, responsavel, zona) {
       <div class="rt-mapa">
         <div class="rt-mapa-titulo">🗺️ Mapa da rota</div>
         ${staticMapInfo ? `
-        <div id="rt-mapa-real-wrap">
+        <div id="rt-mapa-real-wrap${suf}">
           <div style="position:relative;display:inline-block;max-width:100%;">
-            <img id="rt-mapa-real-img" src="${rtEsc(staticMapInfo.url)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou()">
+            <img id="rt-mapa-real-img${suf}" src="${rtEsc(staticMapInfo.url)}" alt="Mapa real da rota (OpenStreetMap)" style="max-width:100%;width:640px;display:block;border:1px solid #999" onerror="rtFichaMapaFalhou(${idx != null ? `'${idx}'` : ''})">
             ${linhaOverlay}
             ${marcadoresOverlay}
           </div>
           <div class="rt-sub">Mapa real (OpenStreetMap) — pinos das paradas desenhados sobre o mapa de verdade (calculados pela posição de cada uma, não desenhados pelo serviço); ${staticMapInfo.polylineReal ? 'a linha segue o trajeto REAL calculado pelo Google (rota real, ver 📏 Calcular rota real no módulo de Rotas).' : 'a linha é a ordem das paradas em linha reta, não o trajeto real pelas ruas — pra isso, use o link/QR do Google Maps abaixo, ou calcule a "rota real" no módulo de Rotas.'}</div>
         </div>` : ''}
-        <div id="rt-mapa-esquema-wrap" style="${staticMapInfo ? 'display:none' : ''}">
+        <div id="rt-mapa-esquema-wrap${suf}" style="${staticMapInfo ? 'display:none' : ''}">
           ${svgMapa || '<div class="rt-sub">Sem coordenadas suficientes (pelo menos 2 locais geolocalizados) pra desenhar um mapa — use o QR/link abaixo.</div>'}
           ${staticMapInfo ? '<div class="rt-sub">⚠ Mapa real não carregou (provavelmente sem internet no momento da impressão) — esquema de apoio acima, em linha reta, sem seguir estrada.</div>' : ''}
         </div>
         <div class="rt-mapa-legenda">🟢 Partida: ${rtEsc(origemLabel)} &nbsp;·&nbsp; 🔴 Destino: ${rtEsc(destinoLabel)}</div>
         ${mapsUrl ? `
         <div class="rt-mapa-qr">
-          <div id="rt-ficha-qr"></div>
+          <div id="rt-ficha-qr${suf}"></div>
           <div class="rt-mapa-link">
             <div class="rt-sub">📱 Pra usar em campo, na hora da dúvida ou da saída: aponte a câmera, ou abra o trajeto real (com todas as paradas, pelas ruas) no link:</div>
             <div class="rt-mapa-url">${rtEsc(mapsUrl)}</div>
@@ -1901,5 +1919,58 @@ async function rtImprimirFicha(rotaId) {
   }
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_ficha_impressa', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
+  window.print();
+}
+
+// "🖨️ Imprimir todas (tipo)" (30/09/2026, pedido direto: "quero um botão
+// para imprimir todas as rotas de uma vez, mas por tipo") — mesmo mecanismo
+// de rtImprimirFicha (um só #print-area, um só window.print()), só que
+// concatenando a ficha de TODAS as rotas ATIVAS do tipo escolhido no filtro
+// de sempre (rt-filtro-tipo). Deliberadamente exige um tipo escolhido —
+// nunca aparece com "Todos os tipos", pra nunca misturar tipos diferentes
+// (ex. distribuição junto de recolhimento de mídia) no mesmo lote impresso,
+// que era justamente o "por tipo" do pedido. Só rotas ATIVAS entram — uma
+// rota desativada não devia sair impressa achando que ainda vale.
+async function rtImprimirTodasPorTipo() {
+  if (!rtFiltroTipo) { showToast('Escolha um tipo de rota no filtro acima antes de imprimir em lote.'); return; }
+  const rotas = rtDados.rotas.filter(r => r.ativo && (r.tipos || []).includes(rtFiltroTipo));
+  if (!rotas.length) { showToast('Nenhuma rota ativa desse tipo pra imprimir.'); return; }
+  const area = document.getElementById('print-area');
+  const partes = rotas.map((rota, idx) => {
+    const paradas = rtDados.secoesPorRota.get(rota.id) || [];
+    const responsavel = rtAtor(rota.responsavel_ator_id);
+    return { rota, paradas, html: rtHtmlFicha(rota, paradas, responsavel, rtDados.zona, idx) };
+  });
+  area.innerHTML = partes.map(p => p.html).join('');
+  // QR de cada ficha, um canvas por índice — mesma lib síncrona de sempre.
+  for (const p of partes) {
+    const idx = partes.indexOf(p);
+    const mapsUrl = rtMapsUrl(p.rota, p.paradas, rtDados.zona);
+    const qrEl = document.getElementById(`rt-ficha-qr-${idx}`);
+    if (qrEl && mapsUrl && window.QRCode) {
+      try {
+        const qrPx = rtQrSizePx(mapsUrl);
+        new QRCode(qrEl, { text: mapsUrl, width: qrPx, height: qrPx, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      } catch (e) { qrEl.innerHTML = ''; }
+    }
+  }
+  // Espera todos os mapas reais (ou o timeout/erro de cada um) antes de
+  // imprimir — em paralelo, não em série, pra não multiplicar os 4s de
+  // timeout por rota numa impressão de muitas rotas de uma vez.
+  await Promise.all(partes.map((p, idx) => new Promise((resolve) => {
+    const mapaImgEl = document.getElementById(`rt-mapa-real-img-${idx}`);
+    if (!mapaImgEl) return resolve();
+    if (mapaImgEl.complete) {
+      if (mapaImgEl.naturalWidth === 0) rtFichaMapaFalhou(idx);
+      return resolve();
+    }
+    let terminou = false;
+    const fim = () => { if (!terminou) { terminou = true; resolve(); } };
+    mapaImgEl.addEventListener('load', fim, { once: true });
+    mapaImgEl.addEventListener('error', fim, { once: true });
+    setTimeout(() => { if (!terminou) { rtFichaMapaFalhou(idx); fim(); } }, 4000);
+  })));
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_ficha_impressa_lote', '', { autor, tipo: rtFiltroTipo, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
   window.print();
 }

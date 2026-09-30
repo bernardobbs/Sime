@@ -98,6 +98,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   body > *:not(#print-area){display:none!important;}
   #print-area{display:block!important;color:#000;}
   .rt-pagina-ficha{padding:6mm;font-family:Arial,Helvetica,sans-serif;}
+  /* Impressão em lote, "🖨️ Imprimir todas (tipo)" (30/09/2026) — várias
+     fichas concatenadas no mesmo #print-area, cada uma na própria página
+     (mesmo padrão page-break-after já usado em .tk-page de SIME_tokens.html
+     e .ra-pagina de sime_recibo_alimentacao.js — nunca deixa página em
+     branco sobrando depois da última). A impressão de 1 rota só (🖨️
+     Imprimir ficha) também usa esta classe, mas como só existe 1
+     .rt-pagina-ficha nesse caso, o seletor :not(:last-child) nunca casa —
+     comportamento de antes preservado sem precisar de mais uma classe. */
+  .rt-pagina-ficha:not(:last-child){page-break-after:always;}
   .rt-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
   .rt-titulo{font-weight:800;font-size:12pt;}
   .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}
@@ -111,7 +120,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .rt-mapa-titulo{font-weight:800;font-size:9.5pt;margin-bottom:2mm;}
   .rt-mapa-legenda{font-size:8pt;margin-top:2mm;}
   .rt-mapa-qr{display:flex;align-items:flex-start;gap:3mm;margin-top:2mm;}
-  #rt-ficha-qr{flex:none;}
+  .rt-mapa-qr>div[id^="rt-ficha-qr"]{flex:none;}
   .rt-mapa-link .rt-sub{margin-top:0;}
   /* Link por extenso (08/09/2026, pedido direto: "traga o trajeto com o
      ponto das rotas no google maps") — além do QR (só serve pra quem

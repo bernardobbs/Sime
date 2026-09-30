@@ -8122,6 +8122,77 @@ pro QR.
 
 ---
 
+## "🖨️ IMPRIMIR TODAS (TIPO)" — LOTE DE FICHAS DE ROTA (`SIME_rotas.html`, 30/09/2026)
+
+Pedido direto: "Em rotas de mídias quero um botão para imprimir todas as
+rotas de uma vez, mas por tipo". Até aqui, `rtImprimirFicha(rotaId)` só
+imprimia UMA rota por vez (`#print-area` recebia um único
+`rtHtmlFicha()`) — pra imprimir, por exemplo, as ~37 rotas de
+`recolhimento_midia` da zona pra levar pros motoristas no D-1, o cartório
+precisava clicar "🖨️ Imprimir ficha" uma rota de cada vez, confirmando o
+diálogo de impressão a cada clique.
+
+**Botão só aparece com um tipo já escolhido no `<select id="rt-filtro-tipo">`
+de sempre — nunca com "Todos os tipos".** É o "mas por tipo" do pedido,
+levado a sério: imprimir tudo misturado (uma rota de distribuição junto de
+uma de recolhimento de mídia, por exemplo) no mesmo lote não fazia sentido
+nenhum — cada tipo tem uso operacional diferente, o cartório sempre separa
+por tipo na prática. O rótulo do botão já mostra a contagem de quantas
+rotas vão sair impressas (`🖨️ Imprimir todas (Recolhimento de mídia) — 37
+rota(s)`), calculada à parte da contagem que já existia no dropdown
+(`contagemAtiva`, nova — a contagem do dropdown soma ativa+inativa, mas o
+lote só imprime rota ATIVA; usar o mesmo número do dropdown mostraria uma
+contagem maior do que de fato sai impresso quando há rota desativada
+daquele tipo).
+
+**Mesmo mecanismo sem popup de sempre** (`#print-area` + `window.print()`
+direto, nunca `window.open()`) — só que concatenando a ficha de TODAS as
+rotas ativas do tipo escolhido no mesmo `#print-area`, num `window.print()`
+só. `rtHtmlFicha(rota, paradas, responsavel, zona, idx)` ganhou um 5º
+parâmetro opcional (`idx`) — os 4 ids antes fixos (`rt-mapa-real-wrap`,
+`rt-mapa-real-img`, `rt-mapa-esquema-wrap`, `rt-ficha-qr`) passaram a levar
+um sufixo `-N` quando `idx` está presente, senão continuam exatamente como
+sempre foram (impressão de 1 rota só, `rtImprimirFicha()`, que nunca passa
+`idx` — comportamento antigo 100% preservado). Sem essa mudança, várias
+fichas concatenadas no mesmo `#print-area` colidiriam: `document.
+getElementById('rt-ficha-qr')` só encontraria a PRIMEIRA, e todo QR das
+demais rotas do lote sairia em branco.
+
+**`rtImprimirTodasPorTipo()`** (nova) — filtra `rtDados.rotas` por `ativo`
++ tipo escolhido, avisa por toast e sai sem imprimir nada se não houver
+nenhuma (tipo sem nenhuma rota ativa cadastrada ainda, ou chamada sem tipo
+escolhido — defesa em profundidade, mesmo padrão já usado nas demais
+funções de escrita do módulo contra chamada direto pelo console). Monta
+todas as fichas de uma vez, gera o QR de cada uma pelos ids sufixados, e
+**espera os mapas reais carregarem (ou falharem) EM PARALELO, não em
+série** — `Promise.all`, não um `await` atrás do outro — pra não
+multiplicar o timeout de 4s de `rtImprimirFicha()` por rota numa impressão
+de várias rotas de uma vez (37 rotas em série, no pior caso de rede ruim,
+seria quase 2,5 minutos só esperando timeout). CSS ganhou
+`.rt-pagina-ficha:not(:last-child){page-break-after:always;}` (mesmo
+padrão já usado em `.tk-page`/`.ra-pagina` de Tokens/Auxílio Alimentação —
+nunca deixa página em branco sobrando depois da última); como a impressão
+de 1 rota só também usa essa classe mas só tem 1 elemento na página, o
+seletor `:not(:last-child)` nunca casa ali — nenhuma regressão na
+impressão individual.
+
+Cada impressão em lote grava um log de auditoria próprio
+(`rota_ficha_impressa_lote`, com autor/tipo/quantidade/lista de códigos) —
+distinto de `rota_ficha_impressa` (impressão individual), pra não misturar
+as duas contagens numa auditoria futura.
+
+Coberto por `tests/test_rotas.mjs` (blocos 46-46b, 21 checks novos — 291
+checks no total no arquivo):
+botão ausente sem tipo escolhido; contagem do botão é só de rota ATIVA;
+clicar imprime as fichas concatenadas do tipo certo (nunca mistura outro
+tipo no lote); QR de cada ficha com id próprio, sem colisão; log de
+auditoria com tipo/quantidade/códigos certos; paginação física verificada
+com `page.pdf()` (não só innerHTML); rota desativada do mesmo tipo nunca
+entra no lote; toast (sem `window.print()`) quando não há rota ativa do
+tipo, ou quando chamado sem tipo escolhido.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

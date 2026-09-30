@@ -1949,6 +1949,116 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 46. "🖨️ Imprimir todas (tipo)" (30/09/2026, pedido direto: "quero um
+// botão para imprimir todas as rotas de uma vez, mas por tipo") — imprime,
+// numa impressão só, a ficha de toda rota ATIVA do tipo escolhido no
+// filtro de sempre; nunca aparece com "Todos os tipos" (nunca mistura
+// tipos diferentes no mesmo lote). Mock tem 2 rotas ativas com
+// 'recolhimento_urna' (r1 e r4) e 1 com 'recolhimento_midia' (r2). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.responsavel_ator_id = 'a1';
+  m.sime_atores.find(a => a.id === 'a1').telefone_whatsapp = '5586999998888';
+  // r4 não tem parada nenhuma vinculada no mock — sem ponto_partida/destino
+  // e sem nenhuma parada geolocalizada, rtMapsUrl() devolve null (nada pra
+  // rotear), o que faria a ficha dela nascer sem QR nenhum (mesmo
+  // comportamento correto de sempre — não é falta de suffixação de id).
+  // Pra este teste de fato exercitar "2 QRs sem colidir", ela precisa ter
+  // partida/destino de texto que resolvam pra alguma rota — reaproveita o
+  // padrão real da 7ª Zona (destino = Cartório da zona, cai no fallback de
+  // endereço postal quando cadastrado).
+  const r4 = m.sime_rotas.find(r => r.id === 'r4');
+  r4.ponto_partida = 'Escola B'; r4.destino = 'Cartório Eleitoral da 7ª Zona Eleitoral';
+  const zona = m.sime_zonas.find(z => z.id === 'z7');
+  zona.remetente_endereco = 'Rua Benjamin Constant, 948'; zona.remetente_municipio = 'Campo Maior'; zona.remetente_uf = 'PI';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  check('sem tipo escolhido no filtro, o botão de imprimir em lote não aparece', await p.locator('button:has-text("🖨️ Imprimir todas")').count() === 0);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_urna');
+  await p.waitForTimeout(100);
+  const botaoTxt = await p.locator('button:has-text("🖨️ Imprimir todas")').textContent();
+  check('com "Recolhimento de urnas" escolhido, botão aparece com a contagem ATIVA certa (r1+r4=2, não conta rota inativa nenhuma)', /Recolhimento de urnas.*2 rota/.test(botaoTxt), botaoTxt);
+
+  await p.click('button:has-text("🖨️ Imprimir todas")');
+  await p.waitForTimeout(200);
+
+  check('imprime numa chamada só de window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('ficha das duas rotas (001 e 004) saem concatenadas no print-area', /Ficha de Rota — 001 — Rota 001/.test(printHtml) && /Ficha de Rota — 004 — Rota 004 recolhimento urna/.test(printHtml), printHtml.slice(0, 400));
+  check('a rota 002 (recolhimento de mídia, outro tipo) NUNCA entra no lote', !/Rota 002 mídia/.test(printHtml));
+
+  const paginasCount = await p.locator('.rt-pagina-ficha').count();
+  check('2 páginas de ficha no DOM, uma por rota do tipo', paginasCount === 2, String(paginasCount));
+
+  const qrCanvases = await p.locator('[id^="rt-ficha-qr-"] canvas').count();
+  check('cada ficha ganha seu próprio QR (2 canvas, ids sufixados sem colisão)', qrCanvases === 2, String(qrCanvases));
+
+  const logLote = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_ficha_impressa_lote'));
+  check('log de auditoria em lote com tipo/quantidade/códigos certos', logLote?.payload?.tipo === 'recolhimento_urna' && logLote?.payload?.quantidade === 2 && (logLote?.payload?.rotas || []).sort().join(',') === '001,004', JSON.stringify(logLote));
+
+  // Verificação de paginação FÍSICA de verdade — mesmo critério já usado
+  // pro AR de Correspondência/ficha de rota única: innerHTML/contagem de
+  // .rt-pagina-ficha não garante que o PDF de fato sai em páginas
+  // separadas (é a paginação lógica, não a física do motor de impressão).
+  // Contagem via regex global (String.match cuida dos índices sozinha —
+  // nunca um laço manual de indexOf, que arrisca reiniciar do zero se um
+  // dos dois padrões nunca bater e ficar reatribuindo idx=-1 pra sempre).
+  await p.emulateMedia({ media: 'print' });
+  const pdf = await p.pdf();
+  const pdfStr = pdf.toString('latin1');
+  const paginasFisicas = (pdfStr.match(/\/Type\s*\/Page(?!s)/g) || []).length;
+  check('PDF de verdade sai com 2 páginas (page-break entre as fichas)', paginasFisicas === 2, `paginasFisicas=${paginasFisicas} pdfBytes=${pdf.length}`);
+  await p.emulateMedia({ media: 'screen' });
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 46b. Botão ignora rota INATIVA do mesmo tipo; avisa em vez de imprimir
+// quando não há nenhuma rota ativa desse tipo; avisa (sem chamar
+// window.print()) quando chamado sem tipo escolhido. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_rotas.find(r => r.id === 'r4').ativo = false; // só r1 fica ativa em recolhimento_urna
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_urna');
+  await p.waitForTimeout(100);
+  const botaoTxt = await p.locator('button:has-text("🖨️ Imprimir todas")').textContent();
+  check('rota desativada não entra na contagem do botão (só r1 = 1 rota)', /1 rota/.test(botaoTxt), botaoTxt);
+
+  await p.click('button:has-text("🖨️ Imprimir todas")');
+  await p.waitForTimeout(150);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('a rota 004 (desativada) nunca sai impressa, mesmo sendo do mesmo tipo', !/Rota 004/.test(printHtml), printHtml.slice(0, 300));
+  check('só 1 página de ficha (a rota ativa)', await p.locator('.rt-pagina-ficha').count() === 1);
+
+  await p.selectOption('#rt-filtro-tipo', 'instalacao'); // nenhuma rota deste tipo no mock
+  await p.waitForTimeout(100);
+  const printCallsAntes = await p.evaluate(() => window.__printCalls);
+  await p.evaluate(() => window.rtImprimirTodasPorTipo());
+  await p.waitForTimeout(150);
+  check('sem nenhuma rota ativa do tipo, avisa por toast em vez de imprimir vazio', /Nenhuma rota ativa desse tipo/.test(await p.locator('#toast').textContent()));
+  check('e não chama window.print() nesse caso', await p.evaluate(() => window.__printCalls) === printCallsAntes);
+
+  await p.evaluate(() => { rtFiltroTipo = ''; });
+  await p.evaluate(() => window.rtImprimirTodasPorTipo());
+  await p.waitForTimeout(150);
+  check('chamado sem tipo escolhido, avisa pra escolher um tipo primeiro', /Escolha um tipo de rota/.test(await p.locator('#toast').textContent()));
+  check('e também não chama window.print()', await p.evaluate(() => window.__printCalls) === printCallsAntes);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));
