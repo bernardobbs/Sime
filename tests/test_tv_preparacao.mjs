@@ -190,6 +190,43 @@ export function createClient(url, key, opts) {
   await ctx.close();
 }
 
+// ── Caso 6 (01/10/2026, pedido direto: "agora que acabou o tv preparação
+// pode mostrar parabéns?") — quando TODOS os estágios (seções reais +
+// contingência) batem o Total, o texto de "todas lacradas" vira mensagem
+// de parabéns, citando o Total de verdade (não um número fixo). ──
+{
+  const STUB_PARABENS = STUB_SUPABASE_JS
+    .replace(
+      "if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Zona De Teste', lat: -1, lon: -1 }, error: null });",
+      "if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Zona De Teste', lat: -1, lon: -1 }, error: null });\n          if (t === 'sime_eleicoes') return Promise.resolve({ data: { id: 'el-1', turno: 1, zona_id: 'zona-96', horario_ab: '08:00:00', horario_enc: '17:00:00', urnas_secoes: 5, urnas_contingencia: 2, contingencia_carga: true, contingencia_preparacao: true, contingencia_lacre: true }, error: null });"
+    )
+    .replace(
+      "return resolve({ data: [], error: null });",
+      "if (t === 'sime_carga_lacre') return resolve({ data: Array.from({length:5}, () => ({ carga: true, preparacao: true, lacre: true })), error: null });\n          return resolve({ data: [], error: null });"
+    );
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'fake.jwt.aqui', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-96' }) });
+  });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_PARABENS });
+  });
+
+  await p.goto('http://localhost:8917/modules/SIME_tv_preparacao.html?tv_token=TVTOKEN96');
+  await p.waitForTimeout(600);
+
+  check('parabéns: zero erros JS', erros.length === 0, erros.join('; '));
+  const status = await p.locator('#f-status').textContent();
+  check('status mostra mensagem de parabéns citando o Total real (7)', status.includes('Parabéns') && status.includes('7'), 'status=' + status);
+  const tudoLacrado = await p.evaluate(() => document.body.classList.contains('tudo-lacrado'));
+  check('body ganha a classe de destaque (tudo-lacrado)', tudoLacrado === true);
+
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

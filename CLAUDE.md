@@ -6708,6 +6708,21 @@ preparação/lacre não somam) e `tests/test_coord_prep.mjs` (Caso 8, 6
 checks novos — mesma verificação, incluindo o percentual das 3 barras do
 cabeçalho). Sem regressão nas suítes acima.
 
+**"todas lacradas" vira mensagem de parabéns (01/10/2026, pedido direto:
+"agora que acabou o tv preparação pode mostrar parabéns?")** — no mesmo
+dia, confirmado que preparação/lacre das 27 urnas de contingência também
+foram concluídos (`contingencia_preparacao`/`contingencia_lacre` também
+viraram `true` na 7ª Zona, fechando 174/174/174/174). O texto do estado
+final em `updateBars()` (`#f-status`, mesmo gatilho de sempre —
+`l===TOTAL`) trocou de "todas lacradas" (informativo) pra "🎉 Parabéns! As
+{TOTAL} urnas estão prontas" (comemorativo, citando o Total real, não um
+número fixo) — a classe `body.tudo-lacrado` (que já pintava as 3 barras de
+verde) não mudou, só o texto que ela acompanha. Coberto por
+`tests/test_tv_preparacao.mjs` (Caso 6, 3 checks novos — mensagem cita o
+Total real, classe de destaque aplicada). Sem regressão em
+`tests/test_tv_preparacao_realtime.mjs` (16/16, inclusive o teste que já
+verificava a cor verde da barra nesse estado).
+
 ---
 
 ## ROTA REAL VIA GOOGLE DIRECTIONS — INTEGRAÇÃO COMPLETADA (`SIME_rotas.html`, 24/09/2026)

@@ -208,7 +208,11 @@ function updateBars(){
   document.getElementById('fc-lacre').textContent=l;
   const f=TOTAL-l;
   const statusEl=document.getElementById('f-status');
-  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  // "todas lacradas" virou mensagem de parabéns (01/10/2026, pedido direto:
+  // "agora que acabou o tv preparação pode mostrar parabéns?") — mesmo
+  // gatilho de sempre (l===TOTAL), só o texto do estado final que mudou de
+  // informativo pra comemorativo.
+  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?`🎉 Parabéns! As ${TOTAL} urnas estão prontas`:l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
   const tudoLacrado = l===TOTAL && TOTAL>0;
   statusEl.classList.toggle('done', tudoLacrado);
   document.body.classList.toggle('tudo-lacrado', tudoLacrado);
