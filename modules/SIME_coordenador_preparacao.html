@@ -667,6 +667,14 @@ function totalUrnasAtual(){
 function updateStats(){
   let c=0, p=0, l=0, eleitLacr=0;
   SECOES.forEach(s=>{ if(state[s.n].carga)c++; if(state[s.n].prep)p++; if(state[s.n].lacre){l++; eleitLacr+=s.aptos;} });
+  // Urnas de contingência (sql/SIME_eleicoes_contingencia_estagios.sql,
+  // 01/10/2026) — mesmo critério da TV Preparação: sem seção/card próprio,
+  // as 3 flags de estágio em sime_eleicoes valem pro LOTE inteiro de uma vez.
+  const e = window.ELEICAO_ATIVA;
+  const cont = (e && Number.isFinite(e.urnas_contingencia)) ? e.urnas_contingencia : 0;
+  if (e?.contingencia_carga) c += cont;
+  if (e?.contingencia_preparacao) p += cont;
+  if (e?.contingencia_lacre) l += cont;
   const T=totalUrnasAtual(); const pct=v=>Math.round(v/T*100);
   document.getElementById('mb-carga').style.width=pct(c)+'%'; document.getElementById('mp-carga').textContent=pct(c)+'%';
   document.getElementById('mb-prep').style.width=pct(p)+'%';  document.getElementById('mp-prep').textContent=pct(p)+'%';

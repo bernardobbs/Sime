@@ -140,6 +140,16 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
     const { data } = await client.from('sime_carga_lacre').select('carga,preparacao,lacre').eq('eleicao_id', eleicao.id);
     let c = 0, p = 0, l = 0;
     for (const r of data || []) { if (r.carga) c++; if (r.preparacao) p++; if (r.lacre) l++; }
+    // Urnas de contingência (sql/SIME_eleicoes_contingencia_estagios.sql,
+    // 01/10/2026) não têm sime_secoes/sime_carga_lacre próprios — são só um
+    // número (urnas_contingencia) com 3 flags de estágio EM LOTE pra zona
+    // inteira (o cartório confirma "todas as N foram carregadas" de uma vez,
+    // não urna por urna). Quando marcada, soma o lote inteiro no numerador
+    // daquele estágio — nunca parcial, nunca inventado.
+    const cont = window.ELEICAO_ATIVA?.urnas_contingencia || 0;
+    if (window.ELEICAO_ATIVA?.contingencia_carga) c += cont;
+    if (window.ELEICAO_ATIVA?.contingencia_preparacao) p += cont;
+    if (window.ELEICAO_ATIVA?.contingencia_lacre) l += cont;
     window.SIME_CARGA_LACRE_REAL = { c, p, l };
     marcarAtualizado();
     if (window.updateBars) window.updateBars();

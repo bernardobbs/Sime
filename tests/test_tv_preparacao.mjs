@@ -144,6 +144,52 @@ export function createClient(url, key, opts) {
   await ctx.close();
 }
 
+// ── Caso 5 (01/10/2026, pedido direto, com print do TV box mostrando
+// 147/147/147/174 — "faltam 27 urnas": "E todas as urnas de contingência
+// foi dado carga quero que apareça 100%") — urnas de contingência não têm
+// sime_secoes/sime_carga_lacre próprios (são só um número), então as 3
+// flags de estágio em sime_eleicoes (contingencia_carga/preparacao/lacre,
+// sql/SIME_eleicoes_contingencia_estagios.sql) valem pro LOTE inteiro de
+// uma vez quando marcadas — só carga aqui, prep/lacre continuam false. ──
+{
+  const STUB_CONTINGENCIA = STUB_SUPABASE_JS
+    .replace(
+      "if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Zona De Teste', lat: -1, lon: -1 }, error: null });",
+      "if (t === 'sime_zonas') return Promise.resolve({ data: { numero: 96, municipio: 'Zona De Teste', lat: -1, lon: -1 }, error: null });\n          if (t === 'sime_eleicoes') return Promise.resolve({ data: { id: 'el-1', turno: 1, zona_id: 'zona-96', horario_ab: '08:00:00', horario_enc: '17:00:00', urnas_secoes: 100, urnas_contingencia: 20, contingencia_carga: true, contingencia_preparacao: false, contingencia_lacre: false }, error: null });"
+    )
+    .replace(
+      "return resolve({ data: [], error: null });",
+      "if (t === 'sime_carga_lacre') return resolve({ data: [ { carga: true, preparacao: false, lacre: false }, { carga: true, preparacao: true, lacre: false } ], error: null });\n          return resolve({ data: [], error: null });"
+    );
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jwt: 'fake.jwt.aqui', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-96' }) });
+  });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB_CONTINGENCIA });
+  });
+
+  await p.goto('http://localhost:8917/modules/SIME_tv_preparacao.html?tv_token=TVTOKEN96');
+  await p.waitForTimeout(600);
+
+  check('contingência: zero erros JS', erros.length === 0, erros.join('; '));
+  const total = await p.locator('#fc-total').textContent();
+  check('Total continua 120 (100+20)', total.trim() === '120', 'total=' + total);
+  const fcCarga = await p.locator('#fc-carga').textContent();
+  check('carga: 2 seções reais + 20 de contingência = 22', fcCarga.trim() === '22', 'fc-carga=' + fcCarga);
+  const pCarga = await p.locator('#p-carga').textContent();
+  check('% carga = 22/120 = 18%, não 100% nem 2%', pCarga.trim() === '18%', 'p-carga=' + pCarga);
+  const fcPrep = await p.locator('#fc-prep').textContent();
+  check('preparação: só a 1 seção real, SEM somar contingência (flag false)', fcPrep.trim() === '1', 'fc-prep=' + fcPrep);
+  const fcLacre = await p.locator('#fc-lacre').textContent();
+  check('lacre: 0 (nenhuma real, flag false)', fcLacre.trim() === '0', 'fc-lacre=' + fcLacre);
+
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

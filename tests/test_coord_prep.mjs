@@ -282,6 +282,52 @@ const STUB_SUPABASE_JS = stubSupabaseJs();
   await ctx.close();
 }
 
+// ── Caso 8 (01/10/2026, pedido direto, com print do TV box: "E todas as
+// urnas de contingência foi dado carga quero que apareça 100%") — urnas de
+// contingência não têm sime_secoes/sime_carga_lacre próprios (são só um
+// número), então as 3 flags de estágio em sime_eleicoes
+// (contingencia_carga/preparacao/lacre,
+// sql/SIME_eleicoes_contingencia_estagios.sql) valem pro LOTE inteiro de
+// uma vez quando marcadas — aqui só carga, prep/lacre continuam false, e
+// as barras do cabeçalho precisam refletir isso sem somar o lote nos
+// outros dois estágios. ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  const stub = stubSupabaseJs({
+    eleicao: { id: 'ele-uuid-1', turno: 1, zona_id: 'zona-96', data_d: '2026-10-04', urnas_secoes: 10, urnas_contingencia: 5, contingencia_carga: true, contingencia_preparacao: false, contingencia_lacre: false },
+    cargaLacreExistente: [
+      { eleicao_id: 'ele-uuid-1', secao_id: 'sec-uuid-1', carga: true, preparacao: false, lacre: false },
+      { eleicao_id: 'ele-uuid-1', secao_id: 'sec-uuid-2', carga: false, preparacao: true, lacre: false },
+    ],
+  });
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_coordenador_preparacao.html');
+  await p.waitForTimeout(400);
+  await p.fill('#login-email', 'coord@sime.gov.br');
+  await p.fill('#login-pass', 'x');
+  await p.click('#login-form button[type=submit]');
+  await p.waitForTimeout(500);
+
+  check('contingência: zero erros JS', erros.length === 0, erros.join('; '));
+  const fcCarga = await p.locator('#fc-carga').textContent();
+  check('carga: 1 seção real + 5 de contingência = 6', fcCarga.trim() === '6', 'fc-carga=' + fcCarga);
+  const pctCarga = await p.locator('#mp-carga').textContent();
+  check('% carga = 6/15 = 40%', pctCarga.trim() === '40%', 'pct-carga=' + pctCarga);
+  const fcPrep = await p.locator('#fc-prep').textContent();
+  check('preparação: só a 1 seção real, SEM somar contingência (flag false)', fcPrep.trim() === '1', 'fc-prep=' + fcPrep);
+  const pctPrep = await p.locator('#mp-prep').textContent();
+  check('% preparação = 1/15 = 7%, não 40%', pctPrep.trim() === '7%', 'pct-prep=' + pctPrep);
+  const fcLacre = await p.locator('#fc-lacre').textContent();
+  check('lacre: 0 (nenhuma real, flag false)', fcLacre.trim() === '0', 'fc-lacre=' + fcLacre);
+
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

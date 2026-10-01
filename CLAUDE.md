@@ -6667,6 +6667,47 @@ cabeçalho usando o mesmo denominador do rodapé). Sem regressão em
 (16/16), `tests/test_admin_previsao.mjs` (20/20) e
 `tests/test_eleicao_banco.mjs` (26/26).
 
+**Urnas de contingência também ganham estágio (01/10/2026, pedido direto,
+com print do TV box mostrando 147/147/147/174 — "faltam 27 urnas": "E
+todas as urnas de contingência foi dado carga quero que apareça 100%").**
+As 27 urnas de contingência da 7ª Zona nunca tiveram onde "receber carga"
+— são só um NÚMERO (`urnas_contingencia`) somado ao Total, sem
+`sime_secoes`/`sime_carga_lacre` próprios (não existe seção nem card pra
+elas em nenhuma tela) — então o numerador das 3 barras (carga/preparação/
+lacre) nunca passava de 147/174 (84%), travado no teto das seções reais,
+mesmo com as urnas de contingência fisicamente prontas.
+
+`sql/SIME_eleicoes_contingencia_estagios.sql` — `sime_eleicoes` ganha
+`contingencia_carga`/`contingencia_preparacao`/`contingencia_lacre`
+(boolean, default `false`). Deliberadamente EM LOTE, não uma linha por
+urna — mesmo critério de `urnas_contingencia` em si (só uma contagem
+agregada, nunca individualizada): o cartório confirma "as 27 já foram
+carregadas" de uma vez, não urna por urna, e inventar um card por urna de
+contingência exigiria dado (identificação individual) que não existe.
+`sime_dados.js` (`getEleicaoAtiva`) passou a trazer as 3 colunas.
+
+**TV Preparação** (`refetch()`, dentro do `<script type="module">`) — depois
+de contar `c/p/l` a partir de `sime_carga_lacre` (só seções reais), soma
+`urnas_contingencia` a CADA estágio cuja flag esteja marcada, antes de
+gravar em `window.SIME_CARGA_LACRE_REAL` — `calcTotal()`/`updateBars()`
+(script clássico) nunca precisaram mudar, já que só leem esse objeto e o
+Total de sempre. **Coordenador de Preparação** (`updateStats()`) — mesma
+soma, lendo `window.ELEICAO_ATIVA` (já populado antes de `updateStats()`
+rodar) — sem card novo na lista de seções, é só o denominador/numerador
+das 3 barras do cabeçalho que passam a refletir o lote.
+
+Aplicado em produção na 7ª Zona (1º turno): só `contingencia_carga=true`
+(prep/lacre continuam `false`, fiel ao que foi dito — só a carga foi
+confirmada até agora) — a barra Carga da TV deve virar 174/174 (100%),
+Preparação/Lacradas continuam 147/174 (84%) até o cartório confirmar os
+outros dois estágios.
+
+Coberto por `tests/test_tv_preparacao.mjs` (Caso 5, 6 checks novos — Total
+inalterado, carga soma o lote de contingência só na flag marcada,
+preparação/lacre não somam) e `tests/test_coord_prep.mjs` (Caso 8, 6
+checks novos — mesma verificação, incluindo o percentual das 3 barras do
+cabeçalho). Sem regressão nas suítes acima.
+
 ---
 
 ## ROTA REAL VIA GOOGLE DIRECTIONS — INTEGRAÇÃO COMPLETADA (`SIME_rotas.html`, 24/09/2026)
