@@ -846,6 +846,88 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 16. QR do Coordenador de Acessibilidade usa o PIX do Presidente da
+// seção de MENOR número do local (01/10/2026, pedido direto: "o pix dos
+// coordenadores de acessibilidade que não foram feitos ainda, deve ser
+// feito para o presidente da seção de menor numero do local. na
+// informação deve constar eleições 2026 - coordenador de acessibilidade e
+// se possivel o nome do local de votação") — nunca o PIX do próprio
+// coordenador, mesmo quando ele existe; o campo "Chave PIX" continua
+// editável (informativo), só não é o que o QR usa pra este cargo. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Seção nova, MESMO local da COORDENADORA BEATRIZ (s1, "Escola A",
+  // numero 5) mas com número MENOR (2) — o Presidente daqui é quem deve
+  // "ganhar" como destino, não o Presidente da seção 5 (m1).
+  m.sime_secoes.push({ id: 's5', numero: 2, local_nome: 'Escola A', municipio: 'Campo Maior', zona_id: 'z7' });
+  m.sime_atores.push({ id: 'm9', nome_completo: 'PRESIDENTE MENOR SECAO', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's5', inscricao_eleitoral: '131313131313', zona_id: 'z7', ativo: true, pix: '22233344455' });
+  // Coordenadora em local SEM nenhum Presidente ativo (s2/"Escola B" só
+  // tem m3, que é "2º Mesário" — nunca Presidente).
+  m.sime_atores.push({ id: 'c5', nome_completo: 'COORDENADORA SEM PRESIDENTE', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's2', inscricao_eleitoral: '141414141414', zona_id: 'z7', ativo: true });
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.waitForTimeout(200);
+
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ") b');
+  await p.waitForTimeout(300);
+
+  check('campo "Chave PIX" avisa que é só informativo pra este cargo', /do próprio coordenador — informativo/.test(await p.locator('.form-group label').first().textContent()));
+  check('nota explica que o pagamento vai pro Presidente de Mesa', /PIX do Presidente de Mesa da seção de menor número/.test(await p.locator('#modal-body').textContent()));
+
+  check('QR já aparece mesmo sem a coordenadora ter PIX próprio (usa o do Presidente)', await p.locator('#ra-modal-qr canvas').count() === 1);
+  const legendaBeatriz = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('legenda cita "Eleições 2026 - Coordenador de Acessibilidade"', /Eleições 2026 - Coordenador de Acessibilidade/.test(legendaBeatriz), legendaBeatriz);
+  check('legenda inclui o nome do local de votação', /Escola A/.test(legendaBeatriz), legendaBeatriz);
+  check('legenda mostra o Presidente da seção de MENOR número (2), não o da seção 5', /PRESIDENTE MENOR SECAO/.test(legendaBeatriz) && /Seção 2/.test(legendaBeatriz), legendaBeatriz);
+  check('legenda NUNCA cita o Presidente da seção maior (5) como destinatário', !/PRESIDENTE MARIA(?! DA SILVA)/.test(legendaBeatriz), legendaBeatriz);
+
+  // Overlay fica por cima da lista enquanto o modal está aberto (mesmo
+  // `#modal-body` compartilhado de sempre) — fecha pelo botão antes de
+  // clicar no próximo nome, não dá pra clicar "através" do overlay.
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+
+  // Coordenador sem local nenhum (c2) — mensagem própria, nunca um QR
+  // inventado.
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADOR CARLOS SEM LOCAL") b');
+  await p.waitForTimeout(300);
+  check('coordenador sem local: nenhum canvas desenhado', await p.locator('#ra-modal-qr canvas').count() === 0);
+  check('coordenador sem local: mensagem explica que a regra não se aplica', /Sem local de votação definido/.test(await p.locator('#ra-modal-qr-wrap').textContent()));
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+
+  // Coordenadora com local, mas SEM nenhum Presidente ativo lá — mensagem
+  // distinta (não confunde "sem local" com "local sem Presidente").
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA SEM PRESIDENTE") b');
+  await p.waitForTimeout(300);
+  check('coordenadora sem Presidente no local: nenhum canvas desenhado', await p.locator('#ra-modal-qr canvas').count() === 0);
+  check('coordenadora sem Presidente no local: mensagem própria, distinta de "sem local"', /Nenhum Presidente ativo encontrado/.test(await p.locator('#ra-modal-qr-wrap').textContent()));
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+
+  // Mesário (Presidente) continua pago na PRÓPRIA chave, sem passar pela
+  // regra do coordenador — nenhuma regressão no fluxo de sempre.
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.waitForTimeout(300);
+  check('campo "Chave PIX" do Presidente NÃO mostra o aviso "informativo" (só vale pra coordenador)', !/do próprio coordenador — informativo/.test(await p.locator('.form-group label').first().textContent()));
+  await p.fill('#ra-modal-pix', '99988877766');
+  await p.locator('#ra-modal-pix').blur();
+  await p.waitForTimeout(300);
+  const legendaPresidente = await p.locator('#ra-modal-qr-wrap').textContent();
+  check('Presidente continua pago na própria chave (sem "via Presidente")', !/Destinatário:/.test(legendaPresidente), legendaPresidente);
+  check('Presidente continua com a descrição de sempre (não vira "Coordenador de Acessibilidade")', /Auxílio Alimentação Eleições 2026/.test(legendaPresidente) && !/Coordenador de Acessibilidade/.test(legendaPresidente), legendaPresidente);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

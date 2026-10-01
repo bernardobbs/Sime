@@ -196,7 +196,64 @@ async function raCarregar() {
     todos: (atores || []).filter(a => !raEhJuizEleitoral(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente')),
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
+  raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
   render();
+}
+
+// Mapa local (município+local_nome) -> Presidente da seção de MENOR número
+// ali (01/10/2026, pedido direto: "o pix dos coordenadores de
+// acessibilidade que não foram feitos ainda, deve ser feito para o
+// presidente da seção de menor numero do local" — mesmo critério já usado
+// no relatório de pendências de PIX gerado antes, agora embutido direto no
+// Controle de Pagamento). Calculado uma vez a partir dos mesários já
+// carregados em raCarregar() — nunca uma consulta nova. Só considera
+// `funcao_mesa==='Presidente'` (os outros 3 cargos de mesa nunca entram
+// neste controle, ver `raDados.todos` acima) e só quem resolveu seção.
+function raCalcularPresidentePorLocal(mesarios) {
+  const melhorPorLocal = {};
+  for (const m of mesarios) {
+    if (m.funcao_mesa !== 'Presidente' || !m.sec) continue;
+    const chave = `${m.sec.municipio}|||${m.sec.local_nome}`;
+    const atual = melhorPorLocal[chave];
+    if (!atual || m.sec.numero < atual.sec.numero) melhorPorLocal[chave] = m;
+  }
+  return melhorPorLocal;
+}
+
+// "1074 - SECRETARIA MUNICIPAL DE EDUCAÇÃO" -> "SECRETARIA MUNICIPAL DE
+// EDUCAÇÃO" — só pra exibição/descrição do PIX (nunca usado como chave de
+// agrupamento, que continua sendo local_nome completo com código, mesma
+// convenção de sempre). O código do TSE não interessa pra quem só quer ler
+// o nome do prédio na tela do banco.
+function raNomeLocalSemCodigo(localNome) {
+  return String(localNome || '').replace(/^\d+\s*-\s*/, '').trim();
+}
+
+// Decide a chave/nome/descrição PIX que o QR do Controle de Pagamento deve
+// usar. Coordenador(a) de Acessibilidade: SEMPRE o Presidente da seção de
+// menor número do local (`raCalcularPresidentePorLocal` acima) — mesmo
+// quando o próprio coordenador já tem PIX cadastrado (nunca usado pra
+// pagar este cargo, ver nota em `raCarregar`). Sem local resolvido, ou sem
+// nenhum Presidente ativo encontrado pra ele, não há destino — nunca
+// inventa um substituto. Demais funções continuam pagas na própria chave,
+// sem mudança nenhuma.
+function raDestinoPix(p) {
+  if (p.funcao === 'coord_acessibilidade' && p.sec) {
+    const chave = `${p.sec.municipio}|||${p.sec.local_nome}`;
+    const presidente = raDados.presidentePorLocal?.[chave];
+    if (presidente && presidente.pix) {
+      const localSemCodigo = raNomeLocalSemCodigo(p.sec.local_nome);
+      return {
+        chavePix: presidente.pix,
+        nomeDestinatario: presidente.nome_completo,
+        descricao: `Eleições 2026 - Coordenador de Acessibilidade${localSemCodigo ? ` - ${localSemCodigo}` : ''}`,
+        viaPresidente: true,
+        presidenteNome: presidente.nome_completo,
+        presidenteSecao: presidente.sec.numero,
+      };
+    }
+  }
+  return { chavePix: p.pix, nomeDestinatario: p.nome_completo, descricao: raPixDescricao(p), viaPresidente: false };
 }
 
 // Mesma pessoa (mesmo título de eleitor) segurando mais de um papel ATIVO
@@ -882,8 +939,9 @@ function raRenderModalQr(p, valorAtual) {
   const el = document.getElementById('ra-modal-qr');
   if (!el) return;
   el.innerHTML = '';
-  if (!p.pix || !window.QRCode) return;
-  const payload = raPixPayload(raPixChaveNormalizada(p.pix), p.nome_completo, raDados?.zona?.municipio, valorAtual, raPixDescricao(p));
+  const destino = raDestinoPix(p);
+  if (!destino.chavePix || !window.QRCode) return;
+  const payload = raPixPayload(raPixChaveNormalizada(destino.chavePix), destino.nomeDestinatario, raDados?.zona?.municipio, valorAtual, destino.descricao);
   if (!payload) return;
   try {
     new QRCode(el, { text: payload, width: 190, height: 190, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
@@ -917,8 +975,9 @@ function raRenderModal() {
     ? [...observacoes].reverse().map(txt => `<div class="m-hist-item">${raEsc(txt)}</div>`).join('')
     : '<div class="ic-sub" style="margin:0">Nenhuma observação registrada ainda.</div>';
   const valorAtual = p.auxilio_alimentacao_valor_pago != null ? Number(p.auxilio_alimentacao_valor_pago) : raValorSugerido(p, cfg);
-  const chaveQr = p.pix ? raPixChaveNormalizada(p.pix) : '';
-  const chaveQrMudou = p.pix && chaveQr !== String(p.pix).trim();
+  const destino = raDestinoPix(p);
+  const chaveQr = destino.chavePix ? raPixChaveNormalizada(destino.chavePix) : '';
+  const chaveQrMudou = destino.chavePix && chaveQr !== String(destino.chavePix).trim();
 
   modal.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -931,8 +990,9 @@ function raRenderModal() {
     ${outros.length ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
 
     <div class="form-group" style="margin-top:12px">
-      <label>Chave PIX</label>
+      <label>Chave PIX${destino.viaPresidente ? ' (do próprio coordenador — informativo)' : ''}</label>
       <input id="ra-modal-pix" type="text" value="${raEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="raSalvarPix('${p.id}')">
+      ${destino.viaPresidente ? `<div class="ic-sub" style="margin:4px 0 0">ℹ️ Coordenador(a) de Acessibilidade: o pagamento deste cargo vai pro PIX do <b>Presidente de Mesa</b> da seção de menor número do local — este campo não é usado no QR abaixo.</div>` : ''}
     </div>
 
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
@@ -955,12 +1015,15 @@ function raRenderModal() {
     ${p.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(p.auxilio_alimentacao_pago_em))}</div>` : ''}
 
     <div style="margin-top:4px;text-align:center" id="ra-modal-qr-wrap">
-      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📱 QR Code do PIX</label>
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📱 QR Code do PIX${destino.viaPresidente ? ' — pago via Presidente' : ''}</label>
       <div id="ra-modal-qr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>
-      ${p.pix
-        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(raPixDescricao(p))}</div>
+      ${destino.chavePix
+        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(destino.descricao)}</div>
+           ${destino.viaPresidente ? `<div class="ic-sub" style="margin:2px 0 0">💰 Destinatário: <b>${raEsc(destino.presidenteNome)}</b> — Presidente, Seção ${destino.presidenteSecao}</div>` : ''}
            ${chaveQrMudou ? `<div class="ic-sub" style="margin:2px 0 0">🔧 chave usada no QR: <b>${raEsc(chaveQr)}</b> — ajustada pro formato que o banco reconhece</div>` : ''}`
-        : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>'}
+        : (p.funcao === 'coord_acessibilidade'
+            ? `<div class="ic-sub" style="margin:6px 0 0">${p.sec ? 'Nenhum Presidente ativo encontrado pra este local — não dá pra gerar o QR automaticamente.' : 'Sem local de votação definido — não dá pra aplicar a regra do Presidente automaticamente.'}</div>`
+            : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>')}
     </div>
 
     <div style="margin-top:12px">

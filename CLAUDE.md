@@ -8193,6 +8193,56 @@ tipo, ou quando chamado sem tipo escolhido.
 
 ---
 
+## QR DO COORDENADOR DE ACESSIBILIDADE VAI PRO PIX DO PRESIDENTE (`sime_recibo_alimentacao.js`, 01/10/2026)
+
+Pedido direto, depois de um relatório avulso (gerado pra conferência, não
+código) listando os coordenadores pendentes e sugerindo pra qual Presidente
+cada PIX deveria ir: "No controle de pagamento o qrcode deve aparecer o pix
+do presidente da menor seção. na informação deve constar eleições 2026 -
+Coordenador de acessibilidade e se possivel o nome do local de votação" —
+a mesma regra do relatório (Presidente de Mesa da seção de MENOR número do
+local recebe, repassa em mãos, mesmo espírito de "só o Presidente recebe
+direto do cartório" já documentado em "CONTROLE DE PAGAMENTO DO AUXÍLIO
+ALIMENTAÇÃO") virou comportamento de verdade no modal, não só um relatório
+pra conferir à parte.
+
+**`raCalcularPresidentePorLocal(mesarios)`** (nova) — mapa
+`município|||local_nome` → Presidente de menor seção ali, calculado uma vez
+em `raCarregar()` a partir dos mesários já carregados (nenhuma consulta
+nova ao banco). Só considera `funcao_mesa==='Presidente'` e quem resolveu
+seção — os outros 3 cargos de mesa nunca entram aqui, mesmo critério de
+sempre.
+
+**`raDestinoPix(p)`** (nova) — decide chave/nome/descrição que o QR usa:
+pra `coord_acessibilidade` com local resolvido, **sempre** o Presidente da
+seção de menor número (nunca o PIX do próprio coordenador, mesmo quando
+cadastrado); sem local, ou sem nenhum Presidente ativo encontrado ali, não
+há destino — duas mensagens distintas no modal ("Sem local de votação
+definido" × "Nenhum Presidente ativo encontrado"), nunca uma genérica que
+confundiria os dois casos. Demais funções (Presidente, Auxiliar de Eleição,
+Junta) continuam pagas na própria chave, sem nenhuma mudança.
+
+**Descrição do QR pra este cargo** — `Eleições 2026 - Coordenador de
+Acessibilidade${local ? ' - ' + local : ''}` (`raNomeLocalSemCodigo()` tira
+o código do TSE da frente do `local_nome`, ex.: "1074 - SECRETARIA..." vira
+só "SECRETARIA...", já que quem lê isso no app do banco não precisa do
+código interno). Campo "Chave PIX" do coordenador continua editável, mas
+ganha um aviso "(do próprio coordenador — informativo)" quando a regra se
+aplica — nunca é o que o QR usa. Abaixo do QR, uma linha extra mostra
+quem é o destinatário de fato ("💰 Destinatário: Fulano — Presidente, Seção
+N").
+
+Coberto por 15 checks novos em `tests/test_convocacao_alimentacao.mjs`
+(bloco 16, 164 checks no total no arquivo) — inclusive um caso com DUAS
+seções no mesmo local (números diferentes) confirmando que escolhe mesmo a
+de menor número, e não a seção a que o próprio coordenador está vinculado.
+Suíte inteira do arquivo e as demais que tocam `SIME_convocacao.html`
+(`test_convocacao_mesarios`, `_pendencias`, `_treinamento_geral`,
+`_treinamento_online`, `_voluntarios`, `test_admin_mesarios`) rodadas sem
+regressão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
