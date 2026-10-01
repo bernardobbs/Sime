@@ -8243,6 +8243,60 @@ regressão.
 
 ---
 
+## RELATÓRIO DE PAGAMENTOS — IMPRESSÃO (`sime_recibo_alimentacao.js`, 01/10/2026)
+
+Pedido direto, depois de uma conferência manual do extrato bancário de
+outubro feita fora do sistema (147 Pix de R$260/R$65, casados um a um
+contra `sime_atores` e gravados em `auxilio_alimentacao_documento`, ver
+sessão de conferência do mesmo dia): "gere um relatorio no sime para a
+impressão dos valores pagos e os documentos atribuidos". Até aqui o
+`auxilio_alimentacao_documento` só existia pra CONSULTA na tela (aba "💰
+Controle de pagamento") — não tinha como imprimir essa lista pra guardar
+fisicamente junto da prestação de contas.
+
+`raCarregar()` passou a trazer `auxilio_alimentacao_documento` no
+`select()` de `sime_atores` (campo já existia desde 19/09/2026, só nunca
+tinha sido lido por esta tela). Botão novo **"🖨️ Imprimir relatório
+(valores pagos + documentos)"**, dentro do próprio card "💰 Controle de
+pagamento" — mesmo mecanismo `#print-area`/`window.print()` de sempre,
+reaproveitando `raHtmlTimbre()`/`.ra-pagina`/`.ra-tabela` já usados pelos 4
+recibos de assinatura (mesma paisagem/pautado), mas **sem** bloco de
+SUBSTITUIÇÕES/OBS/"Suprido" — este documento não é formulário pra
+assinatura, é relatório de conferência interna, então uma única página
+contínua (`raHtmlRelatorioPagamentos()`), não uma por pessoa/seção/local.
+
+**Sempre só quem já está `auxilio_alimentacao_pago=true`** —
+`raListaPagosRelatorio()` ignora deliberadamente o filtro de STATUS da
+tela (`raPagFiltroStatus`, que por padrão abre em "Pendentes" — imprimir
+"pendentes" como "valores pagos" não faria sentido), mas respeita função/
+município/busca, já aplicados na tela: o cartório pode filtrar (ex.: só
+Presidentes, só um município) antes de imprimir, e o relatório sai
+restrito a esse recorte. Sem nenhum pagamento no recorte filtrado, avisa
+por toast em vez de chamar `window.print()` num documento vazio — mesmo
+critério de sempre usado pelos 4 botões de recibo acima.
+
+Colunas: Inscrição | Nome | Função | Seção | Valor | Documento — mesmas
+colunas básicas dos recibos de assinatura, trocando "Assinatura" por
+"Valor"/"Documento" (o que de fato importa aqui). Rodapé mostra o total
+pago e a quantidade de pagamentos do recorte impresso — mesmo
+`raFmtValor()` de sempre, soma simples de `auxilio_alimentacao_valor_pago`.
+Log de auditoria (`recibo_alimentacao_relatorio_pagamentos_impresso`, com
+quantidade) — mesmo critério das demais impressões: não confirma que o
+auxílio foi de fato entregue, só que o cartório gerou o documento.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 17, 9 checks
+novos — 174 no total no arquivo): uma única página contínua (não por
+pessoa); os pagos aparecem com valor e documento; quem está pendente nunca
+aparece, mesmo com a tela filtrada em "Pendentes"; rodapé com total/
+contagem certos; log de auditoria; filtro de função já aplicado na tela é
+respeitado; sem nenhum pagamento, avisa em vez de imprimir vazio. Suíte
+inteira do arquivo e as demais que tocam `SIME_convocacao.html`
+(`test_admin_mesarios`, `test_convocacao_mesarios`, `_pendencias`,
+`_treinamento_geral`, `_treinamento_online`, `_voluntarios`) rodadas sem
+regressão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

@@ -164,7 +164,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -558,6 +558,70 @@ async function raImprimirJunta() {
   const cfg = raCfg();
   const html = raHtmlListaFlat('Recibo de Auxílio Alimentação — Junta Eleitoral', null, pessoas, cfg, cfg.zonaTexto, 1);
   await raImprimirDocumento(html, 'recibo_alimentacao_junta_impresso', pessoas.length);
+}
+
+// ── Relatório de pagamentos (01/10/2026, pedido direto: "gere um relatorio
+// no sime para a impressão dos valores pagos e os documentos atribuidos")
+// — depois de uma conferência manual do extrato bancário (fora do SIME)
+// atribuir `auxilio_alimentacao_documento` (nº do Pix no extrato) a cada
+// pessoa já marcada como paga, faltava um jeito de IMPRIMIR essa lista —
+// até aqui só dava pra ver na tela (aba "💰 Controle de pagamento"), sem
+// nenhum documento pra guardar/levar fisicamente. Mesmo mecanismo
+// `#print-area`/`window.print()` de sempre; reaproveita `.ra-pagina`/
+// `.ra-tabela`/`raHtmlTimbre()` já usados pelos 4 recibos de assinatura
+// acima (landscape, pautado) — é só mais um layout dentro do mesmo
+// documento, não um formulário de assinatura (sem SUBSTITUIÇÕES/OBS/
+// "Suprido" — aqui ninguém assina, é relatório de conferência).
+//
+// Sempre só quem JÁ está `auxilio_alimentacao_pago=true` — nunca lista
+// pendente (imprimir "valores pagos" de quem não foi pago não faz
+// sentido) — por isso ignora deliberadamente `raPagFiltroStatus` (que na
+// tela pode estar em "Pendentes") e aplica só função/município/busca, que
+// continuam valendo pra deixar o relatório restrito ao recorte que o
+// cartório já tiver filtrado na tela antes de imprimir.
+function raListaPagosRelatorio() {
+  const q = raPagBusca.trim().toLowerCase();
+  return (raDados.todos || []).filter(a => {
+    if (!a.auxilio_alimentacao_pago) return false;
+    if (raPagFiltroFuncao && a.funcao !== raPagFiltroFuncao) return false;
+    if (raPagFiltroMunicipio && (a.sec?.municipio || '') !== raPagFiltroMunicipio) return false;
+    if (q) {
+      const secaoTxt = a.sec ? String(a.sec.numero) : '';
+      if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+}
+
+function raHtmlRelatorioPagamentos(lista, cfg) {
+  const total = lista.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Relatório de Pagamentos — Auxílio Alimentação', 'Controle interno do cartório — valores pagos e documentos atribuídos', cfg, 1)}
+      <table class="ra-tabela">
+        <colgroup><col class="ra-col-insc"><col><col class="ra-col-func"><col style="width:10%"><col style="width:12%"><col style="width:14%"></colgroup>
+        <thead><tr><th>Inscrição</th><th>Nome</th><th>Função</th><th>Seção</th><th>Valor</th><th>Documento</th></tr></thead>
+        <tbody>${lista.map(p => `
+          <tr>
+            <td>${raEsc(p.inscricao_eleitoral || '—')}</td>
+            <td>${raEsc(p.nome_completo)}</td>
+            <td>${raEsc(raFuncaoLabel(p))}</td>
+            <td>${p.sec ? p.sec.numero : '—'}</td>
+            <td>${raFmtValor(p.auxilio_alimentacao_valor_pago)}</td>
+            <td>${raEsc(p.auxilio_alimentacao_documento || '—')}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+      <div class="ra-rodape-total">
+        <div><b>Total pago:</b> ${raFmtValor(total)} &nbsp; (${lista.length} pagamento${lista.length === 1 ? '' : 's'})</div>
+      </div>
+    </div>`;
+}
+
+async function raImprimirRelatorioPagamentos() {
+  const lista = raListaPagosRelatorio();
+  if (!lista.length) { showToast('⚠ Nenhum pagamento registrado pra imprimir (confira os filtros aplicados na tela)'); return; }
+  const html = raHtmlRelatorioPagamentos(lista, raCfg());
+  await raImprimirDocumento(html, 'recibo_alimentacao_relatorio_pagamentos_impresso', lista.length);
 }
 
 async function raSalvarConfig() {
@@ -1119,6 +1183,10 @@ function raHtmlSecaoPagamento() {
         receptora, só o Presidente recebe pagamento direto (R$260 — repassa aos outros 3 da mesa fora do sistema,
         por isso só ele aparece aqui). Auxiliar de eleição recebe por dia trabalhado (R$65 só domingo, R$130
         sábado + domingo — use o seletor 🗓️ ao lado do valor). Valor sempre editável, nunca travado.</div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirRelatorioPagamentos()">🖨️ Imprimir relatório (valores pagos + documentos)</button>
+        <div class="ic-sub" style="margin-top:4px">Imprime só quem já está marcado como pago — respeita os filtros de função/município/busca abaixo, ignora o de status.</div>
+      </div>
       <div id="ra-controle-pagamento" style="margin-top:8px"></div>
     </div>`;
 }

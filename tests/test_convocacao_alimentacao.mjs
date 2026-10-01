@@ -928,6 +928,84 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 17. Relatório de pagamentos (01/10/2026, pedido direto: "gere um
+// relatorio no sime para a impressão dos valores pagos e os documentos
+// atribuidos") — botão novo na sub-aba "💰 Controle de pagamento", imprime
+// só quem já está pago, com valor + nº do documento (nº do Pix no
+// extrato), respeitando os filtros de função/município/busca já aplicados
+// na tela mas ignorando o de status (senão filtrar "Pendentes" faria o
+// relatório sair sempre vazio). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago = true;
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_valor_pago = 260;
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago_em = '2026-09-24T18:00:00.000Z';
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_documento = '100147';
+  m.sime_atores.find(a => a.id === 'c1').auxilio_alimentacao_pago = true;
+  m.sime_atores.find(a => a.id === 'c1').auxilio_alimentacao_valor_pago = 65;
+  m.sime_atores.find(a => a.id === 'c1').auxilio_alimentacao_documento = '100193';
+  // a1 (AUXILIAR PEDRO) fica pendente, de propósito — nunca deve aparecer.
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+
+  // Deixa a tela filtrada em "Pendentes" (padrão) de propósito — o
+  // relatório precisa sair com os pagos mesmo assim, ignorando esse filtro.
+  await p.click('button:has-text("🖨️ Imprimir relatório")');
+  await p.waitForTimeout(300);
+
+  check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
+  const paginas = await p.locator('#print-area .ra-pagina').count();
+  check('uma única página (lista contínua, não uma por pessoa)', paginas === 1, String(paginas));
+  const html = await p.locator('#print-area').innerHTML();
+  const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('título do relatório presente', /Relatório de Pagamentos — Auxílio Alimentação/.test(txt));
+  check('os 2 pagos aparecem, com valor e documento', /PRESIDENTE MARIA\b.*R\$ 260,00.*100147/.test(txt) && /COORDENADORA BEATRIZ.*R\$ 65,00.*100193/.test(txt), txt);
+  check('quem está pendente (AUXILIAR PEDRO) nunca aparece, mesmo com a tela filtrada em "Pendentes"', !/AUXILIAR PEDRO/.test(txt), txt);
+  check('rodapé mostra o total pago (325,00) e a contagem (2 pagamentos)', /Total pago:\s*R\$ 325,00.*2 pagamentos/.test(txt), txt);
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const log = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_relatorio_pagamentos_impresso');
+  check('log de auditoria gravado com quantidade 2', !!log && log.payload.payload.quantidade === 2, JSON.stringify(log));
+
+  // Filtro por função (já existente na tela) é respeitado pelo relatório —
+  // só o Presidente, a coordenadora some.
+  const selects = p.locator('#ra-controle-pagamento select');
+  const selStatus = selects.nth(0);
+  const selFuncao = selects.nth(1);
+  await selFuncao.selectOption('mesario');
+  await p.waitForTimeout(200);
+  await p.click('button:has-text("🖨️ Imprimir relatório")');
+  await p.waitForTimeout(300);
+  const txt2 = (await p.locator('#print-area').innerHTML()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('filtro de função aplicado: só o Presidente aparece, a coordenadora some', /PRESIDENTE MARIA\b/.test(txt2) && !/COORDENADORA BEATRIZ/.test(txt2), txt2);
+
+  // Nenhum pago nenhum (depois de desmarcar os dois) — avisa em vez de
+  // imprimir um documento vazio.
+  await selFuncao.selectOption('');
+  await selStatus.selectOption('pago');
+  await p.waitForTimeout(200);
+  // click() (não uncheck()), mesmo cuidado já documentado no bloco 8: com o
+  // filtro em "Pagos", desmarcar faz a própria linha sumir da tela — uncheck()
+  // ficaria esperando pra sempre por um estado "desmarcado e visível" que
+  // nunca chega a existir.
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
+  await p.waitForTimeout(200);
+  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ") input[type=checkbox]');
+  await p.waitForTimeout(200);
+  const chamadasAntes = await p.evaluate(() => window.__printCalls);
+  await p.click('button:has-text("🖨️ Imprimir relatório")');
+  await p.waitForTimeout(300);
+  check('sem nenhum pagamento, avisa em vez de chamar window.print()', await p.evaluate(() => window.__printCalls) === chamadasAntes);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
