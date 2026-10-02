@@ -8475,6 +8475,66 @@ Motorista/Instalador de uma rota "UR7"/"VIS1" grava o código completo, não
 os dígitos truncados). Suíte completa (`test_tokens.mjs`,
 `test_tokens_tv.mjs`, `test_tokens_impressao.mjs`) rodada sem regressão.
 
+**Revisão no mesmo dia — capa institucional, com a imagem da campanha
+"Eleições 2026" e a identificação da zona; pedido direto: "coloque a
+imagem da eleição 2026 na capa e a informação da 7ª Zona... será uma capa
+institucional. então quero uma capa sobria e institucional."** A primeira
+versão (texto grande, só tipo/nome/QR) cumpria o "bem grande" do pedido
+original, mas não tinha nenhuma identificação institucional — ficava
+parecendo um rascunho interno, não um documento oficial da operação.
+
+Reaproveita exatamente a mesma marca já estabelecida em 18/09/2026 pro
+Auxílio Alimentação (`raHtmlTimbre()`, `sime_recibo_alimentacao.js`) — a
+imagem real da campanha civil "Eleições 2026 #VotoNaDemocracia"
+(`assets/logo_eleicoes2026.png`, mesmo arquivo, mesmo critério: NUNCA o
+brasão/selo da Justiça Eleitoral, que o SIME nunca reproduz) — e o mesmo
+formato de identificação de zona (`${numero}ª Zona Eleitoral do Piauí`,
+mesmo texto de `zonaTexto` em `sime_recibo_alimentacao.js`). `rtCarregar()`
+passou a trazer `numero`/`municipio` no `select()` de `sime_zonas` (antes só
+os campos `remetente_*`, usados pra Correspondência) — nenhum dado novo
+precisou ser cadastrado, só não estava sendo lido por este módulo ainda.
+
+**"Sóbria" entendida como: sem emoji nesta página específica, hierarquia
+por peso/caixa-alta em vez de tamanho gritante, tons neutros em vez de
+blocos coloridos.** `RT_TIPO_LABEL` (com ícone) continua exatamente igual
+em todo o resto do sistema (cards da lista, subtítulo da própria ficha na
+página seguinte) — só a capa usa uma versão despida do emoji
+(`.replace(/^[^\p{L}]+/u, '')`, tira qualquer caractere antes da primeira
+letra), já que repetir o mesmo ícone colorido bem grande destoaria do tom
+institucional pedido. Layout: logo no topo, zona+município como
+identificação, uma régua fina (não mais um bloco de cor), "Rota de
+{tipo}" em caixa-alta espaçada como texto de apoio (eyebrow), o nome da
+rota em destaque (peso forte, tamanho reduzido de 30pt pra 23pt — ainda
+bem maior que o resto do documento, só não mais "gritando"), QR+token
+abaixo. O aviso de token ausente perdeu o vermelho/tracejado — virou cinza
+neutro com borda fina, mesmo tom sóbrio do restante da capa, mas continua
+tão visível quanto antes (nunca escondido).
+
+**Tokens de Motorista gerados em produção pra todas as 13 rotas de
+distribuição de urnas da 7ª Zona (UR1-UR13), pedido direto: "gere os
+tokens das rotas de distribuição de urnas".** Rodado uma vez via SQL
+Editor/MCP (não é migração — replica exatamente `criarTokenObj()`/
+`tokenParaLinha()` de `SIME_tokens.html`: token de 8 caracteres do mesmo
+alfabeto sem ambiguidade — `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, sem 0/1/I/O
+— PIN de 4 dígitos, `tipo='motorista'`, `rotas=[codigo]`, expirando no fim
+do Dia D — `2026-10-04 23:59:59` no fuso de Brasília/Piauí, sem horário de
+verão desde 2019). Cada token saiu com unicidade garantida pelo índice
+único de `sime_tokens.token` (retry de geração embutido no laço, nunca
+precisou de verdade — 8 caracteres de um alfabeto de 33 já são ~1,2
+trilhão de combinações). UR13 é a única das 13 sem motorista designado
+ainda em `sime_rotas.responsavel_ator_id` (pendência já documentada desde
+28/09/2026, "Motoristas/placas das rotas de urna") — o token foi gerado
+mesmo assim (uma rota sem responsável nomeado continua precisando de
+acesso de campo pra quem for dirigi-la), só falta o cartório atribuir o
+responsável quando souber quem é. Logado em `sime_logs`
+(`tokens_motorista_gerados_lote_distribuicao`, com a lista das 13 rotas).
+
+Coberto por `tests/test_rotas.mjs` (3 checks novos no bloco 47 — 312 no
+total no arquivo): capa mostra a identificação da zona e o município;
+marca aponta pra `assets/logo_eleicoes2026.png`; o rótulo do tipo da rota
+sai sem emoji (capa sóbria). Sem regressão em `test_tokens_massa.mjs`
+(52/52).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

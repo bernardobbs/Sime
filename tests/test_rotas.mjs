@@ -2077,10 +2077,19 @@ async function lerDestino(p) {
   await p.waitForTimeout(150);
 
   const capaTxt = (await p.locator('.rt-pagina-capa').first().innerText()).replace(/\s+/g, ' ');
-  check('capa mostra "Rota de" com os tipos da rota (grande, 1ª página)', /Rota de .*Distribuição de urnas.*Recolhimento de urnas/.test(capaTxt), capaTxt);
+  check('capa mostra "Rota de" com os tipos da rota, SEM emoji (capa institucional, sóbria)', /Rota de Distribuição de urnas · Recolhimento de urnas/.test(capaTxt), capaTxt);
   check('capa mostra "Rota nº" com o nome da rota', /Rota nº Rota 001/.test(capaTxt), capaTxt);
   check('sem token de Motorista cadastrado pra esta rota, capa avisa em vez de inventar QR', /Nenhum token de Motorista cadastrado/.test(capaTxt), capaTxt);
   check('nenhum canvas de QR da capa é desenhado sem token', await p.locator('#rt-capa-qr canvas, #rt-capa-qr table').count() === 0);
+
+  // Revisão institucional (02/10/2026, pedido direto: "coloque a imagem da
+  // eleição 2026 na capa e a informação da 7ª Zona... capa sobria e
+  // institucional") — logo da campanha + identificação da zona, mesmo
+  // padrão de `raHtmlTimbre()` (sime_recibo_alimentacao.js).
+  check('capa mostra a identificação da zona (número + "Zona Eleitoral do Piauí")', /7ª Zona Eleitoral do Piauí/.test(capaTxt), capaTxt);
+  check('capa mostra o município da zona', /Campo Maior — PI/.test(capaTxt), capaTxt);
+  const logoSrc = await p.locator('.rt-pagina-capa img.rt-capa-logo').first().getAttribute('src');
+  check('capa usa a imagem oficial da campanha "Eleições 2026" como marca', /logo_eleicoes2026\.png/.test(logoSrc || ''), logoSrc);
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

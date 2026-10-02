@@ -114,14 +114,25 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      aqui (nunca ":not(:last-child)"), ao contrário de .rt-pagina-ficha: a
      capa SEMPRE precisa empurrar pra uma página nova antes da própria ficha
      dela, mesmo sendo a última rota do lote. */
-  .rt-pagina-capa{page-break-after:always;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Arial,Helvetica,sans-serif;gap:6mm;padding:10mm;box-sizing:border-box;}
-  .rt-capa-tipo{font-size:22pt;font-weight:800;}
-  .rt-capa-nome{font-size:30pt;font-weight:900;}
-  .rt-capa-codigo{font-size:13pt;color:#333;}
-  .rt-capa-qr{margin-top:4mm;}
-  .rt-capa-token{font-size:16pt;letter-spacing:.5px;margin-top:2mm;}
-  .rt-capa-sub{font-size:9pt;color:#444;max-width:120mm;}
-  .rt-capa-sem-token{font-size:12pt;color:#900;border:2px dashed #900;padding:6mm 10mm;max-width:130mm;}
+  /* Capa institucional (02/10/2026, revisão no mesmo dia, pedido direto:
+     "coloque a imagem da eleição 2026 na capa e a informação da 7ª Zona...
+     será uma capa institucional... quero uma capa sobria e institucional").
+     Tons neutros (preto/cinza, sem vermelho nem caixa tracejada), régua fina
+     em vez de bloco colorido, hierarquia por peso/caixa-alta em vez de
+     tamanho gritante — mesmo espírito do timbre institucional já usado no
+     Auxílio Alimentação (`raHtmlTimbre`, sime_recibo_alimentacao.js). */
+  .rt-pagina-capa{page-break-after:always;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Arial,Helvetica,sans-serif;gap:2.5mm;padding:14mm;box-sizing:border-box;color:#111;}
+  .rt-capa-logo{height:22mm;width:auto;object-fit:contain;margin-bottom:3mm;}
+  .rt-capa-orgao{font-size:13pt;font-weight:700;letter-spacing:.3px;}
+  .rt-capa-municipio{font-size:10pt;color:#444;margin-top:-1mm;}
+  .rt-capa-linha{width:55mm;border-bottom:1px solid #999;margin:4mm 0;}
+  .rt-capa-eyebrow{font-size:11pt;letter-spacing:1.5px;text-transform:uppercase;color:#444;}
+  .rt-capa-nome{font-size:23pt;font-weight:800;margin-top:1.5mm;}
+  .rt-capa-codigo{font-size:9.5pt;color:#555;margin-top:-1mm;margin-bottom:3mm;}
+  .rt-capa-qr{margin-top:2mm;}
+  .rt-capa-token{font-size:13pt;letter-spacing:.4px;margin-top:3mm;}
+  .rt-capa-sub{font-size:8.5pt;color:#444;max-width:110mm;margin-top:1mm;}
+  .rt-capa-sem-token{font-size:10pt;color:#555;border:1px solid #bbb;padding:5mm 9mm;max-width:120mm;margin-top:4mm;}
   .rt-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
   .rt-titulo{font-weight:800;font-size:12pt;}
   .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}

@@ -776,7 +776,10 @@ async function rtCarregar(opts = {}) {
     // esse endereço postal, cadastrado pelo cartório. Usado como contexto
     // de geocodificação no lugar do endereço, quando o texto de partida/
     // destino menciona "Cartório" — ver rtMapsUrl.
-    sb.from('sime_zonas').select('remetente_endereco, remetente_bairro, remetente_cep, remetente_municipio, remetente_uf').eq('id', zonaId).maybeSingle(),
+    // `numero`/`municipio` (02/10/2026, ver rtHtmlCapa) — identificação
+    // institucional da zona na capa impressa; os `remetente_*` já existiam
+    // pra Correspondência (endereço postal do cartório).
+    sb.from('sime_zonas').select('numero, municipio, remetente_endereco, remetente_bairro, remetente_cep, remetente_municipio, remetente_uf').eq('id', zonaId).maybeSingle(),
     // Token de motorista/instalador por rota (02/10/2026, ver rtHtmlCapa) —
     // mesmo escopo por eleicao_id de sempre (SIME_tokens.html); sem eleição
     // ativa não há como filtrar, cai em lista vazia (nunca trava a tela).
@@ -1769,6 +1772,21 @@ function rtBuildTokenUrl(tipo, tokenId) {
 // instalador vê de cara ao pegar a ficha impressa em mãos, precisa dar pra
 // ler sem precisar aproximar o papel.
 //
+// Revisada no mesmo dia, pedido direto: "coloque a imagem da eleição 2026
+// na capa e a informação da 7ª Zona... será uma capa institucional... quero
+// uma capa sobria e institucional." Mesma marca/critério já usado em
+// `raHtmlTimbre()` (sime_recibo_alimentacao.js, 18/09/2026) — a imagem
+// oficial da campanha civil "Eleições 2026 #VotoNaDemocracia"
+// (assets/logo_eleicoes2026.png, arquivo real fornecido pelo cartório,
+// diferente do brasão/selo da Justiça Eleitoral, nunca reproduzido aqui) +
+// identificação da zona (`${numero}ª Zona Eleitoral do Piauí`, mesmo
+// formato de `zonaTexto` em sime_recibo_alimentacao.js). Sóbria: sem emoji
+// no tipo/nome da rota aqui (diferente do resto do sistema, que usa emoji
+// à vontade — RT_TIPO_LABEL é só despido do ícone PRA ESTA PÁGINA, nunca
+// alterado globalmente), hierarquia tipográfica discreta (caixa alta
+// espaçada pro tipo, peso forte só no nome da rota), régua fina em vez de
+// bloco colorido.
+//
 // Qual token buscar depende do TIPO da rota, não de uma escolha do cartório:
 // rota de instalação usa o token de Instalador (SIME_instalador.html); todo
 // outro tipo (distribuição/recolhimento de urna/recolhimento de mídia) usa o
@@ -1778,25 +1796,34 @@ function rtBuildTokenUrl(tipo, tokenId) {
 // módulo.
 //
 // "Nunca trava, nunca inventa" de sempre: sem token cadastrado ainda pra
-// esta rota, a capa mostra um aviso explícito em vez de não imprimir nada
-// ou inventar um QR vazio — o cartório sabe exatamente o que falta (gerar
-// em 🎫 Tokens) sem precisar adivinhar por que a página saiu sem QR.
+// esta rota, a capa mostra um aviso explícito (sóbrio, não mais em
+// vermelho/tracejado) em vez de não imprimir nada ou inventar um QR vazio —
+// o cartório sabe exatamente o que falta (gerar em 🎫 Tokens).
 function rtHtmlCapa(rota, suf) {
   const tipoTokenBuscado = (rota.tipos || []).includes('instalacao') ? 'instalador' : 'motorista';
   const tipoTokenLabel = tipoTokenBuscado === 'instalador' ? 'Instalador' : 'Motorista';
   const tokenInfo = rtDados.tokensPorCodigo?.[tipoTokenBuscado]?.get(rota.codigo) || null;
-  const tipoRotaLabel = (rota.tipos || []).map(t => RT_TIPO_LABEL[t] || t).join(' · ') || '—';
+  // Rótulo sem emoji, só pra esta capa — RT_TIPO_LABEL (com ícone) continua
+  // usado sem mudança em todo o resto do sistema (cards, subtítulo da
+  // própria ficha na página seguinte).
+  const tipoRotaLabel = (rota.tipos || []).map(t => (RT_TIPO_LABEL[t] || t).replace(/^[^\p{L}]+/u, '')).join(' · ') || 'Rota Eleitoral';
+  const zona = rtDados.zona || {};
+  const zonaTexto = zona.numero ? `${zona.numero}ª Zona Eleitoral do Piauí` : 'Zona Eleitoral';
   const qrId = `rt-capa-qr${suf}`;
   return `
     <div class="rt-pagina-capa">
-      <div class="rt-capa-tipo">Rota de ${rtEsc(tipoRotaLabel)}</div>
+      <img class="rt-capa-logo" src="./assets/logo_eleicoes2026.png" alt="Eleições 2026">
+      <div class="rt-capa-orgao">${rtEsc(zonaTexto)}</div>
+      ${zona.municipio ? `<div class="rt-capa-municipio">${rtEsc(zona.municipio)} — PI</div>` : ''}
+      <div class="rt-capa-linha"></div>
+      <div class="rt-capa-eyebrow">Rota de ${rtEsc(tipoRotaLabel)}</div>
       <div class="rt-capa-nome">Rota nº ${rtEsc(rota.nome)}</div>
-      <div class="rt-capa-codigo">Código: ${rtEsc(rota.codigo)}</div>
+      <div class="rt-capa-codigo">Código ${rtEsc(rota.codigo)}</div>
       ${tokenInfo ? `
       <div id="${qrId}" class="rt-capa-qr"></div>
-      <div class="rt-capa-token">Token: <b>${rtEsc(tokenInfo.token)}</b> &nbsp;·&nbsp; PIN: <b>${rtEsc(tokenInfo.pin)}</b></div>
+      <div class="rt-capa-token">Token <b>${rtEsc(tokenInfo.token)}</b> &nbsp;·&nbsp; PIN <b>${rtEsc(tokenInfo.pin)}</b></div>
       <div class="rt-capa-sub">Acesso do ${tipoTokenLabel} desta rota — aponte a câmera no QR, ou digite o token/PIN na tela de acesso.</div>` : `
-      <div class="rt-capa-sem-token">⚠ Nenhum token de ${tipoTokenLabel} cadastrado pra esta rota ainda — gere um em 🎫 Tokens.</div>`}
+      <div class="rt-capa-sem-token">Nenhum token de ${tipoTokenLabel} cadastrado pra esta rota ainda — gere um em 🎫 Tokens.</div>`}
     </div>`;
 }
 
