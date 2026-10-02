@@ -7617,27 +7617,28 @@ só apareciam como `ponto_partida` (Grupo Escolar Manoel Francisco é a
 partida da Rota 001; Escola do Reassentamento Corredores é a partida da
 Rota 004).
 
-> **Pendência real, não resolvida nesta sessão — 8 rotas ativas hoje
-> apontam pra um destino que NÃO está na lista oficial, e remapear qual
-> ponto real cada uma deveria usar é decisão do cartório, nunca
-> adivinhada:**
-> - `Creche Mamãe Lima (Jatobá)` — rotas 011, 012, 013, 034 (todas em
->   Jatobá do Piauí — candidato mais próximo geograficamente na lista
->   oficial: **SETI Francisco Luis**, também em Jatobá, mas não confirmado).
-> - `Escola Monsenhor Mateus (Sigefredo Pacheco)` — rota 035.
-> - `246 — U.E. Miguel Rocha, Sigefredo Pacheco` — rota 001 (termina na
->   própria última parada da rota, não num ponto de transmissão).
-> - `Creche Mamãe Lima M. Oliveira` — rota 019 (partida=destino, já
->   sinalizada como pendência própria desde 27/09/2026).
+> **Pendência resolvida em 02/10/2026, confirmado pelo dono do projeto.**
+> Das 7 rotas que apontavam pra um destino fora da lista oficial, 6 foram
+> remapeadas direto (rodado via SQL Editor/MCP, `rota_destino_oficial_corrigido`
+> em `sime_logs`, não é migração):
+> - **"Grupo Escolar Manoel Francisco" virou "U.E. Miguel Rocha"** — mesmo
+>   prédio físico, nome atualizado na lista oficial (`RT_DESTINOS_CONHECIDOS`
+>   corrigida junto). Rota 001 (`246 — U.E. Miguel Rocha, Sigefredo
+>   Pacheco`, o texto auto-sugerido antigo com o código do local na frente)
+>   agora grava o texto oficial exato.
+> - **`Creche Mamãe Lima (Jatobá)` e `Creche Mamãe Lima M. Oliveira`
+>   viraram `SETI Francisco Luis`** — confirmado que são, na prática, o
+>   mesmo ponto oficial de Jatobá (a hipótese geográfica levantada acima
+>   estava certa). Rotas 011, 012, 013, 019, 034 corrigidas.
 >
-> Essas 8 rotas continuam funcionando normalmente (destino é sempre texto
-> livre via "Outro" quando não bate com a lista fixa) — só não vão
-> aparecer pré-selecionadas no dropdown até o cartório confirmar o ponto
-> real de cada uma.
+> **`Escola Monsenhor Mateus (Sigefredo Pacheco)` — rota 035 — continua
+> pendente, de propósito: não foi confirmada nesta rodada**, nunca
+> adivinhada; fica aguardando o cartório dizer qual dos pontos oficiais
+> ela deveria usar.
 
 Coberto por `tests/test_rotas.mjs` (bloco 29, atualizado — dropdown lista
-os 5 pontos oficiais, salvar com "Câmara de Vereadores de Sigefredo
-Pacheco" grava o texto exato) — 270 checks no arquivo, 0 falhas.
+os 5 pontos oficiais já com "U.E. Miguel Rocha (Sigefredo Pacheco)" no
+lugar do nome antigo) — 270 checks no arquivo, 0 falhas.
 
 ---
 
@@ -8911,6 +8912,44 @@ mesmo critério das demais cargas em lote já documentadas neste arquivo
 (verificado direto no Supabase antes/depois: 14 rotas, `urnas_estimadas`
 batendo exatamente com a contagem real de `sime_rota_secoes` em cada
 uma).
+
+**FSESP (seções 62/122, Campo Maior) achada sem rota de instalação
+(02/10/2026)** — o painel "⚠️ Seções sem rota, por tipo" do módulo (ver
+"SEIS MELHORIAS PRÓPRIAS" acima) listou 17 seções sem rota de instalação;
+15 já eram a pendência conhecida (as 6 paradas sem Equipe/Motorista do
+parágrafo acima, mais a Penitenciária, já excluída do INST5 de propósito).
+As outras 2 (FSESP) nunca tinham aparecido no docx original — achado
+novo, não documentado. Perguntado ao dono do projeto (`AskUserQuestion`,
+com a coordenada real mostrando ~300m de distância até a Creche Tia
+Medeiros): confirmado incluir no **INST4B** — as 2 seções entraram como
+paradas 10-11 (`urnas_estimadas` 9→11), via SQL Editor/MCP.
+
+**Capa impressa ganhou um bloco "Equipe / contato no local" (02/10/2026,
+pedido direto: "faça uma capa com o nome das equipes, telefones")** —
+`rtParseEquipeCapa()` (`sime_rotas_modulo.js`) extrai o texto já salvo em
+`itinerario` (formato "Equipe/contato local: {local}: {nomes e
+telefones}; ...", convenção desde a criação das rotas de instalação) e
+mostra como lista, um local por linha, na própria capa (`rtHtmlCapa()`) —
+não um campo novo, só uma leitura melhor do que já existia. **Nunca tenta
+casar esses nomes contra `sime_atores`/`sime_usuarios`** — checado antes
+de decidir (pergunta direta do dono do projeto: "essas pessoas estão
+todas como atores ou equipe"): a maioria bate com `sime_atores` (geralmente
+como mesário da própria seção, servindo de contato local) e pelo menos um
+(Bruno Gomes) bate com `sime_usuarios` (equipe, perfil `auxiliar_eleicao`)
+— mas o nome no itinerário é só o primeiro nome, e o mesmo primeiro nome
+pertence a várias pessoas diferentes no cadastro real ("Fernanda",
+"Wanderson", "Thais", "Ismael" batem em 2-5 registros distintos) —
+adivinhar qual delas é a certa numa ficha que vai pro instalador em campo,
+2 dias antes da eleição, é exatamente o tipo de erro que este projeto
+sempre evita. Só aparece quando o itinerário segue o prefixo conhecido;
+rota de outro tipo (cujo itinerário é observação livre, formato diferente)
+não ganha bloco nenhum.
+
+**"Todos saem do cartório eleitoral" (02/10/2026, pedido direto)** — as 14
+rotas de instalação nasceram sem `ponto_partida` preenchido (a planilha
+original não trazia esse dado por rota). Preenchidas em lote com
+"Cartório Eleitoral da 7ª Zona Eleitoral" — mesmo texto canônico já usado
+em todo o resto do sistema, via SQL Editor/MCP.
 
 ---
 

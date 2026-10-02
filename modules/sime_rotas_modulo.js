@@ -76,15 +76,22 @@ const RT_TIPOS_LEGADO = ['distribuicao'];
 // serão destinos da rotas de recolhimento de midias" — o Patronato N. S.
 // de Lourdes é só CONTINGÊNCIA (tecnologia "VPN/CT", plano B se o ponto
 // principal cair), não um destino de rota, então fica de fora desta lista.
-// Pendência real, não resolvida aqui: as 6 rotas que hoje apontam pra
-// Creche Mamãe Lima/Escola Monsenhor Mateus/valores avulsos (011, 012,
-// 013, 019, 034, 035, 001) precisam ser remapeadas pra um destes 5 pontos
-// reais — não adivinhado, fica pro cartório confirmar qual ponto cada uma
-// deveria usar de verdade.
+// Pendência resolvida em 02/10/2026, confirmado pelo dono do projeto: o
+// Grupo Escolar Manoel Francisco (ponto oficial #3) virou U.E. Miguel
+// Rocha — mesmo prédio físico, nome atualizado — e as rotas que apontavam
+// pra "Creche Mamãe Lima"/"Creche Mamãe Lima M. Oliveira" (pontos de
+// CONSOLIDAÇÃO informal, nunca oficiais) foram confirmadas como sendo, na
+// prática, o SETI Francisco Luis (ponto oficial #5, em Jatobá do Piauí) —
+// as 5 rotas de recolhimento de mídia com esses 3 destinos antigos
+// (`sql/SIME_rotas_destinos_oficiais_fix.sql`) foram remapeadas pro texto
+// oficial certo. "Escola Monsenhor Mateus" e "246 — U.E. Miguel Rocha,
+// Sigefredo Pacheco" (texto auto-sugerido antigo, com o código do local na
+// frente) também foram corrigidos — o 2º já era o mesmo prédio, só com
+// formatação diferente da lista oficial.
 const RT_DESTINOS_CONHECIDOS = [
   'Cartório Eleitoral da 7ª Zona Eleitoral',
   'Câmara de Vereadores de Sigefredo Pacheco',
-  'Grupo Escolar Manoel Francisco (Sigefredo Pacheco)',
+  'U.E. Miguel Rocha (Sigefredo Pacheco)',
   'Escola do Reassentamento Corredores (Campo Maior)',
   'SETI Francisco Luis (Jatobá do Piauí)',
 ];
@@ -1861,6 +1868,30 @@ function rtBuildTokenUrl(tipo, tokenId) {
 // esta rota, a capa mostra um aviso explícito (sóbrio, não mais em
 // vermelho/tracejado) em vez de não imprimir nada ou inventar um QR vazio —
 // o cartório sabe exatamente o que falta (gerar em 🎫 Tokens).
+// Equipe/contato local, extraído do itinerário pra entrar na capa
+// (02/10/2026, pedido direto: "faça uma capa com o nome das equipes,
+// telefones"). `itinerario` já guarda esse dado em texto livre desde a
+// criação das rotas de instalação (ver "ROTAS DE INSTALAÇÃO DE SEÇÃO" no
+// CLAUDE.md) — "Equipe/contato local: {local}: {nomes e telefones}; {local
+// 2}: ...". Mostra exatamente esse texto, já digitado, nunca tentando casar
+// nome contra sime_atores/sime_usuarios: os nomes no itinerário são só
+// primeiro nome, e o mesmo primeiro nome pertence a VÁRIAS pessoas
+// diferentes no cadastro real (ex.: "Fernanda", "Wanderson", "Thais" batem
+// em 2-5 registros distintos) — adivinhar qual delas é a certa pra uma
+// ficha que vai pra campo é exatamente o tipo de erro que este projeto
+// sempre evita. Só aparece quando o itinerário segue esse prefixo
+// conhecido; rota sem esse formato (distribuição/recolhimento, cujo
+// itinerário é observação livre de outro tipo) não ganha bloco nenhum.
+function rtParseEquipeCapa(itinerario) {
+  const prefixo = 'Equipe/contato local: ';
+  if (!itinerario || !itinerario.startsWith(prefixo)) return null;
+  const itens = itinerario.slice(prefixo.length).split(';').map(s => s.trim()).filter(Boolean).map(seg => {
+    const i = seg.indexOf(':');
+    return i === -1 ? { local: seg, pessoas: '' } : { local: seg.slice(0, i).trim(), pessoas: seg.slice(i + 1).trim() };
+  });
+  return itens.length ? itens : null;
+}
+
 function rtHtmlCapa(rota, suf) {
   const tipoTokenBuscado = (rota.tipos || []).includes('instalacao') ? 'instalador' : 'motorista';
   const tipoTokenLabel = tipoTokenBuscado === 'instalador' ? 'Instalador' : 'Motorista';
@@ -1872,6 +1903,7 @@ function rtHtmlCapa(rota, suf) {
   const zona = rtDados.zona || {};
   const zonaTexto = zona.numero ? `${zona.numero}ª Zona Eleitoral do Piauí` : 'Zona Eleitoral';
   const qrId = `rt-capa-qr${suf}`;
+  const equipe = rtParseEquipeCapa(rota.itinerario);
   return `
     <div class="rt-pagina-capa">
       <img class="rt-capa-logo" src="./assets/logo_eleicoes2026.png" alt="Eleições 2026">
@@ -1886,6 +1918,11 @@ function rtHtmlCapa(rota, suf) {
       <div class="rt-capa-token">Token <b>${rtEsc(tokenInfo.token)}</b> &nbsp;·&nbsp; PIN <b>${rtEsc(tokenInfo.pin)}</b></div>
       <div class="rt-capa-sub">Acesso do ${tipoTokenLabel} desta rota — aponte a câmera no QR, ou digite o token/PIN na tela de acesso.</div>` : `
       <div class="rt-capa-sem-token">Nenhum token de ${tipoTokenLabel} cadastrado pra esta rota ainda — gere um em 🎫 Tokens.</div>`}
+      ${equipe ? `
+      <div class="rt-capa-equipe">
+        <div class="rt-capa-equipe-titulo">Equipe / contato no local</div>
+        ${equipe.map(e => `<div class="rt-capa-equipe-item"><b>${rtEsc(e.local)}</b>${e.pessoas ? `: ${rtEsc(e.pessoas)}` : ''}</div>`).join('')}
+      </div>` : ''}
     </div>`;
 }
 

@@ -1173,7 +1173,7 @@ async function lerDestino(p) {
   await p.waitForTimeout(100);
 
   const opcoes = await p.locator('#rt-destino-select option').allTextContents();
-  check('dropdown lista os pontos de transmissão oficiais conhecidos', ['Cartório Eleitoral da 7ª Zona Eleitoral', 'Câmara de Vereadores de Sigefredo Pacheco', 'Grupo Escolar Manoel Francisco (Sigefredo Pacheco)', 'Escola do Reassentamento Corredores (Campo Maior)', 'SETI Francisco Luis (Jatobá do Piauí)'].every(d => opcoes.includes(d)), opcoes.join(' | '));
+  check('dropdown lista os pontos de transmissão oficiais conhecidos', ['Cartório Eleitoral da 7ª Zona Eleitoral', 'Câmara de Vereadores de Sigefredo Pacheco', 'U.E. Miguel Rocha (Sigefredo Pacheco)', 'Escola do Reassentamento Corredores (Campo Maior)', 'SETI Francisco Luis (Jatobá do Piauí)'].every(d => opcoes.includes(d)), opcoes.join(' | '));
   check('dropdown também tem a opção "Outro (digitar)"', opcoes.includes('Outro (digitar)'), opcoes.join(' | '));
 
   check('valor salvo batendo com um ponto fixo vem pré-selecionado no <select>', (await p.locator('#rt-destino-select').inputValue()) === 'Cartório Eleitoral da 7ª Zona Eleitoral');
