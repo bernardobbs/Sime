@@ -17,6 +17,27 @@
 // — é essa pessoa que vai mandar a mensagem, então é o horário dela que
 // importa. Faixas comuns em pt-BR: madrugada conta como noite (ninguém
 // manda "bom dia" às 3h), não existe uma 4ª faixa própria pra madrugada.
+// Erro amigável (16/09/2026, achado real: "JWT expired" cru na tela ao
+// clicar "+ Adicionar telefone" — sessão do Supabase Auth expirada por
+// tempo de tela aberta). Mesma função replicada em SIME_admin.html/
+// SIME_problemas.html/SIME_relatorios.html (não importada — esses arquivos
+// não compartilham <script> clássico); em SIME_convocacao.html, ao
+// contrário, todos os módulos (sime_mesarios_sync.js, sime_voluntarios.js,
+// sime_turmas.js, sime_oficial_justica.js etc.) SÃO <script> clássico na
+// mesma página, então definir aqui uma vez basta pra todos eles chamarem —
+// nenhum precisou de cópia própria. Mesmo critério do Admin: a mensagem
+// crua nunca vence, só os padrões conhecidos ou o fallback genérico (nenhum
+// dos updates desta página usa RPC com RAISE EXCEPTION útil pro operador).
+function mensagemErroAmigavel(error, fallback) {
+  const msg = error?.message || '';
+  if (/duplicate key|unique constraint/i.test(msg)) return 'Já existe um registro com esse valor';
+  if (/foreign key|violates.*constraint/i.test(msg)) return 'Não é possível: há dados vinculados a isso';
+  if (/permission denied|row-level security|RLS/i.test(msg)) return 'Sem permissão para esta ação';
+  if (/JWT|token.*expired|not authenticated/i.test(msg)) return 'Sessão expirada — saia e entre de novo';
+  if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Sem conexão com o servidor';
+  return fallback || 'Falha ao salvar. Tente novamente';
+}
+
 function cmSaudacaoPorHora(d = new Date()) {
   const h = d.getHours();
   if (h >= 5 && h < 12) return 'Bom dia';
@@ -100,6 +121,8 @@ const CM_BUCKETS = [
   { valor: 'substituido',       label: '🔁 Já substituído' },
   { valor: 'relato_terceiro_pendente', label: '⚠️ Relato de terceiro — precisa confirmar' },
   { valor: 'sem_whatsapp', label: '📵 Sem WhatsApp (confirmado ou formato de fixo)' },
+  { valor: 'meio_zeo', label: '🏛️ Convocação oficial (ZEO/TRE)' },
+  { valor: 'atrasado', label: '🔴 Atrasados (retorno agendado já venceu)' },
 ];
 // Filtro por função (21/08/2026) — desde que apoio logístico entrou na
 // mesma fila de mesário, dá pra querer ver só um tipo de cada vez.
@@ -110,7 +133,7 @@ const CM_FUNCAO_FILTRO = [
   { valor: 'coord_acessibilidade', label: 'Coordenador(a) de Acessibilidade' },
   { valor: 'auxiliar_eleicao', label: 'Auxiliar de Eleição (apoio logístico)' },
 ];
-const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça' };
+const CM_MEIO_LABEL = { whatsapp: 'WhatsApp', ligacao: 'Ligação telefônica', carta_registrada: 'Carta Registrada', oficial_justica: 'Oficial de Justiça', zeo: 'Convocação oficial (ZEO/TRE)' };
 // Dois vocabulários de status diferentes pro mesmo campo (status_contato_alternativo)
 // — "enviado/entregue" não faz sentido pra uma ligação, e "atendeu/não atendeu"
 // não faz sentido pra uma carta. cmStatusLabelSet() escolhe qual mostrar.
@@ -122,10 +145,15 @@ function cmStatusLabelSet(meio) { return meio === 'ligacao' ? CM_STATUS_LIGACAO_
 let cmDados = null; // { pessoas:[...], secoesPorId:{} }
 let cmFiltroStatus = '';
 let cmFiltroFuncao = '';
+let cmFiltroMunicipio = '';
 let cmBusca = '';
 let cmBuscaTimer = null;
 let cmModalId = null;   // id do ator com o modal aberto (só um por vez)
 let cmModalHist = null; // { campanhas:[...], logs:[...] } | null enquanto carrega
+let cmFiltroResponsavel = ''; // '' | 'sem_responsavel' | 'eu' | <sime_usuarios.id>
+let cmEquipe = []; // [{id, nome}] da zona — pra "Encaminhar" e pra mostrar nome do responsável
+let cmMeuId = null; // sime_usuarios.id de quem está logado, cacheado (ver cmCarregar)
+let cmEncaminharAberto = null; // id do ator com o formulário de "Encaminhar" aberto no modal, ou null
 
 // Bug real (31/08/2026, reportado pelo cartório: "só permite digitar uma
 // letra por vez, e está demorando muito"). Causa: o campo de busca chamava
@@ -158,32 +186,6 @@ function cmRestaurarFocoBusca(prevAtivo, selStart, selEnd) {
   try { el.setSelectionRange(selStart, selEnd); } catch (e) { /* tipo de input sem seleção — ignora */ }
 }
 
-// Rodar script conversacional pra um número indicado (28/08/2026) — pedido
-// direto do cartório: mandar a etapa 1 de um script salvo (aba 🧩 Campanhas
-// de SIME_atores.html) pra QUALQUER telefone a partir do modal desta
-// pessoa, não só pelo Disparo em massa (que dispara em lote pro grupo
-// filtrado, sem jeito de mirar um número avulso que não é o cadastrado —
-// ex.: a pessoa acabou de informar outro contato por telefone). Reaproveita
-// exatamente o mesmo mecanismo do disparo (insere em
-// sime_campanhas_confirmacao com campanha_id + etapa_atual:1 — o Hermes lê
-// e conduz o script como qualquer outro item da fila), só que um item de
-// cada vez. cmScriptCampanhas carrega junto com o resto de cmCarregar()
-// (mesma zona pra todo mundo, não muda por pessoa); cmScriptCampanhaId/
-// Etapa1 são o estado do script escolhido no <select> do modal — não
-// resetam ao trocar de pessoa de propósito (mesmo padrão de dispCampanhaId
-// em SIME_atores.html: reusar o mesmo script escolhido pra várias pessoas
-// em sequência é o caso comum, ex.: mandando o mesmo script de convocação
-// pra cada mesário que ainda falta).
-let cmScriptCampanhas = [];
-let cmScriptCampanhaId = null;
-let cmScriptEtapa1 = '';
-let cmScriptEtapa1Imagem = null;
-// Colapsado por padrão (27/08/2026, pedido direto: "caso não seja usado
-// fica recolhido") — é uma ferramenta avulsa, não algo que se olha toda
-// vez que o modal abre; reaproveita o mesmo padrão de disclosure (▸/▾) já
-// usado em sime_resumo_secoes.js pra tabela por município.
-let cmScriptAberto = false;
-function cmToggleScript() { cmScriptAberto = !cmScriptAberto; cmRenderModal(); }
 let cmDispensarAberto = false;
 function cmToggleDispensar() { cmDispensarAberto = !cmDispensarAberto; cmRenderModal(); }
 
@@ -207,6 +209,7 @@ const CM_HERMES_ACAO_LABEL = { confirmar: 'Confirmou por WhatsApp', recusar: 'Re
 const CM_LOG_LABEL = {
   mesario_editar_telefone: () => 'Telefone atualizado manualmente',
   mesario_editar_rastreio: () => 'Código de rastreio atualizado',
+  mesario_editar_pix: (p) => p.pix ? `Chave PIX cadastrada/atualizada` : 'Chave PIX removida',
   mesario_meio_contato: (p) => `Meio de contato → ${CM_MEIO_LABEL[p.meio_contato] || p.meio_contato}`,
   mesario_status_contato_alt: (p) => `Status do contato → ${CM_STATUS_ALL_LABEL[p.status] || p.status || '—'}`,
   mesario_contato_incorreto: () => 'Marcado como contato incorreto',
@@ -225,6 +228,19 @@ const CM_LOG_LABEL = {
   mesario_script_enviado: (p) => `🧩 Rodou o script "${p.campanha_nome || '—'}" para ${p.telefone ? fmtTelefone(p.telefone) : '—'}`,
   mesario_substituicao_concluida: (p) => `✅ Substituição concluída${p.substituto_nome ? ` — ${p.substituto_nome}` : ''}${p.substituto_telefone ? ` (${fmtTelefone(p.substituto_telefone)})` : ''}`,
   mesario_dispensado_manual: (p) => `🚫 Dispensado(a)${p.motivo ? ` — ${p.motivo}` : ''}`,
+  // Responsável + próximo contato (03/09/2026, pedido direto: "faz sentido
+  // 1 podendo enviar para outra pessoa concluir tarefa, comunicação" — só
+  // registro, sem notificação de WhatsApp — "2 sim faz sentido" pro
+  // agendamento, "4 sim" pro atraso amarrado à data agendada).
+  mesario_responsavel_assumido: () => '🙋 Assumiu o acompanhamento',
+  mesario_responsavel_encaminhado: (p) => `↪️ Encaminhado para ${p.para_nome || '—'} — ${p.motivo || 'sem motivo informado'}`,
+  mesario_proximo_contato_agendado: (p) => p.proximo_contato_em
+    ? `📅 Próximo contato agendado para ${cmDiaChave(p.proximo_contato_em)}${p.nota ? ` — ${p.nota}` : ''}`
+    : '📅 Agendamento de próximo contato removido',
+  // Treinamento online (15/09/2026, aba 🎓 Treinamento →
+  // sime_turmas.js/tuMarcarOnline) — gravado com payload.ator_id, então
+  // aparece sozinho aqui sem nenhuma UI nova nesta tela.
+  mesario_treinamento_online_status: (p) => `🖥️ Treinamento online → ${{ nao_iniciado: '⏳ Não iniciado', em_andamento: '🖥️ Fazendo', concluido: '✅ Concluído' }[p.status] || p.status}`,
 };
 // Ações que o Hermes grava (api/hermes-mesarios.js) — não têm payload.ator_id
 // direto, têm payload.afetados como lista de {id, nome, ...} (a mesma
@@ -265,9 +281,9 @@ async function cmCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { cmDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: campanhasScript }, { data: tentativasManuais }] = await Promise.all([
+  const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: tentativasManuais }, { data: equipe }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, telefones_sem_whatsapp, telefones_ignorados, telefones_confirmados')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, telefones_sem_whatsapp, telefones_ignorados, telefones_confirmados, responsavel_usuario_id, proximo_contato_em, proximo_contato_nota, pix')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -279,14 +295,6 @@ async function cmCarregar() {
     // fazia) e (b) montar a barra de status agregada da fila inteira (ver
     // CM_CAMP_STATUS_ORDEM acima), sem precisar de uma segunda consulta.
     sb.from('sime_campanhas_confirmacao').select('ator_id, status, created_at').eq('zona_id', zonaId),
-    // Campanhas da zona (qualquer status) — pro botão "🧩 Rodar script
-    // conversacional" do modal (28/08/2026). Mesma fonte que
-    // carregarCampanhasParaDisparo() em SIME_atores.html; o filtro de
-    // "encerrada" é feito no render, não aqui (mesmo padrão de lá) — sem
-    // erro aqui não bloqueia o resto da tela, por isso não entra no `if`
-    // abaixo (uma campanha faltando não devia impedir de ver a fila de
-    // contato inteira).
-    sb.from('sime_campanhas').select('id, nome, status').eq('zona_id', zonaId).order('created_at', { ascending: false }),
     // Tentativas MANUAIS (➕ Registrar tentativa / 🔗 Copiar link), pra contar
     // junto com as de campanha em p.tentativas — sem RLS de sime_logs já
     // escopa pra eleição/zona visível, então basta filtrar pela ação (27/08/2026,
@@ -294,8 +302,21 @@ async function cmCarregar() {
     // respostas ainda" — sem isso, alguém só contactado manualmente aparecia
     // como "nunca tentamos", mesmo já tendo várias tentativas registradas).
     sb.from('sime_logs').select('payload, ts').eq('acao', 'mesario_tentativa_contato'),
+    // Equipe da zona (03/09/2026) — pra "🙋 Assumir"/"↪️ Encaminhar" (nome de
+    // cada responsável possível) e pro filtro "Meus". Uma falha aqui não deve
+    // travar a fila inteira (por isso fora do `if (e1||e2)` abaixo) — só
+    // faria o nome do responsável cair no fallback de "—".
+    // Bug real (04/09/2026, achado pelo cartório: apareciam "Token conferente",
+    // "Token mesario (BX86FPJ7)" etc. no select de encaminhar): tokens de
+    // campo (QR de mesário/conferente/instalador/...) também moram em
+    // sime_usuarios, com perfil='observador' — filtrado abaixo em JS (não na
+    // query, pra bater com o mesmo critério que SIME_problemas.html já usa
+    // pro seletor de "delegar", que eu não tinha copiado aqui).
+    sb.from('sime_usuarios').select('id, nome, perfil').eq('zona_id', zonaId).eq('ativo', true).order('nome'),
   ]);
   if (e1 || e2) { cmDados = { erro: (e1 || e2).message }; render(); return; }
+  cmEquipe = (equipe || []).filter(u => u.perfil !== 'observador');
+  cmMeuId = window.meuUsuarioId ? await window.meuUsuarioId() : null;
 
   const tentativasPorAtor = {};
   const ultimaTentativaPorAtor = {};
@@ -325,7 +346,6 @@ async function cmCarregar() {
     p.ultimaTentativaTs = ultimaTentativaPorAtor[p.id] || null;
   }
 
-  cmScriptCampanhas = campanhasScript || [];
   cmDados = { pessoas: pessoas || [], secoesPorId: Object.fromEntries((secoes || []).map(s => [s.id, s])), statusFila };
   render();
 }
@@ -333,7 +353,7 @@ async function cmCarregar() {
 async function cmMarcarContatoIncorreto(id) {
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ confirmacao: 'contato_incorreto' }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.confirmacao = 'contato_incorreto';
   await cmLog('mesario_contato_incorreto', '', { ator_id: id });
@@ -365,9 +385,15 @@ async function cmConfirmarParticipacao(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { data: ts } = await sb.rpc('sime_now');
-  const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts };
+  // Confirmado é fim de linha (03/09/2026, pedido direto: "ao final de
+  // linha não precisa mais contactar e não precisa mais data de próximo
+  // contato") — a seção inteira de Responsável/Próximo contato some do
+  // modal pra quem está confirmado (ver cmRenderModal()), então o
+  // agendamento que sobrar aqui ficaria só como dado morto, sem UI pra
+  // mexer nele. Limpo junto, no mesmo update.
+  const patch = { confirmacao: 'confirmado', data_confirmacao: ts, convocacao_recebida: true, convocacao_recebida_ts: ts, proximo_contato_em: null, proximo_contato_nota: null };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_confirmado_manual', '', { ator_id: id });
   showToast('✅ Participação confirmada');
@@ -405,7 +431,7 @@ async function cmMarcarConvocado(id) {
   const { data: ts } = await sb.rpc('sime_now');
   const patch = { confirmacao: 'convocado', data_confirmacao: null, convocacao_recebida: true, convocacao_recebida_ts: ts };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_marcado_convocado', '', { ator_id: id });
   showToast('📋 Marcado como convocado — aguardando confirmação');
@@ -433,12 +459,92 @@ async function cmTogglePrecisaSubstituir(id) {
   const patch = { precisa_substituir: novo };
   if (!novo) { patch.substituto_nome = null; patch.substituto_telefone = null; }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog('mesario_precisa_substituir', '', { ator_id: id, precisa_substituir: novo });
   showToast(novo ? '🔁 Marcado — precisa ser substituído' : '✓ Desmarcado');
   render();
   if (cmModalId === id) cmRenderModal(); // botão existe tanto no card quanto dentro do modal aberto
+}
+
+// ── Responsável + próximo contato (03/09/2026) ──────────────────────────
+// "Dono" do acompanhamento — quem do cartório está cuidando desta pessoa
+// agora. Nunca bloqueia nada (mesma filosofia de sempre): qualquer um
+// continua podendo editar qualquer mesário, o campo é só organização de
+// equipe, não permissão. "Encaminhar" é decisão consciente (exige motivo,
+// mesmo padrão de sime_ocorrencia_delegar no Painel de Problemas); "Assumir"
+// é um toque só, pra mim mesmo, sem motivo — sempre disponível, mesmo pra
+// quem já tem responsável (rouba o caso de propósito, não precisa de
+// permissão especial).
+function cmNomeUsuario(id) {
+  if (!id) return null;
+  return cmEquipe.find(u => u.id === id)?.nome || null;
+}
+
+// "Atrasado" só é calculado a partir da data que a PRÓPRIA pessoa do
+// cartório marcou pra voltar (proximo_contato_em) — não um prazo fixo
+// arbitrário. Sem agendamento, não há como saber se está atrasado ou só
+// "ainda não chegou a vez" — por isso não usa contagem de tentativas aqui
+// (isso já é o critério de cmPrecisaEscalonamento, propósito diferente).
+// 'confirmado' é desfecho fechado — mesmo com uma data velha esquecida no
+// campo, não teria sentido cobrar mais.
+function cmAtrasado(p) {
+  if (!p.proximo_contato_em || p.confirmacao === 'confirmado') return false;
+  return new Date(p.proximo_contato_em).getTime() < Date.now();
+}
+
+async function cmAssumir(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p || !cmMeuId) { showToast('⚠ Não foi possível identificar seu usuário'); return; }
+  const patch = { responsavel_usuario_id: cmMeuId };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  Object.assign(p, patch);
+  await cmLog('mesario_responsavel_assumido', '', { ator_id: id });
+  showToast('🙋 Você assumiu o acompanhamento');
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
+function cmToggleEncaminhar(id) {
+  cmEncaminharAberto = cmEncaminharAberto === id ? null : id;
+  cmRenderModal();
+}
+
+async function cmConfirmarEncaminhamento(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const paraId = document.getElementById('mm-encaminhar-para')?.value;
+  const motivo = document.getElementById('mm-encaminhar-motivo')?.value.trim();
+  if (!paraId) { showToast('⚠ Escolha pra quem encaminhar'); return; }
+  if (!motivo) { showToast('⚠ Informe o motivo do encaminhamento'); return; }
+  const patch = { responsavel_usuario_id: paraId };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  Object.assign(p, patch);
+  await cmLog('mesario_responsavel_encaminhado', '', { ator_id: id, para_nome: cmNomeUsuario(paraId), motivo });
+  cmEncaminharAberto = null;
+  showToast(`↪️ Encaminhado para ${cmNomeUsuario(paraId) || 'outra pessoa'}`);
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
+async function cmSalvarProximoContato(id) {
+  const sb = window.supabaseAtores;
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p) return;
+  const data = document.getElementById('mm-proximo-contato-data')?.value; // yyyy-mm-dd ou ''
+  const nota = document.getElementById('mm-proximo-contato-nota')?.value.trim() || null;
+  const patch = { proximo_contato_em: data || null, proximo_contato_nota: data ? nota : null };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  Object.assign(p, patch);
+  await cmLog('mesario_proximo_contato_agendado', '', { ator_id: id, proximo_contato_em: patch.proximo_contato_em, nota: patch.proximo_contato_nota });
+  showToast(data ? '📅 Próximo contato agendado' : '📅 Agendamento removido');
+  render();
+  if (cmModalId === id) cmRenderModal();
 }
 
 // "Sem WhatsApp" — dois sinais complementares, por NÚMERO (01/09/2026,
@@ -480,7 +586,7 @@ async function cmToggleSemWhatsappNumero(id, digitos) {
   const marcado = atual.includes(digitos);
   const novo = marcado ? atual.filter(d => d !== digitos) : [...atual, digitos];
   const { error } = await sb.from('sime_atores').update({ telefones_sem_whatsapp: novo }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.telefones_sem_whatsapp = novo;
   await cmLog('mesario_telefone_sem_whatsapp', '', { ator_id: id, telefone: fmtTelefone(digitos), sem_whatsapp: !marcado });
   showToast(!marcado ? '📵 Marcado — este número não é WhatsApp' : '✓ Desmarcado — pode ser WhatsApp');
@@ -501,7 +607,7 @@ async function cmToggleNumeroConfirmado(id, digitos) {
   const marcado = atual.includes(digitos);
   const novo = marcado ? atual.filter(d => d !== digitos) : [...atual, digitos];
   const { error } = await sb.from('sime_atores').update({ telefones_confirmados: novo }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.telefones_confirmados = novo;
   await cmLog('mesario_telefone_confirmado', '', { ator_id: id, telefone: fmtTelefone(digitos), confirmado: !marcado });
   showToast(!marcado ? '✅ Número confirmado' : '✓ Confirmação desfeita');
@@ -540,7 +646,7 @@ async function cmExcluirTelefoneCard(id, digitos, campo) {
     patch.telefones_confirmados = p.telefones_confirmados.filter(d => d !== digitos);
   }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   await cmLog(campo ? 'mesario_editar_telefone' : 'mesario_telefone_ignorado', '', { ator_id: id, telefone: fmtTelefone(digitos), motivo: 'excluído — não é o número desta pessoa' });
   showToast('✕ Número excluído');
@@ -566,10 +672,31 @@ async function cmSalvarSubstitutoNome(id) {
   if (!p || nome === (p.substituto_nome || '')) return; // nada mudou
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ substituto_nome: nome || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.substituto_nome = nome || null;
   await cmLog('mesario_substituto_nome', '', { ator_id: id, substituto_nome: nome || null });
   showToast('✓ Nome do substituto salvo');
+  render();
+  if (cmModalId === id) cmRenderModal();
+}
+
+// Chave PIX (19/09/2026, pedido direto) — pro pagamento de auxílio
+// alimentação de mesários/coordenadores/auxiliares. Texto livre, nunca
+// formatado/validado por regex (a chave pode ser CPF, telefone, e-mail ou
+// aleatória) — mesmo critério de codigo_rastreio/uc_equatorial. Mesmo
+// padrão onblur-salva-sozinho dos demais campos rápidos do modal.
+async function cmSalvarPix(id) {
+  const campo = document.getElementById('mm-pix');
+  if (!campo) return;
+  const pix = campo.value.trim();
+  const p = cmDados.pessoas.find(x => x.id === id);
+  if (!p || pix === (p.pix || '')) return; // nada mudou
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ pix: pix || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  p.pix = pix || null;
+  await cmLog('mesario_editar_pix', '', { ator_id: id, pix: p.pix });
+  showToast('✓ Chave PIX salva');
   render();
   if (cmModalId === id) cmRenderModal();
 }
@@ -594,7 +721,7 @@ async function cmConcluirSubstituicao(id) {
   if (!p) return;
   const patch = { confirmacao: 'substituido', ativo: false, precisa_substituir: false };
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await cmLog('mesario_substituicao_concluida', '', { ator_id: id, substituto_nome: p.substituto_nome || null, substituto_telefone: p.substituto_telefone || null });
   showToast('✅ Substituição concluída — saiu da lista de Contatar mesários');
   cmDados.pessoas = cmDados.pessoas.filter(x => x.id !== id); // ativo=false — cmCarregar só lista ativo=true
@@ -629,7 +756,7 @@ async function cmDispensarManual(id) {
   const motivo = (campo?.value || '').trim();
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ ativo: false, dispensado_manual: true }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   await cmAppendObservacao(id, `Dispensado(a) — ${motivo || 'sem motivo informado'}`);
   await cmLog('mesario_dispensado_manual', '', { ator_id: id, motivo: motivo || null });
   showToast('🚫 Dispensado(a) — saiu da lista de Contatar mesários');
@@ -654,7 +781,7 @@ async function cmSalvarSubstitutoTelefone(id) {
   if (valor === (p.substituto_telefone || null)) return; // nada mudou
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ substituto_telefone: valor }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.substituto_telefone = valor;
   await cmLog('mesario_substituto_telefone', '', { ator_id: id, substituto_telefone: valor });
   showToast('✓ Telefone do substituto salvo');
@@ -673,7 +800,7 @@ async function cmResolverRelatoTerceiro(id) {
   const p = cmDados.pessoas.find(x => x.id === id);
   if (!p) return;
   const { error } = await sb.from('sime_atores').update({ tem_relato_terceiro_pendente: false }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   p.tem_relato_terceiro_pendente = false;
   await cmLog('mesario_relato_terceiro_resolvido', '', { ator_id: id });
   showToast('✓ Relato de terceiro marcado como resolvido');
@@ -693,7 +820,7 @@ async function cmSalvarMeio(id, meio) {
     patch.status_contato_alternativo = null;
   }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   if (p0) Object.assign(p0, patch);
   await cmLog('mesario_meio_contato', '', { ator_id: id, meio_contato: meio });
   showToast('✓ Meio de contato atualizado');
@@ -704,7 +831,7 @@ async function cmSalvarMeio(id, meio) {
 async function cmSalvarStatusAlt(id, status) {
   const sb = window.supabaseAtores;
   const { error } = await sb.from('sime_atores').update({ status_contato_alternativo: status || null }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.status_contato_alternativo = status || null;
   await cmLog('mesario_status_contato_alt', '', { ator_id: id, status });
@@ -739,7 +866,7 @@ async function cmAppendObservacao(id, texto) {
   const carimbo = `[${String(ts).slice(0, 16).replace('T', ' ')}] ${autor} (cartório): ${texto}`;
   const nova = p.observacao ? `${p.observacao}\n${carimbo}` : carimbo;
   const { error } = await sb.from('sime_atores').update({ observacao: nova }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return false; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
   p.observacao = nova;
   await cmLog('mesario_observacao_adicionada', '', { ator_id: id });
   return true;
@@ -781,8 +908,35 @@ async function cmRegistrarTentativaCore(id, meio, nota) {
     // Aproximado (hora local, não sime_now()) só pra decidir a bolinha 🟢
     // na hora — cmCarregar() traz o ts real do servidor na próxima releitura.
     p.ultimaTentativaTs = new Date().toISOString();
+    await cmAtualizarPrazoAutomatico(p);
     render();
   }
+}
+
+// SLA automático de 48h (03/09/2026, pedido direto: "os outros vamos
+// estabelecer um prazo de 48h para o proximo contato a partir da ultima
+// informação"). Toda vez que uma tentativa é registrada — inclusive por
+// "🔗 Copiar link do WhatsApp", que também passa por cmRegistrarTentativaCore
+// — pra alguém que ainda não é fim de linha (confirmado, ver
+// cmConfirmarParticipacao()), o prazo de "📅 Próximo contato" reinicia pra
+// 48h a partir de AGORA — é a última informação mais recente que temos
+// sobre a pessoa. Sempre sobrescreve um prazo anterior: é assim que "a
+// partir da última informação" funciona, o relógio reinicia a cada contato
+// novo — mas o cartório continua podendo mudar pra mais ou pra menos a
+// qualquer momento pelo campo "📅 Agendar" de sempre, inclusive logo
+// depois. Melhor-esforço: falha de rede aqui não deve travar o registro da
+// tentativa em si (já gravado no log acima), só o prazo automático fica
+// pra próxima tentativa.
+async function cmAtualizarPrazoAutomatico(p) {
+  if (!p || p.confirmacao === 'confirmado') return;
+  const sb = window.supabaseAtores;
+  const { data: agora } = await sb.rpc('sime_now');
+  if (!agora) return;
+  const prazo = new Date(new Date(agora).getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const patch = { proximo_contato_em: prazo };
+  const { error } = await sb.from('sime_atores').update(patch).eq('id', p.id);
+  if (error) return;
+  Object.assign(p, patch);
 }
 
 async function cmRegistrarTentativa(id) {
@@ -877,106 +1031,14 @@ function cmListaTelefones(p, raw) {
   return lista;
 }
 
-// Ao trocar o script escolhido no <select> do modal, busca a mensagem/
-// imagem da etapa 1 só pra mostrar em preview — o texto de verdade,
-// personalizado por pessoa, é resolvido de novo em cmEnviarScript() (mesmo
-// padrão de selecionarCampanhaDisparo()/confirmarDisparo() em
-// SIME_atores.html).
-async function cmScriptSelecionarCampanha(id) {
-  cmScriptCampanhaId = id || null;
-  cmScriptEtapa1 = ''; cmScriptEtapa1Imagem = null;
-  if (cmScriptCampanhaId) {
-    const sb = window.supabaseAtores;
-    const { data, error } = await sb.from('sime_campanha_etapas')
-      .select('mensagem, imagem_url').eq('campanha_id', cmScriptCampanhaId).eq('etapa_numero', 1).maybeSingle();
-    if (!error && data) { cmScriptEtapa1 = data.mensagem; cmScriptEtapa1Imagem = data.imagem_url || null; }
-  }
-  cmRenderModal();
-}
-
-// Mesmos placeholders que o Disparo em massa (personalizarMensagem() em
-// SIME_atores.html) — duplicado aqui porque SIME_convocacao.html não carrega
-// aquele arquivo. {nome}/{funcao}/{secao}/{local}/{municipio}.
-function cmPersonalizarScript(msg, p, sec) {
-  return (msg || '')
-    .replaceAll('{nome}', p.nome_completo || '')
-    .replaceAll('{funcao}', cmRotuloFuncao(p))
-    .replaceAll('{secao}', sec ? String(sec.numero) : '')
-    .replaceAll('{local}', sec?.local_nome || 'local a confirmar')
-    .replaceAll('{municipio}', sec?.municipio || '');
-}
-
-// Manda a etapa 1 do script escolhido pro telefone digitado no campo "Número
-// indicado" — igual ao que o Disparo em massa faz em lote, só que um item
-// por vez e pra QUALQUER número (não precisa ser o telefone_whatsapp
-// cadastrado da pessoa). ator_id continua sendo o da pessoa mesmo quando o
-// número é outro — é o que faz o item aparecer na timeline "Tentativas de
-// contato" dela (essa consulta já filtra por ator_id, não por telefone).
-async function cmEnviarScript(id) {
-  const p = cmDados.pessoas.find(x => x.id === id);
-  if (!p) return;
-  if (!cmScriptCampanhaId) { showToast('⚠ Escolha um script salvo'); return; }
-  if (!cmScriptEtapa1) { showToast('⚠ Este script não tem etapa 1 — abra-o na aba 🧩 Campanhas e confira'); return; }
-
-  // Fila de números a tentar (27/08/2026, pedido direto: "ele seguiria
-  // tentando contato com todos os numeros do mesário caso um não confirme
-  // vai para o proximo") — o número extra digitado (se houver) entra
-  // primeiro, seguido de TODOS os telefones já conhecidos da pessoa
-  // (principal, TRE, cadastrado à mão), deduplicados por dígito. Só o
-  // primeiro vai nesta linha; o resto fica em numeros_restantes, e
-  // api/hermes-campanhas.js cascateia sozinho quando um número não
-  // confirma (recusa ou fica sem resposta) — ver
-  // sql/SIME_campanhas_confirmacao_numeros_restantes.sql.
-  const campoExtra = document.getElementById('mm-script-tel');
-  const vistos = new Set();
-  const fila = [];
-  const addNumero = (raw) => {
-    const digitos = telSemPais(normalizarTelefoneWhatsapp(raw || ''));
-    if (!digitos || digitos.length < 10 || vistos.has(digitos)) return;
-    vistos.add(digitos);
-    fila.push('55' + digitos);
-  };
-  if (campoExtra && campoExtra.value.trim()) addNumero(campoExtra.value);
-  for (const t of (cmModalHist?.telefones || [])) addNumero(t.valor);
-  if (!fila.length) { showToast('⚠ Nenhum telefone conhecido pra esta pessoa — preencha o número extra'); return; }
-
-  const sb = window.supabaseAtores;
-  const zonaId = await zonaDoUsuario();
-  if (!zonaId) { showToast('⚠ Não foi possível resolver sua zona'); return; }
-  const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
-  const mensagem = cmPersonalizarScript(cmScriptEtapa1, p, sec);
-  const campanhaEscolhida = cmScriptCampanhas.find(c => c.id === cmScriptCampanhaId);
-
-  // avulso:true (27/08/2026, sql/SIME_campanhas_confirmacao_avulso.sql) —
-  // pedido direto: clicar aqui é uma ação humana pontual, não deve ficar
-  // preso esperando alguém ativar a campanha inteira na aba 🧩 Campanhas.
-  // Fura o filtro de status em api/hermes-campanhas.js pra rascunho/
-  // pausada — só campanha 'encerrada' (terminal) continua bloqueando.
-  const { error } = await sb.from('sime_campanhas_confirmacao').insert({
-    ator_id: p.id,
-    telefone_whatsapp: fila[0],
-    zona_id: zonaId,
-    mensagem_enviada: mensagem,
-    status: 'pendente',
-    campanha_id: cmScriptCampanhaId,
-    etapa_atual: 1,
-    avulso: true,
-    numeros_restantes: fila.slice(1),
-  });
-  if (error) { showToast('⚠ ' + error.message); return; }
-
-  await cmLog('mesario_script_enviado', '', { ator_id: p.id, campanha_id: cmScriptCampanhaId, campanha_nome: campanhaEscolhida?.nome, telefone: fila[0], total_numeros: fila.length });
-  showToast(campanhaEscolhida && campanhaEscolhida.status === 'encerrada'
-    ? `⚠ Enfileirado, mas a campanha "${campanhaEscolhida.nome}" está encerrada — não vai sair`
-    : fila.length > 1
-      ? `✓ Etapa 1 enfileirada pro 1º de ${fila.length} números conhecidos — se não confirmar, tenta os próximos sozinho`
-      : '✓ Etapa 1 enfileirada — sai pelo Hermes já no próximo ciclo, mesmo se a campanha ainda não estiver ativa');
-  if (cmModalId === id) await cmAbrirModal(id); // recarrega a timeline pra já mostrar o item novo
-}
-
 async function cmAbrirModal(id) {
   cmModalId = id;
   cmModalHist = null;
+  // "Dispensar" sempre começa recolhido pra CADA pessoa — bug real achado em
+  // 04/09/2026: sem isso, expandir essa seção pra alguém e depois abrir o
+  // modal de OUTRA pessoa mantinha a mesma seção aberta lá também (o estado
+  // é uma variável do módulo, não por pessoa).
+  cmDispensarAberto = false;
   document.getElementById('overlay')?.classList.add('open');
   if (!cmDados) { await cmCarregar(); if (cmModalId !== id) return; }
   cmRenderModal();
@@ -1044,7 +1106,7 @@ async function cmAdicionarTelefoneAlt(id) {
   const sb = window.supabaseAtores;
   const valor = '55' + digitos;
   const { error } = await sb.from('sime_atores').update({ telefone_alternativo: valor }).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   const p = cmDados.pessoas.find(x => x.id === id);
   if (p) p.telefone_alternativo = valor;
   await cmLog('mesario_telefone_alt_adicionado', '', { ator_id: id });
@@ -1087,7 +1149,7 @@ async function cmSalvarTelefoneCard(id, campo, elId) {
   const sb = window.supabaseAtores;
   try {
     const { error } = await sb.from('sime_atores').update({ [campo]: novoValor }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     p[campo] = novoValor;
     await cmLog(campo === 'telefone_whatsapp' ? 'mesario_editar_telefone' : 'mesario_telefone_alt_adicionado', '', { ator_id: id });
     showToast('✓ Telefone atualizado');
@@ -1112,7 +1174,7 @@ async function cmUsarComoPrincipal(id, valorBruto) {
   const sb = window.supabaseAtores;
   try {
     const { error } = await sb.from('sime_atores').update({ telefone_whatsapp: novoValor }).eq('id', id);
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     p.telefone_whatsapp = novoValor;
     await cmLog('mesario_editar_telefone', '', { ator_id: id });
     showToast('✓ Definido como telefone principal');
@@ -1126,6 +1188,7 @@ async function cmUsarComoPrincipal(id, valorBruto) {
 function cmFecharModal(e) {
   if (!e || e.target === document.getElementById('overlay')) {
     document.getElementById('overlay')?.classList.remove('open');
+    document.getElementById('modal-body')?.classList.remove('cm-modal-wide');
     cmModalId = null;
     cmModalHist = null;
   }
@@ -1191,6 +1254,11 @@ function cmAgruparTentativasPorDia(tentativas, posterioresMs) {
 function cmRenderModal() {
   const modal = document.getElementById('modal-body');
   if (!modal) return;
+  // Marca esse modal (só este) pra ganhar o tratamento de tela cheia/colunas
+  // no desktop (ver CSS `.cm-modal-wide` em SIME_convocacao.html) — removida
+  // em cmFecharModal() e, defensivamente, no início de qualquer outro modal
+  // deste arquivo (#modal-body é compartilhado entre todos eles).
+  modal.classList.add('cm-modal-wide');
   const p = cmPessoaModal();
   if (!p) { modal.innerHTML = ''; return; }
   const sec = p.secao_id ? cmDados.secoesPorId[p.secao_id] : null;
@@ -1258,6 +1326,7 @@ function cmRenderModal() {
         <div class="m-kv-row"><b>Seção</b><span>${sec ? `${sec.numero} — ${cmEsc(sec.local_nome || '')}, ${cmEsc(sec.municipio || '')}` : '—'}</span></div>
         <div class="m-kv-row"><b>Título de eleitor</b><span>${p.inscricao_eleitoral ? cmEsc(p.inscricao_eleitoral) : '—'}</span></div>
         <div class="m-kv-row"><b>Situação</b><span>${cmBadge(p.confirmacao)}${cmDotStatus(p) ? ` · ${cmDotStatus(p).emoji} ${cmEsc(cmDotStatus(p).texto)}` : ''}${p.precisa_substituir ? ` · 🔁 Precisa substituto${cmSubstitutoLabel(p)}` : ''}${p.tem_relato_terceiro_pendente ? ' · ⚠️ Relato de terceiro pendente' : ''}${cmSemWhatsapp(p) ? ' · 📵 Principal sem WhatsApp' : ''}</span></div>
+        <div class="m-kv-row"><b>Responsável</b><span>${p.responsavel_usuario_id ? cmEsc(cmNomeUsuario(p.responsavel_usuario_id) || '—') : 'Sem responsável'}${cmAtrasado(p) ? ` · <span style="color:var(--red,#c0392b)">🔴 Atrasado desde ${cmDiaChave(p.proximo_contato_em)}</span>` : p.proximo_contato_em ? ` · 📅 Próximo contato em ${cmDiaChave(p.proximo_contato_em)}` : ''}</span></div>
       </div>
 
       <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1266,8 +1335,43 @@ function cmRenderModal() {
         <button class="btn ${p.precisa_substituir ? 'btn-dark' : 'btn-out'}" style="flex:1;padding:9px 4px;font-size:.76rem" onclick="cmTogglePrecisaSubstituir('${p.id}')">🔁 Substituir</button>
       </div>
 
+      ${p.confirmacao === 'confirmado' ? '' : `
+      <div class="m-section">
+        <div class="m-section-hdr">👤 Responsável e próximo contato</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmAssumir('${p.id}')" title="Vira responsável por você, sem precisar de motivo">🙋 Assumir pra mim</button>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmToggleEncaminhar('${p.id}')">↪️ Encaminhar</button>
+        </div>
+        ${cmEncaminharAberto === p.id ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;padding:10px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2)">
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:150px">Encaminhar para
+            <select id="mm-encaminhar-para" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text)">
+              <option value="">— escolha alguém —</option>
+              ${cmEquipe.map(u => `<option value="${u.id}">${cmEsc(u.nome)}</option>`).join('')}
+            </select>
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:180px">Motivo (obrigatório)
+            <input id="mm-encaminhar-motivo" type="text" placeholder="ex.: não consigo ligar essa semana" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text)">
+          </label>
+          <button class="btn btn-dark" style="font-size:.72rem;padding:6px 10px" onclick="cmConfirmarEncaminhamento('${p.id}')">✓ Confirmar</button>
+        </div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:.72rem;color:var(--text2)">Próximo contato
+            <input id="mm-proximo-contato-data" type="date" value="${p.proximo_contato_em ? new Date(p.proximo_contato_em).toISOString().slice(0, 10) : ''}" style="display:block;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nota (opcional)
+            <input id="mm-proximo-contato-nota" type="text" value="${cmEsc(p.proximo_contato_nota || '')}" placeholder="ex.: ligar depois das 18h" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+          </label>
+          <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="cmSalvarProximoContato('${p.id}')" title="Prazo padrão: 48h a partir da última tentativa registrada. Pode adiantar ou adiar aqui.">📅 Agendar</button>
+        </div>
+      </div>`}
+
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Chave PIX (auxílio alimentação)</label>
+          <input id="mm-pix" type="text" value="${cmEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="cmSalvarPix('${p.id}')">
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
           ${p.precisa_substituir ? `
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nome do substituto (opcional)
@@ -1365,31 +1469,6 @@ function cmRenderModal() {
           <textarea id="mm-obs-nova" rows="2" placeholder="Adicionar observação…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);font-size:.85rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
         </div>
         <button class="btn btn-out" style="font-size:.72rem;padding:5px 10px" onclick="cmAdicionarObservacao('${p.id}')">➕ Adicionar observação</button>
-      </div>
-
-      <div class="m-section">
-        <div class="m-section-hdr" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="cmToggleScript()">
-          <span>🧩 Rodar script conversacional</span>
-          <span>${cmScriptAberto ? '▾' : '▸'}</span>
-        </div>
-        ${cmScriptAberto ? `
-        <div class="ic-sub">Manda a etapa 1 de um script salvo (aba 🧩 Campanhas, em Cadastro de Atores) tentando, em sequência, TODOS os telefones conhecidos desta pessoa — se um não confirmar (recusar ou ficar sem resposta), tenta o próximo sozinho. As etapas seguintes seguem de acordo com a resposta; o envio de fato depende do Hermes estar com o disparo ligado.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-          <label style="font-size:.72rem;color:var(--text2);flex:2;min-width:180px">Script
-            <select id="mm-script-campanha" onchange="cmScriptSelecionarCampanha(this.value)" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-              <option value="">— escolha um script salvo —</option>
-              ${cmScriptCampanhas.filter(c => c.status !== 'encerrada').map(c => `<option value="${c.id}" ${cmScriptCampanhaId === c.id ? 'selected' : ''}>${cmEsc(c.nome)} (${c.status})</option>`).join('')}
-            </select>
-          </label>
-          <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:150px">Número extra (opcional)
-            <input id="mm-script-tel" type="text" placeholder="(86) 9xxxx-xxxx — além dos já conhecidos" style="display:block;width:100%;margin-top:2px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-          </label>
-          <button class="btn btn-dark" style="font-size:.72rem;padding:6px 12px" onclick="cmEnviarScript('${p.id}')">▶ Enviar</button>
-        </div>
-        <div class="ic-sub" style="margin-top:6px;margin-bottom:0">${cmModalHist?.telefones?.length ? `Ordem de tentativa (número extra acima, se houver, entra primeiro): ${cmModalHist.telefones.map(t => fmtTelefone(t.valor)).join(' → ')}` : 'Nenhum telefone conhecido ainda — preencha o número extra acima pra ter pelo menos um.'}</div>
-        ${!cmScriptCampanhas.filter(c => c.status !== 'encerrada').length ? '<div class="ic-sub" style="margin-top:4px;margin-bottom:0">Nenhum script salvo nesta zona ainda — crie um na aba 🧩 Campanhas de Cadastro de Atores.</div>' : ''}
-        ${cmScriptEtapa1 ? `<div class="ic-sub" style="margin-top:8px;margin-bottom:0"><b>Prévia da etapa 1:</b><br><pre style="white-space:pre-wrap;font-family:inherit;margin:4px 0 0">${cmEsc(cmScriptEtapa1)}</pre>${cmScriptEtapa1Imagem ? `<img src="${cmEsc(cmScriptEtapa1Imagem)}" alt="Prévia da imagem da etapa 1" style="max-width:160px;max-height:160px;border-radius:6px;margin-top:6px;display:block">` : ''}</div>` : ''}
-        ` : ''}
       </div>
 
       <div class="m-section" style="border-top:1px solid var(--red-bd,#e0a09a)">
@@ -1494,7 +1573,7 @@ async function cmSalvarModal() {
   try {
     if (Object.keys(patch).length) {
       const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-      if (error) { showToast('⚠ ' + error.message); return; }
+      if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
       Object.assign(p, patch);
       if ('telefone_whatsapp' in patch) await cmLog('mesario_editar_telefone', '', { ator_id: id });
       if ('codigo_rastreio' in patch) await cmLog('mesario_editar_rastreio', '', { ator_id: id });
@@ -1555,7 +1634,7 @@ const CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO = 3;
 function cmPrecisaEscalonamento(p) {
   return ['pendente', 'convocado'].includes(p.confirmacao || 'pendente')
     && p.tentativas >= CM_TENTATIVAS_PARA_SUGERIR_ESCALONAMENTO
-    && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica';
+    && p.meio_contato !== 'carta_registrada' && p.meio_contato !== 'oficial_justica' && p.meio_contato !== 'zeo';
 }
 
 function cmFiltrar() {
@@ -1565,8 +1644,17 @@ function cmFiltrar() {
     else if (cmFiltroStatus === 'relato_terceiro_pendente') { if (!p.tem_relato_terceiro_pendente) return false; }
     else if (cmFiltroStatus === 'aguardando_resposta') { if (!cmEhAguardandoResposta(p)) return false; }
     else if (cmFiltroStatus === 'sem_whatsapp') { if (!cmSemWhatsapp(p)) return false; }
+    else if (cmFiltroStatus === 'meio_zeo') { if (p.meio_contato !== 'zeo') return false; }
+    else if (cmFiltroStatus === 'atrasado') { if (!cmAtrasado(p)) return false; }
     else if (cmFiltroStatus && p.confirmacao !== cmFiltroStatus) return false;
     if (cmFiltroFuncao && p.funcao !== cmFiltroFuncao) return false;
+    if (cmFiltroMunicipio) {
+      const municipio = p.secao_id ? cmDados.secoesPorId[p.secao_id]?.municipio : null;
+      if (municipio !== cmFiltroMunicipio) return false;
+    }
+    if (cmFiltroResponsavel === 'eu') { if (p.responsavel_usuario_id !== cmMeuId) return false; }
+    else if (cmFiltroResponsavel === 'sem_responsavel') { if (p.responsavel_usuario_id) return false; }
+    else if (cmFiltroResponsavel) { if (p.responsavel_usuario_id !== cmFiltroResponsavel) return false; }
     if (q && !(p.nome_completo || '').toLowerCase().includes(q) && !(p.inscricao_eleitoral || '').includes(q)) return false;
     return true;
   });
@@ -1625,10 +1713,14 @@ function renderContatarMesarios() {
   contagem.precisa_substituir = cmDados.pessoas.filter(p => p.precisa_substituir).length;
   contagem.relato_terceiro_pendente = cmDados.pessoas.filter(p => p.tem_relato_terceiro_pendente).length;
   contagem.sem_whatsapp = cmDados.pessoas.filter(cmSemWhatsapp).length;
+  contagem.meio_zeo = cmDados.pessoas.filter(p => p.meio_contato === 'zeo').length;
   const pessoasAguardando = cmDados.pessoas.filter(cmEhAguardandoResposta);
   contagem.aguardando_resposta = pessoasAguardando.length;
+  const pessoasAtrasadas = cmDados.pessoas.filter(cmAtrasado);
+  contagem.atrasado = pessoasAtrasadas.length;
   const contagemFuncao = {};
   for (const p of cmDados.pessoas) contagemFuncao[p.funcao] = (contagemFuncao[p.funcao] || 0) + 1;
+  const municipios = [...new Set(Object.values(cmDados.secoesPorId).map(s => s.municipio).filter(Boolean))].sort();
   const lista = cmFiltrar();
 
   c.innerHTML = `
@@ -1650,6 +1742,16 @@ function renderContatarMesarios() {
         <select id="cm-filtro-funcao" onchange="cmFiltroFuncao=this.value;render()">
           ${CM_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${cmFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${cmDados.pessoas.length})`}</option>`).join('')}
         </select>
+        <select id="cm-filtro-municipio" onchange="cmFiltroMunicipio=this.value;render()">
+          <option value="" ${cmFiltroMunicipio === '' ? 'selected' : ''}>Todos os municípios</option>
+          ${municipios.map(m => `<option value="${cmEsc(m)}" ${cmFiltroMunicipio === m ? 'selected' : ''}>${cmEsc(m)}</option>`).join('')}
+        </select>
+        <select id="cm-filtro-responsavel" onchange="cmFiltroResponsavel=this.value;render()">
+          <option value="" ${cmFiltroResponsavel === '' ? 'selected' : ''}>Todos os responsáveis</option>
+          <option value="eu" ${cmFiltroResponsavel === 'eu' ? 'selected' : ''}>👤 Meus</option>
+          <option value="sem_responsavel" ${cmFiltroResponsavel === 'sem_responsavel' ? 'selected' : ''}>Sem responsável</option>
+          ${cmEquipe.map(u => `<option value="${u.id}" ${cmFiltroResponsavel === u.id ? 'selected' : ''}>${cmEsc(u.nome)}</option>`).join('')}
+        </select>
         <input id="cm-busca" type="text" placeholder="Buscar por nome ou título de eleitor…" value="${cmEsc(cmBusca)}" oninput="cmOnBuscaInput(this.value)" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1657,8 +1759,13 @@ function renderContatarMesarios() {
         <button class="btn btn-dark" style="font-size:.74rem;padding:6px 12px" onclick="cmCriarCampanha()">📢 Criar campanha com estes (${lista.filter(p => p.telefone_whatsapp).length})</button>
       </div>
     </div>
+    ${pessoasAtrasadas.length ? `
+    <div class="import-result ir-warn" style="cursor:pointer;border-color:var(--red-bd,#e0a09a);background:var(--red-bg,#fae8e6)" onclick="cmFiltroStatus='atrasado';cmFiltroResponsavel='';cmFiltroFuncao='';cmFiltroMunicipio='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
+      🔴 <b>${pessoasAtrasadas.length} pessoa(s)</b> com retorno agendado que já venceu.
+      <div style="font-weight:400;margin-top:3px">${pessoasAtrasadas.slice(0, 6).map(p => cmEsc(p.nome_completo)).join(', ')}${pessoasAtrasadas.length > 6 ? ` e mais ${pessoasAtrasadas.length - 6}` : ''}</div>
+    </div>` : ''}
     ${pessoasAguardando.length ? `
-    <div class="import-result ir-warn" style="cursor:pointer" onclick="cmFiltroStatus='aguardando_resposta';cmFiltroFuncao='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
+    <div class="import-result ir-warn" style="cursor:pointer" onclick="cmFiltroStatus='aguardando_resposta';cmFiltroFuncao='';cmFiltroMunicipio='';cmBusca='';render()" title="Clique pra filtrar só esta lista">
       🕓 <b>${pessoasAguardando.length} pessoa(s)</b> aguardando resposta — já tentamos contato, ninguém confirmou ainda.
       <div style="font-weight:400;margin-top:3px">${pessoasAguardando.slice(0, 6).map(p => cmEsc(p.nome_completo)).join(', ')}${pessoasAguardando.length > 6 ? ` e mais ${pessoasAguardando.length - 6}` : ''}</div>
     </div>` : ''}
@@ -1686,6 +1793,8 @@ function renderContatarMesarios() {
               ${p.precisa_substituir ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">🔁 Precisa substituto${cmSubstitutoLabel(p)}</span>` : ''}
               ${p.tem_relato_terceiro_pendente ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap">⚠️ Relato de terceiro pendente</span>` : ''}
               ${cmSemWhatsapp(p) ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap" title="O telefone principal está marcado (ou tem formato de fixo) — veja qual em Contato, no modal">📵 Principal sem WhatsApp</span>` : ''}
+              ${cmAtrasado(p) ? `<span class="import-result ir-warn" style="margin-top:0;white-space:nowrap;border-color:var(--red-bd,#e0a09a);background:var(--red-bg,#fae8e6);color:var(--red,#c0392b)">🔴 Atrasado desde ${cmDiaChave(p.proximo_contato_em)}</span>` : p.proximo_contato_em ? `<span class="import-result" style="margin-top:0;white-space:nowrap">📅 Retorno em ${cmDiaChave(p.proximo_contato_em)}</span>` : ''}
+              ${p.responsavel_usuario_id ? `<span class="ic-sub" style="margin-bottom:0;white-space:nowrap">👤 ${cmEsc(cmNomeUsuario(p.responsavel_usuario_id) || '—')}</span>` : ''}
             </div>
           </div>
           ${p.observacao ? `<div class="ic-sub" style="margin-top:8px;background:var(--bg2);border-radius:6px;padding:6px 8px;white-space:pre-wrap">${cmEsc(p.observacao)}</div>` : ''}

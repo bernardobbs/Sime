@@ -33,8 +33,10 @@ body{display:flex;flex-direction:column;}
 .t-clock{font-size:.82rem;font-weight:700;color:var(--text2);font-variant-numeric:tabular-nums;min-width:72px;text-align:right;}
 /* Sem indicador de saúde do Realtime, um canal caído deixava a tela travada
    num dado velho sem nenhum aviso (achado "alto" da auditoria — mesmo padrão
-   já aplicado ao TV Dia). */
-.rt-status{font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;}
+   já aplicado ao TV Dia). Redesenhado em 27/09/2026 — ver comentário
+   equivalente em SIME_tv_dia.html. */
+.rt-status{font-size:.82rem;font-weight:700;padding:3px 11px;border-radius:99px;background:var(--bg2);color:var(--text2);white-space:nowrap;display:flex;align-items:center;gap:6px;}
+.rt-status .tsd{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .rt-status.warn{background:#fff7ed;color:#c2410c;}
 .rt-status.stale{background:#fef2f2;color:#dc2626;}
 .cfg-btn{padding:4px 10px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);}
@@ -191,7 +193,7 @@ body{display:flex;flex-direction:column;}
   <div class="t-sep"></div>
   <div class="t-stats" id="t-stats"></div>
   <div class="t-right">
-    <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor">— sem sessão</div>
+    <div class="rt-status" id="rt-status" title="Última vez que dados novos chegaram do servidor"><span class="tsd" style="background:var(--text3,#999)"></span>— sem sessão</div>
     <button class="cfg-btn" onclick="openCfg()">⚙ Horários</button>
     <div class="t-clock" id="clock">--:--:--</div>
   </div>
@@ -872,12 +874,12 @@ function updateRtStatus(){
   const el=document.getElementById('rt-status');
   if(!el) return;
   const ts=window.__ultimaAtualizacaoTs;
-  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  if(!ts){ el.innerHTML='<span class="tsd" style="background:var(--text3,#999)"></span>— sem sessão'; el.className='rt-status'; return; }
   const s=Math.floor((Date.now()-ts)/1000);
-  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
-  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
-  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
-  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+  const tempo = s<5?'agora':s<60?('há '+s+'s'):('há '+Math.floor(s/60)+'min');
+  if(s>=90){ el.innerHTML='<span class="tsd" style="background:#dc2626"></span>Sem atualização '+tempo; el.className='rt-status stale'; }
+  else if(s>=30){ el.innerHTML='<span class="tsd" style="background:#c2410c"></span>Atualizado '+tempo; el.className='rt-status warn'; }
+  else{ el.innerHTML='<span class="tsd" style="background:#16a34a"></span>Atualizado '+tempo; el.className='rt-status'; }
 }
 setInterval(updateRtStatus,1000); updateRtStatus();
 
@@ -894,5 +896,6 @@ setInterval(()=>{ fullRender(); }, 5000);
 // ativa áudio no primeiro toque
 document.addEventListener('click',()=>{ if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)(); },{once:true});
 </script>
+<script src="./sime_tv_nav.js"></script>
 </body>
 </html>

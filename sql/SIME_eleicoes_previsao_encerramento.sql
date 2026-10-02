@@ -1,0 +1,24 @@
+-- Previsão de encerramento da zona (08/09/2026)
+--
+-- Pedido direto: "a ideia é a cada nova informação de demora na seção, nova
+-- informação de recolhimento das midias com a chegada do motorista, a
+-- informação depois de 17h de demora na fila a rota ser redefinida, com
+-- isso teriamos previsão mais real do fim da eleição".
+--
+-- Esclarecido com o dono do projeto antes de implementar (AskUserQuestion):
+-- "a rota ser redefinida" aqui significa RECALCULAR uma previsão (não
+-- reordenar paradas de rota nenhuma — isso já existe no módulo 🗺️ Rotas e
+-- continua manual). O painel novo (aba "🔮 Previsão" em SIME_admin.html)
+-- recalcula sozinho, via Realtime, sempre que sime_mesa_estado (fila,
+-- encerramento) ou sime_midias (coleta) mudam.
+--
+-- `minutos_por_eleitor_fila` é o único parâmetro que o cálculo assume — o
+-- tempo médio que UM eleitor na fila leva pra votar, usado só depois do
+-- horário oficial de encerramento (fila que ainda existe às 17h é o que
+-- atrasa o fechamento da seção). Deliberadamente NÃO cravado como fato —
+-- mesmo critério já usado em RT_VELOCIDADE_MEDIA_KMH (módulo de Rotas):
+-- um valor default editável pelo cartório, nunca um número inventado sem
+-- poder ser corrigido. Default 1 min/eleitor (referência pública comum da
+-- urna eletrônica), mas o cartório pode ajustar a qualquer momento no
+-- próprio painel.
+ALTER TABLE sime_eleicoes ADD COLUMN IF NOT EXISTS minutos_por_eleitor_fila NUMERIC NOT NULL DEFAULT 1;
