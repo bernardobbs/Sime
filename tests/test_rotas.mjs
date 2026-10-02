@@ -2208,6 +2208,166 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 48. "📋 Protocolo + Checklist" (02/10/2026, pedido direto: "inclua o
+// relatório no sime, para imprimir junto com as rotas") — botão só aparece
+// pra rota com tipo 'distribuicao' (r1): r2 (só recolhimento_midia) e r4
+// (só recolhimento_urna, sem distribuicao) nunca mostram. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  const cardR1 = p.locator('.import-card:has-text("Rota 001 — Rota 001")');
+  check('rota com tipo distribuicao mostra o botão', await cardR1.locator('button:has-text("📋 Protocolo + Checklist")').count() === 1);
+
+  const cardR2 = p.locator('.import-card:has-text("Rota 002")');
+  check('rota só de recolhimento_midia NUNCA mostra o botão', await cardR2.locator('button:has-text("📋 Protocolo + Checklist")').count() === 0);
+
+  const cardR4 = p.locator('.import-card:has-text("Rota 004")');
+  check('rota só de recolhimento_urna (sem distribuicao) NUNCA mostra o botão', await cardR4.locator('button:has-text("📋 Protocolo + Checklist")').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 49. Clicar no botão imprime o protocolo de entrega/recolhimento
+// (seções agrupadas por endereço, total de urnas, datas 03/10→04/10) +
+// o check list do veículo (motorista/CNH/categoria/marca-modelo/placa/ano/
+// cor), com log de auditoria — sem popup, numa chamada só de window.print(). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.responsavel_ator_id = 'a1';
+  r1.placa = 'NHX1905'; r1.veiculo_descricao = 'GM/Classic Life'; r1.veiculo_ano = '2008 / 2008'; r1.veiculo_cor = 'Prata';
+  r1.urnas_estimadas = 5;
+  // s1/s2 no mesmo endereço — devem sair numa única linha agrupada
+  // ("30, 31"), mesmo critério já usado no script avulso que este botão
+  // substitui (ver sql/SIME_rotas_protocolo_entrega_checklist.sql).
+  m.sime_secoes.find(s => s.id === 's1').endereco = 'Povoado Água Branca, S/N - Zona Rural';
+  m.sime_secoes.find(s => s.id === 's2').endereco = 'Povoado Água Branca, S/N - Zona Rural';
+  const a1 = m.sime_atores.find(a => a.id === 'a1');
+  a1.telefone_whatsapp = '5586999998888'; a1.cnh_numero = '0237167878'; a1.cnh_categoria = 'D';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("📋 Protocolo + Checklist")').click();
+  await p.waitForTimeout(150);
+
+  check('imprime numa chamada só de window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('protocolo mostra "ROTA 01" (número curto a partir do código)', /ROTA 01/.test(printHtml), printHtml.slice(0, 400));
+  check('protocolo agrupa as 2 seções do mesmo endereço numa linha só, com a quantidade certa', /30, 31[\s\S]{0,200}Povoado Água Branca/.test(printHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')), printHtml);
+  check('total de urnas vem de urnas_estimadas', /TOTAL[\s\S]{0,80}5/.test(printHtml), printHtml);
+  check('mostra motorista/telefone/placa/veículo/ano', /JOAO MOTORISTA/.test(printHtml) && /\(86\) 99999-8888/.test(printHtml) && /NHX1905/.test(printHtml) && /GM\/Classic Life/.test(printHtml) && /2008 \/ 2008/.test(printHtml), printHtml);
+  check('mostra as datas fixas de entrega (03/10) e recolhimento (04/10)', /03\/10\/2026/.test(printHtml) && /04\/10\/2026/.test(printHtml), printHtml);
+  check('checklist mostra CNH número/categoria', /0237167878/.test(printHtml) && />D</.test(printHtml), printHtml);
+  check('checklist separa marca/modelo a partir de veiculo_descricao', /<td class="cl-v">GM<\/td>/.test(printHtml) && /Classic Life/.test(printHtml), printHtml);
+  check('checklist mostra a mesma placa/ano/cor da rota', /Prata/.test(printHtml), printHtml);
+
+  const log = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_protocolo_entrega_impresso'));
+  check('log de auditoria com rota/código/quantidade certos', log?.payload?.rota_id === 'r1' && log?.payload?.codigo === '001' && log?.payload?.quantidade === 2, JSON.stringify(log));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 50. Sem veículo cadastrado (CRLV indisponível na planilha-fonte) — o
+// protocolo mostra "— (sem CRLV disponível)" e o checklist avisa, sem
+// travar nem inventar marca/modelo/CNH nenhum. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.responsavel_ator_id = 'a1';
+  // veiculo_descricao/ano/cor/placa continuam null (default do mock) —
+  // a1 sem cnh_numero/cnh_categoria também.
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("📋 Protocolo + Checklist")').click();
+  await p.waitForTimeout(150);
+
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('protocolo mostra "sem CRLV disponível" no lugar do tipo de veículo', /sem CRLV disponível/.test(printHtml), printHtml);
+  check('checklist mostra o aviso de CRLV indisponível', /CRLV dispon[ií]vel.*confirmados na própria vistoria|Este veículo não tinha CRLV/.test(printHtml), printHtml);
+  check('checklist nunca inventa CNH — mostra travessão', /CNH nº:<\/td><td class="cl-v">—<\/td>/.test(printHtml), printHtml);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 51. Botão em lote ("📋 Imprimir protocolos + checklists") só aparece
+// com o filtro em "Distribuição de urnas" — nunca com outro tipo escolhido
+// — e imprime as rotas ATIVAS de distribuição concatenadas, ignorando
+// mídia/recolhimento_urna-sem-distribuicao. Mock ganha r5, 2ª rota de
+// distribuição, pra testar concatenação de verdade (r1 sozinha não provaria
+// que o lote itera mais de uma). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_rotas.push({ id: 'r5', zona_id: 'z7', codigo: '005', nome: 'Rota 005', municipios: ['Campo Maior'], tipos: ['distribuicao'], itinerario: null, urnas_estimadas: 3, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  check('sem filtro de tipo, o botão de lote não aparece', await p.locator('button:has-text("📋 Imprimir protocolos")').count() === 0);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_midia');
+  await p.waitForTimeout(100);
+  check('com outro tipo escolhido (recolhimento_midia), o botão de lote continua ausente', await p.locator('button:has-text("📋 Imprimir protocolos")').count() === 0);
+
+  await p.selectOption('#rt-filtro-tipo', 'distribuicao');
+  await p.waitForTimeout(100);
+  const botaoTxt = await p.locator('button:has-text("📋 Imprimir protocolos")').textContent();
+  check('com "Distribuição de urnas" escolhido, botão aparece com a contagem certa (r1+r5=2)', /2 rota/.test(botaoTxt), botaoTxt);
+
+  await p.click('button:has-text("📋 Imprimir protocolos")');
+  await p.waitForTimeout(200);
+
+  check('imprime numa chamada só de window.print()', await p.evaluate(() => window.__printCalls) === 1);
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('protocolo das 2 rotas de distribuição saem concatenados', /ROTA 01/.test(printHtml) && /ROTA 05/.test(printHtml), printHtml.slice(0, 400));
+  check('cada rota ganha seu próprio bloco de checklist (2 páginas .cl-pagina)', await p.locator('.cl-pagina').count() === 2);
+  check('cada rota ganha seu próprio bloco de protocolo (2 páginas .pe-pagina)', await p.locator('.pe-pagina').count() === 2);
+
+  const log = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_protocolo_entrega_impresso_lote'));
+  check('log em lote com quantidade/códigos certos', log?.payload?.quantidade === 2 && (log?.payload?.rotas || []).sort().join(',') === '001,005', JSON.stringify(log));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 51b. Botão em lote some sozinho sem nenhuma rota de distribuição ATIVA
+// (nunca inventa um lote vazio); avisa por toast e não chama window.print(). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r1 = m.sime_rotas.find(r => r.id === 'r1');
+  r1.ativo = false; // única rota de distribuição do mock, agora inativa
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.selectOption('#rt-filtro-tipo', 'distribuicao');
+  await p.waitForTimeout(100);
+  const botaoTxt = await p.locator('button:has-text("📋 Imprimir protocolos")').textContent();
+  check('contagem zera quando a única rota de distribuição está inativa', /0 rota/.test(botaoTxt), botaoTxt);
+
+  await p.click('button:has-text("📋 Imprimir protocolos")');
+  await p.waitForTimeout(150);
+  check('não chama window.print() sem nenhuma rota ativa', await p.evaluate(() => window.__printCalls) === 0);
+  const toast = await p.locator('.toast').textContent().catch(() => '');
+  check('avisa por toast em vez de imprimir vazio', /[Nn]enhuma rota de distribui[cç][aã]o ativa/.test(toast), toast);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

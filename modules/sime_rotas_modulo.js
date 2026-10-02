@@ -804,16 +804,23 @@ async function rtCarregar(opts = {}) {
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
   const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }, { data: tokensRota, error: e7 }] = await Promise.all([
-    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
-    sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude, horario_encerramento_previsto').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
+    // veiculo_descricao/ano/cor (02/10/2026, ver rtHtmlProtocoloEntrega/
+    // rtHtmlChecklistVeiculo) — propriedade do VEÍCULO atribuído a ESSA
+    // rota (mesmo padrão já usado por `placa`), não do motorista.
+    sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, veiculo_descricao, veiculo_ano, veiculo_cor, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
+    // endereco (02/10/2026) — pro Protocolo de Entrega/Recolhimento de UE,
+    // que agrupa as paradas por endereço do local (não por seção avulsa).
+    sb.from('sime_secoes').select('id, numero, local_nome, municipio, endereco, rota_id, ativo, latitude, longitude, horario_encerramento_previsto').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
     // Pro <select> de "responsável pela rota" — qualquer ator ativo da zona
     // (não só mesário; um responsável de rota pode ser motorista, apoio
     // logístico, etc., não faz sentido restringir por função aqui).
     // telefone_whatsapp junto (08/09/2026) — a ficha impressa da rota
     // (rtImprimirFicha) mostra o contato do responsável pro motorista poder
-    // ligar em caso de imprevisto.
-    sb.from('sime_atores').select('id, nome_completo, telefone_whatsapp').eq('zona_id', zonaId).eq('ativo', true).order('nome_completo'),
+    // ligar em caso de imprevisto. cnh_numero/cnh_categoria (02/10/2026) —
+    // pro Check List de Veículos (rtHtmlChecklistVeiculo), propriedade da
+    // PESSOA (fica com o motorista mesmo que a rota dele mude).
+    sb.from('sime_atores').select('id, nome_completo, telefone_whatsapp, cnh_numero, cnh_categoria').eq('zona_id', zonaId).eq('ativo', true).order('nome_completo'),
     // Status operacional de Dia D (08/09/2026, só leitura — ver comentário
     // acima de RT_STATUS_ESTADO_LABEL). Sem eleição ativa não há
     // eleicao_id pra filtrar; nesse caso nem tenta.
@@ -1002,6 +1009,7 @@ function renderRotas() {
         <input type="text" id="rt-busca" value="${rtEsc(rtBusca)}" oninput="rtOnBuscaInput(this.value)" placeholder="Buscar por código, nome ou município…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       ${rtFiltroTipo ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirTodasPorTipo()" title="Imprime a ficha de todas as rotas ativas deste tipo, numa impressão só">🖨️ Imprimir todas (${RT_TIPO_LABEL[rtFiltroTipo]}) — ${contagemAtiva[rtFiltroTipo] || 0} rota(s)</button>` : ''}
+      ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirProtocolosTodos()" title="Imprime o protocolo de entrega/recolhimento + check list de todas as rotas de distribuição ativas, numa impressão só">📋 Imprimir protocolos + checklists — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
       <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${rtDados.rotas.length} rota(s)</div>
     </div>
 
@@ -1049,6 +1057,7 @@ function renderRotas() {
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirFicha('${r.id}')" title="Imprime a ficha da rota (paradas em ordem, contato do responsável)">🖨️ Imprimir ficha</button>
+          ${(r.tipos || []).includes('distribuicao') ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirProtocoloEntrega('${r.id}')" title="Imprime o protocolo de entrega/recolhimento de urna (assinaturas) + check list do veículo">📋 Protocolo + Checklist</button>` : ''}
           ${(!rtSomenteLeitura() && rtRotaTemTipoLegado(r) && !retornoGerado) ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
           ${!rtSomenteLeitura() ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>` : ''}
         </div>
@@ -2154,5 +2163,236 @@ async function rtImprimirTodasPorTipo() {
   })));
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_ficha_impressa_lote', '', { autor, tipo: rtFiltroTipo, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
+  window.print();
+}
+
+// ── Protocolo de Entrega/Recolhimento de UE + Check List de Veículos
+// (02/10/2026, pedido direto: "inclua o relatório no sime, para imprimir
+// junto com as rotas") ──
+//
+// Até aqui os dois documentos eram gerados FORA do app (script Python
+// avulso, PDF entregue direto ao cartório, fora do repositório — ver
+// sql/SIME_rotas_protocolo_entrega_checklist.sql). Replicam o formato real
+// usado pelo cartório (TRE-PI): um protocolo com assinatura de quem recebe
+// a urna no local de votação (entrega, D-1) e de quem a entrega de volta
+// (recolhimento, Dia D) — e um check list de vistoria do veículo cedido
+// pela empresa contratada. Só fazem sentido pra rota de DISTRIBUIÇÃO
+// (`tipos.includes('distribuicao')`) — é o mesmo trajeto, ida e volta, não
+// duplicado pra `recolhimento_urna` (ver RT_TIPOS_LEGADO acima: recolhimento
+// é a mesma rota percorrida ao contrário, cadastro próprio, mas o
+// protocolo físico de entrega/recolhimento é um só por par ida-volta).
+//
+// Datas fixas (03/10 entrega, 04/10 recolhimento) — mesmas datas reais já
+// usadas em todo o resto do sistema pro 1º turno de 2026 (ver
+// raEleicaoTexto em sime_recibo_alimentacao.js) — 03/10 é a véspera (D-1,
+// quando o veículo sai do cartório com as urnas), 04/10 é o Dia D (quando
+// recolhe de volta).
+const RT_PROTOCOLO_DATA_ENTREGA = '03/10/2026';
+const RT_PROTOCOLO_DATA_RECOLHIMENTO = '04/10/2026';
+
+// Boilerplate da empresa/contrato — igual pras 12 rotas, não repetido por
+// rota nenhuma (mesmo contrato, mesma contratada) — fica como constante de
+// módulo, não campo de banco, mesmo critério já usado pra
+// RT_DESTINOS_CONHECIDOS (lista fixa conhecida desta operação específica).
+const RT_CHECKLIST_CONTRATO = 'Contrato TRE-PI nº 38/2026';
+const RT_CHECKLIST_CONTRATADA = {
+  razaoSocial: 'TRANSIT ELETRIC LOCADORA DE VEÍCULOS LTDA',
+  cnpj: '00.437.810/0001-00',
+  endereco: 'Rua Rui Barbosa, 526, Centro/Sul — CEP 64.001-090, Teresina/PI',
+  email: 'transpotypi@gmail.com',
+  telefone: '(86) 3214-8168',
+  termoReferencia: 'nº 196/2026 (evento 0002853613)',
+};
+
+// "01".."13" a partir do código "UR1".."UR13" — mesmo número que o
+// cartório já usa de cabeça pra falar da rota por telefone/rádio ("Rota
+// 08"), sem o prefixo técnico do sistema.
+function rtRotaNumeroCurto(codigo) {
+  const n = parseInt(String(codigo || '').replace(/\D/g, ''), 10);
+  return Number.isFinite(n) ? String(n).padStart(2, '0') : (codigo || '—');
+}
+
+// Agrupa as paradas, EM ORDEM, por endereço do local — réplica do mesmo
+// agrupamento que o protocolo físico sempre usou (uma linha por prédio,
+// não por seção avulsa; ex. "135, 144" na mesma linha quando as duas
+// seções são no mesmo endereço). Sem `endereco` cadastrado pro local (ver
+// sql/SIME_secoes_endereco.sql — 2 seções da zona ainda ficam de fora),
+// cai pro par local_nome+município como chave — nunca quebra, só perde a
+// granularidade de rua.
+function rtAgruparParadasPorEndereco(paradas) {
+  const grupos = [];
+  for (const s of paradas) {
+    const endereco = s.endereco || `${s.local_nome}, ${s.municipio}`;
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.endereco === endereco) {
+      ultimo.numeros.push(s.numero);
+      ultimo.qtd++;
+    } else {
+      grupos.push({ endereco, numeros: [s.numero], qtd: 1 });
+    }
+  }
+  return grupos;
+}
+
+function rtHtmlProtocoloEntrega(rota, paradas, responsavel, zona, suf) {
+  const s = suf != null ? '-' + suf : '';
+  const grupos = rtAgruparParadasPorEndereco(paradas);
+  const totalUrnas = rota.urnas_estimadas != null ? rota.urnas_estimadas : paradas.length;
+  const linhas = grupos.map(g => `
+    <tr>
+      <td>${rtEsc(g.numeros.join(', '))}</td>
+      <td style="text-align:center">${g.qtd}</td>
+      <td>${rtEsc(g.endereco)}</td>
+      <td></td>
+    </tr>`).join('');
+  const zonaNum = zona.numero || '';
+  const municipioZona = zona.municipio || 'Campo Maior';
+  const telMotorista = responsavel?.telefone_whatsapp ? fmtTelefone(responsavel.telefone_whatsapp) : 'Não consta';
+  return `
+    <div class="pe-pagina" id="pe-pagina${s}">
+      <div class="pe-titulo">CARTÓRIO DA ${rtEsc(zonaNum)}ª ZONA ELEITORAL</div>
+      <div class="pe-sub">ELEIÇÕES DE 2026 – 1º TURNO</div>
+      <div class="pe-rota">ROTA ${rtEsc(rtRotaNumeroCurto(rota.codigo))}</div>
+      <table class="pe-cab">
+        <tr><td class="pe-l">Motorista:</td><td class="pe-l">Telefone celular:</td></tr>
+        <tr><td class="pe-v">${rtEsc(responsavel?.nome_completo || '—')}</td><td class="pe-v">${rtEsc(telMotorista)}</td></tr>
+        <tr><td class="pe-l">Tipo de veículo:</td><td></td></tr>
+        <tr><td class="pe-v" colspan="2">${rtEsc(rota.veiculo_descricao || '— (sem CRLV disponível)')}</td></tr>
+      </table>
+      <table class="pe-cab">
+        <tr><td class="pe-l">Placa:</td><td class="pe-l">Ano:</td></tr>
+        <tr><td class="pe-v">${rtEsc(rota.placa || '—')}</td><td class="pe-v">${rtEsc(rota.veiculo_ano || '—')}</td></tr>
+      </table>
+      <table class="pe-tabela">
+        <thead><tr>
+          <th>Seções Eleitorais</th><th>Total de urnas</th>
+          <th>Endereço para entrega e recolhimento</th>
+          <th>Nome legível e assinatura do recebedor das urnas no local</th>
+        </tr></thead>
+        <tbody>${linhas || '<tr><td colspan="4">Nenhum local de votação vinculado ainda.</td></tr>'}</tbody>
+        <tfoot><tr><td><b>TOTAL</b></td><td style="text-align:center"><b>${totalUrnas}</b></td><td></td><td></td></tr></tfoot>
+      </table>
+      <table class="pe-assin">
+        <tr><td><b>Contratada</b></td><td><b>Contratada</b></td></tr>
+        <tr>
+          <td>Recebi do Cartório da ${rtEsc(zonaNum)}ª ZE a quantidade de <b>${totalUrnas}</b> (_____________________) urnas eletrônicas, conforme acima especificado, às ____:____h.</td>
+          <td>Entreguei ao Cartório da ${rtEsc(zonaNum)}ª ZE a quantidade de <b>${totalUrnas}</b> (_____________________) urnas eletrônicas, conforme acima especificado, às ____:____h.</td>
+        </tr>
+        <tr><td>${rtEsc(municipioZona)}-PI, <b>${RT_PROTOCOLO_DATA_ENTREGA}</b></td><td>${rtEsc(municipioZona)}-PI, <b>${RT_PROTOCOLO_DATA_RECOLHIMENTO}</b></td></tr>
+        <tr><td class="pe-linha-assin"></td><td class="pe-linha-assin"></td></tr>
+        <tr><td class="pe-label-assin">(Nome legível e assinatura do responsável)</td><td class="pe-label-assin">(Nome legível e assinatura do responsável)</td></tr>
+        <tr><td>Título eleitor: ______________________</td><td>Título eleitor: ______________________</td></tr>
+        <tr><td><b>Cartório Eleitoral</b> — De acordo:</td><td><b>Cartório Eleitoral</b> — De acordo:</td></tr>
+        <tr><td class="pe-linha-assin"></td><td class="pe-linha-assin"></td></tr>
+        <tr><td class="pe-label-assin">(Nome legível e assinatura do responsável pela ZE)</td><td class="pe-label-assin">(Nome legível e assinatura do responsável pela ZE)</td></tr>
+        <tr><td>Matrícula: ______________________</td><td>Matrícula: ______________________</td></tr>
+      </table>
+      <div class="pe-rodape">SIME — Protocolo de Entrega e Recolhimento de UE · ${rtEsc(zonaNum)}ª Zona Eleitoral do Piauí</div>
+    </div>`;
+}
+
+function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
+  const s = suf != null ? '-' + suf : '';
+  const [marca, modelo] = (rota.veiculo_descricao || '—/—').split('/').map(x => (x || '').trim());
+  const c = RT_CHECKLIST_CONTRATADA;
+  const avisoSemCrlv = !rota.veiculo_descricao
+    ? '⚠ Este veículo não tinha CRLV disponível na planilha-fonte da empresa — marca, modelo, ano e cor precisam ser confirmados na própria vistoria.'
+    : (!rota.veiculo_ano
+      ? '⚠ Ano, cor e proprietário deste veículo ainda não constam na planilha-fonte da empresa — confirmar na própria vistoria.'
+      : '');
+  const secaoVazia = (n, titulo) => `
+    <div class="cl-secao">${n}. ${rtEsc(titulo)}</div>
+    <div class="cl-bloco-branco"></div>
+    <div class="cl-bloco-branco"></div>`;
+  return `
+    <div class="cl-pagina" id="cl-pagina${s}">
+      <div class="cl-titulo">CHECK LIST VEÍCULOS</div>
+      <div class="cl-sub">Rota ${rtEsc(rtRotaNumeroCurto(rota.codigo))} — 7ª Zona Eleitoral do Piauí</div>
+
+      <div class="cl-secao">1. NÚMERO DO CONTRATO TRE/PI</div>
+      <table class="cl-campo"><tr><td class="cl-l">Contrato:</td><td class="cl-v">${rtEsc(RT_CHECKLIST_CONTRATO)}</td></tr></table>
+
+      <div class="cl-secao">2. OBJETIVO DO CHECK LIST</div>
+      <div class="cl-texto">Verificar e registrar as condições de uso, segurança e operacionalidade do veículo destinado ao transporte de urnas eletrônicas, assegurando que esteja apto a realizar o serviço de forma segura, eficiente e em conformidade com os requisitos estabelecidos pela Administração.</div>
+
+      <div class="cl-secao">3. DATA DA VISTORIA</div>
+      <table class="cl-campo"><tr><td class="cl-l">Data:</td><td class="cl-v">_____/_____/_____</td></tr></table>
+
+      <div class="cl-secao">4. CONTRATADA</div>
+      <table class="cl-campo">
+        <tr><td class="cl-l">Razão social:</td><td class="cl-v">${rtEsc(c.razaoSocial)}</td></tr>
+        <tr><td class="cl-l">CNPJ:</td><td class="cl-v">${rtEsc(c.cnpj)}</td></tr>
+        <tr><td class="cl-l">Endereço:</td><td class="cl-v">${rtEsc(c.endereco)}</td></tr>
+        <tr><td class="cl-l">E-mail:</td><td class="cl-v">${rtEsc(c.email)}</td></tr>
+        <tr><td class="cl-l">Telefone:</td><td class="cl-v">${rtEsc(c.telefone)}</td></tr>
+        <tr><td class="cl-l">Termo de Referência:</td><td class="cl-v">${rtEsc(c.termoReferencia)}</td></tr>
+      </table>
+
+      <div class="cl-secao">5. DADOS PESSOAIS DO CONDUTOR/MOTORISTA</div>
+      <table class="cl-campo">
+        <tr><td class="cl-l">Nome:</td><td class="cl-v">${rtEsc(responsavel?.nome_completo || '—')}</td></tr>
+        <tr><td class="cl-l">Contato telefônico:</td><td class="cl-v">${rtEsc(responsavel?.telefone_whatsapp ? fmtTelefone(responsavel.telefone_whatsapp) : 'Não consta')}</td></tr>
+        <tr><td class="cl-l">CNH nº:</td><td class="cl-v">${rtEsc(responsavel?.cnh_numero || '—')}</td></tr>
+        <tr><td class="cl-l">Categoria:</td><td class="cl-v">${rtEsc(responsavel?.cnh_categoria || '—')}</td></tr>
+      </table>
+
+      <div class="cl-secao">6. DESCRIÇÃO DO VEÍCULO</div>
+      <table class="cl-campo">
+        <tr><td class="cl-l">Marca:</td><td class="cl-v">${rtEsc(marca || '—')}</td></tr>
+        <tr><td class="cl-l">Modelo:</td><td class="cl-v">${rtEsc(modelo || '—')}</td></tr>
+        <tr><td class="cl-l">Placa:</td><td class="cl-v">${rtEsc(rota.placa || '—')}</td></tr>
+        <tr><td class="cl-l">Ano de fabricação:</td><td class="cl-v">${rtEsc(rota.veiculo_ano || '—')}</td></tr>
+        <tr><td class="cl-l">Cor:</td><td class="cl-v">${rtEsc(rota.veiculo_cor || '—')}</td></tr>
+        <tr><td class="cl-l">Quilometragem inicial:</td><td class="cl-v">______________</td></tr>
+        <tr><td class="cl-l">Quilometragem final:</td><td class="cl-v">______________</td></tr>
+      </table>
+
+      ${secaoVazia(7, 'PNEUS')}
+      ${secaoVazia(8, 'FARÓIS')}
+      ${secaoVazia(9, 'LANTERNAS DE PISCA-ALERTA')}
+      ${secaoVazia(10, 'LUZES E BUZINA')}
+      ${secaoVazia(11, 'RETROVISORES')}
+
+      <div class="cl-secao">12. OBSERVAÇÕES</div>
+      <div class="cl-bloco-branco cl-bloco-grande"></div>
+
+      <div class="cl-secao">13. IDENTIFICAÇÃO DOS ENVOLVIDOS NA VISTORIA</div>
+      <table class="cl-ident">
+        <tr><td><b>Cartório Eleitoral</b></td><td><b>Motorista</b></td></tr>
+        <tr><td>Nome / Visto / Data:</td><td>Nome / Visto / Data:</td></tr>
+        <tr><td class="cl-ident-espaco"></td><td class="cl-ident-espaco"></td></tr>
+      </table>
+      ${avisoSemCrlv ? `<div class="cl-nota">${rtEsc(avisoSemCrlv)}</div>` : ''}
+    </div>`;
+}
+
+async function rtImprimirProtocoloEntrega(rotaId) {
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  if (!rota) return;
+  const paradas = rtDados.secoesPorRota.get(rotaId) || [];
+  const responsavel = rtAtor(rota.responsavel_ator_id);
+  const area = document.getElementById('print-area');
+  area.innerHTML = rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona) + rtHtmlChecklistVeiculo(rota, responsavel);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_protocolo_entrega_impresso', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
+  window.print();
+}
+
+// "📋 Imprimir protocolos + checklists" em lote (02/10/2026) — mesmo
+// mecanismo de rtImprimirTodasPorTipo, só que sempre escopado a
+// `tipos.includes('distribuicao')` (o único tipo pro qual este documento
+// faz sentido — nunca aparece com outro filtro de tipo escolhido, ver
+// condição no render acima). Só rota ATIVA entra, mesmo critério de sempre.
+async function rtImprimirProtocolosTodos() {
+  const rotas = rtDados.rotas.filter(r => r.ativo && (r.tipos || []).includes('distribuicao'));
+  if (!rotas.length) { showToast('Nenhuma rota de distribuição ativa pra imprimir.'); return; }
+  const area = document.getElementById('print-area');
+  area.innerHTML = rotas.map((rota, idx) => {
+    const paradas = rtDados.secoesPorRota.get(rota.id) || [];
+    const responsavel = rtAtor(rota.responsavel_ator_id);
+    return rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona, idx) + rtHtmlChecklistVeiculo(rota, responsavel, idx);
+  }).join('');
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_protocolo_entrega_impresso_lote', '', { autor, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
   window.print();
 }

@@ -170,6 +170,49 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .rt-col-geo{width:24%;}
   .rt-col-chegada{width:18%;}
   .rt-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
+
+  /* Protocolo de Entrega/Recolhimento de UE + Check List de Veículos
+     (02/10/2026, pedido direto: "inclua o relatório no sime, para imprimir
+     junto com as rotas") — réplica do formato real do cartório (ver
+     sql/SIME_rotas_protocolo_entrega_checklist.sql). Cada rota de
+     distribuição vira 2 páginas (protocolo + checklist); em lote
+     (rtImprimirProtocolosTodos), uma rota depois da outra — mesmo padrão
+     page-break-after:always incondicional já usado em .rt-pagina-capa/
+     .rt-pagina-branca (precisa empurrar pra página nova mesmo na última
+     rota do lote, já que o protocolo de uma rota sempre é seguido pelo
+     checklist DELA, nunca da próxima). */
+  .pe-pagina,.cl-pagina{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  .pe-titulo{font-size:13pt;font-weight:800;text-align:center;}
+  .pe-sub{font-size:10pt;color:#444;text-align:center;margin-top:1mm;}
+  .pe-rota{font-size:15pt;font-weight:800;text-align:center;margin:4mm 0;}
+  .pe-cab{width:100%;border-collapse:collapse;margin-bottom:3mm;font-size:9pt;}
+  .pe-cab td{padding:1.5mm 0;}
+  .pe-l{color:#555;width:50%;}
+  .pe-v{font-weight:800;font-size:11pt;}
+  .pe-tabela{width:100%;border-collapse:collapse;font-size:8.6pt;line-height:1.3;margin-top:2mm;}
+  .pe-tabela th,.pe-tabela td{border:.5pt solid #cfd2e3;padding:2.5mm;vertical-align:middle;text-align:left;}
+  .pe-tabela th{background:#eef0fa;font-weight:800;}
+  .pe-tabela tfoot td{background:#eef0fa;font-weight:800;}
+  .pe-assin{width:100%;border-collapse:collapse;margin-top:5mm;font-size:9pt;}
+  .pe-assin td{width:50%;vertical-align:top;padding:1mm 2mm 1mm 0;}
+  .pe-linha-assin{border-top:.5pt solid #000;padding-top:8mm!important;}
+  .pe-label-assin{font-size:8pt;color:#666;text-align:center;}
+  .pe-rodape{font-size:7.5pt;color:#999;margin-top:6mm;}
+
+  .cl-titulo{font-size:15pt;font-weight:800;text-align:center;}
+  .cl-sub{font-size:10pt;color:#555;text-align:center;margin:1mm 0 3mm;}
+  .cl-secao{background:#1a1a2e;color:#fff;font-weight:800;font-size:9.5pt;padding:2mm 3mm;margin-top:3mm;}
+  .cl-texto{font-size:8.6pt;line-height:1.4;border:.5pt solid #cfd2e3;padding:2.5mm;}
+  .cl-campo{width:100%;border-collapse:collapse;font-size:8.6pt;}
+  .cl-campo td{border:.4pt solid #cfd2e3;padding:2mm 2.5mm;vertical-align:middle;}
+  .cl-l{color:#555;width:40%;}
+  .cl-v{font-weight:800;}
+  .cl-bloco-branco{border:.4pt solid #cfd2e3;height:15mm;margin-top:-.4pt;}
+  .cl-bloco-grande{height:18mm;}
+  .cl-ident{width:100%;border-collapse:collapse;font-size:8.6pt;}
+  .cl-ident td{border:.4pt solid #cfd2e3;padding:2mm 2.5mm;}
+  .cl-ident-espaco{height:14mm;}
+  .cl-nota{font-size:7.6pt;color:#777;margin-top:2mm;}
 }
 </style>
 </head>

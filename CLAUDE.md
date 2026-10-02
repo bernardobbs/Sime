@@ -8608,20 +8608,109 @@ destino real, todas as paradas como waypoints) quando passado.
 
 ## `urnas_estimadas` DAS ROTAS UR8/UR11/UR12 FICOU DESATUALIZADO DEPOIS DA CORREÇÃO DE 02/10/2026
 
-Achado ao regerar o protocolo de entrega/recolhimento de UE (documento
-avulso pro cartório, fora do repositório — `relatorios/` é gitignorado,
-nome/CPF de motorista real) a partir do banco: a correção de 12 seções
-mal-atribuídas feita mais cedo no mesmo dia (ver "CAPA DA FICHA IMPRESSA"
-acima — seção 200 de UR12→UR11, seção 225 de UR12→UR8) moveu seções
-ATIVAS entre rotas, mas `sime_rotas.urnas_estimadas` (a coluna que a
-própria "CONTAGEM DIRETA" de 27/09/2026 promete manter como espelho fiel
-de `count(sime_rota_secoes ativas)`) nunca foi recalculada depois dessa
-correção específica. Contagem real (`sime_rota_secoes` join `sime_secoes`
-`ativo=true`) contra o valor salvo: UR8 10→11, UR11 11→12, UR12 16→14 —
-as outras 10 rotas de distribuição já batiam. Corrigido via SQL direto
-(mesmo critério de sempre, nunca um valor adivinhado — é `count()` puro),
-logado em `sime_logs` (`rota_urnas_estimadas_recalculadas_lote`,
+Achado ao regerar o protocolo de entrega/recolhimento de UE (na época,
+ainda um documento avulso pro cartório, gerado fora do app — ver seção
+seguinte, onde isso deixou de ser verdade no mesmo dia) a partir do banco:
+a correção de 12 seções mal-atribuídas feita mais cedo no mesmo dia (ver
+"CAPA DA FICHA IMPRESSA" acima — seção 200 de UR12→UR11, seção 225 de
+UR12→UR8) moveu seções ATIVAS entre rotas, mas `sime_rotas.urnas_estimadas`
+(a coluna que a própria "CONTAGEM DIRETA" de 27/09/2026 promete manter como
+espelho fiel de `count(sime_rota_secoes ativas)`) nunca foi recalculada
+depois dessa correção específica. Contagem real (`sime_rota_secoes` join
+`sime_secoes` `ativo=true`) contra o valor salvo: UR8 10→11, UR11 11→12,
+UR12 16→14 — as outras 10 rotas de distribuição já batiam. Corrigido via
+SQL direto (mesmo critério de sempre, nunca um valor adivinhado — é
+`count()` puro), logado em `sime_logs`
+(`rota_urnas_estimadas_recalculadas_lote`,
 `origem:'protocolo_entrega_regerar_02-10-2026'`).
+
+---
+
+## 📋 PROTOCOLO DE ENTREGA/RECOLHIMENTO DE UE + CHECK LIST DE VEÍCULOS — MOVIDOS PRA DENTRO DO MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 02/10/2026)
+
+Pedido direto, depois de três correções pontuais na mesma conversa ("a
+seção 225 da rota 12 vai para a rota 8" / "a seção 200 vai para a rota 11"
+— já corrigido mais cedo no mesmo dia, ver seção acima — "na rota 9 é
+Jaknaldo o nome do motorista" / "na rota 8 o motorista é Manoel" —
+confirmado contra `sime_atores`: o banco já tinha os nomes certos,
+JAKNALDO/MANOEL; era só o script Python avulso de fora do app que ainda
+usava um typo antigo, JARNALDO/MANUEL): **"inclua o relatório no sime,
+para imprimir junto com as rotas"**.
+
+Até aqui, o Protocolo de Entrega/Recolhimento de UE e o Check List de
+Veículos (réplica do formato real usado pelo cartório/TRE-PI pras 12 rotas
+de distribuição de urna da 7ª Zona — UR1-UR12) eram gerados por um script
+Python avulso (`reportlab`), rodado manualmente a cada atualização e
+entregue como PDF direto ao cartório, fora do repositório
+(`relatorios/`, gitignorado — nome/CNH/placa real). Isso não escalava: toda
+vez que uma seção mudava de rota (como as duas correções do mesmo dia), o
+documento ficava desatualizado até alguém lembrar de regerar na mão — e o
+cartório não tinha como gerar sozinho. Virou feature de verdade, lendo
+direto do Supabase como qualquer outra tela do módulo.
+
+**Dois campos novos no schema, nunca existiam antes** — `sime_rotas.
+veiculo_descricao`/`veiculo_ano`/`veiculo_cor` (texto livre, propriedade do
+VEÍCULO atribuído a ESSA rota, mesmo padrão já usado por `placa`) e
+`sime_atores.cnh_numero`/`cnh_categoria` (propriedade da PESSOA — fica com
+o motorista mesmo que a rota dele mude). `sql/
+SIME_rotas_protocolo_entrega_checklist.sql` populou as 12 rotas de
+distribuição da 7ª Zona com os mesmos dados já usados no script Python
+(fonte: CRLV/planilha da empresa contratada) — **UR11 ficou com
+`veiculo_ano`/`veiculo_cor` em branco de propósito** (nunca um valor
+inventado — "sem CRLV disponível na planilha-fonte", mesmo aviso que o
+script antigo já dava).
+
+**`rtAgruparParadasPorEndereco(paradas)`** (nova, `sime_rotas_modulo.js`) —
+agrupa as paradas EM ORDEM por `sime_secoes.endereco` (campo já existia
+desde `sql/SIME_secoes_endereco.sql`, 27/09/2026, só nunca tinha sido lido
+por este módulo) numa linha só por prédio (ex.: seções "135, 144" no mesmo
+endereço viram uma linha "135, 144 — 2 urnas"), réplica fiel do
+agrupamento que o documento físico sempre usou. Sem `endereco` cadastrado
+pro local (2 seções da zona ainda ficam de fora, documentado desde
+27/09/2026), cai pro par `local_nome`+`município` como chave — nunca
+quebra, só perde a granularidade de rua.
+
+**Dois novos botões, só pra rota com `tipos.includes('distribuicao')`** —
+o documento só faz sentido pra esse tipo (é o mesmo trajeto, ida com
+assinatura de quem recebe a urna no local + volta com assinatura de quem
+entrega de volta no cartório; `recolhimento_urna` é a mesma rota ao
+contrário, cadastro próprio, mas o protocolo físico é um só por par
+ida-volta — mesmo modelo já documentado em "ROTA 005 DESMEMBRADA" acima):
+- **"📋 Protocolo + Checklist"** (card de cada rota, ao lado de "🖨️
+  Imprimir ficha") — `rtImprimirProtocoloEntrega(rotaId)`, mesmo mecanismo
+  sem popup de sempre (`#print-area` + `window.print()` direto). Grava log
+  `rota_protocolo_entrega_impresso`.
+- **"📋 Imprimir protocolos + checklists — N rota(s)"** (ao lado de "🖨️
+  Imprimir todas (tipo)", só aparece com o filtro de tipo em "🚚
+  Distribuição de urnas") — `rtImprimirProtocolosTodos()`, mesma lógica de
+  `rtImprimirTodasPorTipo` (só rota ATIVA, avisa por toast em vez de
+  imprimir vazio sem nenhuma). Grava `rota_protocolo_entrega_impresso_lote`.
+
+**Datas de entrega/recolhimento fixas** (`RT_PROTOCOLO_DATA_ENTREGA`
+= "03/10/2026", `RT_PROTOCOLO_DATA_RECOLHIMENTO` = "04/10/2026") — mesmas
+datas reais já usadas em todo o resto do sistema pro 1º turno de 2026 (D-1
+saída do cartório, Dia D recolhimento de volta).
+
+**Boilerplate da contratada/contrato** (`RT_CHECKLIST_CONTRATO`/
+`RT_CHECKLIST_CONTRATADA`) — constante de módulo, não campo de banco: mesmo
+contrato/empresa pras 12 rotas, mesmo critério já usado pra
+`RT_DESTINOS_CONHECIDOS` (lista fixa conhecida desta operação específica,
+não um cadastro genérico).
+
+**CSS novo** (`.pe-*`/`.cl-*`, dentro do `@media print` já existente de
+`SIME_rotas.html`) — protocolo e checklist viram 2 páginas por rota
+(`page-break-after:always` incondicional, mesmo critério já usado em
+`.rt-pagina-capa`/`.rt-pagina-branca`: precisa empurrar pra página nova
+mesmo na última rota do lote).
+
+Coberto por `tests/test_rotas.mjs` (blocos 48-51b, 347 checks no total no
+arquivo): botão só aparece pra rota com tipo distribuição; protocolo
+agrupa seções por endereço com a quantidade certa, total de urnas, datas
+fixas, motorista/telefone/placa/veículo; checklist mostra CNH/categoria/
+marca-modelo (extraído de `veiculo_descricao`) /placa/ano/cor; sem veículo
+cadastrado, mostra "sem CRLV disponível" e o aviso, nunca inventa CNH;
+botão em lote só aparece com o filtro certo, concatena as rotas ativas de
+distribuição, ignora as de outro tipo, avisa por toast sem nenhuma ativa.
 
 ---
 
