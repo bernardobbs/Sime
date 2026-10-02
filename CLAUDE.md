@@ -8535,6 +8535,75 @@ marca aponta pra `assets/logo_eleicoes2026.png`; o rótulo do tipo da rota
 sai sem emoji (capa sóbria). Sem regressão em `test_tokens_massa.mjs`
 (52/52).
 
+**Folha em branco entre capa e ficha (02/10/2026, mesmo dia, pedido
+direto: "após a capa da rota adicione uma folha em branco").**
+`rtHtmlFolhaBranca()` (nova) — `<div class="rt-pagina-branca"></div>`, sem
+nenhum conteúdo, sem id (não precisa de QR nem de nada gerado depois do
+`innerHTML`, ao contrário da capa/ficha). `rtHtmlFicha()` passou a
+retornar `rtHtmlCapa(rota, suf) + rtHtmlFolhaBranca() + <ficha>` — ordem
+impressa agora é capa → branca → ficha, por rota, tanto na impressão de 1
+rota só quanto em lote (`rtImprimirTodasPorTipo`). `.rt-pagina-branca`
+ganhou `page-break-after:always` incondicional, mesmo critério já usado na
+capa — precisa empurrar pra uma página nova antes da ficha, mesmo na
+última rota do lote. Coberto por `tests/test_rotas.mjs` (3 checks novos no
+bloco 47, mais o ajuste do teste de paginação física do lote — bloco 46 —
+de 4 pra 6 páginas, já que cada rota agora soma 3 páginas, não 2): existe
+exatamente 1 folha em branco por ficha; está mesmo vazia (sem texto); a
+ordem no DOM é capa→branca→ficha. 315 checks no total no arquivo.
+
+**Bug real, achado no mesmo dia por observação direta do cartório:
+"percebi que nas rotas de distribuição de urnas não tem o ponto de saida,
+o cartório eleitoral".** Investigado: `sime_rotas.ponto_partida` já estava
+corretamente cadastrado como "Cartório Eleitoral da 7ª Zona Eleitoral" nas
+13 rotas de distribuição (UR1-UR13) — o dado em si nunca esteve errado.
+O problema era no CÁLCULO da rota real via Google (`rtCalcularRotaReal`,
+24/09/2026): `rtChamarGoogleDirections()` sempre usava só `paradas[0]`
+como origem e `paradas[last]` como destino, **nunca** o texto de
+Partida/Destino — então o trecho Cartório→1ª parada (e, em várias rotas
+de `recolhimento_midia` que voltam pro Cartório, o trecho última
+parada→Cartório) simplesmente não entrava na conta, subestimando a
+distância/tempo reais em toda rota cujo Partida/Destino é um ponto
+externo (o Cartório, ou qualquer outro local que não seja ele mesmo uma
+seção/parada).
+
+Corrigido com `rtResolverTextoExterno(textoLivre, paradas, zona, rota)`
+(nova) — mesma prioridade de resolução já usada em `rtMapsUrl()` (sem
+duplicar o código, só a decisão): texto vazio ou que já bate com uma
+parada cadastrada → `null` (sem override, comportamento de sempre); texto
+mencionando "Cartório" com endereço postal cadastrado em `sime_zonas` →
+endereço completo; qualquer outro texto → anexa o município da rota como
+contexto. `rtChamarGoogleDirections(paradas, origemTexto, destinoTexto)`
+passa esses textos pro endpoint; `api/rotas-directions.js` monta uma lista
+de `stops` (texto na ponta quando houver override, paradas no meio,
+sempre na mesma ordem) e usa `stops[0]`/`stops[last]` como origem/destino
+reais — **sem nenhum override (todo chamador de antes, e qualquer rota
+cujo Partida/Destino já seja a própria 1ª/última parada), o resultado é
+byte a byte idêntico ao código antigo** (verificado em isolamento antes
+de aplicar). O Google geocodifica o texto sozinho, de graça — mesmo
+princípio já usado no link "Ver rota completa no mapa", nunca precisou de
+coordenada do Cartório (que o SIME nunca teve).
+
+`rtParadasAssinatura(paradas, rota)` passou a incluir
+`ponto_partida`/`destino` na assinatura do cache (`rota_real_paradas_
+assinatura`) — sem isso, editar o texto de Partida/Destino depois de já
+ter calculado a rota real manteria o cache (agora calculado pro ponto
+ERRADO) marcado como válido pra sempre. Efeito colateral esperado e
+correto: toda rota que já tinha `rota_real_*` cacheado com Partida/Destino
+preenchido (10 rotas de `recolhimento_midia` na 7ª Zona, a maioria
+voltando pro Cartório) passa a ser detectada como desatualizada no próximo
+carregamento — mesmo aviso "lista de paradas (ou o ponto de partida/
+destino) mudou" que já existia pra mudança de paradas, nunca recalculado
+automaticamente (clique explícito do cartório, mesma política de sempre
+pra não gastar a cota paga do Google sem necessidade).
+
+Coberto por `tests/test_rotas.mjs` (blocos 36/37, textos de aviso
+ajustados pro novo formato de assinatura — `'s1,s2||'` em vez de
+`'s1,s2'`, já que `ponto_partida`/`destino` de r1 são `null` no mock).
+Verificado em isolamento (fora do Playwright) que a função de montagem de
+`stops` do endpoint produz exatamente o mesmo resultado de antes quando
+nenhum override é passado, e o resultado esperado (Cartório como origem/
+destino real, todas as paradas como waypoints) quando passado.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

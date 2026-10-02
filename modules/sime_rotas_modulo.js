@@ -187,16 +187,28 @@ function rtHaversineKm(a, b) {
 // se um cache calculado antes (rota real via Google, ver rtRotaRealValida
 // logo abaixo) ainda vale pra ordem/conjunto ATUAL, ou se ficou velho porque
 // alguém adicionou/removeu/reordenou parada desde então.
-function rtParadasAssinatura(paradas) {
-  return paradas.map(s => s.id).join(',');
+//
+// 02/10/2026 — passou a incluir `ponto_partida`/`destino` na assinatura
+// (achado real: "percebi que nas rotas de distribuição de urnas não tem o
+// ponto de saida, o cartório eleitoral" — o cálculo via Google nunca
+// incluía o trecho Cartório→1ª parada nem o trecho última parada→Cartório,
+// ver rtResolverTextoExterno/rtChamarGoogleDirections abaixo). Como esses
+// dois textos agora fazem parte do cálculo de verdade (não só de exibição),
+// editar um dos dois precisa invalidar o cache do mesmo jeito que mudar a
+// lista de paradas já invalidava — sem isso, trocar "Cartório Eleitoral"
+// por outro ponto de partida manteria a distância/tempo ANTIGOS, calculados
+// pro ponto errado, sem avisar ninguém.
+function rtParadasAssinatura(paradas, rota) {
+  const base = paradas.map(s => s.id).join(',');
+  return rota ? `${base}|${rota.ponto_partida || ''}|${rota.destino || ''}` : base;
 }
 // Cache de rota real (24/09/2026, ver rtCalcularRotaReal) ainda vale pra
-// estas paradas, nesta ordem? Mesmo critério de invalidação já usado pra
-// rtOtimizarSugestao — nunca reaproveita um cálculo de uma lista que já
-// mudou.
+// estas paradas, nesta ordem (e com o mesmo ponto de partida/destino)? Mesmo
+// critério de invalidação já usado pra rtOtimizarSugestao — nunca reaproveita
+// um cálculo de uma lista/rota que já mudou.
 function rtRotaRealValida(rota, paradas) {
   return !!(rota.rota_real_paradas_assinatura && rota.rota_real_distancia_m != null && rota.rota_real_duracao_s != null
-    && rota.rota_real_paradas_assinatura === rtParadasAssinatura(paradas));
+    && rota.rota_real_paradas_assinatura === rtParadasAssinatura(paradas, rota));
 }
 
 // Piso por parada — previsão de encerramento (27/09/2026, planilha real do
@@ -369,6 +381,40 @@ function rtCalcularOrdemOtimizada(paradas) {
   return { ordem, kmAntes, kmDepois };
 }
 
+// Resolve o ponto de partida/destino TEXTO (rota.ponto_partida/destino) pro
+// cálculo REAL via Google (02/10/2026, achado real: "percebi que nas rotas
+// de distribuição de urnas não tem o ponto de saida, o cartório eleitoral"
+// — o cálculo sempre usava só `paradas[0]`/`paradas[last]` como origem/
+// destino, ignorando por completo o texto digitado em Partida/Destino;
+// pra uma rota de distribuição, esse texto quase sempre É o Cartório
+// Eleitoral, um ponto que nunca é uma parada/seção — o trecho Cartório↔1ª
+// parada simplesmente não entrava na conta).
+//
+// Mesma prioridade de resolução já usada em `rtMapsUrl()` (sem repetir o
+// código, só a decisão "precisa de override, ou já é uma das paradas"):
+// - Texto vazio → `null` (sem override; usa a 1ª/última parada como
+//   origem/destino, comportamento de sempre).
+// - Texto bate com uma parada já cadastrada (por nome) → `null` também —
+//   essa parada já faz parte de `paradas`, não precisa de override, só
+//   confundiria o Google mandar o mesmo ponto duas vezes.
+// - Menciona "Cartório" e a zona tem endereço postal cadastrado
+//   (`sime_zonas.remetente_*`, mesmo usado em Correspondência) → endereço
+//   completo, pro Google geocodificar com precisão.
+// - Qualquer outro texto → anexa o município da rota, mesmo fallback de
+//   contexto já usado em `rtMapsUrl()` (nunca inventa cidade).
+function rtResolverTextoExterno(textoLivre, paradas, zona, rota) {
+  const texto = (textoLivre || '').trim();
+  if (!texto) return null;
+  const norm = s => (s || '').trim().toLowerCase();
+  const bateComParada = paradas.some(s => norm(rtNomeLocalParada(s)) === norm(texto) || norm(rtNomeLocalParadaSemNumero(s)) === norm(texto));
+  if (bateComParada) return null;
+  if (/cart[oó]rio/i.test(texto) && zona?.remetente_endereco) {
+    return [texto, zona.remetente_endereco, zona.remetente_bairro, zona.remetente_cep, zona.remetente_municipio, zona.remetente_uf].filter(Boolean).join(', ');
+  }
+  const municipio = rota?.municipios?.[0];
+  return municipio ? `${texto}, ${municipio}, PI` : texto;
+}
+
 // Rota real via Google Directions (24/09/2026 — ver comentário grande em
 // cima de RT_VELOCIDADE_MEDIA_KMH). Proxy pro `api/rotas-directions.js`
 // (Vercel): a chave do Google NUNCA é usada direto no navegador, o
@@ -376,8 +422,11 @@ function rtCalcularOrdemOtimizada(paradas) {
 // por trás. `paradas` sempre na ordem em que devem ser visitadas — o
 // endpoint NÃO reordena nada (`optimize:true` de propósito desligado lá),
 // então quem decide a ordem continua sendo o cartório (▲/▼) ou a sugestão
-// de "🔀 Otimizar ordem", nunca o Google.
-async function rtChamarGoogleDirections(paradas) {
+// de "🔀 Otimizar ordem", nunca o Google. `origemTexto`/`destinoTexto`
+// (02/10/2026, ver rtResolverTextoExterno) — quando presentes, o Google
+// geocodifica o texto como origem/destino REAL em vez de usar a 1ª/última
+// parada; sem eles, comportamento idêntico a antes.
+async function rtChamarGoogleDirections(paradas, origemTexto, destinoTexto) {
   const sb = window.supabaseAtores;
   let session;
   try { session = (await sb.auth.getSession()).data.session; } catch (e) { session = null; }
@@ -387,7 +436,7 @@ async function rtChamarGoogleDirections(paradas) {
     resp = await fetch('/api/rotas-directions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ paradas: paradas.map(s => ({ lat: s.latitude, lon: s.longitude })) }),
+      body: JSON.stringify({ paradas: paradas.map(s => ({ lat: s.latitude, lon: s.longitude })), origemTexto: origemTexto || undefined, destinoTexto: destinoTexto || undefined }),
     });
   } catch (e) {
     return { erro: 'Falha de rede ao consultar o Google Maps: ' + e.message };
@@ -414,15 +463,17 @@ async function rtCalcularRotaReal(rotaId) {
   const semGeo = atuais.filter(s => s.latitude == null || s.longitude == null).length;
   if (semGeo) { showToast(`⚠ ${semGeo} parada(s) sem geolocalização — não dá pra consultar o Google sem coordenada em todas.`); return; }
 
+  const origemTexto = rtResolverTextoExterno(rota.ponto_partida, atuais, rtDados.zona, rota);
+  const destinoTexto = rtResolverTextoExterno(rota.destino, atuais, rtDados.zona, rota);
   showToast('⏳ Consultando o Google Maps…');
-  const resultado = await rtChamarGoogleDirections(atuais);
+  const resultado = await rtChamarGoogleDirections(atuais, origemTexto, destinoTexto);
   if (resultado.erro) { showToast('⚠ ' + resultado.erro); return; }
 
   const { error } = await sb.from('sime_rotas').update({
     rota_real_polyline: resultado.polyline,
     rota_real_distancia_m: resultado.distanciaM,
     rota_real_duracao_s: resultado.duracaoS,
-    rota_real_paradas_assinatura: rtParadasAssinatura(atuais),
+    rota_real_paradas_assinatura: rtParadasAssinatura(atuais, rota),
     rota_real_calculada_em: new Date().toISOString(),
   }).eq('id', rotaId);
   if (error) { showToast('⚠ Calculado, mas falhou ao salvar: ' + error.message); return; }
@@ -1377,7 +1428,7 @@ function rtRenderParadas() {
       ${(!soLeitura && atuais.length >= 2 && !semGeoAgora) ? `<button type="button" class="btn btn-out" style="font-size:.7rem;padding:5px 10px" onclick="rtCalcularRotaReal('${r.id}')" title="Consulta o Google Maps pela distância/tempo REAIS de estrada, na ordem atual das paradas — usa a API paga, só por clique explícito">📏 Calcular rota real (Google)</button>` : ''}
     </div>
     ${realValida ? `<div class="ic-sub" style="margin:0 0 8px">📏 Rota real (Google): ${(r.rota_real_distancia_m / 1000).toFixed(1)}km, ${rtFmtMinutos(Math.round(r.rota_real_duracao_s / 60))} — calculada em ${rtFmtTs(r.rota_real_calculada_em) || '?'}. Usada na previsão de chegada e na ficha impressa.</div>`
-      : (temRealDesatualizada ? `<div class="ic-sub" style="margin:0 0 8px">📏 Havia uma rota real calculada, mas a lista de paradas mudou desde então — clique em "Calcular rota real" de novo pra atualizar.</div>` : '')}
+      : (temRealDesatualizada ? `<div class="ic-sub" style="margin:0 0 8px">📏 Havia uma rota real calculada, mas a lista de paradas (ou o ponto de partida/destino) mudou desde então — clique em "Calcular rota real" de novo pra atualizar.</div>` : '')}
     ${sugestao ? (jaIgual ? `
     <div class="import-result ir-ok">✓ A ordem atual já é a mais curta que encontramos por linha reta (nenhuma redução possível) — nada pra aplicar.
       <div style="margin-top:6px"><button type="button" class="btn btn-out" style="font-size:.68rem;padding:3px 8px;font-weight:400" onclick="rtDescartarOtimizacao()">Fechar</button></div>
@@ -1827,6 +1878,15 @@ function rtHtmlCapa(rota, suf) {
     </div>`;
 }
 
+// Folha em branco entre a capa e a ficha (02/10/2026, pedido direto: "após
+// a capa da rota adicione uma folha em branco") — puramente separadora, sem
+// nenhum conteúdo/id (não precisa de QR nem de nada gerado depois do
+// innerHTML), então não precisa do sufixo `idx` que as demais páginas usam
+// pra evitar colisão na impressão em lote.
+function rtHtmlFolhaBranca() {
+  return `<div class="rt-pagina-branca"></div>`;
+}
+
 // ── Impressão da rota pro motorista (08/09/2026, melhoria própria) ──
 // Mesmo mecanismo sem popup já usado em Correspondência/Oficial de Justiça
 // (sime_correspondencia.js/sime_oficial_justica.js): um #print-area oculto
@@ -1932,7 +1992,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona, idx) {
         </div>` : ''}
       </div>` : '';
 
-  return rtHtmlCapa(rota, suf) + `
+  return rtHtmlCapa(rota, suf) + rtHtmlFolhaBranca() + `
     <div class="rt-pagina-ficha">
       <div class="rt-cabecalho">
         <div class="rt-titulo">Ficha de Rota — ${rtEsc(rota.codigo)} — ${rtEsc(rota.nome)}</div>

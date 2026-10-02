@@ -81,18 +81,46 @@ export default async function handler(req, res) {
     }
   }
 
-  const origem = paradas[0];
-  const destino = paradas[paradas.length - 1];
-  const meio = paradas.slice(1, -1);
+  // `origemTexto`/`destinoTexto` (02/10/2026, achado real: "percebi que nas
+  // rotas de distribuição de urnas não tem o ponto de saida, o cartório
+  // eleitoral" — até aqui, a rota real sempre começava/terminava na 1ª/
+  // última PARADA, nunca no Cartório Eleitoral — mesmo quando
+  // `sime_rotas.ponto_partida`/`destino` dizia isso explicitamente, porque
+  // o SIME não guarda coordenada nenhuma do Cartório, só o endereço postal.
+  // O cliente (rtResolverTextoExterno, sime_rotas_modulo.js) resolve esse
+  // texto — endereço completo quando menciona "Cartório", ou texto+
+  // município como contexto — e o Google geocodifica sozinho, de graça,
+  // como já fazia o link "Ver rota completa no mapa" (rtMapsUrl).
+  //
+  // Sem nenhum dos dois (todo chamador de antes de 02/10/2026, e qualquer
+  // rota cujo Partida/Destino já seja uma das próprias paradas): origem =
+  // paradas[0], destino = paradas[last] — EXATAMENTE o comportamento de
+  // sempre, byte a byte (ver `stops` abaixo: sem override, `stops` é só
+  // `paradas`, então origem/destino/waypoints saem idênticos ao código
+  // antigo).
+  const origemTexto = typeof req.body?.origemTexto === 'string' ? req.body.origemTexto : null;
+  const destinoTexto = typeof req.body?.destinoTexto === 'string' ? req.body.destinoTexto : null;
+  const stops = [
+    ...(origemTexto ? [{ texto: origemTexto }] : []),
+    ...paradas,
+    ...(destinoTexto ? [{ texto: destinoTexto }] : []),
+  ];
+  if (stops.length < 2) {
+    return res.status(400).json({ error: 'Precisa de pelo menos 2 pontos (parada, partida ou destino) pra calcular a rota real' });
+  }
+  const fmtStop = (s) => (s.texto ? s.texto : `${s.lat},${s.lon}`);
+  const origem = stops[0];
+  const destino = stops[stops.length - 1];
+  const meio = stops.slice(1, -1);
   const params = new URLSearchParams({
-    origin: `${origem.lat},${origem.lon}`,
-    destination: `${destino.lat},${destino.lon}`,
+    origin: fmtStop(origem),
+    destination: fmtStop(destino),
     mode: 'driving',
     key: apiKey,
   });
   // Sem optimize:true de propósito — a ordem das paradas já foi decidida
   // pelo cartório no módulo (▲/▼), o Google não deve reordenar por conta própria.
-  if (meio.length) params.set('waypoints', meio.map(p => `${p.lat},${p.lon}`).join('|'));
+  if (meio.length) params.set('waypoints', meio.map(fmtStop).join('|'));
 
   let googleResp;
   try {

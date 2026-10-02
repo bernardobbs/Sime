@@ -1594,7 +1594,10 @@ async function lerDestino(p) {
   await p.waitForTimeout(200);
 
   const updReal = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_rotas' && e.filtro.id === 'r1' && e.payload.rota_real_distancia_m != null));
-  check('cacheia distância/duração/polyline/assinatura em sime_rotas', updReal?.payload?.rota_real_distancia_m === 12000 && updReal?.payload?.rota_real_duracao_s === 1200 && updReal?.payload?.rota_real_paradas_assinatura === 's1,s2' && Array.isArray(updReal?.payload?.rota_real_polyline) && updReal.payload.rota_real_polyline.length === 2, JSON.stringify(updReal));
+  // Assinatura ganhou o sufixo "|ponto_partida|destino" em 02/10/2026 — r1
+  // tem os dois null no mock, então vira "s1,s2||" (base + 2 separadores
+  // vazios), não mais só "s1,s2".
+  check('cacheia distância/duração/polyline/assinatura em sime_rotas', updReal?.payload?.rota_real_distancia_m === 12000 && updReal?.payload?.rota_real_duracao_s === 1200 && updReal?.payload?.rota_real_paradas_assinatura === 's1,s2||' && Array.isArray(updReal?.payload?.rota_real_polyline) && updReal.payload.rota_real_polyline.length === 2, JSON.stringify(updReal));
 
   const logReal = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_real_calculada'));
   check('grava log de auditoria com km/min calculados', logReal?.payload?.rota_id === 'r1' && logReal?.payload?.distancia_km === 12 && logReal?.payload?.duracao_min === 20, JSON.stringify(logReal));
@@ -1624,7 +1627,7 @@ async function lerDestino(p) {
   await p.click('#rt-paradas-secao .m-hist-item:has-text("Escola B")');
   await p.waitForTimeout(150);
   const resumoTxt2 = (await p.locator('#rt-paradas-secao').textContent()).replace(/\s+/g, ' ');
-  check('lista de paradas mudou: avisa que a rota real ficou desatualizada', /Havia uma rota real calculada, mas a lista de paradas mudou/.test(resumoTxt2), resumoTxt2);
+  check('lista de paradas mudou: avisa que a rota real ficou desatualizada', /Havia uma rota real calculada, mas a lista de paradas \(ou o ponto de partida\/destino\) mudou/.test(resumoTxt2), resumoTxt2);
 
   await p.click('#modal-body button:has-text("Cancelar")');
   await p.waitForTimeout(100);
@@ -1653,7 +1656,7 @@ async function lerDestino(p) {
   r1.rota_real_polyline = [[-4.83, -42.16], [-4.8305, -42.1605], [-4.8308, -42.1608], [-4.831, -42.161]];
   r1.rota_real_distancia_m = 12000;
   r1.rota_real_duracao_s = 1200;
-  r1.rota_real_paradas_assinatura = 's1,s2';
+  r1.rota_real_paradas_assinatura = 's1,s2||'; // formato novo (02/10/2026) — ponto_partida/destino de r1 são null
   const { p, erros } = await abrir(ctx, m);
   await login(p);
   await p.waitForTimeout(200);
@@ -2012,9 +2015,10 @@ async function lerDestino(p) {
   const pdf = await p.pdf();
   const pdfStr = pdf.toString('latin1');
   const paginasFisicas = (pdfStr.match(/\/Type\s*\/Page(?!s)/g) || []).length;
-  // 02/10/2026: cada rota agora sai com 2 páginas físicas (capa + ficha, ver
-  // rtHtmlCapa) — 2 rotas no lote = 4 páginas, não mais 2.
-  check('PDF de verdade sai com 4 páginas (capa+ficha por rota, 2 rotas no lote)', paginasFisicas === 4, `paginasFisicas=${paginasFisicas} pdfBytes=${pdf.length}`);
+  // 02/10/2026: cada rota agora sai com 3 páginas físicas (capa + folha em
+  // branco + ficha, ver rtHtmlCapa/rtHtmlFolhaBranca) — 2 rotas no lote = 6
+  // páginas, não mais 2.
+  check('PDF de verdade sai com 6 páginas (capa+branca+ficha por rota, 2 rotas no lote)', paginasFisicas === 6, `paginasFisicas=${paginasFisicas} pdfBytes=${pdf.length}`);
   await p.emulateMedia({ media: 'screen' });
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
@@ -2090,6 +2094,14 @@ async function lerDestino(p) {
   check('capa mostra o município da zona', /Campo Maior — PI/.test(capaTxt), capaTxt);
   const logoSrc = await p.locator('.rt-pagina-capa img.rt-capa-logo').first().getAttribute('src');
   check('capa usa a imagem oficial da campanha "Eleições 2026" como marca', /logo_eleicoes2026\.png/.test(logoSrc || ''), logoSrc);
+
+  // Folha em branco entre capa e ficha (02/10/2026, pedido direto: "após a
+  // capa da rota adicione uma folha em branco") — sem conteúdo nenhum, e na
+  // ordem certa no DOM: capa, depois branca, depois ficha.
+  check('existe exatamente 1 folha em branco', await p.locator('.rt-pagina-branca').count() === 1);
+  check('a folha em branco está mesmo vazia (sem texto)', (await p.locator('.rt-pagina-branca').innerText()).trim() === '');
+  const ordemPaginas = await p.evaluate(() => [...document.querySelectorAll('#print-area > div')].map(d => d.className));
+  check('ordem das páginas é capa → branca → ficha', JSON.stringify(ordemPaginas) === JSON.stringify(['rt-pagina-capa', 'rt-pagina-branca', 'rt-pagina-ficha']), JSON.stringify(ordemPaginas));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

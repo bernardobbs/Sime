@@ -107,20 +107,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      .rt-pagina-ficha nesse caso, o seletor :not(:last-child) nunca casa —
      comportamento de antes preservado sem precisar de mais uma classe. */
   .rt-pagina-ficha:not(:last-child){page-break-after:always;}
-  /* Capa (02/10/2026, pedido direto: "inclua uma capa com informações bem
-     grande... inclua o QRCODE e token") — sempre a 1ª página de cada rota,
-     impressão de 1 rota só ou em lote (rtImprimirTodasPorTipo): capa1,
-     ficha1, capa2, ficha2... — por isso o page-break-after é incondicional
-     aqui (nunca ":not(:last-child)"), ao contrário de .rt-pagina-ficha: a
-     capa SEMPRE precisa empurrar pra uma página nova antes da própria ficha
-     dela, mesmo sendo a última rota do lote. */
-  /* Capa institucional (02/10/2026, revisão no mesmo dia, pedido direto:
-     "coloque a imagem da eleição 2026 na capa e a informação da 7ª Zona...
-     será uma capa institucional... quero uma capa sobria e institucional").
-     Tons neutros (preto/cinza, sem vermelho nem caixa tracejada), régua fina
-     em vez de bloco colorido, hierarquia por peso/caixa-alta em vez de
-     tamanho gritante — mesmo espírito do timbre institucional já usado no
-     Auxílio Alimentação (`raHtmlTimbre`, sime_recibo_alimentacao.js). */
+  /* Capa institucional (02/10/2026, pedido direto: "inclua uma capa com
+     informações bem grande... inclua o QRCODE e token", revisada no mesmo
+     dia: "coloque a imagem da eleição 2026 na capa e a informação da 7ª
+     Zona... será uma capa institucional... quero uma capa sobria e
+     institucional") — sempre a 1ª página de cada rota, impressão de 1 rota
+     só ou em lote (rtImprimirTodasPorTipo): capa1, branca1, ficha1, capa2,
+     branca2, ficha2... — por isso o page-break-after é incondicional aqui
+     (nunca ":not(:last-child)"), ao contrário de .rt-pagina-ficha: a capa
+     SEMPRE precisa empurrar pra uma página nova antes da própria folha
+     branca/ficha dela, mesmo sendo a última rota do lote. Tons neutros
+     (preto/cinza, sem vermelho nem caixa tracejada), régua fina em vez de
+     bloco colorido, hierarquia por peso/caixa-alta em vez de tamanho
+     gritante — mesmo espírito do timbre institucional já usado no Auxílio
+     Alimentação (`raHtmlTimbre`, sime_recibo_alimentacao.js). */
   .rt-pagina-capa{page-break-after:always;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Arial,Helvetica,sans-serif;gap:2.5mm;padding:14mm;box-sizing:border-box;color:#111;}
   .rt-capa-logo{height:22mm;width:auto;object-fit:contain;margin-bottom:3mm;}
   .rt-capa-orgao{font-size:13pt;font-weight:700;letter-spacing:.3px;}
@@ -133,6 +133,12 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .rt-capa-token{font-size:13pt;letter-spacing:.4px;margin-top:3mm;}
   .rt-capa-sub{font-size:8.5pt;color:#444;max-width:110mm;margin-top:1mm;}
   .rt-capa-sem-token{font-size:10pt;color:#555;border:1px solid #bbb;padding:5mm 9mm;max-width:120mm;margin-top:4mm;}
+  /* Folha em branco entre a capa e a ficha (02/10/2026, pedido direto:
+     "após a capa da rota adicione uma folha em branco") — sem conteúdo
+     nenhum, de propósito; o page-break-after também é incondicional, pelo
+     mesmo motivo da capa: precisa empurrar pra uma página nova antes da
+     ficha, mesmo na última rota do lote. */
+  .rt-pagina-branca{page-break-after:always;height:100%;}
   .rt-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
   .rt-titulo{font-weight:800;font-size:12pt;}
   .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}
