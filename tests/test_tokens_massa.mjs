@@ -186,6 +186,51 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 2c. Bug real corrigido em 02/10/2026, achado investigando a ficha
+// impressa de rota (SIME_rotas.html) pedir o QR do token de motorista/
+// instalador: `tokenParaLinha()`/`secoesDasRotas()` extraíam SÓ OS DÍGITOS
+// do rótulo da rota ("Rota UR7" → "007", via /(\d+)/ + padStart) — funciona
+// por coincidência pra código puramente numérico (já coberto nos blocos 2/
+// 2b acima), mas é destrutivo pra código com prefixo de letra: "UR7" virava
+// "007", colidindo em silêncio com a rota 007 de verdade (ou com nenhuma,
+// se "007" não existir). Corrigido pra só tirar o prefixo "Rota " do
+// rótulo, preservando o código completo. ──
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_rotas.push({ id: 'rota-uuid-ur7', codigo: 'UR7', nome: 'Rota UR7', tipos: ['distribuicao'], municipios: ['Campo Maior'], ativo: true });
+  cfg.sime_rotas.push({ id: 'rota-uuid-vis1', codigo: 'VIS1', nome: 'Rota VIS1', tipos: ['instalacao'], municipios: ['Campo Maior'], ativo: true });
+  cfg.sime_rota_secoes.push({ rota_id: 'rota-uuid-vis1', parada: 1, sime_secoes: { numero: 263 } });
+  const p = await newPage(ctx, cfg);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_tokens.html');
+  await login(p);
+
+  await p.fill('#f-nome', 'Motorista UR7');
+  await p.selectOption('#f-tipo', 'motorista');
+  await p.click('label.rota-ck:has-text("Rota UR7")');
+  await p.click('text=🔑 Gerar QR Code + PIN');
+  await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 0);
+  const callMotorista = (await p.evaluate(() => window.__mockConfig.insertCalls))[0];
+  check('token de motorista de rota com prefixo de letra grava o código COMPLETO (UR7), não só os dígitos (007)',
+    JSON.stringify(callMotorista.payload.rotas) === JSON.stringify(['UR7']), JSON.stringify(callMotorista.payload.rotas));
+
+  await p.fill('#f-nome', 'Instalador VIS1');
+  await p.selectOption('#f-tipo', 'instalador');
+  await p.click('label.rota-ck:has-text("Rota VIS1")');
+  await p.click('text=🔑 Gerar QR Code + PIN');
+  await p.waitForFunction(() => window.__mockConfig.insertCalls.length > 1);
+  const callInstalador = (await p.evaluate(() => window.__mockConfig.insertCalls))[1];
+  check('token de instalador de rota com prefixo de letra grava o código COMPLETO (VIS1)',
+    JSON.stringify(callInstalador.payload.rotas) === JSON.stringify(['VIS1']), JSON.stringify(callInstalador.payload.rotas));
+  check('secoesDasRotas() resolve a seção certa (263) pelo código completo, não pelo dígito truncado',
+    JSON.stringify(callInstalador.payload.secoes) === JSON.stringify(['0263']), JSON.stringify(callInstalador.payload.secoes));
+
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+  await ctx.close();
+}
+
 // ── 3. Gerar em massa: cria 1 por seção/rota/local, coletor de mídias não aparece no dropdown ──
 {
   const ctx = await b.newContext();

@@ -107,6 +107,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      .rt-pagina-ficha nesse caso, o seletor :not(:last-child) nunca casa —
      comportamento de antes preservado sem precisar de mais uma classe. */
   .rt-pagina-ficha:not(:last-child){page-break-after:always;}
+  /* Capa (02/10/2026, pedido direto: "inclua uma capa com informações bem
+     grande... inclua o QRCODE e token") — sempre a 1ª página de cada rota,
+     impressão de 1 rota só ou em lote (rtImprimirTodasPorTipo): capa1,
+     ficha1, capa2, ficha2... — por isso o page-break-after é incondicional
+     aqui (nunca ":not(:last-child)"), ao contrário de .rt-pagina-ficha: a
+     capa SEMPRE precisa empurrar pra uma página nova antes da própria ficha
+     dela, mesmo sendo a última rota do lote. */
+  .rt-pagina-capa{page-break-after:always;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Arial,Helvetica,sans-serif;gap:6mm;padding:10mm;box-sizing:border-box;}
+  .rt-capa-tipo{font-size:22pt;font-weight:800;}
+  .rt-capa-nome{font-size:30pt;font-weight:900;}
+  .rt-capa-codigo{font-size:13pt;color:#333;}
+  .rt-capa-qr{margin-top:4mm;}
+  .rt-capa-token{font-size:16pt;letter-spacing:.5px;margin-top:2mm;}
+  .rt-capa-sub{font-size:9pt;color:#444;max-width:120mm;}
+  .rt-capa-sem-token{font-size:12pt;color:#900;border:2px dashed #900;padding:6mm 10mm;max-width:130mm;}
   .rt-cabecalho{border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:4mm;}
   .rt-titulo{font-weight:800;font-size:12pt;}
   .rt-sub{font-size:8pt;color:#333;margin-top:1mm;}
@@ -236,6 +251,10 @@ async function atualizarCabecalho() {
   const zonaId = await zonaDoUsuario();
   const { data: zona } = await supabase.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle();
   document.getElementById('h-sub').textContent = zona ? `${zona.numero}ª Zona — ${zona.municipio}` : '—';
+  // Exposta pra sime_rotas_modulo.js montar a URL do QR de token na capa da
+  // ficha impressa (mesmo padrão de buildUrl() em SIME_tokens.html, que usa
+  // zonaSelecionadaNumero() — aqui não há seletor de zona, só a do usuário).
+  window.ZONA_NUMERO = zona?.numero || null;
 
   // Fora do try/catch de baixo (melhor-esforço, só pro menu) — Auxiliar de
   // Eleição tem acesso a este módulo, mas só em modo consulta (pedido

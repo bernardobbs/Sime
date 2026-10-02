@@ -8353,6 +8353,130 @@ regressão.
 
 ---
 
+## CAPA DA FICHA IMPRESSA — TIPO/NOME GRANDES + QR DO TOKEN DA ROTA (`SIME_rotas.html`, 02/10/2026)
+
+Pedido direto: "ao imprimir as informações de rota, inclua uma capa com
+informações bem grande\nRota de 'tipo de Rota'\nRota nº 'nome da Rota\ninclua
+o QRCODE e token, se for de distribuição de urna deve ter o qrcode da rota
+de distribuição se for rota de instalação o qrcode da rota de instalação."
+
+**Investigação prévia, antes de validar as rotas de distribuição contra o
+anexo oficial do cartório (`ROTA_DISTRIBUIÇÃO_DE_URNAS.docx`).** Enquanto
+isso era conferido linha a linha (seção/rota, ver correção de dados abaixo),
+dois achados reais e dois pontos de dado corrigidos em produção:
+
+- **12 seções em `sime_rota_secoes` apontavam pra rota errada**, divergindo
+  do anexo oficial — seção 200 estava em UR12 (devia estar em UR11) e seção
+  225 estava em UR12 (devia estar em UR8). Corrigidas via UPDATE direto
+  (nunca DELETE+INSERT — `sime_rota_secoes` mostrou instabilidade real com
+  DELETE simples nesta sessão, timeout repetido sem lock nenhum visível em
+  `pg_stat_activity`/`pg_locks`; um DELETE em lote com JOIN funcionou de
+  primeira, DELETEs linha-a-linha não — ficou documentado aqui como
+  precedente: preferir UPDATE a DELETE+INSERT pra mover seção entre rotas
+  via SQL direto nesta tabela).
+- **28 linhas de `sime_rota_secoes` apontavam pra SEÇÃO INATIVA** (UR2: 1,
+  UR3: 1, UR6: 20, UR12: 6) — não eram erro de conteúdo, é a mesma pendência
+  de higiene de dado já documentada em 27/09/2026 (seções duplicadas por
+  prédio, uma ativa e uma inativa, sobrando do histórico de sync). Removidas
+  (via DELETE em lote com JOIN, não linha a linha), `parada` renumerada
+  sequencialmente nas rotas afetadas, e o espelho legado
+  `sime_secoes.rota_id`/`parada` sincronizado de volta (só rotas tipo
+  `distribuicao` têm esse espelho, ver `RT_TIPOS_LEGADO`). Verificado ao
+  final: as 13 rotas de distribuição da 7ª Zona somam exatamente 147 seções
+  (bate com os 147 Presidentes ativos), zero seção repetida em mais de uma
+  rota — confirmação ponta a ponta contra o anexo.
+
+- **Bug real, achado como PRÉ-REQUISITO do pedido da capa, nunca reportado
+  pelo cartório — `sime_tokens.rotas` nunca casava direito com rota de
+  código não-puramente-numérico.** `tokenParaLinha()`/`secoesDasRotas()`
+  (`SIME_tokens.html`) extraíam só os DÍGITOS do rótulo da rota pra gravar
+  em `sime_tokens.rotas` (`/(\d+)/.exec(r)?.[1] || ''`, com `padStart(3,
+  '0')`) — funciona por coincidência pra código puramente numérico ("Rota
+  001" → "001", as 37 rotas de `recolhimento_midia` do MaxLog), mas é
+  destrutivo pra qualquer código com prefixo de letra: "Rota UR7" virava
+  "007" (perdendo o "UR" por inteiro, e "007" pode nem existir, ou pior,
+  existir como OUTRA rota de verdade — colisão silenciosa). Mesmo bug nos
+  dois sentidos: criar um token pra "UR7" gravava "007"; `secoesDasRotas()`
+  (usada pra resolver as seções de um token de Instalador) tinha a mesma
+  extração, então um token de Instalador pra uma rota "VIS1" nunca acharia
+  as seções certas.
+
+  Confirmado contra produção ANTES de corrigir: hoje só existem tokens de
+  Motorista/Instalador pras rotas "001"-"035" (puramente numéricas) — zero
+  tokens pra qualquer rota `UR#`/`RU#`/`VIS#`, então o bug nunca tinha se
+  manifestado em dado real, só ficaria dormente até alguém gerar o primeiro
+  token pra uma dessas rotas (o que a feature da capa abaixo torna bem mais
+  provável de acontecer logo). Corrigido pra só tirar o prefixo `"Rota "` do
+  rótulo (`r.replace(/^Rota\s+/, '')`) — preserva o código inteiro, e pra
+  código puramente numérico o resultado é idêntico ao de antes (`"Rota
+  007".replace(...)` === `"007"`, mesmo valor que a extração por dígito já
+  dava) — nenhum dos 70 tokens reais de produção muda de comportamento,
+  essa correção só passa a importar quando a primeira rota de código
+  prefixado ganhar um token.
+
+**A capa em si** (`rtHtmlCapa()`, `sime_rotas_modulo.js`) — nova primeira
+página da ficha impressa, texto grande de propósito (é a página que o
+motorista/instalador vê de cara ao pegar o papel em mãos): "Rota de
+{tipos da rota}" (reaproveita `RT_TIPO_LABEL`) e "Rota nº {nome}", mais o
+código por extenso como dado secundário. `rtHtmlFicha()` passou a sempre
+retornar `rtHtmlCapa(rota, suf) + <ficha de sempre>` — o `suf` (sufixo de
+índice, já existente pra impressão em lote sem colisão de id) é o mesmo
+reaproveitado pros ids da capa.
+
+**Qual token buscar é decidido pelo TIPO da rota, não por escolha do
+cartório** — mesmo critério já documentado em "TOKEN DE INSTALADOR SEM
+ESCOPO REAL" (10/09/2026): rota com `tipos` incluindo `instalacao` busca o
+token de **Instalador** (`SIME_instalador.html`); qualquer outro tipo
+(`distribuicao`/`recolhimento_urna`/`recolhimento_midia`) busca o de
+**Motorista** (`SIME_motorista.html`) — os dois únicos papéis de campo que
+operam por rota inteira. `rtCarregar()` ganhou uma consulta a mais
+(`sime_tokens`, filtrada por `eleicao_id` e `tipo in ('motorista',
+'instalador')`, mesmo escopo de sempre) e monta
+`rtDados.tokensPorCodigo.{motorista,instalador}` — um `Map` de
+`rota.codigo` → token, pra lookup O(1) na hora de montar a capa. Mais de um
+token batendo no mesmo código (não deveria existir em produção) fica com o
+PRIMEIRO achado — nunca escolhe "o certo" por adivinhação.
+
+**"Nunca trava, nunca inventa" de sempre** — sem token cadastrado ainda pra
+aquela rota, a capa mostra um aviso explícito em vermelho ("⚠ Nenhum token
+de Motorista/Instalador cadastrado pra esta rota ainda — gere um em 🎫
+Tokens") em vez de não imprimir nada ou inventar um QR vazio; a ficha
+continua saindo inteira, só a capa fica sem QR.
+
+`rtBuildTokenUrl(tipo, tokenId)` (nova) — mesmo padrão de `buildUrl()` em
+`SIME_tokens.html` (`/z/<numero>/<modulo>?token=<token>`), usando
+`window.ZONA_NUMERO` (novo global, exposto por `atualizarCabecalho()` em
+`SIME_rotas.html` — esta tela não tem seletor de zona como
+`SIME_tokens.html`, só a zona do usuário logado, então não existe um
+`zonaSelecionadaNumero()` equivalente aqui). `rtGerarQrCapa(rota, suf)`
+(nova, compartilhada pelos dois pontos de impressão — `rtImprimirFicha()` e
+`rtImprimirTodasPorTipo()`) resolve o token certo pelo tipo da rota e
+desenha o QR com a mesma lib/padrão de sempre (`vendor/qrcode.min.js`,
+`rtQrSizePx()` pro tamanho), só quando o token existe.
+
+**CSS**: `.rt-pagina-capa` centralizado (flex column), fonte grande (22pt
+pro tipo, 30pt pro nome) — `page-break-after:always` **incondicional**
+(diferente de `.rt-pagina-ficha:not(:last-child)`), já que a sequência
+impressa é sempre capa→ficha→capa→ficha..., e a capa de CADA rota precisa
+empurrar pra uma página nova antes da própria ficha dela, mesmo sendo a
+última rota do lote.
+
+Coberto por `tests/test_rotas.mjs` (blocos 47-47d, 6 novos no PDF físico —
+309 checks no total no arquivo): capa mostra tipo/nome grandes; sem token,
+avisa em vez de desenhar QR vazio; com token, mostra QR+token+PIN e a URL
+usa a zona real + o módulo certo; rota de instalação busca o token de
+Instalador, não o de Motorista, mesmo com os dois cadastrados pro mesmo
+código; impressão em lote gera 1 capa por rota, cada uma com o PRÓPRIO
+token (nunca mistura o de outra rota do lote); e o teste de paginação
+física do lote (já existente, bloco 46) ajustado de 2 pra 4 páginas (capa+
+ficha por rota, não mais só ficha). `tests/test_tokens_massa.mjs` ganhou o
+bloco 2c, cobrindo diretamente o bug do código prefixado (token de
+Motorista/Instalador de uma rota "UR7"/"VIS1" grava o código completo, não
+os dígitos truncados). Suíte completa (`test_tokens.mjs`,
+`test_tokens_tv.mjs`, `test_tokens_impressao.mjs`) rodada sem regressão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

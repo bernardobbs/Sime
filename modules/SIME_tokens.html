@@ -484,13 +484,26 @@ async function mesclarTokensRemotos() {
 // Converte um token local (shape de sime_tokens_v1) pra linha de sime_tokens
 // (Supabase) — os 5 tipos com escopo usam rotas OU secoes OU local, nunca mais
 // de um por tipo; o coletor de mídias não usa nenhum e vai com os três nulos.
+//
+// Bug real corrigido em 02/10/2026, achado investigando a ficha impressa de
+// rota (SIME_rotas.html) pedir o QR do token de motorista/instalador da
+// rota: o `rotas` salvo aqui vinha de `(/(\d+)/.exec(r)?.[1]||'').padStart(3,'0')`
+// — pensado só pra rota de recolhimento de mídia (código "007", puramente
+// numérico, onde extrair dígitos e zero-preencher dá o próprio código de
+// volta). Pra rota de distribuição/recolhimento de urna/instalação (código
+// "UR7", "RU3", "VIS1" — prefixo de letra) a mesma extração jogava fora o
+// prefixo e gravava só "007"/"003"/"001", colidindo com o código de uma
+// rota de mídia DIFERENTE que por acaso tem os mesmos dígitos — o token
+// nunca seria encontrado de volta por código nenhum de verdade. Corrigido
+// pra só tirar o prefixo "Rota " do rótulo (o código completo, como já é
+// pra toda rota puramente numérica, onde o prefixo nem muda nada).
 function tokenParaLinha(token) {
   return {
     eleicao_id: eleicaoId,
     token: token.id,
     pin: token.pin,
     tipo: token.tipo,
-    rotas: (token.rotas && token.rotas.length) ? token.rotas.map(r => (/(\d+)/.exec(r)?.[1] || '').padStart(3, '0')) : null,
+    rotas: (token.rotas && token.rotas.length) ? token.rotas.map(r => r.replace(/^Rota\s+/, '')) : null,
     local_nome: token.local || null,
     secoes: (token.secoes && token.secoes.length) ? token.secoes : null,
     expira_em: token.expira_em ? new Date(token.expira_em).toISOString() : null,
@@ -618,7 +631,10 @@ function secoesDasRotas(rotulos){
   const map = window.ROTA_SECOES_MAP || {};
   const numeros = new Set();
   for(const rotulo of rotulos){
-    const codigo = (/(\d+)/.exec(rotulo)?.[1] || '').padStart(3, '0');
+    // Mesmo bug/correção de tokenParaLinha() (02/10/2026): extrair só os
+    // dígitos perdia o prefixo de letra de rota não-numérica ("UR7" virava
+    // "007", nunca batendo com nenhuma rota real) — basta tirar o "Rota ".
+    const codigo = rotulo.replace(/^Rota\s+/, '');
     const rota = window.ROTAS_REAIS.find(r => r.codigo === codigo);
     if(!rota) continue;
     for(const n of (map[rota.id] || [])) numeros.add(n);

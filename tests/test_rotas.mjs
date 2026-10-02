@@ -2012,7 +2012,9 @@ async function lerDestino(p) {
   const pdf = await p.pdf();
   const pdfStr = pdf.toString('latin1');
   const paginasFisicas = (pdfStr.match(/\/Type\s*\/Page(?!s)/g) || []).length;
-  check('PDF de verdade sai com 2 páginas (page-break entre as fichas)', paginasFisicas === 2, `paginasFisicas=${paginasFisicas} pdfBytes=${pdf.length}`);
+  // 02/10/2026: cada rota agora sai com 2 páginas físicas (capa + ficha, ver
+  // rtHtmlCapa) — 2 rotas no lote = 4 páginas, não mais 2.
+  check('PDF de verdade sai com 4 páginas (capa+ficha por rota, 2 rotas no lote)', paginasFisicas === 4, `paginasFisicas=${paginasFisicas} pdfBytes=${pdf.length}`);
   await p.emulateMedia({ media: 'screen' });
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
@@ -2054,6 +2056,132 @@ async function lerDestino(p) {
   await p.waitForTimeout(150);
   check('chamado sem tipo escolhido, avisa pra escolher um tipo primeiro', /Escolha um tipo de rota/.test(await p.locator('#toast').textContent()));
   check('e também não chama window.print()', await p.evaluate(() => window.__printCalls) === printCallsAntes);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 47. Capa da ficha impressa (02/10/2026, pedido direto: "ao imprimir as
+// informações de rota, inclua uma capa com informações bem grande... inclua
+// o QRCODE e token, se for de distribuição de urna deve ter o qrcode da
+// rota de distribuição se for rota de instalação o qrcode da rota de
+// instalação"). ──
+{
+  const ctx = await b.newContext();
+  const m = mock(); // r1 (001) tem tipos distribuicao+recolhimento_urna, sem token cadastrado em sime_tokens
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const capaTxt = (await p.locator('.rt-pagina-capa').first().innerText()).replace(/\s+/g, ' ');
+  check('capa mostra "Rota de" com os tipos da rota (grande, 1ª página)', /Rota de .*Distribuição de urnas.*Recolhimento de urnas/.test(capaTxt), capaTxt);
+  check('capa mostra "Rota nº" com o nome da rota', /Rota nº Rota 001/.test(capaTxt), capaTxt);
+  check('sem token de Motorista cadastrado pra esta rota, capa avisa em vez de inventar QR', /Nenhum token de Motorista cadastrado/.test(capaTxt), capaTxt);
+  check('nenhum canvas de QR da capa é desenhado sem token', await p.locator('#rt-capa-qr canvas, #rt-capa-qr table').count() === 0);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 47b. Com token de Motorista cadastrado pro código da rota — QR + token/
+// PIN aparecem na capa; a URL do QR usa window.ZONA_NUMERO (resolvido da
+// zona do usuário) e o módulo certo (SIME_motorista.html). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_tokens = [{ id: 'tok1', eleicao_id: 'el7', token: 'XYZ98765', pin: '1234', tipo: 'motorista', rotas: ['001'] }];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  // Espiona o texto que vira o payload do QR, sem depender de decodificar o
+  // canvas de verdade — mesmo tipo de wrapper já usado noutras partes do
+  // projeto pra espiar window.print() (ver abrir()).
+  await p.evaluate(() => {
+    const Orig = window.QRCode;
+    window.__qrTextos = [];
+    window.QRCode = function (el, opts) { window.__qrTextos.push(opts.text); return new Orig(el, opts); };
+    window.QRCode.CorrectLevel = Orig.CorrectLevel;
+  });
+
+  await p.locator('.import-card:has-text("Rota 001 — Rota 001")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const capaTxt = (await p.locator('.rt-pagina-capa').first().innerText()).replace(/\s+/g, ' ');
+  check('capa mostra o token e o PIN do motorista desta rota', /XYZ98765/.test(capaTxt) && /1234/.test(capaTxt), capaTxt);
+  check('nenhum aviso de "sem token" quando o token existe', !/Nenhum token/.test(capaTxt), capaTxt);
+  check('QR da capa é desenhado (canvas ou tabela, conforme a lib)', await p.locator('#rt-capa-qr canvas, #rt-capa-qr table').count() === 1);
+
+  const qrTextos = await p.evaluate(() => window.__qrTextos);
+  check('URL do QR da capa usa a zona real (7) e o módulo do Motorista', qrTextos.some(t => t.includes('/z/7/SIME_motorista.html?token=XYZ98765')), JSON.stringify(qrTextos));
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 47c. Rota de instalação busca o token de INSTALADOR, não o de motorista
+// — mesmo com os dois cadastrados pro mesmo código, nunca mistura os dois
+// papéis. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_rotas.push({ id: 'r9', zona_id: 'z7', codigo: '009', nome: 'Rota 009 instalação', municipios: ['Campo Maior'], tipos: ['instalacao'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null });
+  m.sime_tokens = [
+    { id: 'tok-mot', eleicao_id: 'el7', token: 'MOTOR0001', pin: '1111', tipo: 'motorista', rotas: ['009'] },
+    { id: 'tok-ins', eleicao_id: 'el7', token: 'INST0002', pin: '2222', tipo: 'instalador', rotas: ['009'] },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.locator('.import-card:has-text("Rota 009 — Rota 009 instalação")').locator('button:has-text("🖨️ Imprimir ficha")').click();
+  await p.waitForTimeout(150);
+
+  const capaTxt = (await p.locator('.rt-pagina-capa').first().innerText()).replace(/\s+/g, ' ');
+  check('capa de rota de instalação mostra o tipo certo', /Rota de .*Instalação de seção/.test(capaTxt), capaTxt);
+  check('capa usa o token de INSTALADOR (não o de motorista, mesmo os dois existindo pro mesmo código)', /INST0002/.test(capaTxt) && /2222/.test(capaTxt) && !/MOTOR0001/.test(capaTxt), capaTxt);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 47d. Impressão em lote ("Imprimir todas (tipo)") gera uma capa por rota,
+// cada uma com o token certo pro seu próprio código — nunca colide entre
+// rotas diferentes (é o bug real corrigido em SIME_tokens.html no mesmo dia:
+// extrair só os dígitos do código perdia o prefixo de letra, UR7→007 por
+// exemplo, casando com a rota errada; aqui as duas rotas do lote têm código
+// puramente numérico, mas o teste cobre que cada ficha usa SEU PRÓPRIO
+// token, não o da outra). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_tokens = [
+    { id: 'tok1', eleicao_id: 'el7', token: 'ROTA001TK', pin: '0001', tipo: 'motorista', rotas: ['001'] },
+    { id: 'tok4', eleicao_id: 'el7', token: 'ROTA004TK', pin: '0004', tipo: 'motorista', rotas: ['004'] },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_urna');
+  await p.waitForTimeout(100);
+  await p.click('button:has-text("🖨️ Imprimir todas")');
+  await p.waitForTimeout(200);
+
+  const paginasCapa = await p.locator('.rt-pagina-capa').count();
+  check('1 capa por rota no lote (2 rotas)', paginasCapa === 2, String(paginasCapa));
+
+  const capaTextos = await p.locator('.rt-pagina-capa').allInnerTexts();
+  const capa001 = capaTextos.find(t => /Rota 001/.test(t)) || '';
+  const capa004 = capaTextos.find(t => /Rota 004/.test(t)) || '';
+  check('capa da Rota 001 mostra o token dela, não o da 004', /ROTA001TK/.test(capa001) && !/ROTA004TK/.test(capa001), capa001.replace(/\s+/g, ' '));
+  check('capa da Rota 004 mostra o token dela, não o da 001', /ROTA004TK/.test(capa004) && !/ROTA001TK/.test(capa004), capa004.replace(/\s+/g, ' '));
+
+  const qrCapaCanvases = await p.locator('[id^="rt-capa-qr-"] canvas, [id^="rt-capa-qr-"] table').count();
+  check('cada capa do lote ganha seu próprio QR, ids sufixados sem colisão', qrCapaCanvases === 2, String(qrCapaCanvases));
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

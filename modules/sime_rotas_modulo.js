@@ -752,7 +752,7 @@ async function rtCarregar(opts = {}) {
 
   const eleicaoId = window.eleicaoIdAtual ? await window.eleicaoIdAtual() : null;
 
-  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }] = await Promise.all([
+  const [{ data: rotas, error: e1 }, { data: secoesZona, error: e2 }, { data: rotaSecoes, error: e3 }, { data: atores, error: e4 }, { data: estados, error: e5 }, { data: zonaRow, error: e6 }, { data: tokensRota, error: e7 }] = await Promise.all([
     sb.from('sime_rotas').select('id, codigo, nome, municipios, tipos, itinerario, urnas_estimadas, ativo, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, rota_origem_id, tempo_parada_min, rota_real_polyline, rota_real_distancia_m, rota_real_duracao_s, rota_real_paradas_assinatura, rota_real_calculada_em').eq('zona_id', zonaId).order('codigo'),
     sb.from('sime_secoes').select('id, numero, local_nome, municipio, rota_id, ativo, latitude, longitude, horario_encerramento_previsto').eq('zona_id', zonaId).eq('ativo', true).order('numero'),
     sb.from('sime_rota_secoes').select('rota_id, secao_id, parada'),
@@ -777,9 +777,15 @@ async function rtCarregar(opts = {}) {
     // de geocodificação no lugar do endereço, quando o texto de partida/
     // destino menciona "Cartório" — ver rtMapsUrl.
     sb.from('sime_zonas').select('remetente_endereco, remetente_bairro, remetente_cep, remetente_municipio, remetente_uf').eq('id', zonaId).maybeSingle(),
+    // Token de motorista/instalador por rota (02/10/2026, ver rtHtmlCapa) —
+    // mesmo escopo por eleicao_id de sempre (SIME_tokens.html); sem eleição
+    // ativa não há como filtrar, cai em lista vazia (nunca trava a tela).
+    eleicaoId
+      ? sb.from('sime_tokens').select('token, pin, tipo, rotas').eq('eleicao_id', eleicaoId).in('tipo', ['motorista', 'instalador'])
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (e1 || e2 || e3 || e4 || e5 || e6) {
-    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4 || e5 || e6).message }; render(); }
+  if (e1 || e2 || e3 || e4 || e5 || e6 || e7) {
+    if (!opts.silencioso) { rtDados = { erro: (e1 || e2 || e3 || e4 || e5 || e6 || e7).message }; render(); }
     return;
   }
 
@@ -804,7 +810,22 @@ async function rtCarregar(opts = {}) {
   }
   for (const arr of porRota.values()) arr.sort((a, b) => (a.parada ?? 999) - (b.parada ?? 999) || a.numero - b.numero);
 
-  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], estadoPorRota, urnasPorEstado, zonaId, zona: zonaRow || {} };
+  // Lookup por rota.codigo → token (02/10/2026, ver rtHtmlCapa) — um mesmo
+  // token pode cobrir várias rotas (`rotas` é array), então cada código vira
+  // uma chave própria no mapa. Mais de um token batendo no mesmo código é um
+  // caso que não deveria existir em produção (um só token por rota, por
+  // tipo) — fica com o PRIMEIRO achado, nunca escolhe "o certo" por
+  // adivinhação.
+  const tokensPorCodigo = { motorista: new Map(), instalador: new Map() };
+  for (const t of tokensRota || []) {
+    const mapa = tokensPorCodigo[t.tipo];
+    if (!mapa) continue;
+    for (const codigoRota of t.rotas || []) {
+      if (!mapa.has(codigoRota)) mapa.set(codigoRota, t);
+    }
+  }
+
+  rtDados = { rotas: rotas || [], secoesZona: secoesZona || [], secoesPorRota: porRota, atores: atores || [], estadoPorRota, urnasPorEstado, zonaId, zona: zonaRow || {}, tokensPorCodigo };
   if (!opts.silencioso) render();
 }
 
@@ -1724,6 +1745,61 @@ async function rtRecarregarParadas() {
   render();
 }
 
+// Resolve a URL do token de campo (02/10/2026, ver rtHtmlCapa) — mesmo
+// padrão de buildUrl() em SIME_tokens.html (/z/<numero>/<modulo>?token=...),
+// usando window.ZONA_NUMERO (exposto por atualizarCabecalho() em
+// SIME_rotas.html, que já resolve a zona do usuário logado — esta tela não
+// tem seletor de zona como SIME_tokens.html, então não existe um
+// zonaSelecionadaNumero() equivalente aqui). Sem o número da zona ainda
+// resolvido (corrida rara entre o boot da página e o primeiro clique em
+// imprimir), cai no mesmo fallback de URL relativa.
+function rtBuildTokenUrl(tipo, tokenId) {
+  const modulo = tipo === 'instalador' ? 'SIME_instalador.html' : 'SIME_motorista.html';
+  const numeroZona = window.ZONA_NUMERO;
+  if (numeroZona) return `${window.location.origin}/z/${numeroZona}/${modulo}?token=${tokenId}`;
+  const base = window.location.href.replace('SIME_rotas.html', '').replace(/\?.*$/, '');
+  return base + modulo + '?token=' + tokenId;
+}
+
+// Capa da ficha impressa (02/10/2026, pedido direto: "ao imprimir as
+// informações de rota, inclua uma capa com informações bem grande... inclua
+// o QRCODE e token, se for de distribuição de urna deve ter o qrcode da
+// rota de distribuição se for rota de instalação o qrcode da rota de
+// instalação"). Texto grande de propósito — é a página que o motorista/
+// instalador vê de cara ao pegar a ficha impressa em mãos, precisa dar pra
+// ler sem precisar aproximar o papel.
+//
+// Qual token buscar depende do TIPO da rota, não de uma escolha do cartório:
+// rota de instalação usa o token de Instalador (SIME_instalador.html); todo
+// outro tipo (distribuição/recolhimento de urna/recolhimento de mídia) usa o
+// de Motorista (SIME_motorista.html) — mesmo critério já documentado em
+// "TOKEN DE INSTALADOR SEM ESCOPO REAL" (10/09/2026): são os dois únicos
+// papéis de campo que operam por ROTA completa, cada um com seu próprio
+// módulo.
+//
+// "Nunca trava, nunca inventa" de sempre: sem token cadastrado ainda pra
+// esta rota, a capa mostra um aviso explícito em vez de não imprimir nada
+// ou inventar um QR vazio — o cartório sabe exatamente o que falta (gerar
+// em 🎫 Tokens) sem precisar adivinhar por que a página saiu sem QR.
+function rtHtmlCapa(rota, suf) {
+  const tipoTokenBuscado = (rota.tipos || []).includes('instalacao') ? 'instalador' : 'motorista';
+  const tipoTokenLabel = tipoTokenBuscado === 'instalador' ? 'Instalador' : 'Motorista';
+  const tokenInfo = rtDados.tokensPorCodigo?.[tipoTokenBuscado]?.get(rota.codigo) || null;
+  const tipoRotaLabel = (rota.tipos || []).map(t => RT_TIPO_LABEL[t] || t).join(' · ') || '—';
+  const qrId = `rt-capa-qr${suf}`;
+  return `
+    <div class="rt-pagina-capa">
+      <div class="rt-capa-tipo">Rota de ${rtEsc(tipoRotaLabel)}</div>
+      <div class="rt-capa-nome">Rota nº ${rtEsc(rota.nome)}</div>
+      <div class="rt-capa-codigo">Código: ${rtEsc(rota.codigo)}</div>
+      ${tokenInfo ? `
+      <div id="${qrId}" class="rt-capa-qr"></div>
+      <div class="rt-capa-token">Token: <b>${rtEsc(tokenInfo.token)}</b> &nbsp;·&nbsp; PIN: <b>${rtEsc(tokenInfo.pin)}</b></div>
+      <div class="rt-capa-sub">Acesso do ${tipoTokenLabel} desta rota — aponte a câmera no QR, ou digite o token/PIN na tela de acesso.</div>` : `
+      <div class="rt-capa-sem-token">⚠ Nenhum token de ${tipoTokenLabel} cadastrado pra esta rota ainda — gere um em 🎫 Tokens.</div>`}
+    </div>`;
+}
+
 // ── Impressão da rota pro motorista (08/09/2026, melhoria própria) ──
 // Mesmo mecanismo sem popup já usado em Correspondência/Oficial de Justiça
 // (sime_correspondencia.js/sime_oficial_justica.js): um #print-area oculto
@@ -1829,7 +1905,7 @@ function rtHtmlFicha(rota, paradas, responsavel, zona, idx) {
         </div>` : ''}
       </div>` : '';
 
-  return `
+  return rtHtmlCapa(rota, suf) + `
     <div class="rt-pagina-ficha">
       <div class="rt-cabecalho">
         <div class="rt-titulo">Ficha de Rota — ${rtEsc(rota.codigo)} — ${rtEsc(rota.nome)}</div>
@@ -1879,6 +1955,23 @@ function rtQrSizePx(texto) {
   return 320;
 }
 
+// QR do token da capa (02/10/2026) — extraído à parte porque os dois
+// chamadores (impressão de 1 rota e em lote) precisam fazer exatamente a
+// mesma coisa: achar o token certo pro tipo da rota (ver rtHtmlCapa) e
+// desenhar o QR nele, se existir. Mesma lib/padrão do QR do Google Maps.
+function rtGerarQrCapa(rota, suf) {
+  const tipoTokenBuscado = (rota.tipos || []).includes('instalacao') ? 'instalador' : 'motorista';
+  const tokenInfo = rtDados.tokensPorCodigo?.[tipoTokenBuscado]?.get(rota.codigo) || null;
+  if (!tokenInfo) return;
+  const qrEl = document.getElementById(`rt-capa-qr${suf || ''}`);
+  if (!qrEl || !window.QRCode) return;
+  const url = rtBuildTokenUrl(tipoTokenBuscado, tokenInfo.token);
+  try {
+    const qrPx = rtQrSizePx(url);
+    new QRCode(qrEl, { text: url, width: qrPx, height: qrPx, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } catch (e) { qrEl.innerHTML = ''; }
+}
+
 async function rtImprimirFicha(rotaId) {
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   if (!rota) return;
@@ -1897,6 +1990,7 @@ async function rtImprimirFicha(rotaId) {
       new QRCode(qrEl, { text: mapsUrl, width: qrPx, height: qrPx, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
     } catch (e) { qrEl.innerHTML = ''; }
   }
+  rtGerarQrCapa(rota);
   // Espera o mapa real carregar (ou falhar) antes de imprimir — sem isso,
   // window.print() podia disparar com a <img> ainda em branco (a imagem vem
   // de rede, ao contrário do QR/SVG acima, que são síncronos). Timeout de
@@ -1953,6 +2047,7 @@ async function rtImprimirTodasPorTipo() {
         new QRCode(qrEl, { text: mapsUrl, width: qrPx, height: qrPx, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
       } catch (e) { qrEl.innerHTML = ''; }
     }
+    rtGerarQrCapa(p.rota, '-' + idx);
   }
   // Espera todos os mapas reais (ou o timeout/erro de cada um) antes de
   // imprimir — em paralelo, não em série, pra não multiplicar os 4s de
