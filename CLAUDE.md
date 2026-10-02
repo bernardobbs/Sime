@@ -8606,6 +8606,25 @@ destino real, todas as paradas como waypoints) quando passado.
 
 ---
 
+## `urnas_estimadas` DAS ROTAS UR8/UR11/UR12 FICOU DESATUALIZADO DEPOIS DA CORREÇÃO DE 02/10/2026
+
+Achado ao regerar o protocolo de entrega/recolhimento de UE (documento
+avulso pro cartório, fora do repositório — `relatorios/` é gitignorado,
+nome/CPF de motorista real) a partir do banco: a correção de 12 seções
+mal-atribuídas feita mais cedo no mesmo dia (ver "CAPA DA FICHA IMPRESSA"
+acima — seção 200 de UR12→UR11, seção 225 de UR12→UR8) moveu seções
+ATIVAS entre rotas, mas `sime_rotas.urnas_estimadas` (a coluna que a
+própria "CONTAGEM DIRETA" de 27/09/2026 promete manter como espelho fiel
+de `count(sime_rota_secoes ativas)`) nunca foi recalculada depois dessa
+correção específica. Contagem real (`sime_rota_secoes` join `sime_secoes`
+`ativo=true`) contra o valor salvo: UR8 10→11, UR11 11→12, UR12 16→14 —
+as outras 10 rotas de distribuição já batiam. Corrigido via SQL direto
+(mesmo critério de sempre, nunca um valor adivinhado — é `count()` puro),
+logado em `sime_logs` (`rota_urnas_estimadas_recalculadas_lote`,
+`origem:'protocolo_entrega_regerar_02-10-2026'`).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
