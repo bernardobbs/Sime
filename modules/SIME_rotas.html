@@ -171,17 +171,28 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .rt-col-chegada{width:18%;}
   .rt-rodape{font-size:7pt;color:#555;margin-top:4mm;line-height:1.5;}
 
-  /* Protocolo de Entrega/Recolhimento de UE + Check List de Veículos
+  /* Protocolo de Entrega/Recolhimento de UE e Check List de Veículos
      (02/10/2026, pedido direto: "inclua o relatório no sime, para imprimir
-     junto com as rotas") — réplica do formato real do cartório (ver
-     sql/SIME_rotas_protocolo_entrega_checklist.sql). Cada rota de
-     distribuição vira 2 páginas (protocolo + checklist); em lote
-     (rtImprimirProtocolosTodos), uma rota depois da outra — mesmo padrão
-     page-break-after:always incondicional já usado em .rt-pagina-capa/
-     .rt-pagina-branca (precisa empurrar pra página nova mesmo na última
-     rota do lote, já que o protocolo de uma rota sempre é seguido pelo
-     checklist DELA, nunca da próxima). */
-  .pe-pagina,.cl-pagina{page-break-after:always;padding:6mm;font-family:Arial,Helvetica,sans-serif;color:#000;}
+     junto com as rotas"; separados em dois relatórios independentes no
+     mesmo dia, pedido direto: "faça 3 relatório separados, o de rotas, os
+     protocolos e o checklist de modo que o checklist que tem mais folhas
+     possa ser impresso em frente e verso") — réplica do formato real do
+     cartório (ver sql/SIME_rotas_protocolo_entrega_checklist.sql). Os 3
+     relatórios do módulo de Rotas: a FICHA (🖨️ Imprimir ficha/Imprimir
+     todas, já existia, .rt-pagina-*), o PROTOCOLO (.pe-pagina, 1 página por
+     rota) e o CHECK LIST (.cl-pagina-a/.cl-pagina-b, SEMPRE 2 páginas fixas
+     por rota — nunca por overflow natural, ver comentário de
+     rtHtmlChecklistVeiculo em sime_rotas_modulo.js) — cada um impresso
+     avulso, nunca concatenados no mesmo job, justamente pra o checklist
+     poder sair em duplex sem a folha de uma rota se misturar com a
+     seguinte. Mesmo padrão `:not(:last-child)` já usado em
+     .rt-pagina-ficha (nunca deixa página em branco sobrando depois da
+     última rota do lote) — só `.cl-pagina-a` quebra sempre (sempre seguida
+     da página B da MESMA rota). */
+  .pe-pagina,.cl-pagina{padding:6mm;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  .pe-pagina:not(:last-child){page-break-after:always;}
+  .cl-pagina-a{page-break-after:always;}
+  .cl-pagina-b:not(:last-child){page-break-after:always;}
   .pe-titulo{font-size:13pt;font-weight:800;text-align:center;}
   .pe-sub{font-size:10pt;color:#444;text-align:center;margin-top:1mm;}
   .pe-rota{font-size:15pt;font-weight:800;text-align:center;margin:4mm 0;}
@@ -207,11 +218,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .cl-campo td{border:.4pt solid #cfd2e3;padding:2mm 2.5mm;vertical-align:middle;}
   .cl-l{color:#555;width:40%;}
   .cl-v{font-weight:800;}
-  .cl-bloco-branco{border:.4pt solid #cfd2e3;height:15mm;margin-top:-.4pt;}
-  .cl-bloco-grande{height:18mm;}
+  /* Alturas calibradas (medidas com page.pdf() de verdade, não estimativa —
+     ver teste 51) pra sections 7-13 caberem EXATAMENTE numa página física
+     só, do jeito que o corte deliberado entre a página A/B promete; sem
+     isso, "7-13" sozinho passava de ~269mm de conteúdo pros ~257mm úteis
+     da página (A4 menos @page margin menos padding do .cl-pagina) e
+     transbordava pra uma 3ª página, quebrando o alinhamento duplex. */
+  .cl-bloco-branco{border:.4pt solid #cfd2e3;height:13mm;margin-top:-.4pt;}
+  .cl-bloco-grande{height:16mm;}
   .cl-ident{width:100%;border-collapse:collapse;font-size:8.6pt;}
   .cl-ident td{border:.4pt solid #cfd2e3;padding:2mm 2.5mm;}
-  .cl-ident-espaco{height:14mm;}
+  .cl-ident-espaco{height:12mm;}
   .cl-nota{font-size:7.6pt;color:#777;margin-top:2mm;}
 }
 </style>

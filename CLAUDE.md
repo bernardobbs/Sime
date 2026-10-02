@@ -8626,7 +8626,7 @@ SQL direto (mesmo critério de sempre, nunca um valor adivinhado — é
 
 ---
 
-## 📋 PROTOCOLO DE ENTREGA/RECOLHIMENTO DE UE + CHECK LIST DE VEÍCULOS — MOVIDOS PRA DENTRO DO MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 02/10/2026)
+## 📋 PROTOCOLO DE ENTREGA/RECOLHIMENTO DE UE + CHECK LIST DE VEÍCULOS — 3 RELATÓRIOS SEPARADOS NO MÓDULO 🗺️ ROTAS (`SIME_rotas.html`, 02/10/2026)
 
 Pedido direto, depois de três correções pontuais na mesma conversa ("a
 seção 225 da rota 12 vai para a rota 8" / "a seção 200 vai para a rota 11"
@@ -8670,21 +8670,62 @@ pro local (2 seções da zona ainda ficam de fora, documentado desde
 27/09/2026), cai pro par `local_nome`+`município` como chave — nunca
 quebra, só perde a granularidade de rua.
 
-**Dois novos botões, só pra rota com `tipos.includes('distribuicao')`** —
-o documento só faz sentido pra esse tipo (é o mesmo trajeto, ida com
-assinatura de quem recebe a urna no local + volta com assinatura de quem
-entrega de volta no cartório; `recolhimento_urna` é a mesma rota ao
-contrário, cadastro próprio, mas o protocolo físico é um só por par
-ida-volta — mesmo modelo já documentado em "ROTA 005 DESMEMBRADA" acima):
-- **"📋 Protocolo + Checklist"** (card de cada rota, ao lado de "🖨️
-  Imprimir ficha") — `rtImprimirProtocoloEntrega(rotaId)`, mesmo mecanismo
-  sem popup de sempre (`#print-area` + `window.print()` direto). Grava log
+**Revisado no mesmo dia — virou 3 relatórios independentes, não 1 só
+combinado.** Pedido direto: "faça 3 relatório separados, o de rotas, os
+protocolos e o checklist de modo que o checklist que tem mais folhas possa
+ser impresso em frente e verso". A primeira versão concatenava protocolo
+(1 página) + checklist (~2 páginas, por overflow natural) no mesmo job de
+impressão — 3 páginas por rota. Isso nunca dava pra imprimir em **duplex**
+de forma confiável: numa impressora frente-e-verso, a folha física de uma
+rota (3 páginas ≠ número par) nunca alinhava com a da rota seguinte — o
+verso da ficha de uma rota podia sair colado com a frente da próxima. O "de
+rotas" do pedido já existia (🖨️ Imprimir ficha/Imprimir todas, nunca
+mudou) — os 3 relatórios do módulo hoje são: **Ficha** (`.rt-pagina-*`),
+**Protocolo** (`.pe-pagina`, 1 página/rota) e **Check List** (`.cl-pagina-a`/
+`.cl-pagina-b`, SEMPRE exatamente 2 páginas/rota) — cada um com seu próprio
+botão, nunca concatenados no mesmo `window.print()`.
+
+**Check List virou 2 páginas FIXAS por rota, nunca por overflow** — o corte
+é deliberado, entre a seção 6 (dados fixos: contrato/contratada/motorista/
+veículo, página A/frente) e a 7 (as 5 caixas de vistoria + observações +
+identificação, página B/verso) — mesmo ponto onde o overflow natural já
+cortava antes (confirmado medindo com `page.pdf()` de verdade, não
+innerHTML), só que agora sempre no mesmo lugar, nunca no meio de uma caixa
+de vistoria. Com N rotas, o lote sempre vira exatamente 2N páginas — numa
+impressora duplex, a página A é a frente e a B o verso da MESMA folha, pra
+toda rota, sem nunca misturar o verso de uma com a frente da seguinte.
+
+**Alturas das caixas recalibradas** (`.cl-bloco-branco` 15mm→13mm,
+`.cl-bloco-grande` 18mm→16mm, `.cl-ident-espaco` 14mm→12mm) — medido
+objetivamente (`getBoundingClientRect()` sob `emulateMedia('print')`, não
+estimativa): as seções 7-13 sozinhas, com as alturas antigas, precisavam de
+~269mm de altura, mais que os ~257mm úteis de uma página A4 (297mm menos
+margem da `@page` menos padding do `.cl-pagina`) — a página B transbordava
+pra uma 3ª página física, quebrando a promessa de "sempre 2 páginas".
+Reduzido até sobrar ~12mm de folga confirmados com `page.pdf()` de
+verdade.
+
+**6 botões no total, todos só pra rota com `tipos.includes('distribuicao')`**
+(os 3 documentos só fazem sentido pra esse tipo — é o mesmo trajeto, ida
+com assinatura de quem recebe a urna no local + volta com assinatura de
+quem entrega de volta no cartório; `recolhimento_urna` é a mesma rota ao
+contrário, cadastro próprio, mas os documentos físicos são só um conjunto
+por par ida-volta — mesmo modelo já documentado em "ROTA 005 DESMEMBRADA"
+acima):
+- **"📋 Protocolo de entrega"** (card de cada rota) —
+  `rtImprimirProtocoloEntrega(rotaId)`, só o protocolo. Log
   `rota_protocolo_entrega_impresso`.
-- **"📋 Imprimir protocolos + checklists — N rota(s)"** (ao lado de "🖨️
-  Imprimir todas (tipo)", só aparece com o filtro de tipo em "🚚
-  Distribuição de urnas") — `rtImprimirProtocolosTodos()`, mesma lógica de
-  `rtImprimirTodasPorTipo` (só rota ATIVA, avisa por toast em vez de
-  imprimir vazio sem nenhuma). Grava `rota_protocolo_entrega_impresso_lote`.
+- **"✅ Check list do veículo"** (card de cada rota) —
+  `rtImprimirChecklistVeiculo(rotaId)`, só o checklist (2 páginas fixas).
+  Log `rota_checklist_veiculo_impresso`.
+- **"📋 Imprimir protocolos — N rota(s)"** (ao lado de "🖨️ Imprimir todas
+  (tipo)", só com o filtro em "🚚 Distribuição de urnas") —
+  `rtImprimirProtocolosTodos()`, mesma lógica de `rtImprimirTodasPorTipo`
+  (só rota ATIVA, avisa por toast em vez de imprimir vazio). Log
+  `rota_protocolo_entrega_impresso_lote`.
+- **"✅ Imprimir checklists (frente e verso) — N rota(s)"** (mesmo lugar) —
+  `rtImprimirChecklistsTodos()`, mesma lógica, sempre 2N páginas. Log
+  `rota_checklist_veiculo_impresso_lote`.
 
 **Datas de entrega/recolhimento fixas** (`RT_PROTOCOLO_DATA_ENTREGA`
 = "03/10/2026", `RT_PROTOCOLO_DATA_RECOLHIMENTO` = "04/10/2026") — mesmas
@@ -8697,20 +8738,25 @@ contrato/empresa pras 12 rotas, mesmo critério já usado pra
 `RT_DESTINOS_CONHECIDOS` (lista fixa conhecida desta operação específica,
 não um cadastro genérico).
 
-**CSS novo** (`.pe-*`/`.cl-*`, dentro do `@media print` já existente de
-`SIME_rotas.html`) — protocolo e checklist viram 2 páginas por rota
-(`page-break-after:always` incondicional, mesmo critério já usado em
-`.rt-pagina-capa`/`.rt-pagina-branca`: precisa empurrar pra página nova
-mesmo na última rota do lote).
+**CSS** (`.pe-*`/`.cl-*`, dentro do `@media print` já existente de
+`SIME_rotas.html`) — `.pe-pagina:not(:last-child)` e
+`.cl-pagina-b:not(:last-child)` quebram página (mesmo padrão já usado em
+`.rt-pagina-ficha`, nunca deixa página em branco sobrando depois da última
+rota do lote); `.cl-pagina-a` sempre quebra (sempre seguida da página B da
+MESMA rota).
 
-Coberto por `tests/test_rotas.mjs` (blocos 48-51b, 347 checks no total no
-arquivo): botão só aparece pra rota com tipo distribuição; protocolo
+Coberto por `tests/test_rotas.mjs` (blocos 48-51b, 365 checks no total no
+arquivo): os 2 botões por rota só aparecem pra tipo distribuição; protocolo
 agrupa seções por endereço com a quantidade certa, total de urnas, datas
-fixas, motorista/telefone/placa/veículo; checklist mostra CNH/categoria/
-marca-modelo (extraído de `veiculo_descricao`) /placa/ano/cor; sem veículo
-cadastrado, mostra "sem CRLV disponível" e o aviso, nunca inventa CNH;
-botão em lote só aparece com o filtro certo, concatena as rotas ativas de
-distribuição, ignora as de outro tipo, avisa por toast sem nenhuma ativa.
+fixas, motorista/telefone/placa/veículo, NUNCA mostra checklist junto;
+checklist mostra CNH/categoria/marca-modelo/placa/ano/cor SEMPRE em 2
+páginas fixas (dados na A, vistorias na B), NUNCA mostra protocolo junto;
+sem veículo cadastrado, protocolo mostra "sem CRLV disponível" e checklist
+avisa, nunca inventa CNH; os 2 botões em lote só aparecem com o filtro
+certo, cada um no seu próprio job de impressão, concatenam as rotas ativas
+de distribuição, ignoram as de outro tipo, avisam por toast sem nenhuma
+ativa; verificado com `page.pdf()` de verdade que o lote de checklists sai
+com exatamente 2N páginas físicas (não 2N+1 por overflow).
 
 ---
 

@@ -1009,7 +1009,8 @@ function renderRotas() {
         <input type="text" id="rt-busca" value="${rtEsc(rtBusca)}" oninput="rtOnBuscaInput(this.value)" placeholder="Buscar por código, nome ou município…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       </div>
       ${rtFiltroTipo ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirTodasPorTipo()" title="Imprime a ficha de todas as rotas ativas deste tipo, numa impressão só">🖨️ Imprimir todas (${RT_TIPO_LABEL[rtFiltroTipo]}) — ${contagemAtiva[rtFiltroTipo] || 0} rota(s)</button>` : ''}
-      ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirProtocolosTodos()" title="Imprime o protocolo de entrega/recolhimento + check list de todas as rotas de distribuição ativas, numa impressão só">📋 Imprimir protocolos + checklists — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
+      ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirProtocolosTodos()" title="Imprime o protocolo de entrega/recolhimento de todas as rotas de distribuição ativas, numa impressão só">📋 Imprimir protocolos — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
+      ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirChecklistsTodos()" title="Imprime o check list de veículo de todas as rotas de distribuição ativas — 2 páginas por rota, pronto pra imprimir frente e verso (duplex)">✅ Imprimir checklists (frente e verso) — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
       <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${rtDados.rotas.length} rota(s)</div>
     </div>
 
@@ -1057,7 +1058,8 @@ function renderRotas() {
         ${!r.ativo ? '<div class="ic-sub" style="margin:2px 0 0;color:var(--red)">Inativa</div>' : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirFicha('${r.id}')" title="Imprime a ficha da rota (paradas em ordem, contato do responsável)">🖨️ Imprimir ficha</button>
-          ${(r.tipos || []).includes('distribuicao') ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirProtocoloEntrega('${r.id}')" title="Imprime o protocolo de entrega/recolhimento de urna (assinaturas) + check list do veículo">📋 Protocolo + Checklist</button>` : ''}
+          ${(r.tipos || []).includes('distribuicao') ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirProtocoloEntrega('${r.id}')" title="Imprime o protocolo de entrega/recolhimento de urna (assinaturas)">📋 Protocolo de entrega</button>` : ''}
+          ${(r.tipos || []).includes('distribuicao') ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtImprimirChecklistVeiculo('${r.id}')" title="Imprime o check list do veículo — 2 páginas, pronto pra imprimir frente e verso (duplex)">✅ Check list do veículo</button>` : ''}
           ${(!rtSomenteLeitura() && rtRotaTemTipoLegado(r) && !retornoGerado) ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtGerarRetorno('${r.id}')" title="Cria um rascunho de rota de recolhimento de urna, com as mesmas paradas ao contrário">🔄 Gerar rota de recolhimento</button>` : ''}
           ${!rtSomenteLeitura() ? `<button class="btn btn-out" style="font-size:.72rem;padding:6px 10px" onclick="rtToggleAtivo('${r.id}',${!r.ativo})">${r.ativo ? '🚫 Desativar' : '✓ Reativar'}</button>` : ''}
         </div>
@@ -2291,6 +2293,25 @@ function rtHtmlProtocoloEntrega(rota, paradas, responsavel, zona, suf) {
     </div>`;
 }
 
+// Check List de Veículos — SEMPRE 2 páginas fixas por rota (02/10/2026,
+// pedido direto: "faça 3 relatório separados, o de rotas, os protocolos e
+// o checklist de modo que o checklist que tem mais folhas possa ser
+// impresso em frente e verso"). Antes, as 13 seções viviam num `.cl-pagina`
+// só e transbordavam pra 2 páginas FÍSICAS por overflow natural do
+// navegador — o ponto de corte dependia do conteúdo (podia cortar uma
+// caixa de vistoria ao meio) e, misturado no mesmo job de impressão do
+// protocolo (3 páginas por rota: 1 protocolo + ~2 checklist), nunca dava
+// pra alinhar frente/verso de forma confiável numa impressora duplex — a
+// folha física de uma rota não batia com a folha física da rota seguinte.
+//
+// Agora o corte é DELIBERADO, entre a seção 6 (dados fixos: contrato,
+// contratada, motorista, veículo) e a 7 (as 5 caixas de vistoria +
+// observações + identificação) — mesmo ponto onde o overflow natural já
+// cortava antes, só que limpo, nunca no meio de uma caixa. Cada rota vira
+// EXATAMENTE 2 páginas (`cl-pagina-a`/`cl-pagina-b`), então um lote de N
+// rotas sempre tem 2N páginas — impresso com duplex ativado, página A é a
+// frente e B o verso da MESMA folha, pra toda rota do lote, sem nunca
+// misturar o verso de uma rota com a frente da seguinte.
 function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
   const s = suf != null ? '-' + suf : '';
   const [marca, modelo] = (rota.veiculo_descricao || '—/—').split('/').map(x => (x || '').trim());
@@ -2304,8 +2325,9 @@ function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
     <div class="cl-secao">${n}. ${rtEsc(titulo)}</div>
     <div class="cl-bloco-branco"></div>
     <div class="cl-bloco-branco"></div>`;
-  return `
-    <div class="cl-pagina" id="cl-pagina${s}">
+
+  const pagina1 = `
+    <div class="cl-pagina cl-pagina-a" id="cl-pagina-a${s}">
       <div class="cl-titulo">CHECK LIST VEÍCULOS</div>
       <div class="cl-sub">Rota ${rtEsc(rtRotaNumeroCurto(rota.codigo))} — 7ª Zona Eleitoral do Piauí</div>
 
@@ -2346,7 +2368,10 @@ function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
         <tr><td class="cl-l">Quilometragem inicial:</td><td class="cl-v">______________</td></tr>
         <tr><td class="cl-l">Quilometragem final:</td><td class="cl-v">______________</td></tr>
       </table>
+    </div>`;
 
+  const pagina2 = `
+    <div class="cl-pagina cl-pagina-b" id="cl-pagina-b${s}">
       ${secaoVazia(7, 'PNEUS')}
       ${secaoVazia(8, 'FARÓIS')}
       ${secaoVazia(9, 'LANTERNAS DE PISCA-ALERTA')}
@@ -2364,22 +2389,39 @@ function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
       </table>
       ${avisoSemCrlv ? `<div class="cl-nota">${rtEsc(avisoSemCrlv)}</div>` : ''}
     </div>`;
+
+  return pagina1 + pagina2;
 }
 
+// "📋 Protocolo de entrega" — só o protocolo (02/10/2026, separado do
+// checklist, ver comentário de rtHtmlChecklistVeiculo acima).
 async function rtImprimirProtocoloEntrega(rotaId) {
   const rota = rtDados.rotas.find(r => r.id === rotaId);
   if (!rota) return;
   const paradas = rtDados.secoesPorRota.get(rotaId) || [];
   const responsavel = rtAtor(rota.responsavel_ator_id);
   const area = document.getElementById('print-area');
-  area.innerHTML = rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona) + rtHtmlChecklistVeiculo(rota, responsavel);
+  area.innerHTML = rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona);
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_protocolo_entrega_impresso', '', { autor, rota_id: rotaId, codigo: rota.codigo, quantidade: paradas.length });
   window.print();
 }
 
-// "📋 Imprimir protocolos + checklists" em lote (02/10/2026) — mesmo
-// mecanismo de rtImprimirTodasPorTipo, só que sempre escopado a
+// "✅ Check list do veículo" — só o checklist, as 2 páginas fixas (frente/
+// verso) de UMA rota.
+async function rtImprimirChecklistVeiculo(rotaId) {
+  const rota = rtDados.rotas.find(r => r.id === rotaId);
+  if (!rota) return;
+  const responsavel = rtAtor(rota.responsavel_ator_id);
+  const area = document.getElementById('print-area');
+  area.innerHTML = rtHtmlChecklistVeiculo(rota, responsavel);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_checklist_veiculo_impresso', '', { autor, rota_id: rotaId, codigo: rota.codigo });
+  window.print();
+}
+
+// "📋 Imprimir protocolos" em lote (02/10/2026) — mesmo mecanismo de
+// rtImprimirTodasPorTipo, só que sempre escopado a
 // `tipos.includes('distribuicao')` (o único tipo pro qual este documento
 // faz sentido — nunca aparece com outro filtro de tipo escolhido, ver
 // condição no render acima). Só rota ATIVA entra, mesmo critério de sempre.
@@ -2390,9 +2432,26 @@ async function rtImprimirProtocolosTodos() {
   area.innerHTML = rotas.map((rota, idx) => {
     const paradas = rtDados.secoesPorRota.get(rota.id) || [];
     const responsavel = rtAtor(rota.responsavel_ator_id);
-    return rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona, idx) + rtHtmlChecklistVeiculo(rota, responsavel, idx);
+    return rtHtmlProtocoloEntrega(rota, paradas, responsavel, rtDados.zona, idx);
   }).join('');
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_protocolo_entrega_impresso_lote', '', { autor, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
+  window.print();
+}
+
+// "✅ Imprimir checklists (frente e verso)" em lote — cada rota contribui
+// EXATAMENTE 2 páginas (cl-pagina-a/cl-pagina-b), então N rotas = 2N
+// páginas = N folhas em duplex, sempre alinhadas (nunca mistura o verso de
+// uma rota com a frente da seguinte).
+async function rtImprimirChecklistsTodos() {
+  const rotas = rtDados.rotas.filter(r => r.ativo && (r.tipos || []).includes('distribuicao'));
+  if (!rotas.length) { showToast('Nenhuma rota de distribuição ativa pra imprimir.'); return; }
+  const area = document.getElementById('print-area');
+  area.innerHTML = rotas.map((rota, idx) => {
+    const responsavel = rtAtor(rota.responsavel_ator_id);
+    return rtHtmlChecklistVeiculo(rota, responsavel, idx);
+  }).join('');
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_checklist_veiculo_impresso_lote', '', { autor, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
   window.print();
 }
