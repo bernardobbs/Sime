@@ -9027,6 +9027,88 @@ liberado mesmo com o Dia D ainda no futuro. Sem regressão em
 
 ---
 
+## RELATÓRIO "SEÇÕES POR PONTO DE TRANSMISSÃO" (`SIME_rotas.html`, 02/10/2026)
+
+Pedido direto: "quero um relatório em pdf no padrão institucional para as
+eleições 2026 que conste por local de transmissão as seções que serão
+transmitidas de cada um dos pontos". Puramente de LEITURA — nenhuma
+gravação além do log de auditoria da impressão em si: agrupa as seções já
+vinculadas a rotas de `recolhimento_midia` **ATIVAS** pelo `destino` de
+cada rota, usando a mesma fonte (`rtDados.secoesPorRota`) que a própria
+lista de rotas da tela já usa — o relatório nunca diverge do que está
+cadastrado.
+
+**Botão "📍 Relatório por ponto de transmissão"** — aparece só com o filtro
+de sempre (`#rt-filtro-tipo`) em "Recolhimento de mídia", ao lado dos
+demais botões de impressão em lote (mesmo critério: nunca mistura tipos
+diferentes de rota no mesmo relatório). `rtCalcularRelatorioTransmissao()`
+agrupa; `rtHtmlRelatorioTransmissao()`/`rtHtmlTimbreTransmissao()` montam o
+HTML; `rtImprimirRelatorioTransmissao()` imprime pelo mesmo mecanismo sem
+popup de sempre (`#print-area` + `window.print()`).
+
+**Ordem dos grupos**: os 5 pontos oficiais de transmissão
+(`RT_DESTINOS_CONHECIDOS`, já confirmados pelo cartório — ver "ROTA 005
+DESMEMBRADA; PONTOS DE TRANSMISSÃO OFICIAIS" acima) primeiro, na ordem
+oficial; qualquer destino customizado (texto livre que não bate com
+nenhum dos 5 — ex.: valor ainda não corrigido) depois, em ordem
+alfabética; "Sem destino definido" sempre por último — nunca esconde uma
+rota sem destino cadastrado, só não finge que ela já tem um ponto oficial.
+Dentro de cada grupo, seções ordenadas por município e depois por número;
+uma seção que aparece em mais de uma rota do mesmo destino (raro) soma os
+códigos de rota numa célula só, nunca duplica a linha.
+
+**Padrão institucional** — mesma marca/timbre já usado em `rtHtmlCapa()`
+(capa da ficha de rota, 02/10/2026) e em `raHtmlTimbre()`
+(`sime_recibo_alimentacao.js`, 18/09/2026) — duplicado aqui de propósito
+(os arquivos não compartilham `<script>` clássico): logo da campanha civil
+"Eleições 2026 #VotoNaDemocracia" (`assets/logo_eleicoes2026.png`, **NUNCA**
+o brasão/selo da Justiça Eleitoral), identificação da zona, título,
+data/hora, régua fina. Documento de RELATÓRIO (não formulário de
+assinatura) — página única contínua, sem bloco de SUBSTITUIÇÕES/OBS/
+"Suprido"; rodapé deixa explícito que "reflete a atribuição vigente no
+momento da impressão, não substitui o plano oficial de transmissão da
+Justiça Eleitoral".
+
+**Bug real, achado medindo com `page.pdf()` de verdade (mesmo critério
+"nunca estima, sempre mede" já usado nas demais correções de paginação
+deste módulo) antes de considerar pronto**: a 1ª versão aplicava
+`page-break-inside:avoid` no GRUPO INTEIRO (título+tabela) — pro grupo
+"Cartório Eleitoral da 7ª Zona Eleitoral" (92 seções, o maior da 7ª Zona,
+impossível caber numa página só de qualquer jeito), isso fazia o navegador
+empurrar o grupo INTEIRO pra página seguinte (não consegue "evitar" cortar
+algo maior que a própria página, então desiste e pula tudo), deixando a 1ª
+página do PDF quase em branco (só timbre + resumo). Corrigido restringindo
+o `avoid` só ao CABEÇALHO do grupo (`.rtt-grupo-cabecalho`, título+
+contagem — duas linhas curtas, cabe garantido) — a tabela (com `<thead>`
+próprio, que o navegador já repete sozinho em toda página física nova) fica
+livre pra quebrar onde precisar. De 8 páginas (com a 1ª quase vazia) caiu
+pra 6 páginas de conteúdo de verdade, confirmado visualmente
+(`pdftoppm`/JPEG) antes e depois do fix.
+
+Coberto por `tests/test_rotas.mjs` (blocos 52/52b): botão só aparece com o
+filtro certo; timbre institucional presente (logo + zona + título +
+"1º turno (04/10/2026)"); ponto oficial aparece antes de destino
+customizado, que aparece antes de "Sem destino definido"; seção
+compartilhada entre duas rotas do mesmo destino aparece uma vez só; rota
+de outro tipo nunca entra; log de auditoria com contagem de pontos/seções;
+PDF gerado com bytes de verdade; sem nenhuma seção pra listar, avisa por
+toast em vez de imprimir vazio.
+
+> **Verificação contra a produção real da 7ª Zona (02/10/2026)** — antes de
+> construir, uma investigação via Supabase MCP confirmou que as 147 seções
+> ativas da zona estão TODAS vinculadas a exatamente 1 rota de
+> `recolhimento_midia` ativa cada (nenhuma órfã, nenhuma duplicada) — os
+> ~76 órfãos documentados em 27/09/2026 (antes das rotas 038-041, da
+> desmembração da Rota 005 e das correções de destino oficial) não existem
+> mais. Distribuição real pelos 5 pontos: Cartório Eleitoral da 7ª Zona
+> Eleitoral (92) · Câmara de Vereadores de Sigefredo Pacheco (30) · SETI
+> Francisco Luis, Jatobá do Piauí (13) · U.E. Miguel Rocha, Sigefredo
+> Pacheco (7) · Escola do Reassentamento Corredores, Campo Maior (5).
+> Seção 234 (1619 - Salão Comunitário Corredores, Campo Maior) é **inativa**
+> — compartilha prédio com a seção ativa 195, já contada no grupo de
+> Corredores; não é uma seção real a mais. Um PDF com esses dados reais foi
+> gerado e entregue ao dono do projeto na mesma sessão.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

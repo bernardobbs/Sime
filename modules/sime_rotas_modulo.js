@@ -1018,6 +1018,7 @@ function renderRotas() {
       ${rtFiltroTipo ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirTodasPorTipo()" title="Imprime a ficha de todas as rotas ativas deste tipo, numa impressão só">🖨️ Imprimir todas (${RT_TIPO_LABEL[rtFiltroTipo]}) — ${contagemAtiva[rtFiltroTipo] || 0} rota(s)</button>` : ''}
       ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirProtocolosTodos()" title="Imprime o protocolo de entrega/recolhimento de todas as rotas de distribuição ativas, numa impressão só">📋 Imprimir protocolos — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
       ${rtFiltroTipo === 'distribuicao' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirChecklistsTodos()" title="Imprime o check list de veículo de todas as rotas de distribuição ativas — 2 páginas por rota, pronto pra imprimir frente e verso (duplex)">✅ Imprimir checklists (frente e verso) — ${contagemAtiva.distribuicao || 0} rota(s)</button>` : ''}
+      ${rtFiltroTipo === 'recolhimento_midia' ? `<button class="btn btn-out" style="font-size:.78rem;padding:7px 12px;margin-bottom:6px" onclick="rtImprimirRelatorioTransmissao()" title="Relatório institucional: as seções que serão transmitidas de cada ponto de transmissão (agrupado pelo destino das rotas de recolhimento de mídia)">📍 Relatório por ponto de transmissão</button>` : ''}
       <div class="ic-sub" style="margin-bottom:0">${lista.length} de ${rtDados.rotas.length} rota(s)</div>
     </div>
 
@@ -2202,6 +2203,132 @@ async function rtImprimirTodasPorTipo() {
   })));
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('rota_ficha_impressa_lote', '', { autor, tipo: rtFiltroTipo, quantidade: rotas.length, rotas: rotas.map(r => r.codigo) });
+  window.print();
+}
+
+// ── Relatório "Seções por Ponto de Transmissão" (02/10/2026, pedido
+// direto: "quero um relatório em pdf no padrão institucional para as
+// eleições 2026 que conste por local de transmissão as seções que serão
+// transmitidas de cada um dos pontos") ──
+//
+// Puramente de LEITURA, nenhuma gravação além do log de impressão: agrupa
+// as seções já vinculadas a rotas de `recolhimento_midia` ATIVAS pelo
+// `destino` de cada rota — os 5 pontos oficiais de transmissão
+// (RT_DESTINOS_CONHECIDOS, confirmados pelo cartório, ver "ROTA 005
+// DESMEMBRADA; PONTOS DE TRANSMISSÃO OFICIAIS" no CLAUDE.md). Não
+// recalcula nada que já não esteja em `rtDados` — mesma fonte
+// (`rtDados.secoesPorRota`) que a própria lista de rotas da tela já usa,
+// então o relatório nunca diverge do que o cartório vê cadastrado.
+//
+// Padrão institucional: mesma marca/timbre já usado em `rtHtmlCapa()`
+// (acima) e em `raHtmlTimbre()` (sime_recibo_alimentacao.js, 18/09/2026) —
+// duplicado aqui de propósito, os arquivos não compartilham <script>
+// clássico — logo da campanha civil "Eleições 2026 #VotoNaDemocracia"
+// (assets/logo_eleicoes2026.png, NUNCA o brasão/selo da Justiça Eleitoral),
+// identificação da zona, título, data/hora + paginação, régua fina.
+//
+// Documento de RELATÓRIO (não formulário de assinatura) — mesmo critério já
+// usado em `raHtmlRelatorioPagamentos()`: página única contínua, sem quebra
+// forçada por grupo. `page-break-inside:avoid` fica só no CABEÇALHO de cada
+// grupo (`.rtt-grupo-cabecalho`, título+contagem) — nunca na tabela inteira:
+// achado real medindo com `page.pdf()` o grupo "Cartório" (92 seções, maior
+// da 7ª Zona) — com o `avoid` na tabela inteira, o navegador empurrava o
+// GRUPO INTEIRO pra página seguinte (impossível caber em 1 página só, então
+// desiste de tentar "evitar" e só pula tudo pra começar do zero), deixando a
+// 1ª página do relatório quase em branco. A tabela em si tem `<thead>`
+// próprio e já repete o cabeçalho de coluna sozinha em cada página física
+// nova — só o par título+contagem do grupo (2 linhas curtas) precisa ficar
+// junto, nunca a tabela de centenas de linhas atrás dele.
+function rtDestinoChave(destino) {
+  return (destino && destino.trim()) ? destino.trim() : null;
+}
+
+// Ordem de exibição: os 5 pontos oficiais primeiro, na ordem oficial;
+// depois qualquer destino customizado (texto livre que não bate com
+// nenhum dos 5 — ex.: um valor ainda não corrigido/confirmado) em ordem
+// alfabética; "Sem destino definido" sempre por último — nunca esconde uma
+// rota sem destino cadastrado, só não finge que ela já tem um ponto oficial.
+function rtOrdemDestinos(destinosPresentes) {
+  const conhecidos = RT_DESTINOS_CONHECIDOS.filter(d => destinosPresentes.has(d));
+  const outros = [...destinosPresentes].filter(d => d !== null && !RT_DESTINOS_CONHECIDOS.includes(d)).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const semDestino = destinosPresentes.has(null) ? [null] : [];
+  return [...conhecidos, ...outros, ...semDestino];
+}
+
+function rtCalcularRelatorioTransmissao() {
+  const grupos = new Map(); // destino (ou null) -> Map(secao.id -> {secao, rotas:Set})
+  for (const r of rtDados.rotas) {
+    if (!r.ativo || !(r.tipos || []).includes('recolhimento_midia')) continue;
+    const chave = rtDestinoChave(r.destino);
+    if (!grupos.has(chave)) grupos.set(chave, new Map());
+    const mapaSecoes = grupos.get(chave);
+    for (const s of (rtDados.secoesPorRota.get(r.id) || [])) {
+      if (!mapaSecoes.has(s.id)) mapaSecoes.set(s.id, { ...s, rotasCodigos: new Set() });
+      mapaSecoes.get(s.id).rotasCodigos.add(r.codigo);
+    }
+  }
+  const ordem = rtOrdemDestinos(new Set(grupos.keys()));
+  return ordem.map(destino => ({
+    destino,
+    secoes: [...grupos.get(destino).values()].sort((a, b) =>
+      (a.municipio || '').localeCompare(b.municipio || '', 'pt-BR') || (a.numero - b.numero)),
+  }));
+}
+
+function rtHtmlTimbreTransmissao() {
+  const zona = rtDados.zona || {};
+  const zonaTexto = zona.numero ? `${zona.numero}ª Zona Eleitoral do Piauí` : 'Zona Eleitoral';
+  const agora = new Date();
+  const dataHoraStr = `${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  return `
+    <div class="rtt-timbre">
+      <img class="rtt-timbre-logo" src="./assets/logo_eleicoes2026.png" alt="Eleições 2026">
+      <div class="rtt-timbre-texto">
+        <div class="rtt-timbre-orgao">${rtEsc(zonaTexto)}${zona.municipio ? ` — ${rtEsc(zona.municipio)}` : ''}</div>
+        <div class="rtt-timbre-titulo">Seções por Ponto de Transmissão</div>
+        <div class="rtt-timbre-sub">Eleições Gerais de 2026 - 1º turno (04/10/2026) — Recolhimento de mídias eleitorais</div>
+      </div>
+      <div class="rtt-timbre-data">${rtEsc(dataHoraStr)}</div>
+    </div>
+    <div class="rtt-timbre-linha"></div>`;
+}
+
+function rtHtmlRelatorioTransmissao(grupos) {
+  const totalSecoes = grupos.reduce((s, g) => s + g.secoes.length, 0);
+  return `
+    <div class="rtt-pagina">
+      ${rtHtmlTimbreTransmissao()}
+      <div class="rtt-resumo">${grupos.length} ponto(s) de transmissão · ${totalSecoes} seção(ões) no total</div>
+      ${grupos.map(g => `
+        <div class="rtt-grupo">
+          <div class="rtt-grupo-cabecalho">
+            <div class="rtt-grupo-titulo">${rtEsc(g.destino || 'Sem destino definido')}</div>
+            <div class="rtt-grupo-sub">${g.secoes.length} seção(ões)</div>
+          </div>
+          <table class="rtt-tabela">
+            <colgroup><col class="rtt-col-sec"><col><col class="rtt-col-mun"><col class="rtt-col-rota"></colgroup>
+            <thead><tr><th>Seção</th><th>Local de votação</th><th>Município</th><th>Rota(s)</th></tr></thead>
+            <tbody>${g.secoes.map(s => `
+              <tr>
+                <td>${s.numero}</td>
+                <td>${rtEsc(s.local_nome)}</td>
+                <td>${rtEsc(s.municipio)}</td>
+                <td>${rtEsc([...s.rotasCodigos].sort().join(', '))}</td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>`).join('')}
+      <div class="rtt-rodape">Relatório gerado pelo SIME a partir do cadastro de rotas de recolhimento de mídia — reflete a atribuição de seções vigente no momento da impressão, não substitui o plano oficial de transmissão da Justiça Eleitoral.</div>
+    </div>`;
+}
+
+async function rtImprimirRelatorioTransmissao() {
+  const grupos = rtCalcularRelatorioTransmissao();
+  const totalSecoes = grupos.reduce((s, g) => s + g.secoes.length, 0);
+  if (!totalSecoes) { showToast('Nenhuma seção vinculada a rota de recolhimento de mídia ativa pra listar.'); return; }
+  const area = document.getElementById('print-area');
+  area.innerHTML = rtHtmlRelatorioTransmissao(grupos);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('rota_relatorio_transmissao_impresso', '', { autor, pontos: grupos.length, secoes: totalSecoes });
   window.print();
 }
 

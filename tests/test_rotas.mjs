@@ -2454,6 +2454,92 @@ async function lerDestino(p) {
   await ctx.close();
 }
 
+// ── 52. "📍 Relatório por ponto de transmissão" (02/10/2026, pedido
+// direto: "quero um relatório em pdf no padrão institucional para as
+// eleições 2026 que conste por local de transmissão as seções que serão
+// transmitidas de cada um dos pontos") — só aparece com o filtro em
+// "Recolhimento de mídia"; agrupa pelos 5 destinos oficiais (ordem fixa),
+// um destino customizado (ordem alfabética, depois dos oficiais) e "Sem
+// destino definido" (sempre por último, nunca escondido). Mock: r2
+// (recolhimento_midia) ganha 2 seções com destino oficial "Cartório...",
+// uma rota nova r5 com destino customizado "Posto X" e outra r6 sem
+// destino nenhum. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const r2 = m.sime_rotas.find(r => r.id === 'r2');
+  r2.destino = 'Cartório Eleitoral da 7ª Zona Eleitoral';
+  m.sime_rota_secoes.push({ id: 'rs3', rota_id: 'r2', secao_id: 's1', parada: 1 });
+  m.sime_rota_secoes.push({ id: 'rs4', rota_id: 'r2', secao_id: 's3', parada: 2 });
+  m.sime_rotas.push({ id: 'r5', zona_id: 'z7', codigo: '005', nome: 'Rota 005 mídia', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: 'Posto de Saúde da Vila Nova', horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null });
+  m.sime_secoes.push({ id: 's4', numero: 90, local_nome: 'Posto Vila Nova', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: null, longitude: null });
+  m.sime_rota_secoes.push({ id: 'rs5', rota_id: 'r5', secao_id: 's4', parada: 1 });
+  m.sime_rotas.push({ id: 'r6', zona_id: 'z7', codigo: '006', nome: 'Rota 006 mídia sem destino', municipios: ['Campo Maior'], tipos: ['recolhimento_midia'], itinerario: null, urnas_estimadas: null, ativo: true, ponto_partida: null, destino: null, horario_saida: null, horario_chegada_previsto: null, responsavel_ator_id: null });
+  m.sime_secoes.push({ id: 's5', numero: 95, local_nome: 'Escola Sem Destino', municipio: 'Campo Maior', zona_id: 'z7', ativo: true, rota_id: null, parada: null, latitude: null, longitude: null });
+  m.sime_rota_secoes.push({ id: 'rs6', rota_id: 'r6', secao_id: 's5', parada: 1 });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  check('sem o filtro "Recolhimento de mídia" escolhido, o botão não aparece', await p.locator('button:has-text("📍 Relatório por ponto de transmissão")').count() === 0);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_midia');
+  await p.waitForTimeout(100);
+  check('com "Recolhimento de mídia" escolhido, o botão aparece', await p.locator('button:has-text("📍 Relatório por ponto de transmissão")').count() === 1);
+
+  await p.click('button:has-text("📍 Relatório por ponto de transmissão")');
+  await p.waitForTimeout(200);
+  check('imprime numa chamada só de window.print()', await p.evaluate(() => window.__printCalls) === 1);
+
+  const printHtml = await p.locator('#print-area').innerHTML();
+  check('timbre institucional presente (logo + zona + título + eleição)', /logo_eleicoes2026\.png/.test(printHtml) && /7ª Zona Eleitoral do Piau[ií]/.test(printHtml) && /Seções por Ponto de Transmiss[ãa]o/.test(printHtml) && /1º turno \(04\/10\/2026\)/.test(printHtml), printHtml.slice(0, 600));
+
+  const idxCartorio = printHtml.indexOf('Cartório Eleitoral da 7ª Zona Eleitoral');
+  const idxPosto = printHtml.indexOf('Posto de Saúde da Vila Nova');
+  const idxSemDestino = printHtml.indexOf('Sem destino definido');
+  check('ponto oficial (Cartório) aparece', idxCartorio !== -1);
+  check('destino customizado (texto livre) aparece depois dos oficiais', idxPosto !== -1 && idxPosto > idxCartorio);
+  check('"Sem destino definido" aparece por último, nunca escondido', idxSemDestino !== -1 && idxSemDestino > idxPosto);
+
+  check('seção 30 (parada de r1, também em r2/Cartório) aparece sob Cartório', /30/.test(printHtml.slice(idxCartorio, idxPosto)));
+  check('seção 90 (Posto Vila Nova) aparece sob o destino customizado', /90/.test(printHtml.slice(idxPosto, idxSemDestino)));
+  check('seção 95 (sem destino) aparece no grupo final', /95/.test(printHtml.slice(idxSemDestino)));
+  check('rota de distribuição (r1, outro tipo) nunca entra no relatório', !/Rota 001/.test(printHtml));
+
+  const logRel = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_relatorio_transmissao_impresso'));
+  check('log de auditoria com contagem de pontos/seções certa', logRel?.payload?.pontos === 3 && logRel?.payload?.secoes === 4, JSON.stringify(logRel));
+
+  await p.emulateMedia({ media: 'print' });
+  const pdf = await p.pdf();
+  check('PDF gerado com bytes de verdade', pdf.length > 500, String(pdf.length));
+  await p.emulateMedia({ media: 'screen' });
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 52b. Sem nenhuma seção vinculada a rota de recolhimento de mídia
+// ativa, avisa por toast em vez de imprimir um relatório vazio. ──
+{
+  const ctx = await b.newContext();
+  const m = mock(); // r2 (recolhimento_midia) existe mas não tem nenhuma seção vinculada no mock-base
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.waitForTimeout(200);
+
+  await p.selectOption('#rt-filtro-tipo', 'recolhimento_midia');
+  await p.waitForTimeout(100);
+  await p.click('button:has-text("📍 Relatório por ponto de transmissão")');
+  await p.waitForTimeout(150);
+
+  check('não chama window.print() sem nenhuma seção pra listar', await p.evaluate(() => window.__printCalls) === 0);
+  const toast = await p.locator('.toast').textContent().catch(() => '');
+  check('avisa por toast em vez de imprimir relatório vazio', /[Nn]enhuma se[cç][ãa]o vinculada/.test(toast), toast);
+
+  check('zero erros JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const falhou = results.filter(r => !r.ok);
 results.forEach(r => console.log(`${r.ok ? 'PASS' : 'FAIL'} — ${r.n}${r.e ? `  [${r.e}]` : ''}`));

@@ -250,6 +250,47 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .cl-check-2 .cl-ch-v{width:50%;}
   .cl-check-luzes .cl-ch-lado{width:9%;}
   .cl-check-luzes .cl-ch-v{width:16%;}
+
+  /* Relatório institucional "Seções por Ponto de Transmissão" (02/10/2026,
+     pedido direto: "quero um relatório em pdf no padrão institucional para
+     as eleições 2026 que conste por local de transmissão as seções que
+     serão transmitidas de cada um dos pontos") — mesmo espírito do timbre
+     institucional já usado no Auxílio Alimentação (`raHtmlTimbre`,
+     sime_recibo_alimentacao.js) e na capa de rota (`rtHtmlCapa`, acima):
+     logo da campanha civil, identificação da zona, régua fina — nunca o
+     brasão/selo da Justiça Eleitoral. Documento de RELATÓRIO, não de
+     assinatura: página única contínua (`.rtt-pagina`, sem page-break
+     forçado), só os grupos individuais evitam cortar no meio
+     (page-break-inside:avoid). */
+  .rtt-pagina{padding:10mm;font-family:Arial,Helvetica,sans-serif;color:#000;}
+  .rtt-timbre{display:flex;align-items:center;gap:4mm;}
+  .rtt-timbre-logo{height:14mm;width:auto;object-fit:contain;}
+  .rtt-timbre-texto{flex:1;}
+  .rtt-timbre-orgao{font-size:10pt;font-weight:700;}
+  .rtt-timbre-titulo{font-size:13pt;font-weight:800;margin-top:.5mm;}
+  .rtt-timbre-sub{font-size:8.5pt;color:#444;margin-top:.5mm;}
+  .rtt-timbre-data{font-size:8pt;color:#555;text-align:right;white-space:nowrap;}
+  .rtt-timbre-linha{border-bottom:1.5pt solid #000;margin:3mm 0 5mm;}
+  .rtt-resumo{font-size:9pt;color:#444;margin-bottom:4mm;}
+  .rtt-grupo{margin-top:5mm;}
+  /* page-break-inside:avoid só no CABEÇALHO do grupo (título+contagem), não
+     na tabela inteira — ver comentário em rtHtmlRelatorioTransmissao
+     (sime_rotas_modulo.js): o grupo "Cartório" (92 seções, o maior da 7ª
+     Zona) não cabe inteiro numa página de qualquer jeito, e aplicar o
+     avoid na tabela toda fazia o navegador empurrar o GRUPO INTEIRO pra
+     página seguinte, deixando a 1ª página do relatório quase em branco. A
+     tabela (com <thead> próprio) já repete o cabeçalho de coluna sozinha a
+     cada página nova — só o par título+contagem precisa ficar junto. */
+  .rtt-grupo-cabecalho{page-break-inside:avoid;page-break-after:avoid;}
+  .rtt-grupo-titulo{font-size:11pt;font-weight:800;background:#eef0fa;padding:2mm 3mm;}
+  .rtt-grupo-sub{font-size:8pt;color:#555;margin:1mm 0 2mm;}
+  .rtt-tabela{width:100%;border-collapse:collapse;font-size:8.6pt;line-height:1.35;table-layout:fixed;}
+  .rtt-tabela th,.rtt-tabela td{border:.5pt solid #cfd2e3;padding:2mm 2.5mm;vertical-align:top;text-align:left;}
+  .rtt-tabela th{background:#f6f7fb;font-weight:800;}
+  .rtt-col-sec{width:10%;}
+  .rtt-col-mun{width:22%;}
+  .rtt-col-rota{width:16%;}
+  .rtt-rodape{font-size:7.5pt;color:#999;margin-top:6mm;line-height:1.5;}
 }
 </style>
 </head>
