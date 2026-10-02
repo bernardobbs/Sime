@@ -7631,10 +7631,34 @@ Rota 004).
 >   mesmo ponto oficial de Jatobá (a hipótese geográfica levantada acima
 >   estava certa). Rotas 011, 012, 013, 019, 034 corrigidas.
 >
-> **`Escola Monsenhor Mateus (Sigefredo Pacheco)` — rota 035 — continua
-> pendente, de propósito: não foi confirmada nesta rodada**, nunca
-> adivinhada; fica aguardando o cartório dizer qual dos pontos oficiais
-> ela deveria usar.
+> **Rota 035 resolvida em 02/10/2026 — não por confirmação direta, mas por
+> uma relação OFICIAL completa de seção→ponto de transmissão, colada pelo
+> cartório (print de tela, sem pedido explícito acompanhando — a relação
+> em si já era a resposta).** Verificado seção por seção, antes de gravar
+> qualquer coisa, que as 4 listas (ponto do Grupo Escolar Manoel Francisco/
+> U.E. Miguel Rocha, SETI Francisco Luis, Câmara de Vereadores de Sigefredo
+> Pacheco, Escola do Reassentamento Corredores) mais o "restante" (Cartório)
+> cobrem **exatamente** as seções já cadastradas em `sime_rota_secoes` pras
+> rotas de `recolhimento_midia` — nenhuma seção sobrando, nenhuma faltando.
+> Isso permitiu cruzar CADA rota contra o destino que suas próprias seções
+> deveriam ter, achando 5 divergências reais entre o `destino` já salvo e
+> o que a relação oficial diz:
+> - **Rota 035** (`222,203,211,241,250`) — as 5 seções batem com o grupo
+>   "Câmara de Vereadores de Sigefredo Pacheco", não com "Escola Monsenhor
+>   Mateus" (o nome informal que ficou pendente desde 28/09/2026). Resolvido.
+> - **Rota 020** (`85,86,87,88,89,90,132,151,158,177`, todas do mesmo prédio
+>   — Grupo Escolar Monsenhor Mateus) — também bate com "Câmara de
+>   Vereadores de Sigefredo Pacheco", não com o Cartório que estava salvo.
+> - **Rotas 004, 008, 036** (`186,234,195` / `164` / `209,187` — as 6
+>   seções do grupo "Escola do Reassentamento Corredores" inteiro, split
+>   entre as três, cada uma num prédio diferente) — todas tinham destino
+>   Cartório; corrigidas pra "Escola do Reassentamento Corredores (Campo
+>   Maior)".
+> As demais ~34 rotas já batiam exatamente com a relação oficial (inclusive
+> as 5 já corrigidas na rodada anterior — Rota 001/011/012/013/019/034) —
+> nenhuma mudança adicional foi necessária nelas. `rota_destino_oficial_corrigido`
+> em `sime_logs` guarda o antes/depois das 5 rotas e a nota de que isso
+> fecha a pendência da Rota 035.
 
 Coberto por `tests/test_rotas.mjs` (bloco 29, atualizado — dropdown lista
 os 5 pontos oficiais já com "U.E. Miguel Rocha (Sigefredo Pacheco)" no
