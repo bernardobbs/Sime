@@ -502,6 +502,69 @@ const estadoPanico = (id) => ({
   await ctx.close();
 }
 
+// ── 13. Pedido direto (02/10/2026): "os mesários só devem poder informar
+// problemas no dia d" — diaDaVotacaoChegou() gateia só a ATIVAÇÃO de um
+// pânico novo; resolver um já ativo (double-tap) continua liberado mesmo
+// fora do Dia D, e sem data_d cadastrado nunca bloqueia (mesmo critério
+// "nunca esconde por falta de dado" já usado em SIME_tv_dia.html). ──
+function hojeLocalStr(offsetDias = 0) {
+  const d = new Date(); d.setDate(d.getDate() + offsetDias);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+{
+  // Dia D no futuro: acionar um pânico novo é bloqueado.
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  cfg.sime_eleicoes = [{ ...cfg.sime_eleicoes[0], data_d: hojeLocalStr(5) }];
+  const { p, erros } = await abrirLogado(ctx, cfg);
+  await p.waitForTimeout(300);
+
+  await p.click('#btn-energia');
+  await p.waitForTimeout(200);
+  check('antes do Dia D: clique NÃO ativa o pânico', await p.evaluate(() => S.panico.energia === false));
+  check('antes do Dia D: toast avisa que só é possível no Dia D',
+    (await p.locator('#toast').textContent()).includes('Dia D'));
+  check('antes do Dia D: nenhum RPC de pânico foi enviado',
+    await p.evaluate(() => !window.__mockConfig.rpcCalls.some((c) => 'p_panico_energia' in (c.params || {}))));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  // Dia D = hoje: acionar continua funcionando normalmente (sem regressão).
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig(null);
+  cfg.sime_eleicoes = [{ ...cfg.sime_eleicoes[0], data_d: hojeLocalStr(0) }];
+  const { p, erros } = await abrirLogado(ctx, cfg);
+  await p.waitForTimeout(300);
+
+  await p.click('#btn-energia');
+  await p.waitForTimeout(200);
+  check('no Dia D: clique ativa o pânico normalmente', await p.evaluate(() => S.panico.energia === true));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  // Já ativo, Dia D ainda não chegou: resolver (double-tap) continua liberado.
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig({
+    secao_id: 'sec-uuid-63', eleicao_id: 'ele-uuid-1',
+    panico_energia: true, panico_urna: false,
+    panico_energia_resolvido: false, panico_urna_resolvido: false,
+  });
+  cfg.sime_eleicoes = [{ ...cfg.sime_eleicoes[0], data_d: hojeLocalStr(5) }];
+  const { p, erros } = await abrirLogado(ctx, cfg);
+  await p.waitForTimeout(300);
+
+  await p.click('#btn-energia');
+  await p.waitForTimeout(100);
+  await p.click('#btn-energia');
+  await p.waitForTimeout(200);
+  check('antes do Dia D: resolver um pânico já ativo continua liberado',
+    await p.evaluate(() => S.panico.energia === false && S.panico_resolved.energia === true));
+  check('sem erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

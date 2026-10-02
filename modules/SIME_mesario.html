@@ -465,6 +465,7 @@ async function resolverEscopo(secoesToken) {
   initSimeDados(campoClient);
   const eleicao = await getEleicaoAtiva({ fallback: null });
   if (eleicao) eleicaoId = eleicao.id;
+  window.ELEICAO_ATIVA = eleicao;
 
   const numeroToken = secoesToken?.[0] ? parseInt(secoesToken[0], 10) : null;
   if (!numeroToken) return;
@@ -836,10 +837,31 @@ function confirm() {
 const PANIC_DBLTAP_MS = 500;
 const lastResolveTap = { energia:0, urnaprob:0, sos:0 };
 
+// Pedido direto (02/10/2026): "os mesários só devem poder informar
+// problemas no dia d" — mesmo critério/função já usado em SIME_tv_dia.html
+// (duplicado aqui de propósito, os dois arquivos não compartilham <script>
+// clássico): sem data_d cadastrado, nunca bloqueia (nunca esconde/impede
+// por falta de dado, mesmo critério de sempre). Só gateia a ATIVAÇÃO de um
+// pânico novo — resolver um pânico já ativo (o double-tap abaixo) continua
+// sempre permitido, mesmo fora do Dia D, porque fechar o que já está aberto
+// nunca deveria ficar bloqueado.
+function diaDaVotacaoChegou(){
+  const dataD = window.ELEICAO_ATIVA?.data_d;
+  if (!dataD) return true;
+  const hoje = new Date();
+  const hojeStr = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-' + String(hoje.getDate()).padStart(2, '0');
+  return hojeStr >= dataD;
+}
+
 function togglePanico(id) {
   const isActive = S.panico[id];
 
   if(!isActive) {
+    if(!diaDaVotacaoChegou()) {
+      vib(30);
+      showToast('⏳ Informar problemas só é possível no Dia D');
+      return;
+    }
     vib([80,40,80]);
     // acionar pânico
     S.panico[id] = true;

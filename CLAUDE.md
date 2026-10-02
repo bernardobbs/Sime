@@ -8977,6 +8977,56 @@ em todo o resto do sistema, via SQL Editor/MCP.
 
 ---
 
+## RESET DE `sime_mesa_estado` + PÂNICO SÓ ATIVÁVEL NO DIA D (`SIME_mesario.html`, 02/10/2026)
+
+**"Reinicie o estado de todas as urnas"** — pedido ambíguo o bastante (a
+2 dias da eleição real) pra merecer confirmação antes de apagar qualquer
+coisa: `sime_carga_lacre` (147 linhas, D-X) já estava com
+`contingencia_carga/preparacao/lacre` todas `true` — progresso REAL já
+confirmado pelo cartório (ver "TOTAL DE URNAS CONFIGURÁVEL" acima,
+174/174/174/174) — enquanto `sime_mesa_estado` (8 linhas) tinha
+`votacao=true`/`encerrada=true`/`zeresima=true` com data de **hoje**
+(02/10), impossível ser real já que o Dia D é só 04/10 — claramente dados
+de teste/simulação (um dos registros tinha até
+`panico_energia_responsavel_nome:"Bernardo"`, o próprio dono do projeto
+testando o fluxo de pânico). Escolhida a opção "**Dia D e véspera**" —
+apagar só `sime_mesa_estado` inteira (os dois conceitos vivem juntos
+nessa tabela: campos de urna_entregue/instalada/posicionada são D-1,
+votação/zerésima/pânico são Dia D), preservando `sime_carga_lacre`
+intacto. 8 registros apagados, logado em `sime_logs`
+(`reset_estado_urnas_dia_d_vespera`).
+
+**Segunda parte do mesmo pedido: "os mesários só devem poder informar
+problemas no dia d".** Até aqui `togglePanico()` (o botão de pânico —
+energia/urna/sos) nunca checava data nenhuma — só horário de parede não
+existe nessa tela (diferente da TV Dia), então o botão simplesmente
+sempre aceitava o toque, em qualquer dia, inclusive nos testes que
+acabaram de ser zerados acima. `diaDaVotacaoChegou()` (duplicada de
+`SIME_tv_dia.html`, 27/09/2026 — mesmo critério "nunca esconde por falta
+de dado": sem `data_d` cadastrado, nunca bloqueia) gateia só o ramo de
+**ATIVAR** um pânico novo; resolver um pânico já ativo (o double-tap de
+sempre) continua liberado mesmo fora do Dia D — fechar o que já está
+aberto nunca deveria ficar bloqueado, só abrir um novo antes da hora.
+`window.ELEICAO_ATIVA` (novo, populado pelo `<script type="module">` logo
+que `getEleicaoAtiva()` resolve em `resolverEscopo()`) é o mesmo padrão
+já usado em `SIME_tokens.html`/`SIME_admin.html`/`SIME_tv_dia.html`.
+
+Clicar o botão antes do Dia D mostra "⏳ Informar problemas só é possível
+no Dia D" e não muda nada — nem o estado local, nem a chamada ao
+servidor. Energia/urna/SOS tratados igual (a mesma função genérica cobre
+os três; o pedido não distinguiu nenhum deles como exceção).
+
+Coberto por `tests/test_mesario_panico_realtime.mjs` (bloco 13, 67 checks
+no total no arquivo): acionar antes do Dia D não muda o estado, mostra o
+toast certo e não dispara RPC nenhum; acionar no próprio Dia D continua
+funcionando normal (sem regressão); resolver um pânico já ativo continua
+liberado mesmo com o Dia D ainda no futuro. Sem regressão em
+`test_mesario_midia_realtime.mjs` (14/14), `test_campo_responsivo.mjs`
+(66/66), `test_campo_sem_bypass.mjs` (21/21) e `test_pwa_install.mjs`
+(48/48).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
