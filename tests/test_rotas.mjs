@@ -2310,6 +2310,15 @@ async function lerDestino(p) {
   check('página 2 (verso) tem as 5 seções de vistoria + observações + identificação', /PNEUS/.test(pagina2) && /FARÓIS/.test(pagina2) && /LANTERNAS DE PISCA-ALERTA/.test(pagina2) && /LUZES E BUZINA/.test(pagina2) && /RETROVISORES/.test(pagina2) && /OBSERVAÇÕES/.test(pagina2) && /IDENTIFICAÇÃO DOS ENVOLVIDOS/.test(pagina2), pagina2);
   check('página 2 NÃO repete os dados fixos da página 1', !/Contrato TRE-PI/.test(pagina2), pagina2);
 
+  // 02/10/2026, pedido direto com o PDF oficial anexado: "no check lista
+  // quero que contenha os campos" — as 5 seções de vistoria tinham só
+  // caixas em branco antes; viraram os campos reais do formulário.
+  check('PNEUS tem os 3 estados (dianteiros/traseiros¹/traseiros²) com Novo/Meia-vida/Careca, direito e esquerdo', (pagina2.match(/Novo \(&nbsp;\)/g) || []).length === 6 && /Estado dos dianteiros/.test(pagina2) && /Estado dos traseiros¹/.test(pagina2) && /Estado dos traseiros²/.test(pagina2) && /Meia-vida/.test(pagina2) && /Careca/.test(pagina2), pagina2);
+  check('FARÓIS tem Alto/Baixo/Meia-luz × direito/esquerdo com Aprovado/Desaprovado', /Alto/.test(pagina2) && /Baixo/.test(pagina2) && (pagina2.match(/Aprovado \(&nbsp;\)/g) || []).length >= 6, pagina2);
+  check('LANTERNAS DE PISCA-ALERTA tem Dianteira/Traseira × direito/esquerdo com Aprovada/Desaprovada', /Dianteira/.test(pagina2) && /Traseira/.test(pagina2) && (pagina2.match(/Aprovada \(&nbsp;\)/g) || []).length >= 4, pagina2);
+  check('LUZES E BUZINA tem Ré/Freio (direita+esquerda) e Placas/Buzina', />Ré</.test(pagina2) && />Freio</.test(pagina2) && />Placas</.test(pagina2) && />Buzina</.test(pagina2) && /direita/.test(pagina2) && /esquerda/.test(pagina2), pagina2);
+  check('RETROVISORES tem direito/esquerdo com Aprovado/Desaprovado', /RETROVISORES[\s\S]*direito[\s\S]*esquerdo/.test(pagina2), pagina2);
+
   const log = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'rota_checklist_veiculo_impresso'));
   check('log de auditoria com rota/código certos', log?.payload?.rota_id === 'r1' && log?.payload?.codigo === '001', JSON.stringify(log));
 

@@ -8758,6 +8758,160 @@ de distribuição, ignoram as de outro tipo, avisam por toast sem nenhuma
 ativa; verificado com `page.pdf()` de verdade que o lote de checklists sai
 com exatamente 2N páginas físicas (não 2N+1 por overflow).
 
+**Campos reais das seções 7-11, substituindo as caixas em branco
+(02/10/2026, pedido direto com o PDF oficial "CHECK LIST VEÍCULOS"
+anexado: "no check lista quero que contenha os campos").** Até aqui, as 5
+seções de vistoria da página B (`.cl-pagina-b`) eram só 2 caixas em branco
+por seção (`secaoVazia`, placeholder pensado só pra calibrar o corte fixo
+em 2 páginas — nunca pra ficar assim definitivamente) — virou o formulário
+de verdade, batido campo a campo contra o PDF oficial anexado:
+
+- **7. PNEUS** — 3 blocos (Estado dos dianteiros / traseiros¹ / traseiros²),
+  cada um `direito`×`esquerdo` com `Novo()`/`Meia-vida()`/`Careca()`, mais
+  as duas notas de rodapé reais sobre TWI e o limite legal de 1,6mm — só o
+  traseiros² não repete o cabeçalho direito/esquerdo, mesmo jeito que o
+  PDF oficial também não repete.
+- **8. FARÓIS** — Alto/Baixo/Meia-luz × direito/esquerdo, `Aprovado()`/
+  `Desaprovado()`.
+- **9. LANTERNAS DE PISCA-ALERTA** — Dianteira/Traseira × direito/
+  esquerdo, `Aprovada()`/`Desaprovada()`.
+- **10. LUZES E BUZINA** — o mais complexo do formulário: Ré e Freio têm
+  direita/esquerda cada um (`Aprovada()`/`Desaprovada()`), Placas e Buzina
+  são um checkbox global só, sem lado — tabela com `rowspan` reproduzindo
+  a mesma estrutura do PDF (Ré/Freio ocupando 2 linhas, Placas/Buzina só
+  1 valor cada).
+- **11. RETROVISORES** — direito/esquerdo, `Aprovado()`/`Desaprovado()`.
+
+**Bug real, achado medindo com `page.pdf()` de verdade antes de aplicar
+(mesmo critério "nunca estima, sempre mede" já documentado nesta mesma
+seção pro corte fixo em 2 páginas)**: a primeira versão (empilhando
+Aprovado/Desaprovado em 2-3 linhas por célula, igual ao layout visual do
+PDF) media **295,1mm de conteúdo real contra ~265mm úteis** — ~30mm acima
+do orçamento, o que de fato estourou pra 6 páginas físicas (3 por rota,
+não 2) rodando o teste de verdade. Corrigido substituindo o empilhamento
+por um formato numa linha só (`chkInline()`/`pneuTrio()` — "Aprovado ( )
+Desaprovado ( )" lado a lado) em todas as seções com coluna larga o
+bastante (7, 8, 9, 11); só a seção 10 (colunas estreitas demais, 16% de
+largura) manteve o empilhamento de 2 linhas (`chk()`). Combinado com
+padding mais enxuto em `.cl-secao`/`.cl-check td` e redução de
+`.cl-bloco-grande`/`.cl-ident-espaco`, a página B caiu pra **216mm de
+conteúdo real** (medido de novo) — folga confortável dentro do orçamento,
+e o teste de `page.pdf()` voltou a confirmar exatamente 4 páginas físicas
+pro lote de 2 rotas. **Nenhum campo do formulário oficial foi cortado**,
+só o espaçamento entre eles.
+
+**Bug visual menor, achado no print de verdade (PDF→JPEG, não só
+innerHTML): `( &nbsp;)` tinha um espaço comum ANTES do `&nbsp;`** —
+`"Aprovada" + " " + "(" + " " + "&nbsp;" + ")"` — esse espaço comum entre
+"(" e o `&nbsp;` era um ponto de quebra de linha válido, e nas colunas
+mais estreitas (seção 10) a linha chegava a quebrar entre "(" e ")"
+("Desaprovada (\n)"). Corrigido pra `(&nbsp;)` sem espaço nenhum entre os
+dois — nas colunas estreitas agora quebra no máximo entre a palavra e o
+par "( )" inteiro (ex.: "Desaprovada\n( )"), nunca mais separando o
+parêntese de abertura do de fechamento.
+
+Coberto por `tests/test_rotas.mjs` (bloco 49b, estendido — 370 checks no
+total no arquivo): cada uma das 5 seções mostra os campos reais certos
+(contagem de "Novo"/"Aprovado"/"Aprovada" batendo com o número esperado de
+ocorrências, rótulos Ré/Freio/Placas/Buzina presentes); sem regressão no
+teste de paginação física (continua em exatamente 4 páginas pro lote de 2
+rotas) nem nos demais 365 checks já existentes do arquivo.
+
+---
+
+## ROTAS DE INSTALAÇÃO DE SEÇÃO — 14 ROTAS NOVAS, SEPARADAS DAS DE DISTRIBUIÇÃO (02/10/2026)
+
+Pedido direto, com `ROTA_DISTRIBUIÇÃO_DE_URNAS.docx` anexado (mesma
+planilha já conferida/usada pra `veiculo_descricao`/`placa`/`cnh_*` das
+rotas UR1-UR12 em 28/09/2026): "essas rotas também são de instalação de
+seção. verifique antes de executar". **Verificado antes de qualquer
+escrita** (achado real, reportado ao dono do projeto antes de agir): a
+lógica da capa impressa (`rtGerarQrCapa()`, ver "CAPA DA FICHA IMPRESSA"
+acima) escolhe token de **Instalador** sempre que `tipos` inclui
+`instalacao` — marcar UR1-UR12 com esse tipo adicional faria a ficha
+trocar o QR do Motorista (já gerado, pronto pra amanhã) por um token de
+Instalador inexistente pra essas rotas, escondendo o acesso que já
+funciona. Perguntado como proceder (`AskUserQuestion`): resposta foi
+**"crie as rotas de instalação separada, informando as equipes. inclusive
+com a divisão das rotas" / "nova rota de instalação"** — rotas NOVAS,
+independentes das UR1-UR12, não uma segunda etiqueta nas mesmas.
+
+**A planilha tem mais colunas que as já usadas em 28/09/2026** —
+`Equipe`/`Motorista`/`Motorista emp.`, nunca lidas até então.
+Investigação da tabela real (parser consciente de `vMerge`, não só texto
+corrido — células mescladas verticalmente repetem o mesmo valor em várias
+linhas no XML) confirmou, cruzando contra os dados já em produção, que:
+- **`Motorista emp.`** bate, nome e veículo, com o responsável de
+  distribuição JÁ cadastrado em `UR1`/`UR4`/`UR7` (3 casos conferidos
+  manualmente) — é só uma referência cruzada ao motorista que a
+  planilha de 28/09/2026 já populou, não dado novo.
+- **`Motorista`** (coluna do meio) é um condutor DIFERENTE, com veículo
+  próprio — o motorista da visita de instalação, separado do de
+  distribuição.
+- **`Equipe`** não é um roster fixo por rota — é uma nota/contato LOCAL
+  por parada, preenchida de forma esparsa (às vezes um nome+telefone,
+  às vezes uma instrução solta como "avisar qdo o técnico for" na
+  parada 6 da Rota 12, sem nome nenhum) — tentar separar isso em
+  cadastros de pessoa por telefone seria adivinhar onde cortar nome de
+  telefone em texto livre e inconsistente. Guardado **verbatim** no
+  campo `itinerario` da rota nova, agrupado por parada
+  ("Equipe/contato local: {local}: {texto}; ..."), sem tentar
+  estruturar além disso.
+
+**14 rotas = 10 "Rota N" sem divisão + 2 pares divididos (`4a`/`4b`,
+`8a`/`8b`)** — confirmado pela própria tabela (não inferido): só as
+Rotas 4 e 8 têm linhas rotuladas `Na`/`Nb` com `Equipe`/`Motorista`
+PRÓPRIOS; as demais 10 têm um `Motorista` só, mostrado uma vez,
+cobrindo todas as paradas do grupo (mesmo padrão "mostrado uma vez,
+vale pro grupo inteiro" já usado por `Motorista emp.`/placa desde
+28/09/2026). `sime_ator_funcao` já tinha o enum `'motorista'` pronto;
+14 novos `sime_atores` criados (um por rota, telefone normalizado
+"55"+DDD86 quando o número vinha sem DDD, preservado como veio quando já
+tinha DDD — ex.: Francelio `11996848327`, mantido com DDD 11 tal como
+digitado, nunca "corrigido" por suposição).
+
+`tipos=['instalacao']`; `codigo` `INST1`-`INST12` (+ `INST4A`/`INST4B`/
+`INST8A`/`INST8B` no lugar de `INST4`/`INST8`); `veiculo_descricao`/
+`veiculo_cor`/`placa` do condutor de instalação; `urnas_estimadas` =
+contagem de paradas (mesmo critério "nunca adivinha, é `count()` direto"
+de 27/09/2026). `ponto_partida`/`destino`/`horario_saida` ficam em
+branco — sem dado na planilha, usam a sugestão automática já existente
+no módulo (nunca inventados).
+
+**Validação cruzada contra `sime_secoes` ANTES de gravar** — todas as 146
+seções com urna listadas no documento (confirmadas, uma a uma, contra o
+cadastro real da 7ª Zona) existem e batem; nenhuma seção inventada.
+`sime_rota_secoes` recebeu 130 vínculos (não as 146 totais — ver
+exclusões abaixo).
+
+**Duas exclusões deliberadas, nunca adivinhadas:**
+- **Penitenciária (seção 263), fora de `INST5`** — a própria planilha
+  marca essa linha como "(novo em 2026) – sugestão: incluir após IFPI" e
+  o "Total rota 05" declarado no documento (14) já soma só as 4 paradas
+  confirmadas, sem contar essa — segui o mesmo critério do próprio
+  documento, não uma decisão nova.
+- **6 paradas de Rota 4/Rota 8 sem `Equipe`/`Motorista` nenhum** — "13 de
+  Março" (7 seções) e "Esc. N.S. de Fátima" (3 seções) na Rota 4; "Esc.
+  Mun. A.F. Ribeiro Paz" (1 seção), "U.E. Antonio Cícero Oliveira" (2
+  seções) e "U.E. Manoel Rodrigues Melo" (1 seção) na Rota 8 — rotuladas
+  só `4`/`8` (sem `a`/`b`), sem nenhuma linha de condutor própria.
+  **Deliberadamente não atribuídas nem a `4a`/`4b` nem a `8a`/`8b`** —
+  estender o alcance de uma das duas sub-rotas pra cobrir essas paradas
+  seria inventar um limite que a própria planilha nunca desenhou (ao
+  contrário das 10 rotas sem divisão, onde "motorista mostrado uma vez
+  cobre o grupo inteiro" é um padrão consistente em TODAS as linhas —
+  aqui haveria duas sub-rotas candidatas e nenhum critério pra escolher).
+  Documentado como pendência real (payload do log
+  `rotas_instalacao_criadas_lote`) — falta o cartório confirmar se essas
+  6 paradas precisam de visita de instalação própria e, se sim, por
+  qual equipe.
+
+Sem teste de regressão Playwright — é dado de produção (rotas/atores),
+mesmo critério das demais cargas em lote já documentadas neste arquivo
+(verificado direto no Supabase antes/depois: 14 rotas, `urnas_estimadas`
+batendo exatamente com a contagem real de `sime_rota_secoes` em cada
+uma).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

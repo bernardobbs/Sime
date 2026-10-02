@@ -2321,10 +2321,68 @@ function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
     : (!rota.veiculo_ano
       ? '⚠ Ano, cor e proprietário deste veículo ainda não constam na planilha-fonte da empresa — confirmar na própria vistoria.'
       : '');
-  const secaoVazia = (n, titulo) => `
+  // Seções 7-11 (02/10/2026, pedido direto com o PDF oficial "CHECK LIST
+  // VEÍCULOS" anexado: "no check lista quero que contenha os campos") —
+  // antes eram só 2 caixas em branco por seção (secaoVazia, placeholder);
+  // viraram os campos de verdade do formulário real (checkboxes "( )" pra
+  // marcar à mão na vistoria, mesma convenção de "nunca inventa, só o
+  // formato que o documento oficial já usa"). Chk() é o par Aprovado()/
+  // Desaprovado() repetido em quase toda seção.
+  // Versão empilhada (2 linhas) — só pra LUZES E BUZINA, cujas colunas são
+  // estreitas demais pra caber numa linha só sem quebrar de qualquer jeito.
+  const chk = (fem) => `${fem ? 'Aprovada' : 'Aprovado'} (&nbsp;)<br>${fem ? 'Desaprovada' : 'Desaprovado'} (&nbsp;)`;
+  // Versão numa linha só — pros demais (colunas largas o bastante), medido
+  // com page.pdf() de verdade (ver cl-bloco-branco acima): a versão
+  // empilhada de 2-3 linhas por célula estourava a página B em ~30mm além
+  // do orçamento útil; numa linha só cabe em todas as colunas largas sem
+  // perder nenhum campo do formulário oficial.
+  const chkInline = (fem) => `${fem ? 'Aprovada' : 'Aprovado'} (&nbsp;) &nbsp; ${fem ? 'Desaprovada' : 'Desaprovado'} (&nbsp;)`;
+  const pneuTrio = () => `Novo (&nbsp;) &nbsp; Meia-vida (&nbsp;) &nbsp; Careca (&nbsp;)`;
+
+  const secaoPneus = `
+    <div class="cl-secao">7. PNEUS</div>
+    <table class="cl-check cl-check-2">
+      <tr><td class="cl-ch-sub" colspan="2">Estado dos dianteiros</td></tr>
+      <tr><td class="cl-ch-lado">direito</td><td class="cl-ch-lado">esquerdo</td></tr>
+      <tr><td class="cl-ch-v">${pneuTrio()}</td><td class="cl-ch-v">${pneuTrio()}</td></tr>
+      <tr><td class="cl-ch-sub" colspan="2">Estado dos traseiros¹</td></tr>
+      <tr><td class="cl-ch-lado">direito</td><td class="cl-ch-lado">esquerdo</td></tr>
+      <tr><td class="cl-ch-v">${pneuTrio()}</td><td class="cl-ch-v">${pneuTrio()}</td></tr>
+      <tr><td class="cl-ch-sub" colspan="2">Estado dos traseiros²</td></tr>
+      <tr><td class="cl-ch-v">${pneuTrio()}</td><td class="cl-ch-v">${pneuTrio()}</td></tr>
+    </table>
+    <div class="cl-nota">* profundidade de sulco remanescente em torno de 3-4mm, acima do limite legal de segurança do TWI (Tread Wear Indicator). ** profundidade dos sulcos atinge o limite legal de 1,6mm.</div>`;
+
+  const secaoDuasColunas = (n, titulo, itens, fem) => `
     <div class="cl-secao">${n}. ${rtEsc(titulo)}</div>
-    <div class="cl-bloco-branco"></div>
-    <div class="cl-bloco-branco"></div>`;
+    <table class="cl-check cl-check-2">
+      <tr><td class="cl-ch-lado">direito</td><td class="cl-ch-lado">esquerdo</td></tr>
+      ${itens.map(it => `<tr><td class="cl-ch-v"><b>${rtEsc(it)}</b> ${chkInline(fem)}</td><td class="cl-ch-v"><b>${rtEsc(it)}</b> ${chkInline(fem)}</td></tr>`).join('')}
+    </table>`;
+
+  const secaoLuzesBuzina = `
+    <div class="cl-secao">10. LUZES E BUZINA</div>
+    <table class="cl-check cl-check-luzes">
+      <tr>
+        <td class="cl-ch-lado" rowspan="2">Ré</td>
+        <td class="cl-ch-lado">direita</td><td class="cl-ch-v">${chk(true)}</td>
+        <td class="cl-ch-lado" rowspan="2">Freio</td>
+        <td class="cl-ch-lado">direita</td><td class="cl-ch-v">${chk(true)}</td>
+        <td class="cl-ch-lado" rowspan="2">Placas</td><td class="cl-ch-v" rowspan="2">${chk(true)}</td>
+      </tr>
+      <tr>
+        <td class="cl-ch-lado">esquerda</td><td class="cl-ch-v">${chk(true)}</td>
+        <td class="cl-ch-lado">esquerda</td><td class="cl-ch-v">${chk(true)}</td>
+        <td class="cl-ch-lado">Buzina</td><td class="cl-ch-v">${chk(true)}</td>
+      </tr>
+    </table>`;
+
+  const secaoRetrovisores = `
+    <div class="cl-secao">11. RETROVISORES</div>
+    <table class="cl-check cl-check-2">
+      <tr><td class="cl-ch-lado">direito</td><td class="cl-ch-lado">esquerdo</td></tr>
+      <tr><td class="cl-ch-v">${chkInline(false)}</td><td class="cl-ch-v">${chkInline(false)}</td></tr>
+    </table>`;
 
   const pagina1 = `
     <div class="cl-pagina cl-pagina-a" id="cl-pagina-a${s}">
@@ -2372,11 +2430,11 @@ function rtHtmlChecklistVeiculo(rota, responsavel, suf) {
 
   const pagina2 = `
     <div class="cl-pagina cl-pagina-b" id="cl-pagina-b${s}">
-      ${secaoVazia(7, 'PNEUS')}
-      ${secaoVazia(8, 'FARÓIS')}
-      ${secaoVazia(9, 'LANTERNAS DE PISCA-ALERTA')}
-      ${secaoVazia(10, 'LUZES E BUZINA')}
-      ${secaoVazia(11, 'RETROVISORES')}
+      ${secaoPneus}
+      ${secaoDuasColunas(8, 'FARÓIS', ['Alto', 'Baixo', 'Meia-luz'], false)}
+      ${secaoDuasColunas(9, 'LANTERNAS DE PISCA-ALERTA', ['Dianteira', 'Traseira'], true)}
+      ${secaoLuzesBuzina}
+      ${secaoRetrovisores}
 
       <div class="cl-secao">12. OBSERVAÇÕES</div>
       <div class="cl-bloco-branco cl-bloco-grande"></div>
