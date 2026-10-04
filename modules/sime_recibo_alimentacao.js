@@ -521,6 +521,37 @@ function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroP
     </div>`;
 }
 
+// Lista única pros MOTORISTAS de repartições (veículos à disposição) — mesmo
+// padrão de raHtmlListaFlat (sem agrupar por local, sem Seção/Inscrição/
+// Função, que não fazem sentido pra um veículo), com colunas próprias:
+// Veículo|Placa|Motorista|Lotação|Assinatura. Sai em DUAS páginas no mesmo
+// clique (Sábado D-1/Domingo Dia D), mesmo motivo de Auxiliares de Eleição —
+// motorista trabalha e recebe auxílio nos dois dias.
+function raHtmlListaFlatVeiculos(titulo, subtituloDia, veiculos, cfg, localTexto, numeroPagina) {
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre(titulo, subtituloDia, cfg, numeroPagina)}
+      <div class="ra-linha-info">
+        <span><b>Forma de Auxílio:</b> ${raEsc(cfg.forma)} &nbsp; <b>Valor:</b> ${raFmtValor(cfg.valor)}</span>
+      </div>
+      <table class="ra-tabela">
+        <colgroup><col><col class="ra-col-insc"><col><col><col class="ra-col-assin"></colgroup>
+        <thead><tr><th>Veículo</th><th>Placa</th><th>Motorista</th><th>Lotação</th><th>Assinatura</th></tr></thead>
+        <tbody>${veiculos.map(v => `
+          <tr>
+            <td>${raEsc(v.veiculo || '—')}</td>
+            <td>${raEsc(v.placa || '—')}</td>
+            <td>${raEsc(v.motorista_nome)}</td>
+            <td>${raEsc(v.lotacao || '—')}</td>
+            <td class="ra-linha-assin"></td>
+          </tr>`).join('')}</tbody>
+      </table>
+      ${raHtmlSubstituicoes(false)}
+      ${raHtmlObs()}
+      ${raHtmlRodapeTotal(localTexto)}
+    </div>`;
+}
+
 async function raImprimirDocumento(html, acaoLog, quantidade) {
   const area = document.getElementById('print-area');
   area.innerHTML = html;
@@ -559,6 +590,22 @@ async function raImprimirJunta() {
   const cfg = raCfg();
   const html = raHtmlListaFlat('Recibo de Auxílio Alimentação — Junta Eleitoral', null, pessoas, cfg, cfg.zonaTexto, 1);
   await raImprimirDocumento(html, 'recibo_alimentacao_junta_impresso', pessoas.length);
+}
+
+// Recibo pros Motoristas de Repartições — mesmo padrão de duas páginas de
+// raImprimirAuxiliares (Sábado D-1/Domingo Dia D, num único window.print()),
+// pedido direto: "quero que apareça, na parte de pagamento do auxilio...
+// inclusive imprimindo recibo do sabado e domingo". Motorista de veículo
+// cedido trabalha nos dois dias da operação (D-1 saída do cartório, Dia D
+// recolhimento), mesmo motivo já documentado pros Auxiliares de Eleição.
+async function raImprimirMotoristas() {
+  if (!raDadosVeiculos.length) { showToast('⚠ Nenhum motorista de repartição cadastrado'); return; }
+  const veiculos = [...raDadosVeiculos].sort((a, b) => (a.motorista_nome || '').localeCompare(b.motorista_nome || '', 'pt-BR'));
+  const cfg = raCfg();
+  const html =
+    raHtmlListaFlatVeiculos('Recibo de Auxílio Alimentação — Motoristas de Repartições', 'Sábado (D-1)', veiculos, cfg, cfg.zonaTexto, 1) +
+    raHtmlListaFlatVeiculos('Recibo de Auxílio Alimentação — Motoristas de Repartições', 'Domingo (Dia D)', veiculos, cfg, cfg.zonaTexto, 2);
+  await raImprimirDocumento(html, 'recibo_alimentacao_motoristas_impresso', veiculos.length);
 }
 
 // ── Relatório de pagamentos (01/10/2026, pedido direto: "gere um relatorio
@@ -1192,6 +1239,7 @@ function raHtmlSecaoVeiculos() {
       <div class="ic-sub">Motoristas dos veículos cedidos por órgãos públicos (cadastro do módulo 🚙 Veículos à
         Disposição) — mesmo controle de "quem já recebeu" usado acima, à parte do cadastro de mesários. Veículo sem
         motorista cadastrado não aparece. Valor sempre editável, nunca travado.</div>
+      <button class="btn btn-out" style="margin-top:8px" onclick="raImprimirMotoristas()">🖨️ Imprimir recibos — Sábado e Domingo</button>
       <div id="ra-controle-veiculos" style="margin-top:8px"></div>
     </div>`;
 }
