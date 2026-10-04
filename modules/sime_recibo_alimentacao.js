@@ -197,6 +197,7 @@ async function raCarregar() {
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
+  await raCarregarVeiculos(zonaId); // 🚙 Motoristas de Repartições — nunca lança, ver raCarregarVeiculos
   render();
 }
 
@@ -1104,6 +1105,317 @@ function raRenderModal() {
   raRenderModalQr(p, valorAtual);
 }
 
+// ── 🚙 Motoristas de Repartições (04/10/2026) — controle de pagamento do
+// auxílio alimentação dos motoristas dos veículos cedidos por órgãos
+// públicos (`sime_veiculos_disposicao`, mesmo cadastro do módulo 🚙
+// Veículos à Disposição). Só CONTROLE DE PAGAMENTO — nenhum recibo
+// impresso. Card próprio, logo abaixo do controle de pagamento por pessoa
+// (sime_atores), que continua intacto: estado, funções e ids próprios
+// (prefixo `raVd`/`ra-vd-`), nunca reaproveitando `raDados.todos`/
+// `raModalId` — só as funções puras de PIX/QR (raPixPayload,
+// raPixChaveNormalizada, raFmtValor...) são compartilhadas. Veículo sem
+// motorista cadastrado fica de fora (não há a quem pagar). PIX é texto
+// livre, salvo exatamente como digitado (mesma convenção de
+// `sime_atores.pix`) — só o valor usado no QR passa por
+// `raPixChaveNormalizada`. ──
+let raDadosVeiculos = []; // linhas de sime_veiculos_disposicao (ativas, com motorista)
+let raBuscaVeiculos = '';
+let raBuscaVeiculosTimer = null;
+let raModalVeiculoId = null;
+
+// Nunca lança — uma falha aqui (tabela/coluna indisponível, rede) só deixa a
+// lista de motoristas vazia, sem derrubar o carregamento do resto da aba.
+async function raCarregarVeiculos(zonaId) {
+  raDadosVeiculos = [];
+  try {
+    const sb = window.supabaseAtores;
+    if (!sb || !zonaId) return;
+    const { data, error } = await sb.from('sime_veiculos_disposicao')
+      .select('id, municipio, veiculo, placa, lotacao, motorista_nome, motorista_telefone, pix, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em')
+      .eq('zona_id', zonaId).eq('ativo', true)
+      .order('municipio').order('lotacao');
+    if (error) return;
+    // Filtro "tem motorista" no cliente (equivale a .not('motorista_nome','is',null)),
+    // ignorando também nome em branco.
+    raDadosVeiculos = (data || []).filter(v => v.motorista_nome && String(v.motorista_nome).trim());
+  } catch (e) { raDadosVeiculos = []; }
+}
+
+function raVeiculoPorId(id) {
+  return (raDadosVeiculos || []).find(v => v.id === id) || null;
+}
+
+function raVdValorSugerido(v, cfg) {
+  return cfg.valor; // sem regra própria pra motorista — parte do valor único configurado, sempre editável
+}
+
+function raVdValorAtual(v, cfg) {
+  return v.auxilio_alimentacao_valor_pago != null ? Number(v.auxilio_alimentacao_valor_pago) : raVdValorSugerido(v, cfg);
+}
+
+function raVdDescricao(v) {
+  return `Auxílio Eleições 2026 - Motorista${v.lotacao ? ` - ${v.lotacao}` : ''}`;
+}
+
+function raVdFiltrar() {
+  const q = raBuscaVeiculos.trim().toLowerCase();
+  const lista = raDadosVeiculos || [];
+  if (!q) return lista;
+  return lista.filter(v => `${v.motorista_nome || ''} ${v.placa || ''} ${v.veiculo || ''} ${v.lotacao || ''} ${v.municipio || ''}`.toLowerCase().includes(q));
+}
+
+function raVdResumo() {
+  const lista = raDadosVeiculos || [];
+  const pagos = lista.filter(v => v.auxilio_alimentacao_pago);
+  const totalPago = pagos.reduce((s, v) => s + Number(v.auxilio_alimentacao_valor_pago || 0), 0);
+  return { total: lista.length, pagos: pagos.length, totalPago };
+}
+
+function raOnBuscaVeiculosInput(v) {
+  raBuscaVeiculos = v;
+  clearTimeout(raBuscaVeiculosTimer);
+  raBuscaVeiculosTimer = setTimeout(renderControleVeiculos, 250);
+}
+
+function raVdLinkWhatsApp(v) {
+  if (!v.motorista_telefone || typeof linkWhatsApp !== 'function') return '';
+  const url = linkWhatsApp(v.motorista_telefone, '');
+  if (!url) return '';
+  const rotulo = typeof fmtTelefone === 'function' ? fmtTelefone(v.motorista_telefone) : v.motorista_telefone;
+  return `<a href="${raEsc(url)}" target="_blank" rel="noopener" title="Abrir conversa no WhatsApp">💬 ${raEsc(rotulo)}</a>`;
+}
+
+function raHtmlSecaoVeiculos() {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">🚙 Motoristas de Repartições</div>
+      <div class="ic-sub">Motoristas dos veículos cedidos por órgãos públicos (cadastro do módulo 🚙 Veículos à
+        Disposição) — mesmo controle de "quem já recebeu" usado acima, à parte do cadastro de mesários. Veículo sem
+        motorista cadastrado não aparece. Valor sempre editável, nunca travado.</div>
+      <div id="ra-controle-veiculos" style="margin-top:8px"></div>
+    </div>`;
+}
+
+function renderControleVeiculos() {
+  const alvo = document.getElementById('ra-controle-veiculos');
+  if (!alvo) return;
+  const buscaEl = document.getElementById('ra-vd-busca');
+  const buscaAtiva = document.activeElement === buscaEl;
+  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
+  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
+
+  const lista = raVdFiltrar();
+  const resumo = raVdResumo();
+  const cfg = raCfg();
+
+  alvo.innerHTML = `
+    <div class="ic-sub" style="margin:0 0 8px">🚙 Motoristas de Repartições — ${resumo.pagos} pago(s) de ${resumo.total} — total pago: ${raFmtValor(resumo.totalPago)}.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <input type="text" id="ra-vd-busca" value="${raEsc(raBuscaVeiculos)}" oninput="raOnBuscaVeiculosInput(this.value)" placeholder="Buscar por motorista, placa, veículo, lotação ou município…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+    </div>
+    <div class="m-hist" style="max-height:480px;overflow-y:auto">
+      ${lista.length ? lista.map(v => {
+        const wa = raVdLinkWhatsApp(v);
+        return `
+      <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>
+          <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModalVeiculo('${v.id}')" title="Clique pra ver PIX e marcar pagamento">${raEsc(v.motorista_nome)}</b>
+          — ${raEsc(v.veiculo || 'Veículo')}${v.placa ? ` · Placa <b class="mono">${raEsc(v.placa)}</b>` : ''}
+          <div class="ic-sub" style="margin:2px 0 0">${raEsc(v.lotacao || '—')} · ${raEsc(v.municipio || '—')}${wa ? ` · ${wa}` : ''}</div>
+          ${v.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:0">pago em ${raFmtDataHora(new Date(v.auxilio_alimentacao_pago_em))}</span>` : ''}
+        </span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:.75rem">R$</span>
+          <input type="text" id="ra-vd-valor-${v.id}" value="${raVdValorAtual(v, cfg).toFixed(2)}" onblur="raSalvarValorPagoVeiculo('${v.id}', this.value)" style="width:70px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;cursor:pointer">
+            <input type="checkbox" ${v.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePagoVeiculo('${v.id}', this.checked)"> Pago
+          </label>
+        </span>
+      </div>`;
+      }).join('') : `<div class="ic-sub" style="margin:0">${(raDadosVeiculos || []).length ? 'Nenhum motorista encontrado.' : 'Nenhum veículo à disposição com motorista cadastrado nesta zona.'}</div>`}
+    </div>`;
+  if (buscaAtiva) {
+    const el = document.getElementById('ra-vd-busca');
+    if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
+  }
+}
+
+// Mesma semântica de raTogglePagoCore: marcar grava o valor JÁ DIGITADO +
+// data (via sime_now); desmarcar limpa só a data, o valor fica como
+// referência.
+async function raTogglePagoVeiculoCore(id, marcarPago, valorDigitado) {
+  const sb = window.supabaseAtores;
+  const v = raVeiculoPorId(id);
+  if (!v) return false;
+  let payload;
+  if (marcarPago) {
+    let ts = null;
+    try { const { data } = await sb.rpc('sime_now'); ts = data || null; } catch (e) { ts = null; }
+    payload = { auxilio_alimentacao_pago: true, auxilio_alimentacao_valor_pago: (valorDigitado >= 0 ? valorDigitado : raCfg().valor), auxilio_alimentacao_pago_em: ts };
+  } else {
+    payload = { auxilio_alimentacao_pago: false, auxilio_alimentacao_pago_em: null };
+  }
+  const { error } = await sb.from('sime_veiculos_disposicao').update(payload).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
+  Object.assign(v, payload);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log(marcarPago ? 'veiculo_disposicao_auxilio_pago' : 'veiculo_disposicao_auxilio_despago', '', { veiculo_id: id, motorista: v.motorista_nome, placa: v.placa, valor: v.auxilio_alimentacao_valor_pago, autor });
+  showToast(marcarPago ? '✓ Marcado como pago' : '↺ Voltou a pendente');
+  return true;
+}
+
+async function raTogglePagoVeiculo(id, marcarPago) {
+  const valorEl = document.getElementById(`ra-vd-valor-${id}`);
+  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  await raTogglePagoVeiculoCore(id, marcarPago, valorDigitado);
+  renderControleVeiculos();
+}
+
+async function raModalTogglePagoVeiculo(id, marcarPago) {
+  const valorEl = document.getElementById('ra-vd-modal-valor');
+  const valorDigitado = valorEl ? parseFloat(String(valorEl.value).replace(',', '.')) : NaN;
+  await raTogglePagoVeiculoCore(id, marcarPago, valorDigitado);
+  renderControleVeiculos();
+  raRerenderModalVeiculoSeAberto(id);
+}
+
+async function raSalvarValorPagoVeiculoCore(id, valor) {
+  const v = raVeiculoPorId(id);
+  if (!v || Number(v.auxilio_alimentacao_valor_pago) === valor) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_veiculos_disposicao').update({ auxilio_alimentacao_valor_pago: valor }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  v.auxilio_alimentacao_valor_pago = valor;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('veiculo_disposicao_auxilio_valor_editado', '', { veiculo_id: id, motorista: v.motorista_nome, placa: v.placa, valor, autor });
+}
+
+async function raSalvarValorPagoVeiculo(id, valorStr) {
+  const valor = parseFloat(String(valorStr).replace(',', '.'));
+  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); renderControleVeiculos(); return; }
+  await raSalvarValorPagoVeiculoCore(id, valor);
+}
+
+async function raModalSalvarValorPagoVeiculo(id, valorStr) {
+  const valor = parseFloat(String(valorStr).replace(',', '.'));
+  if (!(valor >= 0)) { showToast('⚠ Valor inválido'); raRerenderModalVeiculoSeAberto(id); return; }
+  await raSalvarValorPagoVeiculoCore(id, valor);
+  renderControleVeiculos();
+  raRerenderModalVeiculoSeAberto(id); // redesenha o QR com o valor novo
+}
+
+// PIX salvo exatamente como digitado (mesma convenção de sime_atores.pix).
+async function raSalvarPixVeiculo(id) {
+  const campo = document.getElementById('ra-vd-modal-pix');
+  if (!campo) return;
+  const pix = campo.value.trim();
+  const v = raVeiculoPorId(id);
+  if (!v || pix === (v.pix || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_veiculos_disposicao').update({ pix: pix || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  v.pix = pix || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('veiculo_disposicao_pix_editado', '', { veiculo_id: id, motorista: v.motorista_nome, pix: v.pix, autor });
+  showToast('✓ Chave PIX salva');
+  raRerenderModalVeiculoSeAberto(id); // redesenha o QR com a chave nova
+}
+
+// #modal-body é compartilhado por vários modais da página — só redesenha o
+// modal do motorista se ELE ainda é o que está aberto (marcador no próprio
+// HTML; outro modal, ao abrir, substitui o innerHTML e o marcador some).
+function raRerenderModalVeiculoSeAberto(id) {
+  if (raModalVeiculoId !== id) return;
+  const marcador = document.getElementById('ra-vd-modal-marker');
+  const overlayAberto = document.getElementById('overlay')?.classList.contains('open');
+  if (!marcador || marcador.dataset.id !== id || !overlayAberto) return;
+  raRenderModalVeiculo();
+}
+
+function raAbrirModalVeiculo(id) {
+  raModalId = null; // garante que um salvamento pendente do modal por pessoa não redesenhe por cima deste
+  raModalVeiculoId = id;
+  document.getElementById('overlay')?.classList.add('open');
+  raRenderModalVeiculo();
+}
+
+function raFecharModalVeiculo(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay')?.classList.remove('open');
+    raModalVeiculoId = null;
+  }
+}
+
+function raRenderModalQrVeiculo(v, valorAtual) {
+  const el = document.getElementById('ra-vd-modal-qr');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!v.pix || !window.QRCode) return;
+  const payload = raPixPayload(raPixChaveNormalizada(v.pix), v.motorista_nome, raDados?.zona?.municipio, valorAtual, raVdDescricao(v));
+  if (!payload) return;
+  try {
+    new QRCode(el, { text: payload, width: 190, height: 190, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } catch (e) { /* payload malformado — nunca trava o modal por causa do QR */ }
+}
+
+function raRenderModalVeiculo() {
+  const modal = document.getElementById('modal-body');
+  if (!modal) return;
+  modal.classList.remove('cm-modal-wide'); // defensivo — #modal-body é compartilhado
+  const v = raVeiculoPorId(raModalVeiculoId);
+  if (!v) { modal.innerHTML = ''; return; }
+  const cfg = raCfg();
+  const valorAtual = raVdValorAtual(v, cfg);
+  const chaveQr = v.pix ? raPixChaveNormalizada(v.pix) : '';
+  const chaveQrMudou = v.pix && chaveQr !== String(v.pix).trim();
+  const wa = raVdLinkWhatsApp(v);
+
+  modal.innerHTML = `
+    <div id="ra-vd-modal-marker" data-id="${raEsc(v.id)}" style="display:none"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <div style="font-weight:800">${raEsc(v.motorista_nome)}</div>
+        <div class="ic-sub" style="margin-bottom:0">Motorista de repartição — ${raEsc(v.veiculo || 'Veículo')}${v.placa ? ` · Placa <b class="mono">${raEsc(v.placa)}</b>` : ''}</div>
+        <div class="ic-sub" style="margin-bottom:0">${raEsc(v.lotacao || '—')} · ${raEsc(v.municipio || '—')}</div>
+        <div class="ic-sub" style="margin-bottom:0">Telefone: ${v.motorista_telefone ? (wa || raEsc(v.motorista_telefone)) : '—'}</div>
+      </div>
+      <button onclick="raFecharModalVeiculo()" aria-label="Fechar" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text2);line-height:1">✕</button>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label>Chave PIX</label>
+      <input id="ra-vd-modal-pix" type="text" value="${raEsc(v.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="raSalvarPixVeiculo('${v.id}')">
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
+      <label style="font-size:.72rem;color:var(--text2)">Valor
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+          <span style="font-size:.85rem">R$</span>
+          <input id="ra-vd-modal-valor" type="text" value="${valorAtual.toFixed(2)}" onblur="raModalSalvarValorPagoVeiculo('${v.id}', this.value)" style="width:90px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+        </div>
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
+        <input type="checkbox" ${v.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raModalTogglePagoVeiculo('${v.id}', this.checked)"> PIX feito
+      </label>
+    </div>
+    ${v.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(v.auxilio_alimentacao_pago_em))}</div>` : ''}
+
+    <div style="margin-top:4px;text-align:center">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📱 QR Code do PIX</label>
+      <div id="ra-vd-modal-qr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>
+      ${v.pix
+        ? `<div class="ic-sub" style="margin:6px 0 0">${raEsc(raFmtValor(valorAtual))} — ${raEsc(raVdDescricao(v))}</div>
+           ${chaveQrMudou ? `<div class="ic-sub" style="margin:2px 0 0">🔧 chave usada no QR: <b>${raEsc(chaveQr)}</b> — ajustada pro formato que o banco reconhece</div>` : ''}`
+        : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>'}
+    </div>
+
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn btn-out" onclick="raFecharModalVeiculo()">Fechar</button>
+    </div>
+  `;
+  raRenderModalQrVeiculo(v, valorAtual);
+}
+
 // ── Sub-abas: Impressão × Controle de pagamento (29/09/2026, pedido
 // direto: "melhore a aba de auxilio alimentação, com uma parte separada só
 // para impressão"). Antes, os 4 cards de gerar recibo e o card de controle
@@ -1289,6 +1601,8 @@ function renderReciboAlimentacao() {
     </div>
 
     ${raSubTab === 'pagamento' ? raHtmlSecaoPagamento() : raHtmlSecaoImpressao(cfg)}
+    ${raSubTab === 'pagamento' ? raHtmlSecaoVeiculos() : ''}
   `;
   if (raSubTab === 'pagamento') renderControlePagamento();
+  if (raSubTab === 'pagamento') renderControleVeiculos();
 }
