@@ -1006,6 +1006,168 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 18. Frequência e Devolução da mesa — modal "❌ Faltou" (06/10/2026,
+// pedido direto: "quando marcar em faltou, deve abrir um modal para
+// indicar qual membro da mesa faltou e não foi substituido" + "tambem
+// pode acontecer de faltar o recibo e a mesa funcionar completa").
+// Usa a seção 63 (mock, mesa completa — Presidente m5/1º Mesário m6/2º
+// Mesário m7/1º Secretário m8), com o Presidente já pago R$260. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const pres = m.sime_atores.find(a => a.id === 'm5');
+  pres.auxilio_alimentacao_pago = true;
+  pres.auxilio_alimentacao_valor_pago = 260;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.waitForTimeout(300);
+
+  const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
+  check('linha do Presidente tem botão ❌ Faltou (abre modal, não marca direto)', await linhaPresidente.locator('button:has-text("❌ Faltou")').count() === 1);
+  check('linha do Presidente tem botão 👥 Todos presentes', await linhaPresidente.locator('button:has-text("👥 Todos presentes")').count() === 1);
+
+  // Abre o modal e marca 2 dos 4 como faltou (1º Mesário e 1º Secretário).
+  await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
+  await p.waitForTimeout(250);
+  check('modal abre com os 4 cargos da mesa', await p.locator('#modal-body label:has-text("Presidente — PRESIDENTE MARIA")').count() === 1
+    && await p.locator('#modal-body label:has-text("1º Mesário — JOAO PEDRO")').count() === 1
+    && await p.locator('#modal-body label:has-text("2º Mesário — ANA CAROLINA")').count() === 1
+    && await p.locator('#modal-body label:has-text("1º Secretário — FRANCISCO")').count() === 1);
+  check('checkbox de recibo ausente também está no modal, desmarcado', await p.locator('#modal-body label:has-text("Recibo não foi assinado")').locator('input[type=checkbox]').isChecked() === false);
+
+  await p.locator('#modal-body label:has-text("1º Mesário — JOAO PEDRO")').locator('input[type=checkbox]').check();
+  await p.locator('#modal-body label:has-text("1º Secretário — FRANCISCO")').locator('input[type=checkbox]').check();
+  await p.click('#modal-body button:has-text("💾 Salvar")');
+  await p.waitForTimeout(300);
+
+  const escritas1 = await p.evaluate(() => window.__mock.escritas);
+  const updFreq = escritas1.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && 'auxilio_alimentacao_frequencia' in e.payload);
+  check('grava faltou pro 1º Mesário (m6) e pro 1º Secretário (m8)',
+    updFreq.some(u => u.filtro.id === 'm6' && u.payload.auxilio_alimentacao_frequencia === 'faltou') &&
+    updFreq.some(u => u.filtro.id === 'm8' && u.payload.auxilio_alimentacao_frequencia === 'faltou'), JSON.stringify(updFreq));
+  check('grava presente pro Presidente (m5) e pro 2º Mesário (m7) — quem não foi marcado no modal',
+    updFreq.some(u => u.filtro.id === 'm5' && u.payload.auxilio_alimentacao_frequencia === 'presente') &&
+    updFreq.some(u => u.filtro.id === 'm7' && u.payload.auxilio_alimentacao_frequencia === 'presente'), JSON.stringify(updFreq));
+
+  const txtApos = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
+  check('resumo da linha mostra 2 de 4 membro(s) faltou(aram), devolver R$ 130,00 (260÷4×2)', /2 de 4 membro\(s\) da mesa faltou\(aram\).*deve devolver R\$ 130,00/.test(txtApos), txtApos);
+  check('resumo cita R$ 65,00 por membro', /R\$ 65,00 por membro/.test(txtApos), txtApos);
+  const resumoLeitura = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
+  check('resumo só-leitura abaixo da linha mostra quem faltou, com "não substituído"', /1º Mesário.*JOAO PEDRO.*faltou, não substituído/.test((await resumoLeitura.textContent()).replace(/\s+/g, ' ')));
+
+  check('botão "✅ Marcar devolvido" aparece (deve devolver > 0)', await linhaPresidente.locator('button:has-text("✅ Marcar devolvido")').count() === 1);
+  await linhaPresidente.locator('button:has-text("✅ Marcar devolvido")').click();
+  await p.waitForTimeout(300);
+  const escritasDev = await p.evaluate(() => window.__mock.escritas);
+  const logDev = escritasDev.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'mesario_auxilio_alimentacao_devolvido');
+  check('log de devolução grava o valor PROPORCIONAL (130), não o pago inteiro (260)', !!logDev && logDev.payload.payload.valor === 130, JSON.stringify(logDev));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 18b. Reabrir o modal mostra o que já foi marcado; "👥 Todos presentes"
+// não passa pelo modal e zera a devolução ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const pres = m.sime_atores.find(a => a.id === 'm5');
+  pres.auxilio_alimentacao_pago = true;
+  pres.auxilio_alimentacao_valor_pago = 260;
+  m.sime_atores.find(a => a.id === 'm6').auxilio_alimentacao_frequencia = 'faltou';
+  m.sime_atores.find(a => a.id === 'm7').auxilio_alimentacao_frequencia = 'presente';
+  m.sime_atores.find(a => a.id === 'm8').auxilio_alimentacao_frequencia = 'presente';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.waitForTimeout(300);
+
+  const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
+  await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
+  await p.waitForTimeout(250);
+  check('reabrir o modal já mostra o 1º Mesário marcado como faltou', await p.locator('#modal-body label:has-text("1º Mesário — JOAO PEDRO")').locator('input[type=checkbox]').isChecked() === true);
+  check('e os outros 3 desmarcados', await p.locator('#modal-body label:has-text("Presidente — PRESIDENTE MARIA")').locator('input[type=checkbox]').isChecked() === false);
+  await p.click('#modal-body button:has-text("Cancelar")');
+  await p.waitForTimeout(200);
+  check('cancelar fecha sem gravar nada', await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_atores').length) === 0);
+
+  await linhaPresidente.locator('button:has-text("👥 Todos presentes")').click();
+  await p.waitForTimeout(300);
+  // "Cancelar" só esconde o overlay (classe "open") — igual a todo outro modal
+  // da página, nunca limpa #modal-body no fechamento — então checar o overlay
+  // em si é o jeito certo de confirmar que "Todos presentes" não reabriu nada,
+  // não contar <label> (que ficariam do modal anterior, só visualmente ocultos).
+  check('"Todos presentes" nunca abre o modal', await p.evaluate(() => !document.getElementById('overlay').classList.contains('open')));
+  const txtDepois = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
+  check('depois de "Todos presentes", some o aviso de deve devolver', !/deve devolver/.test(txtDepois), txtDepois);
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 18c. Recibo ausente — mesa completa, mas a folha não foi recolhida:
+// nunca gera devolução, entra no resumo/filtro próprio ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const pres = m.sime_atores.find(a => a.id === 'm5');
+  pres.auxilio_alimentacao_pago = true;
+  pres.auxilio_alimentacao_valor_pago = 260;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.waitForTimeout(300);
+
+  const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
+  await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
+  await p.waitForTimeout(250);
+  // Marca só o recibo — ninguém faltou.
+  await p.locator('#modal-body label:has-text("Recibo não foi assinado")').locator('input[type=checkbox]').check();
+  await p.click('#modal-body button:has-text("💾 Salvar")');
+  await p.waitForTimeout(300);
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const updRecibo = escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && 'auxilio_alimentacao_recibo_ausente' in e.payload);
+  check('grava recibo ausente=true na linha do Presidente', updRecibo?.payload.auxilio_alimentacao_recibo_ausente === true, JSON.stringify(updRecibo));
+  const updFreqNinguem = escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && 'auxilio_alimentacao_frequencia' in e.payload);
+  check('mesa completa: todos os 4 gravados como presente (não "faltou")', updFreqNinguem.every(u => u.payload.auxilio_alimentacao_frequencia === 'presente') && updFreqNinguem.length === 4, JSON.stringify(updFreqNinguem));
+
+  const txt = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
+  check('nunca mostra "deve devolver" — ninguém faltou', !/deve devolver/.test(txt), txt);
+  check('resumo geral cita "1 com recibo ausente"', /1 com recibo ausente/.test(txt), txt);
+  check('card da seção mostra a nota de recibo ausente', /Recibo não foi assinado\/recolhido — mesa funcionou completa/.test(txt), txt);
+
+  // Filtro "📄 Recibo ausente" mostra só esta seção.
+  await p.locator('#ra-controle-devolucao select').nth(0).selectOption('recibo_ausente');
+  await p.waitForTimeout(250);
+  const txtFiltro = (await p.locator('#ra-controle-devolucao').textContent()).replace(/\s+/g, ' ');
+  check('filtro "recibo ausente" mostra o Presidente da seção 63', /PRESIDENTE MARIA DA SILVA/.test(txtFiltro));
+  check('e não mostra quem não tem recibo ausente marcado', !/COORDENADORA BEATRIZ/.test(txtFiltro), txtFiltro);
+
+  // Desmarcar de volta.
+  await p.locator('#ra-controle-devolucao select').nth(0).selectOption('');
+  await p.waitForTimeout(200);
+  await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
+  await p.waitForTimeout(250);
+  check('reabrir o modal mostra o recibo ainda marcado como ausente', await p.locator('#modal-body label:has-text("Recibo não foi assinado")').locator('input[type=checkbox]').isChecked() === true);
+  await p.locator('#modal-body label:has-text("Recibo não foi assinado")').locator('input[type=checkbox]').uncheck();
+  await p.click('#modal-body button:has-text("💾 Salvar")');
+  await p.waitForTimeout(300);
+  const escritas2 = await p.evaluate(() => window.__mock.escritas);
+  const updDesmarca = escritas2.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && 'auxilio_alimentacao_recibo_ausente' in e.payload).pop();
+  check('desmarcar grava recibo ausente=false', updDesmarca?.payload.auxilio_alimentacao_recibo_ausente === false, JSON.stringify(updDesmarca));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

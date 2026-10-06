@@ -9109,6 +9109,84 @@ toast em vez de imprimir vazio.
 > Corredores; não é uma seção real a mais. Um PDF com esses dados reais foi
 > gerado e entregue ao dono do projeto na mesma sessão.
 
+---
+
+## "❌ FALTOU" ABRE MODAL POR MEMBRO; RECIBO AUSENTE COM MESA COMPLETA (`sime_recibo_alimentacao.js`, 06/10/2026)
+
+Dois pedidos diretos em sequência, sobre a aba "🍽️ Auxílio Alimentação" →
+"📋 Frequência e Devolução" (já existente desde 06/10/2026 mais cedo, com
+devolução proporcional por membro — "valor pago ÷ 4 cargos × quantos
+faltaram" — e um par de botões soltos "✅ Presente"/"❌ Faltou" por membro
+exibido direto no card):
+
+1. "quando marcar em faltou, deve abrir um modal para indicar qual membro
+   da mesa faltou e não foi substituido" — clicar "❌ Faltou" precisava
+   perguntar QUAL dos 4 cargos (Presidente/1º Mesário/2º Mesário/1º
+   Secretário) faltou, não assumir que foi o Presidente da própria linha
+   (a linha da lista é sempre a do Presidente — mesário comum nunca
+   aparece em "Frequência e Devolução", mesmo filtro de pagamento já
+   documentado em "CONTROLE DE PAGAMENTO DO AUXÍLIO ALIMENTAÇÃO" acima —
+   então marcar "faltou" direto na linha sempre faltaria contra a pessoa
+   errada quando quem faltou foi outro cargo da mesma mesa).
+2. "tambem pode acontecer de faltar o recibo e a mesa funcionar completa"
+   — cenário distinto, que nunca deveria gerar devolução nenhuma: a mesa
+   toda trabalhou, só o papel físico não foi assinado/recolhido.
+
+**`raHtmlMembrosMesa` (botões ✅/❌ por membro, direto no card) virou
+`raHtmlResumoMesa` — só leitura.** Os 4 pares de botão por cargo saíram;
+no lugar, um resumo visual (✅/❌/➖ por cargo, com "(faltou, não
+substituído)" no nome de quem está marcado) e, quando aplicável, a nota
+"📄 Recibo não foi assinado/recolhido — mesa funcionou completa." Editar
+qualquer uma das duas coisas passou a ser só pelo modal novo.
+
+**Modal "❌ Faltou" (`raAbrirModalFalta`/`raRenderModalFalta`/
+`raConfirmarModalFalta`)** — reaproveita o mesmo `#overlay`/`#modal-body`
+compartilhado da página (mesmo padrão de `raAbrirModal`/
+`raAbrirModalVeiculo`, zerando `raModalId`/`raModalVeiculoId` ao abrir,
+pra um salvamento pendente de outro modal não redesenhar por cima deste).
+Mostra um checkbox por cargo (marcado = faltou, desmarcado = presente —
+"quem não for marcado é considerado presente", nunca force a escolher os
+4) mais um checkbox separado pro recibo ausente, com a mesma nota explícita
+já no pedido: "Nunca gera devolução — é só uma pendência de documentação,
+independente de quem compareceu." `raConfirmarModalFalta()` só grava quem
+de fato mudou (um UPDATE por pessoa, via `raMarcarFrequenciaCore()` — o
+mesmo caminho/log que a ação rápida antiga usava, pra continuar entrando
+certinho em "📜 Atualizações") e, separadamente, o recibo ausente **só na
+linha do Presidente** (mesma linha que já guarda pix/documento/valor_pago
+da seção) — nunca grava quando não muda, mesmo critério de sempre.
+
+**`auxilio_alimentacao_recibo_ausente`** (novo, `sime_atores`, boolean
+default `false`, `ALTER TABLE ADD COLUMN IF NOT EXISTS` — idempotente,
+aplicado via `mcp__Supabase__apply_migration`) — flag própria da seção
+(gravada no Presidente), **nunca** um valor de `auxilio_alimentacao_
+frequencia`: faltar o recibo e faltar um membro são dois sinais
+ortogonais (uma mesa completa pode ter o papel sumido; um membro pode
+faltar com o recibo dos outros 3 assinado normalmente) — misturar os dois
+no mesmo campo exigiria inventar um estado sem sentido tipo "faltou E tá
+tudo presente". `raMesaReciboAusente(secaoId)` (nova) só lê o Presidente
+da seção; `raMesaPresidente(secaoId)` (nova) é o helper que resolve isso.
+
+**Filtro "📄 Recibo ausente (mesa completa)"** — sexta opção em
+`RA_DEV_SITUACAO_FILTRO`, isola quem tem a flag marcada (`raMesaReciboAusente`),
+independente de frequência — útil pro cartório cobrar fisicamente o papel
+sem misturar com a fila de devolução. Resumo do topo (`raDevResumo()`)
+ganha a contagem "N com recibo ausente" ao lado do que já existia.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 18-18c, 202
+checks no total no arquivo): botão "❌ Faltou" sempre abre o modal (nunca
+marca direto); modal lista os 4 cargos + checkbox de recibo; marcar 2
+cargos grava `faltou` nos dois e `presente` nos outros 2 (nunca tocados
+antes), com devolução proporcional (R$130 = 260÷4×2, não os R$260
+inteiros); reabrir o modal reflete o estado persistido; "Cancelar" não
+grava nada; "👥 Todos presentes" (ação rápida que já existia, sem modal)
+continua funcionando igual e nunca abre o modal — verificado checando a
+classe `open` do `#overlay`, não a presença de `<label>` em `#modal-body`
+(que nunca é limpo ao fechar um modal nesta página, mesmo padrão de
+`raFecharModal`/`cmFecharModal` — comportamento normal, não bug); marcar
+só o recibo ausente (mesa completa) grava a flag, mantém os 4 cargos como
+`presente`, nunca mostra "deve devolver", aparece no resumo e no filtro
+dedicado, e desmarcar grava `false` de volta.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

@@ -164,7 +164,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_recibo_ausente, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -1586,9 +1586,19 @@ function renderControlePagamento() {
 // fim da lista, nunca escondido. ──
 let raDevBusca = '';
 let raDevBuscaTimer = null;
-let raDevFiltroSituacao = ''; // '' | 'presente' | 'deve_devolver' | 'devolvido' | 'sem_marcar'
+let raDevFiltroSituacao = ''; // '' | 'presente' | 'deve_devolver' | 'devolvido' | 'sem_marcar' | 'recibo_ausente'
 let raDevFiltroFuncao = '';
 let raDevFiltroMunicipio = '';
+
+// Modal "❌ Faltou" da mesa (06/10/2026) — estado só dele, separado de
+// `raModalId`/`raModalVeiculoId` (os outros dois modais que já dividem o
+// mesmo #modal-body). `raModalFaltaSelecionados` guarda, por id de ator,
+// se o checkbox "faltou" está marcado NA SESSÃO DO MODAL — só grava no
+// banco quando o cartório confirma, pra dar pra marcar vários de uma vez
+// (e cancelar) sem ficar disparando update a cada clique.
+let raModalFaltaSecaoId = null;
+let raModalFaltaSelecionados = {};
+let raModalFaltaReciboAusente = false;
 
 // Mesa receptora é um caso especial — só o Presidente recebe o pagamento
 // (R$260, pra repassar aos outros 3 em mãos — ver `raDados.todos` em
@@ -1614,6 +1624,18 @@ function raMesaNenhumMarcado(secaoId) {
 }
 function raQtdFaltantesMesa(secaoId) {
   return raMesaMembros(secaoId).filter(m => m.auxilio_alimentacao_frequencia === 'faltou').length;
+}
+function raMesaPresidente(secaoId) {
+  return raMesaMembros(secaoId).find(m => m.funcao_mesa === 'Presidente');
+}
+// "Recibo ausente" (06/10/2026, pedido direto: "tambem pode acontecer de
+// faltar o recibo e a mesa funcionar completa") — flag independente da
+// frequência: a folha física de assinatura não foi recolhida, mesmo com os
+// 4 cargos presentes. Gravada só na linha do Presidente (mesma linha que já
+// carrega pix/documento da seção) — nunca afeta `raDeveDevolver`, é só uma
+// pendência de documentação.
+function raMesaReciboAusente(secaoId) {
+  return !!raMesaPresidente(secaoId)?.auxilio_alimentacao_recibo_ausente;
 }
 // Valor por membro é sempre o pago ao Presidente ÷ 4 cargos — não ÷ pelo
 // nº de membros efetivamente cadastrados, pra não inflar o valor por
@@ -1663,6 +1685,7 @@ function raDevFiltrar() {
       const ok = a.funcao === 'mesario' ? raMesaNenhumMarcado(a.secao_id) : !a.auxilio_alimentacao_frequencia;
       if (!ok) return false;
     }
+    if (raDevFiltroSituacao === 'recibo_ausente' && !(a.funcao === 'mesario' && raMesaReciboAusente(a.secao_id))) return false;
     if (q) {
       const secaoTxt = a.sec ? String(a.sec.numero) : '';
       if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
@@ -1686,6 +1709,7 @@ function raDevResumo() {
     jaDevolveram: jaDevolveramLista.length,
     totalDevolvido: jaDevolveramLista.reduce((s, a) => s + raValorADevolver(a), 0),
     semMarcar: todos.filter(a => a.funcao === 'mesario' ? raMesaNenhumMarcado(a.secao_id) : !a.auxilio_alimentacao_frequencia).length,
+    reciboAusente: todos.filter(a => a.funcao === 'mesario' && raMesaReciboAusente(a.secao_id)).length,
   };
 }
 
@@ -1753,6 +1777,120 @@ async function raMarcarPresencaMesa(secaoId) {
   renderControleDevolucao();
 }
 
+// Modal "❌ Faltou" (06/10/2026, pedido direto: "quando marcar em faltou,
+// deve abrir um modal para indicar qual membro da mesa faltou e não foi
+// substituido" + "tambem pode acontecer de faltar o recibo e a mesa
+// funcionar completa") — ponto único pra editar a frequência dos 4 cargos
+// E o recibo ausente de uma seção, em vez de 4 pares de botão solto
+// (ver `raHtmlResumoMesa`, que virou só leitura). Reaproveita o mesmo
+// #overlay/#modal-body compartilhado da página (`raAbrirModal`/
+// `raAbrirModalVeiculo` já usam o mesmo elemento).
+function raAbrirModalFalta(secaoId) {
+  raModalId = null; // garante que um salvamento pendente do modal por pessoa não redesenhe por cima deste
+  raModalVeiculoId = null;
+  raModalFaltaSecaoId = secaoId;
+  const membros = raMesaMembros(secaoId);
+  raModalFaltaSelecionados = {};
+  for (const m of membros) raModalFaltaSelecionados[m.id] = m.auxilio_alimentacao_frequencia === 'faltou';
+  raModalFaltaReciboAusente = raMesaReciboAusente(secaoId);
+  document.getElementById('overlay')?.classList.add('open');
+  raRenderModalFalta();
+}
+
+function raFecharModalFalta(e) {
+  if (!e || e.target === document.getElementById('overlay')) {
+    document.getElementById('overlay')?.classList.remove('open');
+    raModalFaltaSecaoId = null;
+  }
+}
+
+function raModalFaltaToggleMembro(atorId, checked) {
+  raModalFaltaSelecionados[atorId] = checked;
+}
+function raModalFaltaToggleRecibo(checked) {
+  raModalFaltaReciboAusente = checked;
+}
+
+function raRenderModalFalta() {
+  const modal = document.getElementById('modal-body');
+  if (!modal) return;
+  modal.classList.remove('cm-modal-wide'); // defensivo — #modal-body é compartilhado
+  const secaoId = raModalFaltaSecaoId;
+  const membros = raMesaMembros(secaoId)
+    .slice()
+    .sort((x, y) => RA_ORDEM_MESA.indexOf(x.funcao_mesa) - RA_ORDEM_MESA.indexOf(y.funcao_mesa));
+  if (!membros.length) { modal.innerHTML = ''; return; }
+  const sec = membros[0].sec;
+
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <div style="font-weight:800">Frequência da mesa${sec ? ` — Seção ${sec.numero}` : ''}</div>
+        <div class="ic-sub" style="margin-bottom:0">${sec ? `${raEsc(sec.local_nome || '')}, ${raEsc(sec.municipio || '')}` : ''}</div>
+      </div>
+      <button onclick="raFecharModalFalta()" aria-label="Fechar" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text2);line-height:1">✕</button>
+    </div>
+    <div class="ic-sub" style="margin-top:8px">Marque quem faltou e não foi substituído — o valor a devolver é
+      calculado sozinho (valor pago ÷ 4 × quantos ficarem marcados aqui). Quem não for marcado é considerado
+      presente.</div>
+
+    <div class="form-group" style="margin-top:10px">
+      ${membros.map(m => `
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 0;cursor:pointer">
+          <input type="checkbox" ${raModalFaltaSelecionados[m.id] ? 'checked' : ''} onchange="raModalFaltaToggleMembro('${m.id}', this.checked)">
+          <span>${raEsc(m.funcao_mesa || raFuncaoLabel(m))} — ${raEsc(m.nome_completo)}</span>
+        </label>`).join('')}
+    </div>
+
+    <div style="margin:10px 0 4px;padding-top:10px;border-top:1px solid var(--border2)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" ${raModalFaltaReciboAusente ? 'checked' : ''} onchange="raModalFaltaToggleRecibo(this.checked)">
+        <span>📄 Recibo não foi assinado/recolhido (mesmo com a mesa completa)</span>
+      </label>
+      <div class="ic-sub" style="margin:4px 0 0 26px">Nunca gera devolução — é só uma pendência de documentação, independente de quem compareceu.</div>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-out" onclick="raFecharModalFalta()">Cancelar</button>
+      <button class="btn btn-dark" onclick="raConfirmarModalFalta()">💾 Salvar</button>
+    </div>`;
+}
+
+async function raConfirmarModalFalta() {
+  const secaoId = raModalFaltaSecaoId;
+  if (!secaoId) return;
+  const sb = window.supabaseAtores;
+  const membros = raMesaMembros(secaoId);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+
+  // Frequência — só grava quem de fato mudou (nunca reescreve à toa quem já
+  // estava marcado igual), um UPDATE por pessoa (mesmo caminho/log de
+  // `raMarcarFrequenciaCore`, pra entrar certinho em "📜 Atualizações").
+  for (const m of membros) {
+    const faltou = !!raModalFaltaSelecionados[m.id];
+    const nova = faltou ? 'faltou' : 'presente';
+    if (m.auxilio_alimentacao_frequencia !== nova) {
+      const ok = await raMarcarFrequenciaCore(m.id, nova);
+      if (!ok) return; // erro já mostrado pelo toast de dentro; mantém o modal aberto pra tentar de novo
+    }
+  }
+
+  // Recibo ausente só é gravado na linha do Presidente (mesma linha que já
+  // carrega pix/documento/valor_pago da seção) — nunca grava quando não
+  // mudou, mesmo critério de sempre.
+  const presidente = membros.find(m => m.funcao_mesa === 'Presidente');
+  if (presidente && !!presidente.auxilio_alimentacao_recibo_ausente !== raModalFaltaReciboAusente) {
+    const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_recibo_ausente: raModalFaltaReciboAusente }).eq('id', presidente.id);
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+    presidente.auxilio_alimentacao_recibo_ausente = raModalFaltaReciboAusente;
+    await log('mesario_auxilio_alimentacao_recibo_ausente', '', { ator_id: presidente.id, secao_id: secaoId, recibo_ausente: raModalFaltaReciboAusente, autor });
+  }
+
+  showToast('✓ Frequência da mesa atualizada');
+  raFecharModalFalta();
+  renderControleDevolucao();
+}
+
 // Devolução — grava a data/hora da devolução; desmarcar limpa a data mas
 // nunca apaga `frequencia`/`pago` (são sinais independentes).
 async function raToggleDevolvidoCore(atorId, marcarDevolvido) {
@@ -1786,29 +1924,34 @@ const RA_DEV_SITUACAO_FILTRO = [
   { valor: 'devolvido', label: '✅ Já devolveu' },
   { valor: 'presente', label: 'Presente' },
   { valor: 'sem_marcar', label: 'Sem frequência marcada' },
+  { valor: 'recibo_ausente', label: '📄 Recibo ausente (mesa completa)' },
 ];
 
-// Linha de cada um dos 4 cargos da mesa (Presidente/1º Mesário/2º
-// Mesário/1º Secretário), com toggle individual — é o que permite marcar
-// que 1, 2 ou 3 membros faltaram, nunca só "a mesa toda" ou "só o
-// Presidente". Mostrada SEMPRE abaixo da linha do Presidente (ele também
-// aparece aqui, como qualquer outro cargo — a linha de cima só existe
-// porque é a que carrega o pagamento/PIX).
-function raHtmlMembrosMesa(secaoId) {
+// Resumo SÓ LEITURA dos 4 cargos da mesa — editar quem faltou é sempre pelo
+// modal (06/10/2026, pedido direto: "quando marcar em faltou, deve abrir um
+// modal para indicar qual membro da mesa faltou e não foi substituido").
+// Antes disso cada cargo tinha seu próprio par de botões Presente/Faltou
+// sempre visível aqui embaixo — virou um botão só (❌ Faltou, na linha do
+// Presidente) que abre o modal com os 4 de uma vez; esta função só mostra o
+// que já foi marcado, pra não precisar reabrir o modal só pra conferir.
+// Mostrada SEMPRE abaixo da linha do Presidente (ele também aparece aqui,
+// como qualquer outro cargo — a linha de cima só existe porque é a que
+// carrega o pagamento/PIX/recibo).
+function raHtmlResumoMesa(secaoId) {
   const membros = raMesaMembros(secaoId)
     .slice()
     .sort((x, y) => RA_ORDEM_MESA.indexOf(x.funcao_mesa) - RA_ORDEM_MESA.indexOf(y.funcao_mesa));
   if (!membros.length) return '';
+  const reciboAusente = raMesaReciboAusente(secaoId);
+  if (raMesaNenhumMarcado(secaoId) && !reciboAusente) return '';
   return `
-    <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;padding:7px 9px;background:var(--bg2);border-radius:7px">
+    <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px;padding:7px 9px;background:var(--bg2);border-radius:7px">
       ${membros.map(m => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-          <span style="font-size:.76rem">${raEsc(m.funcao_mesa || raFuncaoLabel(m))} — ${raEsc(m.nome_completo)}</span>
-          <span style="display:flex;gap:4px">
-            <button class="btn ${m.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:3px 7px;font-size:.7rem" onclick="raMarcarFrequencia('${m.id}', 'presente')">✅ Presente</button>
-            <button class="btn ${m.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:3px 7px;font-size:.7rem" onclick="raMarcarFrequencia('${m.id}', 'faltou')">❌ Faltou</button>
-          </span>
+        <div style="display:flex;align-items:center;gap:6px;font-size:.76rem">
+          <span>${m.auxilio_alimentacao_frequencia === 'faltou' ? '❌' : m.auxilio_alimentacao_frequencia === 'presente' ? '✅' : '➖'}</span>
+          <span>${raEsc(m.funcao_mesa || raFuncaoLabel(m))} — ${raEsc(m.nome_completo)}${m.auxilio_alimentacao_frequencia === 'faltou' ? ' (faltou, não substituído)' : ''}</span>
         </div>`).join('')}
+      ${reciboAusente ? `<div style="font-size:.76rem;color:var(--text2)">📄 Recibo não foi assinado/recolhido — mesa funcionou completa.</div>` : ''}
     </div>`;
 }
 
@@ -1818,9 +1961,11 @@ function raHtmlSecaoDevolucao() {
       <div class="ic-title" style="font-size:.85rem">📋 Frequência e Devolução</div>
       <div class="ic-sub">Marque quem compareceu (✅ Presente) e quem faltou (❌ Faltou). Pra Coordenador/Auxiliar/
         Junta é um pagamento individual — faltou e já recebeu, devolve o valor inteiro. Pra Mesa Receptora é
-        diferente: o Presidente recebe os R$ pra repassar aos outros 3 cargos, então cada um dos 4 (Presidente,
-        1º/2º Mesário, 1º Secretário) tem sua própria marcação — se 1, 2 ou 3 faltarem, o valor a devolver é
-        só a fração correspondente (valor pago ÷ 4 × quantos faltaram), não o pagamento inteiro.</div>
+        diferente: o Presidente recebe os R$ pra repassar aos outros 3 cargos, então "❌ Faltou" abre um modal
+        pra indicar qual(is) dos 4 (Presidente, 1º/2º Mesário, 1º Secretário) faltou e não foi substituído — o
+        valor a devolver é só a fração correspondente (valor pago ÷ 4 × quantos faltaram), não o pagamento
+        inteiro. Também pode acontecer de a mesa funcionar completa e só o recibo (a folha assinada) não ter
+        sido recolhido — isso não gera devolução nenhuma, é só marcado no mesmo modal pra não se perder.</div>
       <div id="ra-controle-devolucao" style="margin-top:8px"></div>
     </div>`;
 }
@@ -1842,7 +1987,7 @@ function renderControleDevolucao() {
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 8px">
       ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}
-      ${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda.
+      ${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda${resumo.reciboAusente ? ` · <b style="color:var(--text2)">📄 ${resumo.reciboAusente} com recibo ausente</b> (mesa completa, só falta o papel)` : ''}.
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <input type="text" id="ra-dev-busca" value="${raEsc(raDevBusca)}" oninput="raDevOnBuscaInput(this.value)" placeholder="Buscar por nome ou seção…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
@@ -1875,12 +2020,13 @@ function renderControleDevolucao() {
           <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             ${!ehMesa ? `<button class="btn ${a.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'presente')">✅ Presente</button>
             <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>` : ''}
-            ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez">👥 Todos presentes</button>` : ''}
+            ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez (nunca mexe no recibo)">👥 Todos presentes</button>
+            <button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raAbrirModalFalta('${a.secao_id}')" title="Indicar quem faltou e não foi substituído, ou marcar que só o recibo ficou faltando">❌ Faltou</button>` : ''}
             ${deve ? `<button class="btn btn-dark" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', true)">✅ Marcar devolvido</button>` : ''}
             ${a.auxilio_alimentacao_devolvido ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', false)">↺ Desfazer devolução</button>` : ''}
           </span>
         </div>
-        ${ehMesa ? raHtmlMembrosMesa(a.secao_id) : ''}
+        ${ehMesa ? raHtmlResumoMesa(a.secao_id) : ''}
       </div>`;
       }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
     </div>`;
