@@ -164,7 +164,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -1428,7 +1428,7 @@ function raRenderModalVeiculo() {
 // página; usar a mesma classe aqui faria esse seletor pegar estes botões
 // também) — nasce em "Impressão" (`raSubTab`), o mesmo comportamento de
 // sempre pra quem nunca trocou de sub-aba. ──
-let raSubTab = 'impressao'; // 'impressao' | 'pagamento'
+let raSubTab = 'impressao'; // 'impressao' | 'pagamento' | 'devolucao'
 
 function raMudarSubTab(t) {
   raSubTab = t;
@@ -1567,6 +1567,228 @@ function renderControlePagamento() {
   }
 }
 
+// ── Frequência (comparecimento) + devolução (05/10/2026, pedido direto:
+// "quero agora uma forma de controlar, em cada seção a frequencia para
+// marcar quais devem devolver o valor e controlar se se ja foi
+// devolvido") — ver sql/SIME_atores_frequencia_devolucao.sql. Terceira
+// sub-aba, ao lado de "🖨️ Impressão" e "💰 Controle de pagamento": aquelas
+// cobrem gerar o papel e saber quem já recebeu; esta cobre o passo de
+// trás — quem recebeu mas FALTOU precisa devolver o valor, e o cartório
+// precisa controlar se já devolveu.
+//
+// "Deve devolver" nunca é uma flag própria gravada no banco — é sempre
+// DERIVADO (frequência='faltou' E já pago E ainda não devolveu), pra
+// nunca divergir se o pagamento ou a frequência mudarem depois (ex.:
+// desmarcar "pago" por engano não deixaria uma flag "deve devolver"
+// órfã por aí). Lista ordenada por SEÇÃO (o pedido foi explícito "em
+// cada seção a frequência") e depois por nome — quem não tem seção
+// resolvida (coordenador sem local, auxiliar de eleição, junta) vai pro
+// fim da lista, nunca escondido. ──
+let raDevBusca = '';
+let raDevBuscaTimer = null;
+let raDevFiltroSituacao = ''; // '' | 'presente' | 'deve_devolver' | 'devolvido' | 'sem_marcar'
+let raDevFiltroFuncao = '';
+let raDevFiltroMunicipio = '';
+
+function raDeveDevolver(a) {
+  return a.auxilio_alimentacao_frequencia === 'faltou' && a.auxilio_alimentacao_pago && !a.auxilio_alimentacao_devolvido;
+}
+
+function raDevFiltrar() {
+  const q = raDevBusca.trim().toLowerCase();
+  return (raDados.todos || []).filter(a => {
+    if (raDevFiltroFuncao && a.funcao !== raDevFiltroFuncao) return false;
+    if (raDevFiltroMunicipio && (a.sec?.municipio || '') !== raDevFiltroMunicipio) return false;
+    if (raDevFiltroSituacao === 'presente' && a.auxilio_alimentacao_frequencia !== 'presente') return false;
+    if (raDevFiltroSituacao === 'deve_devolver' && !raDeveDevolver(a)) return false;
+    if (raDevFiltroSituacao === 'devolvido' && !a.auxilio_alimentacao_devolvido) return false;
+    if (raDevFiltroSituacao === 'sem_marcar' && a.auxilio_alimentacao_frequencia) return false;
+    if (q) {
+      const secaoTxt = a.sec ? String(a.sec.numero) : '';
+      if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => {
+    const na = a.sec ? a.sec.numero : Infinity;
+    const nb = b.sec ? b.sec.numero : Infinity;
+    if (na !== nb) return na - nb;
+    return a.nome_completo.localeCompare(b.nome_completo);
+  });
+}
+
+function raDevResumo() {
+  const todos = raDados.todos || [];
+  const deveDevolverLista = todos.filter(raDeveDevolver);
+  const jaDevolveramLista = todos.filter(a => a.auxilio_alimentacao_devolvido);
+  return {
+    deveDevolver: deveDevolverLista.length,
+    totalADevolver: deveDevolverLista.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0),
+    jaDevolveram: jaDevolveramLista.length,
+    totalDevolvido: jaDevolveramLista.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0),
+    semMarcar: todos.filter(a => !a.auxilio_alimentacao_frequencia).length,
+  };
+}
+
+function raDevOnBuscaInput(v) {
+  raDevBusca = v;
+  clearTimeout(raDevBuscaTimer);
+  raDevBuscaTimer = setTimeout(renderControleDevolucao, 250);
+}
+function raDevMudarFiltroSituacao(v) {
+  raDevFiltroSituacao = v;
+  renderControleDevolucao();
+}
+function raDevMudarFiltroFuncao(v) {
+  raDevFiltroFuncao = v;
+  renderControleDevolucao();
+}
+function raDevMudarFiltroMunicipio(v) {
+  raDevFiltroMunicipio = v;
+  renderControleDevolucao();
+}
+
+// Marcar frequência — toque único (presente/faltou), mesmo padrão de toda
+// ação rápida do projeto. Marcar "presente" nunca desfaz uma devolução já
+// registrada (histórico) — só deixa de contar como "deve devolver" porque
+// `raDeveDevolver` exige `frequencia==='faltou'`.
+async function raMarcarFrequenciaCore(atorId, frequencia) {
+  const sb = window.supabaseAtores;
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa) return false;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_frequencia: frequencia }).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
+  pessoa.auxilio_alimentacao_frequencia = frequencia;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_frequencia', '', { ator_id: atorId, nome: pessoa.nome_completo, frequencia, autor });
+  showToast(frequencia === 'presente' ? '✓ Marcado como presente' : '✓ Marcado como faltou');
+  return true;
+}
+async function raMarcarFrequencia(atorId, frequencia) {
+  await raMarcarFrequenciaCore(atorId, frequencia);
+  renderControleDevolucao();
+}
+
+// "Presença de toda a mesa" (05/10/2026, pedido direto) — a lista de
+// Frequência e Devolução só mostra o Presidente por seção (herda o mesmo
+// filtro de pagamento de `raDados.todos`: 1º/2º Mesário e 1º Secretário
+// nunca aparecem aqui, ver nota em `raCarregar`). Marcar frequência um a
+// um exigiria abrir os outros 3 cargos em outra tela — este botão marca
+// os 4 cargos da mesma seção de uma vez, lendo de `raDados.mesarios`
+// (lista cheia, não filtrada) em vez de `raDados.todos`.
+async function raMarcarPresencaMesa(secaoId) {
+  const membros = (raDados.mesarios || []).filter(a => a.secao_id === secaoId);
+  if (!membros.length) return;
+  const sb = window.supabaseAtores;
+  const ids = membros.map(a => a.id);
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_frequencia: 'presente' }).in('id', ids);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  for (const m of membros) m.auxilio_alimentacao_frequencia = 'presente';
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_frequencia_mesa', '', { secao_id: secaoId, quantidade: membros.length, autor });
+  showToast(`✓ Mesa inteira marcada como presente (${membros.length})`);
+  renderControleDevolucao();
+}
+
+// Devolução — grava a data/hora da devolução; desmarcar limpa a data mas
+// nunca apaga `frequencia`/`pago` (são sinais independentes).
+async function raToggleDevolvidoCore(atorId, marcarDevolvido) {
+  const sb = window.supabaseAtores;
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa) return false;
+  const payload = marcarDevolvido
+    ? { auxilio_alimentacao_devolvido: true, auxilio_alimentacao_devolvido_em: new Date().toISOString() }
+    : { auxilio_alimentacao_devolvido: false, auxilio_alimentacao_devolvido_em: null };
+  const { error } = await sb.from('sime_atores').update(payload).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
+  Object.assign(pessoa, payload);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log(marcarDevolvido ? 'mesario_auxilio_alimentacao_devolvido' : 'mesario_auxilio_alimentacao_devolvido_desfeito', '', { ator_id: atorId, nome: pessoa.nome_completo, valor: pessoa.auxilio_alimentacao_valor_pago, autor });
+  showToast(marcarDevolvido ? '✓ Devolução registrada' : '↺ Devolução desfeita');
+  return true;
+}
+async function raToggleDevolvido(atorId, marcarDevolvido) {
+  await raToggleDevolvidoCore(atorId, marcarDevolvido);
+  renderControleDevolucao();
+}
+
+const RA_DEV_SITUACAO_FILTRO = [
+  { valor: '', label: 'Todas as situações' },
+  { valor: 'deve_devolver', label: '⚠️ Deve devolver' },
+  { valor: 'devolvido', label: '✅ Já devolveu' },
+  { valor: 'presente', label: 'Presente' },
+  { valor: 'sem_marcar', label: 'Sem frequência marcada' },
+];
+
+function raHtmlSecaoDevolucao() {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem">📋 Frequência e Devolução</div>
+      <div class="ic-sub">Marque, por seção, quem compareceu (✅ Presente) e quem faltou (❌ Faltou). Quem faltou e
+        já tinha recebido o auxílio precisa devolver o valor — a lista destaca quem está nessa situação e deixa
+        registrar quando a devolução de fato aconteceu.</div>
+      <div id="ra-controle-devolucao" style="margin-top:8px"></div>
+    </div>`;
+}
+
+function renderControleDevolucao() {
+  const alvo = document.getElementById('ra-controle-devolucao');
+  if (!alvo) return;
+  const buscaEl = document.getElementById('ra-dev-busca');
+  const buscaAtiva = document.activeElement === buscaEl;
+  const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
+  const buscaSelEnd = buscaAtiva ? buscaEl.selectionEnd : null;
+
+  const lista = raDevFiltrar();
+  const resumo = raDevResumo();
+  const contagemFuncao = {};
+  for (const a of raDados.todos || []) contagemFuncao[a.funcao] = (contagemFuncao[a.funcao] || 0) + 1;
+  const municipios = [...new Set((raDados.todos || []).map(a => a.sec?.municipio).filter(Boolean))].sort();
+
+  alvo.innerHTML = `
+    <div class="ic-sub" style="margin:0 0 8px">
+      ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}
+      ${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda.
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <input type="text" id="ra-dev-busca" value="${raEsc(raDevBusca)}" oninput="raDevOnBuscaInput(this.value)" placeholder="Buscar por nome ou seção…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+      <select onchange="raDevMudarFiltroSituacao(this.value)" style="padding:8px 10px;border-radius:7px">
+        ${RA_DEV_SITUACAO_FILTRO.map(f => `<option value="${f.valor}" ${raDevFiltroSituacao === f.valor ? 'selected' : ''}>${f.label}</option>`).join('')}
+      </select>
+      <select onchange="raDevMudarFiltroFuncao(this.value)" style="padding:8px 10px;border-radius:7px">
+        ${RA_FUNCAO_FILTRO.map(f => `<option value="${f.valor}" ${raDevFiltroFuncao === f.valor ? 'selected' : ''}>${f.label}${f.valor ? ` (${contagemFuncao[f.valor] || 0})` : ` (${(raDados.todos || []).length})`}</option>`).join('')}
+      </select>
+      <select onchange="raDevMudarFiltroMunicipio(this.value)" style="padding:8px 10px;border-radius:7px">
+        <option value="" ${raDevFiltroMunicipio === '' ? 'selected' : ''}>Todos os municípios</option>
+        ${municipios.map(m => `<option value="${raEsc(m)}" ${raDevFiltroMunicipio === m ? 'selected' : ''}>${raEsc(m)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="m-hist" style="max-height:480px;overflow-y:auto">
+      ${lista.length ? lista.map(a => {
+        const deve = raDeveDevolver(a);
+        return `
+      <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>
+          <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX e pagamento">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+          ${a.auxilio_alimentacao_pago ? `<span class="ic-sub" style="margin-left:6px">pago: ${raFmtValor(a.auxilio_alimentacao_valor_pago)}</span>` : '<span class="ic-sub" style="margin-left:6px">ainda não pago</span>'}
+          ${deve ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ Faltou e já recebeu ${raFmtValor(a.auxilio_alimentacao_valor_pago)} — deve devolver.</div>` : ''}
+          ${a.auxilio_alimentacao_devolvido ? `<div class="ic-sub" style="margin-top:4px">✅ Devolvido${a.auxilio_alimentacao_devolvido_em ? ` em ${raFmtDataHora(new Date(a.auxilio_alimentacao_devolvido_em))}` : ''}</div>` : ''}
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button class="btn ${a.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'presente')">✅ Presente</button>
+          <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>
+          ${a.funcao === 'mesario' && a.secao_id ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez">👥 Presença de toda a mesa</button>` : ''}
+          ${deve ? `<button class="btn btn-dark" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', true)">✅ Marcar devolvido</button>` : ''}
+          ${a.auxilio_alimentacao_devolvido ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', false)">↺ Desfazer devolução</button>` : ''}
+        </span>
+      </div>`;
+      }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
+    </div>`;
+  if (buscaAtiva) {
+    const el = document.getElementById('ra-dev-busca');
+    if (el) { el.focus(); try { el.setSelectionRange(buscaSelStart, buscaSelEnd); } catch (e) { /* ignora */ } }
+  }
+}
+
 function renderReciboAlimentacao() {
   const c = document.getElementById('content');
   if (!window.supabaseAtores) {
@@ -1585,24 +1807,28 @@ function renderReciboAlimentacao() {
 
   const cfg = raCfg();
   const resumoPag = raPagResumo();
+  const resumoDev = raDevResumo();
   c.innerHTML = `
     <div class="import-card">
       <div class="ic-title">🍽️ Auxílio Alimentação</div>
       <div class="ic-sub">Gerar os recibos pra assinatura no papel (aba "🖨️ Impressão") é uma coisa; saber quem já
-        recebeu o auxílio de verdade (aba "💰 Controle de pagamento") é outra — as duas ficam separadas pra não
-        misturar o documento com o acompanhamento do cartório.</div>
+        recebeu o auxílio de verdade (aba "💰 Controle de pagamento") é outra; e controlar quem faltou e precisa
+        devolver o valor (aba "📋 Frequência e Devolução") é uma terceira — as três ficam separadas pra não
+        misturar o documento, o pagamento e a devolução.</div>
     </div>
 
     <div class="import-card" style="padding:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ${raSubTab === 'impressao' ? 'btn-dark' : 'btn-out'}" style="flex:1;min-width:180px" onclick="raMudarSubTab('impressao')">🖨️ Impressão</button>
         <button class="btn ${raSubTab === 'pagamento' ? 'btn-dark' : 'btn-out'}" style="flex:1;min-width:180px" onclick="raMudarSubTab('pagamento')">💰 Controle de pagamento — ${resumoPag.pagos}/${resumoPag.total}${resumoPag.conflitos ? ' ⚠️' : ''}</button>
+        <button class="btn ${raSubTab === 'devolucao' ? 'btn-dark' : 'btn-out'}" style="flex:1;min-width:180px" onclick="raMudarSubTab('devolucao')">📋 Frequência e Devolução${resumoDev.deveDevolver ? ` — ⚠️ ${resumoDev.deveDevolver}` : ''}</button>
       </div>
     </div>
 
-    ${raSubTab === 'pagamento' ? raHtmlSecaoPagamento() : raHtmlSecaoImpressao(cfg)}
+    ${raSubTab === 'pagamento' ? raHtmlSecaoPagamento() : raSubTab === 'devolucao' ? raHtmlSecaoDevolucao() : raHtmlSecaoImpressao(cfg)}
     ${raSubTab === 'pagamento' ? raHtmlSecaoVeiculos() : ''}
   `;
   if (raSubTab === 'pagamento') renderControlePagamento();
   if (raSubTab === 'pagamento') renderControleVeiculos();
+  if (raSubTab === 'devolucao') renderControleDevolucao();
 }
