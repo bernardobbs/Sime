@@ -1590,8 +1590,62 @@ let raDevFiltroSituacao = ''; // '' | 'presente' | 'deve_devolver' | 'devolvido'
 let raDevFiltroFuncao = '';
 let raDevFiltroMunicipio = '';
 
+// Mesa receptora é um caso especial — só o Presidente recebe o pagamento
+// (R$260, pra repassar aos outros 3 em mãos — ver `raDados.todos` em
+// `raCarregar`), mas qualquer um dos 4 cargos pode faltar isoladamente
+// (05/10/2026, pedido direto: "pode faltar algum dos membros da mesa,
+// devemos indicar quem faltou, se foi 1, 2 ou 3 membros para indicar o
+// valor a ser devolvido"). Por isso a frequência de CADA um dos 4 cargos é
+// marcada na própria linha dele em `sime_atores` (coluna já existe em toda
+// linha, não só na do Presidente) — `raDados.mesarios` (lista cheia, não
+// filtrada) é quem resolve "quem são os 4 desta seção". O valor a devolver
+// nunca é o R$260 inteiro automaticamente: é dividido pelos 4 cargos
+// (R$65 cada, o mesmo valor-padrão usado pros demais papéis) e multiplicado
+// só pela quantidade de quem de fato faltou.
+function raMesaMembros(secaoId) {
+  return (raDados.mesarios || []).filter(m => m.secao_id === secaoId);
+}
+function raMesaTodosPresentes(secaoId) {
+  const membros = raMesaMembros(secaoId);
+  return membros.length > 0 && membros.every(m => m.auxilio_alimentacao_frequencia === 'presente');
+}
+function raMesaNenhumMarcado(secaoId) {
+  return raMesaMembros(secaoId).every(m => !m.auxilio_alimentacao_frequencia);
+}
+function raQtdFaltantesMesa(secaoId) {
+  return raMesaMembros(secaoId).filter(m => m.auxilio_alimentacao_frequencia === 'faltou').length;
+}
+// Valor por membro é sempre o pago ao Presidente ÷ 4 cargos — não ÷ pelo
+// nº de membros efetivamente cadastrados, pra não inflar o valor por
+// membro se por acaso um cargo não tiver linha própria em `sime_atores`.
+function raValorPorMembroMesa(presidenteRow) {
+  return Number(presidenteRow.auxilio_alimentacao_valor_pago || 0) / 4;
+}
+function raValorADevolverMesa(presidenteRow) {
+  if (!presidenteRow.secao_id || !presidenteRow.auxilio_alimentacao_pago) return 0;
+  const qtd = raQtdFaltantesMesa(presidenteRow.secao_id);
+  return qtd ? raValorPorMembroMesa(presidenteRow) * qtd : 0;
+}
+
+function raAcharAtorQualquer(atorId) {
+  return (raDados.mesarios || []).find(a => a.id === atorId)
+    || (raDados.coord || []).find(a => a.id === atorId)
+    || (raDados.auxiliares || []).find(a => a.id === atorId)
+    || (raDados.junta || []).find(a => a.id === atorId);
+}
+
+// "Deve devolver" continua sempre DERIVADO (nunca uma flag gravada) — só
+// que pra mesário o valor-base não é o pagamento inteiro, é a fração dos
+// cargos que faltaram (`raValorADevolverMesa`); pras demais funções
+// (coordenador/auxiliar/junta — pagamento individual de verdade, sem mesa)
+// continua sendo a lógica binária de sempre.
 function raDeveDevolver(a) {
-  return a.auxilio_alimentacao_frequencia === 'faltou' && a.auxilio_alimentacao_pago && !a.auxilio_alimentacao_devolvido;
+  if (!a.auxilio_alimentacao_pago || a.auxilio_alimentacao_devolvido) return false;
+  if (a.funcao === 'mesario') return raValorADevolverMesa(a) > 0;
+  return a.auxilio_alimentacao_frequencia === 'faltou';
+}
+function raValorADevolver(a) {
+  return a.funcao === 'mesario' ? raValorADevolverMesa(a) : Number(a.auxilio_alimentacao_valor_pago || 0);
 }
 
 function raDevFiltrar() {
@@ -1599,10 +1653,16 @@ function raDevFiltrar() {
   return (raDados.todos || []).filter(a => {
     if (raDevFiltroFuncao && a.funcao !== raDevFiltroFuncao) return false;
     if (raDevFiltroMunicipio && (a.sec?.municipio || '') !== raDevFiltroMunicipio) return false;
-    if (raDevFiltroSituacao === 'presente' && a.auxilio_alimentacao_frequencia !== 'presente') return false;
+    if (raDevFiltroSituacao === 'presente') {
+      const ok = a.funcao === 'mesario' ? raMesaTodosPresentes(a.secao_id) : a.auxilio_alimentacao_frequencia === 'presente';
+      if (!ok) return false;
+    }
     if (raDevFiltroSituacao === 'deve_devolver' && !raDeveDevolver(a)) return false;
     if (raDevFiltroSituacao === 'devolvido' && !a.auxilio_alimentacao_devolvido) return false;
-    if (raDevFiltroSituacao === 'sem_marcar' && a.auxilio_alimentacao_frequencia) return false;
+    if (raDevFiltroSituacao === 'sem_marcar') {
+      const ok = a.funcao === 'mesario' ? raMesaNenhumMarcado(a.secao_id) : !a.auxilio_alimentacao_frequencia;
+      if (!ok) return false;
+    }
     if (q) {
       const secaoTxt = a.sec ? String(a.sec.numero) : '';
       if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
@@ -1622,10 +1682,10 @@ function raDevResumo() {
   const jaDevolveramLista = todos.filter(a => a.auxilio_alimentacao_devolvido);
   return {
     deveDevolver: deveDevolverLista.length,
-    totalADevolver: deveDevolverLista.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0),
+    totalADevolver: deveDevolverLista.reduce((s, a) => s + raValorADevolver(a), 0),
     jaDevolveram: jaDevolveramLista.length,
-    totalDevolvido: jaDevolveramLista.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0),
-    semMarcar: todos.filter(a => !a.auxilio_alimentacao_frequencia).length,
+    totalDevolvido: jaDevolveramLista.reduce((s, a) => s + raValorADevolver(a), 0),
+    semMarcar: todos.filter(a => a.funcao === 'mesario' ? raMesaNenhumMarcado(a.secao_id) : !a.auxilio_alimentacao_frequencia).length,
   };
 }
 
@@ -1650,10 +1710,14 @@ function raDevMudarFiltroMunicipio(v) {
 // Marcar frequência — toque único (presente/faltou), mesmo padrão de toda
 // ação rápida do projeto. Marcar "presente" nunca desfaz uma devolução já
 // registrada (histórico) — só deixa de contar como "deve devolver" porque
-// `raDeveDevolver` exige `frequencia==='faltou'`.
+// `raDeveDevolver`/`raValorADevolverMesa` exigem alguém marcado 'faltou'.
 async function raMarcarFrequenciaCore(atorId, frequencia) {
   const sb = window.supabaseAtores;
-  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  // Busca em TODO o cadastro carregado (não só `raDados.todos`) — os 3
+  // cargos de mesa que não recebem pagamento direto (1º/2º Mesário, 1º
+  // Secretário) também precisam ter a própria frequência marcada, e eles
+  // só existem em `raDados.mesarios`, nunca em `todos`.
+  const pessoa = raAcharAtorQualquer(atorId);
   if (!pessoa) return false;
   const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_frequencia: frequencia }).eq('id', atorId);
   if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
@@ -1695,6 +1759,11 @@ async function raToggleDevolvidoCore(atorId, marcarDevolvido) {
   const sb = window.supabaseAtores;
   const pessoa = (raDados.todos || []).find(a => a.id === atorId);
   if (!pessoa) return false;
+  // Valor logado é sempre o calculado NO MOMENTO (fração por faltantes pra
+  // mesário, valor pago inteiro pros demais) — nunca o `valor_pago` cru,
+  // que pra mesário é o R$260 inteiro do Presidente, não o que de fato
+  // precisa ser devolvido.
+  const valor = raValorADevolver(pessoa);
   const payload = marcarDevolvido
     ? { auxilio_alimentacao_devolvido: true, auxilio_alimentacao_devolvido_em: new Date().toISOString() }
     : { auxilio_alimentacao_devolvido: false, auxilio_alimentacao_devolvido_em: null };
@@ -1702,7 +1771,7 @@ async function raToggleDevolvidoCore(atorId, marcarDevolvido) {
   if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
   Object.assign(pessoa, payload);
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
-  await log(marcarDevolvido ? 'mesario_auxilio_alimentacao_devolvido' : 'mesario_auxilio_alimentacao_devolvido_desfeito', '', { ator_id: atorId, nome: pessoa.nome_completo, valor: pessoa.auxilio_alimentacao_valor_pago, autor });
+  await log(marcarDevolvido ? 'mesario_auxilio_alimentacao_devolvido' : 'mesario_auxilio_alimentacao_devolvido_desfeito', '', { ator_id: atorId, nome: pessoa.nome_completo, valor, autor });
   showToast(marcarDevolvido ? '✓ Devolução registrada' : '↺ Devolução desfeita');
   return true;
 }
@@ -1719,13 +1788,39 @@ const RA_DEV_SITUACAO_FILTRO = [
   { valor: 'sem_marcar', label: 'Sem frequência marcada' },
 ];
 
+// Linha de cada um dos 4 cargos da mesa (Presidente/1º Mesário/2º
+// Mesário/1º Secretário), com toggle individual — é o que permite marcar
+// que 1, 2 ou 3 membros faltaram, nunca só "a mesa toda" ou "só o
+// Presidente". Mostrada SEMPRE abaixo da linha do Presidente (ele também
+// aparece aqui, como qualquer outro cargo — a linha de cima só existe
+// porque é a que carrega o pagamento/PIX).
+function raHtmlMembrosMesa(secaoId) {
+  const membros = raMesaMembros(secaoId)
+    .slice()
+    .sort((x, y) => RA_ORDEM_MESA.indexOf(x.funcao_mesa) - RA_ORDEM_MESA.indexOf(y.funcao_mesa));
+  if (!membros.length) return '';
+  return `
+    <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px;padding:7px 9px;background:var(--bg2);border-radius:7px">
+      ${membros.map(m => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span style="font-size:.76rem">${raEsc(m.funcao_mesa || raFuncaoLabel(m))} — ${raEsc(m.nome_completo)}</span>
+          <span style="display:flex;gap:4px">
+            <button class="btn ${m.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:3px 7px;font-size:.7rem" onclick="raMarcarFrequencia('${m.id}', 'presente')">✅ Presente</button>
+            <button class="btn ${m.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:3px 7px;font-size:.7rem" onclick="raMarcarFrequencia('${m.id}', 'faltou')">❌ Faltou</button>
+          </span>
+        </div>`).join('')}
+    </div>`;
+}
+
 function raHtmlSecaoDevolucao() {
   return `
     <div class="import-card">
       <div class="ic-title" style="font-size:.85rem">📋 Frequência e Devolução</div>
-      <div class="ic-sub">Marque, por seção, quem compareceu (✅ Presente) e quem faltou (❌ Faltou). Quem faltou e
-        já tinha recebido o auxílio precisa devolver o valor — a lista destaca quem está nessa situação e deixa
-        registrar quando a devolução de fato aconteceu.</div>
+      <div class="ic-sub">Marque quem compareceu (✅ Presente) e quem faltou (❌ Faltou). Pra Coordenador/Auxiliar/
+        Junta é um pagamento individual — faltou e já recebeu, devolve o valor inteiro. Pra Mesa Receptora é
+        diferente: o Presidente recebe os R$ pra repassar aos outros 3 cargos, então cada um dos 4 (Presidente,
+        1º/2º Mesário, 1º Secretário) tem sua própria marcação — se 1, 2 ou 3 faltarem, o valor a devolver é
+        só a fração correspondente (valor pago ÷ 4 × quantos faltaram), não o pagamento inteiro.</div>
       <div id="ra-controle-devolucao" style="margin-top:8px"></div>
     </div>`;
 }
@@ -1765,21 +1860,27 @@ function renderControleDevolucao() {
     <div class="m-hist" style="max-height:480px;overflow-y:auto">
       ${lista.length ? lista.map(a => {
         const deve = raDeveDevolver(a);
+        const ehMesa = a.funcao === 'mesario' && a.secao_id;
+        const valorDevolver = raValorADevolver(a);
+        const qtdFaltantes = ehMesa ? raQtdFaltantesMesa(a.secao_id) : 0;
         return `
-      <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <span>
-          <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX e pagamento">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
-          ${a.auxilio_alimentacao_pago ? `<span class="ic-sub" style="margin-left:6px">pago: ${raFmtValor(a.auxilio_alimentacao_valor_pago)}</span>` : '<span class="ic-sub" style="margin-left:6px">ainda não pago</span>'}
-          ${deve ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ Faltou e já recebeu ${raFmtValor(a.auxilio_alimentacao_valor_pago)} — deve devolver.</div>` : ''}
-          ${a.auxilio_alimentacao_devolvido ? `<div class="ic-sub" style="margin-top:4px">✅ Devolvido${a.auxilio_alimentacao_devolvido_em ? ` em ${raFmtDataHora(new Date(a.auxilio_alimentacao_devolvido_em))}` : ''}</div>` : ''}
-        </span>
-        <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <button class="btn ${a.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'presente')">✅ Presente</button>
-          <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>
-          ${a.funcao === 'mesario' && a.secao_id ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez">👥 Presença de toda a mesa</button>` : ''}
-          ${deve ? `<button class="btn btn-dark" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', true)">✅ Marcar devolvido</button>` : ''}
-          ${a.auxilio_alimentacao_devolvido ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', false)">↺ Desfazer devolução</button>` : ''}
-        </span>
+      <div class="m-hist-item" style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>
+            <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX e pagamento">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+            ${a.auxilio_alimentacao_pago ? `<span class="ic-sub" style="margin-left:6px">pago: ${raFmtValor(a.auxilio_alimentacao_valor_pago)}</span>` : '<span class="ic-sub" style="margin-left:6px">ainda não pago</span>'}
+            ${deve ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ ${ehMesa ? `${qtdFaltantes} de 4 membro(s) da mesa faltou(aram)` : 'Faltou e já recebeu'} — deve devolver ${raFmtValor(valorDevolver)}${ehMesa ? ` (${raFmtValor(raValorPorMembroMesa(a))} por membro)` : ''}.</div>` : ''}
+            ${a.auxilio_alimentacao_devolvido ? `<div class="ic-sub" style="margin-top:4px">✅ Devolvido${a.auxilio_alimentacao_devolvido_em ? ` em ${raFmtDataHora(new Date(a.auxilio_alimentacao_devolvido_em))}` : ''}</div>` : ''}
+          </span>
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${!ehMesa ? `<button class="btn ${a.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'presente')">✅ Presente</button>
+            <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>` : ''}
+            ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez">👥 Todos presentes</button>` : ''}
+            ${deve ? `<button class="btn btn-dark" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', true)">✅ Marcar devolvido</button>` : ''}
+            ${a.auxilio_alimentacao_devolvido ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', false)">↺ Desfazer devolução</button>` : ''}
+          </span>
+        </div>
+        ${ehMesa ? raHtmlMembrosMesa(a.secao_id) : ''}
       </div>`;
       }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
     </div>`;
