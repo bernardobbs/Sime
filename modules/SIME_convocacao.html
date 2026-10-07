@@ -103,6 +103,11 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-hist{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
 .m-hist-item{font-size:.74rem;color:var(--text2);background:var(--bg2);border-radius:6px;padding:6px 8px;}
 .m-hist-item b{color:var(--text);}
+/* Auxílio Alimentação — cabeçalho de agrupamento por cidade/local de votação
+   (06/10/2026, pedido direto: "agrupado por cidade, local de votação e
+   seção") nas listas de Controle de pagamento e Frequência e Devolução. */
+.ra-grupo-cabecalho{font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.02em;color:var(--text2);padding:8px 2px 4px;margin-top:4px;border-bottom:1px solid var(--border2);}
+.ra-grupo-cabecalho:first-child{margin-top:0;}
 .m-kv{display:flex;flex-direction:column;gap:5px;background:var(--bg2);border-radius:8px;padding:10px 12px;}
 .m-kv-row{display:flex;justify-content:space-between;gap:10px;font-size:.78rem;}
 .m-kv-row b{color:var(--text2);font-weight:700;}
@@ -314,6 +319,14 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      fechamento "Total pago". */
   .ra-obs{display:flex;align-items:baseline;gap:2mm;font-size:8.5pt;margin-top:2.5mm;}
   .ra-obs-linha{flex:1;border-bottom:1px solid #000;height:1px;}
+  /* QR de devolução (06/10/2026, pedido direto: "nos recibos um qrcode para
+     a devolução do valor pago") — só aparece quando a chave PIX de
+     devolução está configurada (ver "⚙️ Configuração do auxílio"); valor em
+     aberto (quem devolve digita o valor na hora) — nunca pré-preenchido. */
+  .ra-qr-dev-impresso{display:flex;align-items:center;gap:3mm;margin-top:3mm;padding-top:2.5mm;border-top:1px dashed #999;}
+  .ra-qr-dev-canvas{flex:none;width:18mm;height:18mm;}
+  .ra-qr-dev-canvas canvas,.ra-qr-dev-canvas img{width:100%;height:100%;}
+  .ra-qr-dev-label{font-size:7.5pt;color:#333;}
 }
 </style>
 </head>

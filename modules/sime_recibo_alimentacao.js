@@ -161,10 +161,10 @@ async function raCarregar() {
 
   const [{ data: zona }, { data: eleicao }, { data: atores, error }] = await Promise.all([
     sb.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle(),
-    sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao')
+    sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao, pix_devolucao_chave, pix_devolucao_nome')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_recibo_ausente, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -301,7 +301,13 @@ function raCfg() {
   const forma = raDados.eleicao?.forma_auxilio_alimentacao || 'DINHEIRO';
   const eleicaoNome = raEleicaoTexto(raDados.eleicao);
   const zonaTexto = raDados.zona?.numero ? `${raDados.zona.numero}ª Zona Eleitoral${raDados.zona.municipio ? ` — ${raDados.zona.municipio}` : ''}` : 'Zona Eleitoral';
-  return { valor, forma, eleicaoNome, dataStr, dataHoraStr, zonaTexto };
+  // Destino do PIX de devolução (06/10/2026) — chave/nome configuráveis pelo
+  // cartório (ver "⚙️ Configuração do auxílio"), nunca cravados: sem chave
+  // cadastrada, nenhum QR de devolução é desenhado (nem no modal, nem nos
+  // recibos impressos) — nunca inventa um destino.
+  const pixDevolucaoChave = raDados.eleicao?.pix_devolucao_chave || '';
+  const pixDevolucaoNome = raDados.eleicao?.pix_devolucao_nome || '';
+  return { valor, forma, eleicaoNome, dataStr, dataHoraStr, zonaTexto, pixDevolucaoChave, pixDevolucaoNome };
 }
 
 // Agrupa uma lista de sime_atores por local de votação (município+local),
@@ -435,7 +441,26 @@ function raHtmlTimbre(titulo, subtitulo, cfg, numeroPagina) {
 // página própria, com timbre e paginação "Página N de M". Sem coluna de
 // Seção na tabela principal (seria repetir o mesmo número 4 vezes na
 // mesma folha) — o número já está no cabeçalho da página.
-function raHtmlMesaReceptora(secoes, cfg) {
+// Bloco impresso do QR de devolução (06/10/2026, pedido direto: "nos
+// recibos um qrcode para a devolução do valor pago") — só existe quando há
+// destino configurado (ver raSalvarConfigDevolucao); sem isso, a página sai
+// EXATAMENTE como antes, sem o bloco, sem nenhuma mudança de layout.
+// `qrOut` (array compartilhado por todas as páginas de um mesmo documento)
+// recebe o payload no índice `idSuffix` — `raImprimirDocumento` desenha os
+// canvases depois que o HTML inteiro já estiver no DOM (`new QRCode()`
+// precisa do elemento já presente na página).
+function raHtmlBlocoQrDevolucaoImpresso(cfg, descricao, idSuffix, qrOut) {
+  const payload = raPayloadDevolucao(cfg, descricao);
+  if (qrOut) qrOut[idSuffix] = payload;
+  if (!payload) return '';
+  return `
+    <div class="ra-qr-dev-impresso">
+      <div id="ra-qr-dev-canvas-${idSuffix}" class="ra-qr-dev-canvas"></div>
+      <div class="ra-qr-dev-label">📲 PIX para devolução (se houver falta) — ${raEsc(descricao)}</div>
+    </div>`;
+}
+
+function raHtmlMesaReceptora(secoes, cfg, qrOut) {
   return secoes.map((s, i) => `
     <div class="ra-pagina">
       ${raHtmlTimbre('Controle de Entrega de Auxílio Alimentação — Lista de Presença', 'Recibo — Mesa Receptora', cfg, i + 1)}
@@ -459,6 +484,7 @@ function raHtmlMesaReceptora(secoes, cfg) {
       </table>
       ${raHtmlSubstituicoes(true)}
       ${raHtmlObs()}
+      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - Seção ${s.numero}`, i, qrOut)}
       ${raHtmlRodapeTotal(`Seção ${s.numero} — ${s.local_nome}`)}
     </div>`).join('');
 }
@@ -468,7 +494,7 @@ function raHtmlMesaReceptora(secoes, cfg) {
 // prédio inteiro, não uma mesa específica): várias pessoas do mesmo
 // prédio na mesma página, quebra a cada troca de local, cada página com
 // seu próprio bloco de substituições/fechamento.
-function raHtmlPorLocal(titulo, locais, cfg) {
+function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
   return locais.map((loc, i) => `
     <div class="ra-pagina">
       ${raHtmlTimbre(titulo, null, cfg, i + 1)}
@@ -491,13 +517,14 @@ function raHtmlPorLocal(titulo, locais, cfg) {
       </table>
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
+      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - ${raNomeLocalSemCodigo(loc.local_nome)}`, i, qrOut)}
       ${raHtmlRodapeTotal(loc.local_nome)}
     </div>`).join('');
 }
 
 // Lista única, sem agrupar por local — auxiliares de eleição (geral) e
 // junta eleitoral: um recibo só pro grupo inteiro da zona, não por prédio.
-function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroPagina) {
+function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroPagina, idSuffix, qrOut) {
   return `
     <div class="ra-pagina">
       ${raHtmlTimbre(titulo, subtituloDia, cfg, numeroPagina)}
@@ -517,13 +544,28 @@ function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroP
       </table>
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
+      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - ${localTexto}`, idSuffix ?? 0, qrOut)}
       ${raHtmlRodapeTotal(localTexto)}
     </div>`;
 }
 
-async function raImprimirDocumento(html, acaoLog, quantidade) {
+async function raImprimirDocumento(html, acaoLog, quantidade, qrPayloads) {
   const area = document.getElementById('print-area');
   area.innerHTML = html;
+  // QR de devolução (06/10/2026) — desenhado AQUI, depois do HTML inteiro
+  // já estar no DOM (`new QRCode()` precisa do elemento `#ra-qr-dev-canvas-N`
+  // já presente). Sem nenhum payload configurado (zona sem destino de
+  // devolução cadastrado), o array vem cheio de `null`/vazio e este laço
+  // não desenha nada — impressão sai idêntica a antes desta feature.
+  if (Array.isArray(qrPayloads) && window.QRCode) {
+    qrPayloads.forEach((payload, i) => {
+      if (!payload) return;
+      const el = document.getElementById(`ra-qr-dev-canvas-${i}`);
+      if (!el) return;
+      el.innerHTML = '';
+      try { new QRCode(el, { text: payload, width: 90, height: 90, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { /* nunca trava a impressão por causa do QR */ }
+    });
+  }
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log(acaoLog, '', { autor, quantidade });
   window.print();
@@ -532,33 +574,37 @@ async function raImprimirDocumento(html, acaoLog, quantidade) {
 async function raImprimirMesaReceptora() {
   if (!raDados.mesarios.length) { showToast('⚠ Nenhum mesário ativo pra gerar recibo'); return; }
   const secoes = raAgruparPorSecao(raDados.mesarios);
-  const html = raHtmlMesaReceptora(secoes, raCfg());
-  await raImprimirDocumento(html, 'recibo_alimentacao_mesa_impresso', raDados.mesarios.length);
+  const qrPayloads = [];
+  const html = raHtmlMesaReceptora(secoes, raCfg(), qrPayloads);
+  await raImprimirDocumento(html, 'recibo_alimentacao_mesa_impresso', raDados.mesarios.length, qrPayloads);
 }
 
 async function raImprimirCoordenadores() {
   if (!raDados.coord.length) { showToast('⚠ Nenhum coordenador de acessibilidade ativo'); return; }
   const locais = raAgruparPorLocal(raDados.coord);
-  const html = raHtmlPorLocal('Recibo de Auxílio Alimentação — Coordenador de Acessibilidade', locais, raCfg());
-  await raImprimirDocumento(html, 'recibo_alimentacao_coord_impresso', raDados.coord.length);
+  const qrPayloads = [];
+  const html = raHtmlPorLocal('Recibo de Auxílio Alimentação — Coordenador de Acessibilidade', locais, raCfg(), qrPayloads);
+  await raImprimirDocumento(html, 'recibo_alimentacao_coord_impresso', raDados.coord.length, qrPayloads);
 }
 
 async function raImprimirAuxiliares() {
   if (!raDados.auxiliares.length) { showToast('⚠ Nenhum auxiliar de eleição ativo'); return; }
   const pessoas = raListaFlatOrdenada(raDados.auxiliares);
   const cfg = raCfg();
+  const qrPayloads = [];
   const html =
-    raHtmlListaFlat('Recibo de Auxílio Alimentação — Auxiliares de Eleição', 'Sábado (D-1)', pessoas, cfg, cfg.zonaTexto, 1) +
-    raHtmlListaFlat('Recibo de Auxílio Alimentação — Auxiliares de Eleição', 'Domingo (Dia D)', pessoas, cfg, cfg.zonaTexto, 2);
-  await raImprimirDocumento(html, 'recibo_alimentacao_auxiliares_impresso', pessoas.length);
+    raHtmlListaFlat('Recibo de Auxílio Alimentação — Auxiliares de Eleição', 'Sábado (D-1)', pessoas, cfg, cfg.zonaTexto, 1, 0, qrPayloads) +
+    raHtmlListaFlat('Recibo de Auxílio Alimentação — Auxiliares de Eleição', 'Domingo (Dia D)', pessoas, cfg, cfg.zonaTexto, 2, 1, qrPayloads);
+  await raImprimirDocumento(html, 'recibo_alimentacao_auxiliares_impresso', pessoas.length, qrPayloads);
 }
 
 async function raImprimirJunta() {
   if (!raDados.junta.length) { showToast('⚠ Nenhum membro da junta eleitoral cadastrado'); return; }
   const pessoas = raListaFlatOrdenada(raDados.junta);
   const cfg = raCfg();
-  const html = raHtmlListaFlat('Recibo de Auxílio Alimentação — Junta Eleitoral', null, pessoas, cfg, cfg.zonaTexto, 1);
-  await raImprimirDocumento(html, 'recibo_alimentacao_junta_impresso', pessoas.length);
+  const qrPayloads = [];
+  const html = raHtmlListaFlat('Recibo de Auxílio Alimentação — Junta Eleitoral', null, pessoas, cfg, cfg.zonaTexto, 1, 0, qrPayloads);
+  await raImprimirDocumento(html, 'recibo_alimentacao_junta_impresso', pessoas.length, qrPayloads);
 }
 
 // ── Relatório de pagamentos (01/10/2026, pedido direto: "gere um relatorio
@@ -643,6 +689,72 @@ async function raSalvarConfig() {
   render();
 }
 
+// Destino do PIX de devolução (06/10/2026) — campo próprio, nunca misturado
+// com valor/forma acima: é opcional (nunca bloqueia nada enquanto ninguém
+// preenche) e some sozinho do modal/dos recibos impressos até ser
+// configurado, mesma filosofia de "nunca inventa destino" de sempre.
+async function raSalvarConfigDevolucao() {
+  if (!raDados?.eleicao?.id) { showToast('⚠ Nenhuma eleição ativa nesta zona — não há onde salvar'); return; }
+  const chave = document.getElementById('ra-pix-dev-chave').value.trim();
+  const nome = document.getElementById('ra-pix-dev-nome').value.trim();
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_eleicoes')
+    .update({ pix_devolucao_chave: chave || null, pix_devolucao_nome: nome || null })
+    .eq('id', raDados.eleicao.id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  raDados.eleicao.pix_devolucao_chave = chave || null;
+  raDados.eleicao.pix_devolucao_nome = nome || null;
+  await log('recibo_alimentacao_pix_devolucao_atualizado', '', { chave: chave || null, nome: nome || null });
+  showToast('✓ Destino da devolução salvo');
+  render();
+}
+
+// ── Janela unificada: agrupamento por cidade/local de votação (06/10/2026,
+// pedido direto: "uma pagina unificada... agrupado por cidade, local de
+// votação e seção") — compartilhado pelas duas listas interativas (Controle
+// de pagamento e Frequência e Devolução). Quem não resolveu seção
+// (coordenador sem local, auxiliar de eleição, junta eleitoral) vai pro
+// grupo "Sem local definido", sempre por ÚLTIMO — nunca escondido, só sem
+// como agrupar por prédio.
+function raGrupoChave(a) {
+  return a.sec ? `${a.sec.municipio}|||${a.sec.local_nome}` : '~~SEM LOCAL~~';
+}
+function raGrupoLabel(a) {
+  return a.sec ? `${a.sec.municipio} — ${raNomeLocalSemCodigo(a.sec.local_nome)}` : '⚠ Sem local definido';
+}
+function raOrdenarAgrupado(lista) {
+  return lista.slice().sort((a, b) => {
+    const semA = !a.sec, semB = !b.sec;
+    if (semA !== semB) return semA ? 1 : -1;
+    if (a.sec && b.sec) {
+      const cmpMun = a.sec.municipio.localeCompare(b.sec.municipio);
+      if (cmpMun) return cmpMun;
+      const cmpLocal = a.sec.local_nome.localeCompare(b.sec.local_nome);
+      if (cmpLocal) return cmpLocal;
+      if (a.sec.numero !== b.sec.numero) return a.sec.numero - b.sec.numero;
+    }
+    return a.nome_completo.localeCompare(b.nome_completo);
+  });
+}
+// Monta a lista HTML com um cabeçalho de grupo (`.ra-grupo-cabecalho`) toda
+// vez que a chave de agrupamento muda — a lista já vem ORDENADA por
+// `raOrdenarAgrupado`, então só precisa detectar a transição, sem reagrupar
+// em memória (mantém o mesmo formato plano de sempre, só injeta divisores).
+function raHtmlListaComGrupos(lista, renderItem) {
+  if (!lista.length) return '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>';
+  let html = '';
+  let grupoAtual = null;
+  for (const a of lista) {
+    const chave = raGrupoChave(a);
+    if (chave !== grupoAtual) {
+      grupoAtual = chave;
+      html += `<div class="ra-grupo-cabecalho">${raEsc(raGrupoLabel(a))}</div>`;
+    }
+    html += renderItem(a);
+  }
+  return html;
+}
+
 // ── Controle de pagamento (25/09/2026) — ver comentário/estado no topo do
 // arquivo. Marca/desmarca `sime_atores.auxilio_alimentacao_pago` e edita o
 // valor pago por pessoa — nunca mexe no documento impresso acima (são
@@ -650,7 +762,7 @@ async function raSalvarConfig() {
 // é "quem já recebeu de verdade" pro cartório acompanhar). ──
 function raPagFiltrar() {
   const q = raPagBusca.trim().toLowerCase();
-  return (raDados.todos || []).filter(a => {
+  const filtrados = (raDados.todos || []).filter(a => {
     if (raPagFiltroStatus === 'pago' && !a.auxilio_alimentacao_pago) return false;
     if (raPagFiltroStatus === 'pendente' && a.auxilio_alimentacao_pago) return false;
     if (raPagFiltroFuncao && a.funcao !== raPagFiltroFuncao) return false;
@@ -660,7 +772,8 @@ function raPagFiltrar() {
       if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
     }
     return true;
-  }).sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+  });
+  return raOrdenarAgrupado(filtrados);
 }
 function raOnPagBuscaInput(v) {
   raPagBusca = v;
@@ -1013,6 +1126,34 @@ function raRenderModalQr(p, valorAtual) {
   } catch (e) { /* payload malformado — nunca trava o modal por causa do QR */ }
 }
 
+// Payload do PIX de DEVOLUÇÃO (06/10/2026, pedido direto: "nos recibos um
+// qrcode para a devolução do valor pago, constando a informação do pix
+// eleições 2026, devolução seção xxx") — compartilhado pelo modal unificado
+// e pelos 4 recibos impressos. Sempre em ABERTO (sem valor pré-preenchido —
+// quem devolve digita o valor na hora, e a fração a devolver varia por
+// pessoa/seção). Sem destino configurado (ver "⚙️ Configuração do
+// auxílio"), devolve `null` — nunca inventa pra quem.
+function raPayloadDevolucao(cfg, descricao) {
+  if (!cfg.pixDevolucaoChave) return null;
+  return raPixPayload(raPixChaveNormalizada(cfg.pixDevolucaoChave), cfg.pixDevolucaoNome || 'Cartório Eleitoral', raDados?.zona?.municipio, 0, descricao);
+}
+
+// Desenha (ou não) o QR de devolução dentro do modal — só existe
+// `#ra-modal-qr-dev` no DOM quando a seção "deve devolver"/"já devolveu" E
+// há destino configurado (ver `raHtmlModalFrequenciaDevolucao`); nos demais
+// casos o elemento simplesmente não existe, e esta função não faz nada.
+function raRenderModalQrDevolucao(p, cfg) {
+  const el = document.getElementById('ra-modal-qr-dev');
+  if (!el || !window.QRCode) return;
+  el.innerHTML = '';
+  const descricao = `Eleições 2026 - Devolução${p.sec ? ` - Seção ${p.sec.numero}` : ''}`;
+  const payload = raPayloadDevolucao(cfg, descricao);
+  if (!payload) return;
+  try {
+    new QRCode(el, { text: payload, width: 160, height: 160, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+  } catch (e) { /* nunca trava o modal por causa do QR */ }
+}
+
 async function raAbrirModal(id) {
   raModalId = id;
   document.getElementById('overlay')?.classList.add('open');
@@ -1060,6 +1201,11 @@ function raRenderModal() {
       ${destino.viaPresidente ? `<div class="ic-sub" style="margin:4px 0 0">ℹ️ Coordenador(a) de Acessibilidade: o pagamento deste cargo vai pro PIX do <b>Presidente de Mesa</b> da seção de menor número do local — este campo não é usado no QR abaixo.</div>` : ''}
     </div>
 
+    <div style="margin-top:8px">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Documento de envio (nº do Pix/comprovante)</label>
+      <input id="ra-modal-doc-envio" type="text" value="${raEsc(p.auxilio_alimentacao_documento || '')}" placeholder="opcional" onblur="raSalvarDocumentoEnvio('${p.id}')" style="width:220px">
+    </div>
+
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
       ${p.funcao === 'auxiliar_eleicao' ? `
       <select onchange="raModalAplicarDias('${p.id}', this.value)" style="font-size:.78rem;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)" title="Só ajusta o campo de valor abaixo — o que vale de verdade é o valor, não esta escolha">
@@ -1091,6 +1237,8 @@ function raRenderModal() {
             : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>')}
     </div>
 
+    ${raHtmlModalFrequenciaDevolucao(p, cfg)}
+
     <div style="margin-top:12px">
       <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:3px">📝 Observação</label>
       <textarea id="ra-modal-obs-nova" rows="2" placeholder="Anotação livre sobre o pagamento…" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font:inherit"></textarea>
@@ -1103,6 +1251,111 @@ function raRenderModal() {
     </div>
   `;
   raRenderModalQr(p, valorAtual);
+  raRenderModalQrDevolucao(p, cfg);
+}
+
+// Documento de envio (nº do Pix/comprovante que o cartório já mandou) —
+// MESMA coluna já usada pelo Relatório de Pagamentos (`auxilio_alimentacao_
+// documento`, populado até aqui só por conferência manual de extrato via
+// SQL Editor/MCP), agora editável direto no modal (06/10/2026, pedido
+// direto: "poderá ver as informações pix do presidente, data de envio do
+// pix, documento de envio"). Mesmo padrão onblur-salva-sozinho de sempre.
+async function raSalvarDocumentoEnvio(id) {
+  const campo = document.getElementById('ra-modal-doc-envio');
+  if (!campo) return;
+  const doc = campo.value.trim();
+  const p = raPessoaModal();
+  if (!p || doc === (p.auxilio_alimentacao_documento || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_documento: doc || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  p.auxilio_alimentacao_documento = doc || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_documento_envio', '', { ator_id: id, documento: p.auxilio_alimentacao_documento, autor });
+  showToast('✓ Documento de envio salvo');
+}
+
+// Documento da devolução (nº do comprovante de quem devolveu o valor) —
+// coluna nova, texto livre (nunca validado — mesmo critério de
+// uc_equatorial/codigo_rastreio/pix). Só aparece no modal quando a pessoa
+// deve devolver ou já devolveu (ver `raHtmlModalFrequenciaDevolucao`).
+async function raSalvarDocumentoDevolucao(id) {
+  const campo = document.getElementById('ra-modal-doc-devolucao');
+  if (!campo) return;
+  const doc = campo.value.trim();
+  const p = raPessoaModal();
+  if (!p || doc === (p.auxilio_alimentacao_devolucao_documento || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_devolucao_documento: doc || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  p.auxilio_alimentacao_devolucao_documento = doc || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_devolucao_documento', '', { ator_id: id, documento: p.auxilio_alimentacao_devolucao_documento, autor });
+  showToast('✓ Documento da devolução salvo');
+}
+
+// Wrappers de frequência/devolução pro modal unificado (06/10/2026) —
+// reaproveitam o MESMO núcleo (`raMarcarFrequenciaCore`/
+// `raToggleDevolvidoCore`) já usado pela aba "📋 Frequência e Devolução",
+// só redesenhando também a lista daquela aba (se estiver aberta) e o
+// próprio modal (pra refletir o valor a devolver/QR de devolução na hora,
+// sem precisar fechar e reabrir).
+async function raModalMarcarFrequencia(atorId, frequencia) {
+  await raMarcarFrequenciaCore(atorId, frequencia);
+  if (raSubTab === 'devolucao') renderControleDevolucao();
+  if (raModalId === atorId) raRenderModal();
+}
+async function raModalToggleDevolvido(atorId, marcarDevolvido) {
+  await raToggleDevolvidoCore(atorId, marcarDevolvido);
+  if (raSubTab === 'devolucao') renderControleDevolucao();
+  if (raModalId === atorId) raRenderModal();
+}
+
+// Bloco "📋 Frequência e devolução" dentro do modal unificado por pessoa
+// (06/10/2026, pedido direto: "cada modal ao abrir poderá ver... frequencia
+// da mesa receptora, caso haja ausencia poder marcar o ausente, o valor a
+// ser devolvido pela mesa. se ja foi devolvido o documento da devolução").
+// Pra mesário (Presidente, com mesa), a frequência dos 4 cargos continua
+// sendo editada pelo modal dedicado "❌ Faltou" (`raAbrirModalFalta` —
+// batch já testado e em produção, não refeito aqui) — este bloco só mostra
+// o resumo e um botão que pivota pra lá. Pras demais funções (pagamento
+// individual, sem mesa), os botões Presente/Faltou ficam direto aqui.
+function raHtmlModalFrequenciaDevolucao(p, cfg) {
+  const ehMesa = p.funcao === 'mesario' && p.secao_id;
+  const deve = raDeveDevolver(p);
+  const valorDevolver = raValorADevolver(p);
+  const qtdFaltantes = ehMesa ? raQtdFaltantesMesa(p.secao_id) : 0;
+  const mostrarDevolucao = deve || p.auxilio_alimentacao_devolvido;
+  return `
+    <div class="m-section" style="margin-top:14px">
+      <div class="m-section-hdr">📋 Frequência e devolução</div>
+      ${ehMesa
+        ? `${raHtmlResumoMesa(p.secao_id) || '<div class="ic-sub" style="margin:0 0 6px">Frequência da mesa ainda não marcada.</div>'}
+           <button class="btn btn-out" style="margin-top:6px" onclick="raAbrirModalFalta('${p.secao_id}')">❌ Marcar quem faltou / recibo ausente</button>`
+        : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+             <button class="btn ${p.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:6px 10px;font-size:.8rem" onclick="raModalMarcarFrequencia('${p.id}', 'presente')">✅ Presente</button>
+             <button class="btn ${p.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:6px 10px;font-size:.8rem" onclick="raModalMarcarFrequencia('${p.id}', 'faltou')">❌ Faltou</button>
+           </div>`}
+      ${deve ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ ${ehMesa ? `${qtdFaltantes} de 4 membro(s) da mesa faltou(aram)` : 'Faltou e já recebeu'} — deve devolver ${raEsc(raFmtValor(valorDevolver))}${ehMesa ? ` (${raEsc(raFmtValor(raValorPorMembroMesa(p)))} por membro)` : ''}.</div>` : ''}
+      ${mostrarDevolucao ? `
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
+            <input type="checkbox" ${p.auxilio_alimentacao_devolvido ? 'checked' : ''} onchange="raModalToggleDevolvido('${p.id}', this.checked)"> Já devolveu
+          </label>
+          ${p.auxilio_alimentacao_devolvido_em ? `<span class="ic-sub" style="margin:0">devolvido em ${raFmtDataHora(new Date(p.auxilio_alimentacao_devolvido_em))}</span>` : ''}
+        </div>
+        <div style="margin-top:6px">
+          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Documento da devolução</label>
+          <input id="ra-modal-doc-devolucao" type="text" value="${raEsc(p.auxilio_alimentacao_devolucao_documento || '')}" placeholder="nº do comprovante/Pix recebido" onblur="raSalvarDocumentoDevolucao('${p.id}')" style="width:220px">
+        </div>
+        <div style="margin-top:10px;text-align:center">
+          <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📲 QR Code — PIX de devolução</label>
+          ${cfg.pixDevolucaoChave
+            ? '<div id="ra-modal-qr-dev" style="display:inline-block;background:#fff;padding:8px;border-radius:8px"></div>'
+            : '<div class="ic-sub" style="margin:0">Cadastre o destino do PIX de devolução em "⚙️ Configuração do auxílio" (aba Impressão) pra gerar o QR Code.</div>'}
+        </div>
+      ` : ''}
+    </div>`;
 }
 
 // ── 🚙 Motoristas de Repartições (04/10/2026) — controle de pagamento do
@@ -1455,6 +1708,20 @@ function raHtmlSecaoImpressao(cfg) {
         <button class="btn btn-out" onclick="raSalvarConfig()">💾 Salvar</button>
       </div>
       ${!raDados.eleicao ? '<div class="import-result ir-warn" style="margin-top:8px">⚠ Nenhuma eleição ativa nesta zona — valor/forma não podem ser salvos ainda.</div>' : ''}
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border2)">
+        <div class="ic-sub" style="margin-bottom:8px">📲 Destino do PIX de devolução (06/10/2026) — pra quem faltou e precisa devolver o valor. Aparece como QR Code no modal da pessoa e nos recibos impressos. Sem chave cadastrada, nenhum QR de devolução é desenhado em lugar nenhum.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Chave PIX de devolução</label>
+            <input id="ra-pix-dev-chave" type="text" value="${raEsc(cfg.pixDevolucaoChave)}" placeholder="CPF, telefone, e-mail ou chave aleatória" style="width:220px">
+          </div>
+          <div>
+            <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Nome do destinatário</label>
+            <input id="ra-pix-dev-nome" type="text" value="${raEsc(cfg.pixDevolucaoNome)}" placeholder="ex.: Cartório Eleitoral" style="width:200px">
+          </div>
+          <button class="btn btn-out" onclick="raSalvarConfigDevolucao()">💾 Salvar</button>
+        </div>
+      </div>
     </div>
 
     <div class="import-card">
@@ -1536,7 +1803,7 @@ function renderControlePagamento() {
       </select>
     </div>
     <div class="m-hist" style="max-height:480px;overflow-y:auto">
-      ${lista.length ? lista.map(a => {
+      ${raHtmlListaComGrupos(lista, a => {
         const outros = raOutrosPapeis(a);
         return `
       <div class="m-hist-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1559,7 +1826,7 @@ function renderControlePagamento() {
           </label>
         </span>
       </div>`;
-      }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
+      })}
     </div>`;
   if (buscaAtiva) {
     const el = document.getElementById('ra-pag-busca');
@@ -1672,7 +1939,7 @@ function raValorADevolver(a) {
 
 function raDevFiltrar() {
   const q = raDevBusca.trim().toLowerCase();
-  return (raDados.todos || []).filter(a => {
+  const filtrados = (raDados.todos || []).filter(a => {
     if (raDevFiltroFuncao && a.funcao !== raDevFiltroFuncao) return false;
     if (raDevFiltroMunicipio && (a.sec?.municipio || '') !== raDevFiltroMunicipio) return false;
     if (raDevFiltroSituacao === 'presente') {
@@ -1691,12 +1958,8 @@ function raDevFiltrar() {
       if (!`${a.nome_completo} ${secaoTxt}`.toLowerCase().includes(q)) return false;
     }
     return true;
-  }).sort((a, b) => {
-    const na = a.sec ? a.sec.numero : Infinity;
-    const nb = b.sec ? b.sec.numero : Infinity;
-    if (na !== nb) return na - nb;
-    return a.nome_completo.localeCompare(b.nome_completo);
   });
+  return raOrdenarAgrupado(filtrados);
 }
 
 function raDevResumo() {
@@ -2003,7 +2266,7 @@ function renderControleDevolucao() {
       </select>
     </div>
     <div class="m-hist" style="max-height:480px;overflow-y:auto">
-      ${lista.length ? lista.map(a => {
+      ${raHtmlListaComGrupos(lista, a => {
         const deve = raDeveDevolver(a);
         const ehMesa = a.funcao === 'mesario' && a.secao_id;
         const valorDevolver = raValorADevolver(a);
@@ -2028,7 +2291,7 @@ function renderControleDevolucao() {
         </div>
         ${ehMesa ? raHtmlResumoMesa(a.secao_id) : ''}
       </div>`;
-      }).join('') : '<div class="ic-sub" style="margin:0">Nenhum registro encontrado.</div>'}
+      })}
     </div>`;
   if (buscaAtiva) {
     const el = document.getElementById('ra-dev-busca');

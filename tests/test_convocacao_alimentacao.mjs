@@ -1168,6 +1168,253 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 19. Janela unificada: agrupamento, documento de envio, frequência/
+// devolução dentro do modal da pessoa, e QR de devolução no modal e nos 4
+// recibos impressos (06/10/2026, pedidos diretos: "uma pagina unificada...
+// agrupado por cidade, local de votação e seção... cada modal ao abrir
+// poderá ver... data de envio do pix, documento de envio... frequencia da
+// mesa receptora... o valor a ser devolvido... se ja foi devolvido o
+// documento da devolução... não esqueça de incluir o qrcode" / "ter o
+// qrcode, controlar as frequencias e verificar as devoluções... um qrcode
+// para a devolução do valor pago"). ──
+
+// 19a. Destino do PIX de devolução — campo próprio na config, opcional,
+// persiste em sime_eleicoes.
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  check('campo de chave PIX de devolução nasce vazio', await p.locator('#ra-pix-dev-chave').inputValue() === '');
+  check('campo de nome do destinatário nasce vazio', await p.locator('#ra-pix-dev-nome').inputValue() === '');
+
+  await p.fill('#ra-pix-dev-chave', '86999990000');
+  await p.fill('#ra-pix-dev-nome', 'Cartório da 7ª Zona');
+  // Há DOIS botões "💾 Salvar" na tela (valor/forma + destino da
+  // devolução) — alvo preciso pelo onclick, não pelo texto ambíguo.
+  await p.click('button[onclick="raSalvarConfigDevolucao()"]');
+  await p.waitForTimeout(300);
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const upd = escritas.find(e => e.op === 'update' && e.tabela === 'sime_eleicoes' && 'pix_devolucao_chave' in e.payload);
+  check('grava chave e nome do destino da devolução em sime_eleicoes', upd?.payload.pix_devolucao_chave === '86999990000' && upd?.payload.pix_devolucao_nome === 'Cartório da 7ª Zona', JSON.stringify(upd));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// 19b. Agrupamento por cidade/local de votação nas duas listas interativas
+// (Controle de pagamento e Frequência e Devolução) — m1 (Presidente, Escola
+// A) e c1 (coordenadora, mesma Escola A) caem no MESMO grupo; m5 (Escola
+// Municipal Grande do Centro) em outro; quem não resolveu seção (c2/a1/a2/
+// j1) vai pro grupo "Sem local definido", sempre por último.
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.waitForTimeout(300);
+
+  const cabecalhosPag = await p.locator('#ra-controle-pagamento .ra-grupo-cabecalho').allTextContents();
+  check('3 grupos no Controle de pagamento (2 com local + "sem local")', cabecalhosPag.length === 3, JSON.stringify(cabecalhosPag));
+  check('1º grupo é Campo Maior — Escola A', cabecalhosPag[0] === 'Campo Maior — Escola A', JSON.stringify(cabecalhosPag));
+  check('2º grupo é Campo Maior — Escola Municipal Grande do Centro', cabecalhosPag[1] === 'Campo Maior — Escola Municipal Grande do Centro', JSON.stringify(cabecalhosPag));
+  check('último grupo é "Sem local definido"', cabecalhosPag[2] === '⚠ Sem local definido', JSON.stringify(cabecalhosPag));
+  const txtPag = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const posCab = txtPag.indexOf('Campo Maior — Escola A');
+  const posCoord = txtPag.indexOf('COORDENADORA BEATRIZ');
+  const posPres = txtPag.indexOf('PRESIDENTE MARIA ');
+  check('dentro do grupo, COORDENADORA BEATRIZ vem antes de PRESIDENTE MARIA (ordem alfabética)', posCab < posCoord && posCoord < posPres, `${posCab} ${posCoord} ${posPres}`);
+
+  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.waitForTimeout(300);
+  const cabecalhosDev = await p.locator('#ra-controle-devolucao .ra-grupo-cabecalho').allTextContents();
+  check('mesmo agrupamento em Frequência e Devolução', JSON.stringify(cabecalhosDev) === JSON.stringify(cabecalhosPag), JSON.stringify(cabecalhosDev));
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// 19c-e. Modal da pessoa: documento de envio, frequência/devolução (mesa ×
+// não-mesa), valor a devolver, "já devolveu", documento da devolução, e o
+// QR de devolução (só quando o destino está configurado).
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes[0].pix_devolucao_chave = '86999990000';
+  m.sime_eleicoes[0].pix_devolucao_nome = 'Cartório da 7ª Zona';
+  const a1 = m.sime_atores.find(a => a.id === 'a1');
+  a1.auxilio_alimentacao_pago = true;
+  a1.auxilio_alimentacao_valor_pago = 65;
+  a1.auxilio_alimentacao_frequencia = 'faltou';
+  a1.auxilio_alimentacao_documento = 'DOC123';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.waitForTimeout(250);
+
+  // c1 (coordenadora, não-mesa, ainda sem pagamento) — botões inline de
+  // Presente/Faltou, sem nenhuma seção de devolução (ainda não deve nada).
+  await p.locator('.m-hist-item:has-text("COORDENADORA BEATRIZ") b').click();
+  await p.waitForTimeout(300);
+  check('não-mesa mostra os botões inline ✅ Presente / ❌ Faltou', await p.locator('#modal-body button:has-text("✅ Presente")').count() === 1 && await p.locator('#modal-body button:has-text("❌ Faltou")').count() === 1);
+  check('ainda sem pagamento: nenhum aviso de "deve devolver"', !/deve devolver/.test(await p.locator('#modal-body').textContent()));
+  check('ainda sem pagamento: nenhuma seção de devolução (checkbox "Já devolveu")', await p.locator('#modal-body:has-text("Já devolveu")').count() === 0);
+  await p.click('#modal-body button:has-text("❌ Faltou")');
+  await p.waitForTimeout(300);
+  const escritasFreq = await p.evaluate(() => window.__mock.escritas);
+  const updFreqC1 = escritasFreq.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'c1' && 'auxilio_alimentacao_frequencia' in e.payload);
+  check('clicar "❌ Faltou" grava a frequência da própria pessoa (não-mesa)', updFreqC1?.payload.auxilio_alimentacao_frequencia === 'faltou', JSON.stringify(updFreqC1));
+  check('botão "❌ Faltou" fica destacado depois do clique', await p.locator('#modal-body button:has-text("❌ Faltou")').evaluate(el => el.className.includes('btn-dark')));
+  check('sem pagamento, marcar "faltou" ainda não abre a seção de devolução', await p.locator('#modal-body:has-text("Já devolveu")').count() === 0);
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+
+  // m1 (Presidente de mesa) — nunca os botões inline; resumo da mesa +
+  // botão que pivota pro modal batch "❌ Faltou" já existente.
+  // "PRESIDENTE MARIA" é prefixo de m5 ("PRESIDENTE MARIA DA SILVA..."),
+  // por isso o match precisa ser exato aqui.
+  await p.locator('.m-hist-item b:text-is("PRESIDENTE MARIA")').click();
+  await p.waitForTimeout(300);
+  check('mesa (Presidente) nunca mostra o par de botões inline', await p.locator('#modal-body button:has-text("✅ Presente")').count() === 0 && await p.locator('#modal-body button:has-text("❌ Faltou")').count() === 0);
+  check('mesa mostra o botão que pivota pro modal de falta por cargo', await p.locator('#modal-body button:has-text("❌ Marcar quem faltou / recibo ausente")').count() === 1);
+  check('mesa mostra o resumo dos 4 cargos (📋 Frequência e devolução)', /📋 Frequência e devolução/.test(await p.locator('#modal-body').textContent()));
+  await p.click('#modal-body button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+
+  // a1 (auxiliar, pago=true, frequencia='faltou') — documento de envio já
+  // preenchido, aviso de valor a devolver, checkbox "Já devolveu",
+  // documento da devolução, e o QR de devolução (destino já configurado).
+  await p.locator('.m-hist-item:has-text("AUXILIAR PEDRO") b').click();
+  await p.waitForTimeout(300);
+  check('"Documento de envio" vem pré-preenchido com o que já estava salvo', await p.locator('#ra-modal-doc-envio').inputValue() === 'DOC123');
+  await p.fill('#ra-modal-doc-envio', 'DOC456');
+  await p.locator('#ra-modal-doc-envio').blur();
+  await p.waitForTimeout(300);
+  const escritasDoc = await p.evaluate(() => window.__mock.escritas);
+  const updDoc = escritasDoc.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && 'auxilio_alimentacao_documento' in e.payload);
+  check('editar "Documento de envio" salva sozinho (onblur)', updDoc?.payload.auxilio_alimentacao_documento === 'DOC456', JSON.stringify(updDoc));
+
+  const txtModalA1 = await p.locator('#modal-body').textContent();
+  check('não-mesa, faltou e já pago: avisa que deve devolver (sem "por membro")', /Faltou e já recebeu.*deve devolver R\$\s*65,00/.test(txtModalA1.replace(/\s+/g, ' ')), txtModalA1);
+  check('checkbox "Já devolveu" presente e desmarcado', await p.locator('#modal-body label:has-text("Já devolveu") input[type=checkbox]').isChecked() === false);
+  check('campo "Documento da devolução" presente, vazio', await p.locator('#ra-modal-doc-devolucao').inputValue() === '');
+  check('QR de devolução desenhado (destino já configurado)', await p.locator('#ra-modal-qr-dev canvas').count() === 1);
+
+  await p.fill('#ra-modal-doc-devolucao', 'DEVOC1');
+  await p.locator('#ra-modal-doc-devolucao').blur();
+  await p.waitForTimeout(300);
+  const escritasDevDoc = await p.evaluate(() => window.__mock.escritas);
+  const updDevDoc = escritasDevDoc.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && 'auxilio_alimentacao_devolucao_documento' in e.payload);
+  check('editar "Documento da devolução" salva sozinho (onblur)', updDevDoc?.payload.auxilio_alimentacao_devolucao_documento === 'DEVOC1', JSON.stringify(updDevDoc));
+
+  await p.locator('#modal-body label:has-text("Já devolveu") input[type=checkbox]').check();
+  await p.waitForTimeout(300);
+  const escritasDevolvido = await p.evaluate(() => window.__mock.escritas);
+  const updDevolvido = escritasDevolvido.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && 'auxilio_alimentacao_devolvido' in e.payload);
+  check('marcar "Já devolveu" grava auxilio_alimentacao_devolvido=true', updDevolvido?.payload.auxilio_alimentacao_devolvido === true, JSON.stringify(updDevolvido));
+  const txtDepoisDevolvido = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('depois de devolvido, o aviso de "deve devolver" some (já resolvido)', !/deve devolver/.test(txtDepoisDevolvido), txtDepoisDevolvido);
+  check('mas a seção de devolução continua visível (documento + QR, é histórico)', await p.locator('#modal-body label:has-text("Já devolveu") input[type=checkbox]').isChecked() === true && await p.locator('#ra-modal-qr-dev canvas').count() === 1);
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// 19f. Sem destino de devolução configurado — nenhum dos quatro recibos
+// ganha o bloco de QR (confirmação explícita de retrocompatibilidade, além
+// dos 202 checks pré-existentes que já passavam sem regressão).
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  await p.click('button:has-text("Imprimir recibos — Mesa Receptora")');
+  await p.waitForTimeout(250);
+  check('sem destino configurado: Mesa Receptora não tem nenhum bloco de QR de devolução', await p.locator('#print-area .ra-qr-dev-impresso').count() === 0);
+  check('nem menção a "PIX para devolução" no HTML', !/PIX para devolução/.test(await p.locator('#print-area').innerHTML()));
+
+  await p.click('button:has-text("Imprimir recibos — Coordenadores")');
+  await p.waitForTimeout(250);
+  check('sem destino configurado: Coordenadores também não tem o bloco', await p.locator('#print-area .ra-qr-dev-impresso').count() === 0);
+
+  await p.click('button:has-text("Imprimir recibos — Sábado e Domingo")');
+  await p.waitForTimeout(250);
+  check('sem destino configurado: Auxiliares (2 páginas) também não tem o bloco', await p.locator('#print-area .ra-qr-dev-impresso').count() === 0);
+
+  await p.click('button:has-text("Imprimir recibo — Junta Eleitoral")');
+  await p.waitForTimeout(250);
+  check('sem destino configurado: Junta também não tem o bloco', await p.locator('#print-area .ra-qr-dev-impresso').count() === 0);
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// 19g. Com destino configurado — os 4 recibos ganham o QR de devolução,
+// cada canvas com id próprio (nunca colide) e a legenda certa por
+// seção/local/zona.
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes[0].pix_devolucao_chave = '86999990000';
+  m.sime_eleicoes[0].pix_devolucao_nome = 'Cartório da 7ª Zona';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  await p.click('button:has-text("Imprimir recibos — Mesa Receptora")');
+  await p.waitForTimeout(250);
+  check('Mesa Receptora: 3 blocos de QR de devolução (1 por seção)', await p.locator('#print-area .ra-qr-dev-impresso').count() === 3);
+  for (let i = 0; i < 3; i++) {
+    check(`Mesa Receptora: canvas próprio #ra-qr-dev-canvas-${i} com o QR desenhado`, await p.locator(`#ra-qr-dev-canvas-${i} canvas`).count() === 1);
+  }
+  const txtMesa = (await p.locator('#print-area').innerHTML());
+  check('legenda cita "Devolução - Seção 5"', /Devolução - Seção 5\b/.test(txtMesa));
+  check('legenda cita "Devolução - Seção 12"', /Devolução - Seção 12\b/.test(txtMesa));
+  check('legenda cita "Devolução - Seção 63"', /Devolução - Seção 63\b/.test(txtMesa));
+
+  await p.click('button:has-text("Imprimir recibos — Coordenadores")');
+  await p.waitForTimeout(250);
+  check('Coordenadores: 2 blocos de QR (Escola A + Sem local definido)', await p.locator('#print-area .ra-qr-dev-impresso').count() === 2);
+  const txtCoord = (await p.locator('#print-area').innerHTML());
+  check('legenda cita "Devolução - Escola A"', /Devolução - Escola A\b/.test(txtCoord));
+  check('legenda cita "Devolução - ⚠ Sem local definido"', /Devolução - ⚠ Sem local definido/.test(txtCoord));
+
+  await p.click('button:has-text("Imprimir recibos — Sábado e Domingo")');
+  await p.waitForTimeout(250);
+  check('Auxiliares: 2 blocos de QR (um por página — Sábado e Domingo)', await p.locator('#print-area .ra-qr-dev-impresso').count() === 2);
+  check('cada página tem o próprio canvas (0 e 1), sem colisão', await p.locator('#ra-qr-dev-canvas-0 canvas').count() === 1 && await p.locator('#ra-qr-dev-canvas-1 canvas').count() === 1);
+  const txtAux = (await p.locator('#print-area').innerHTML());
+  check('as duas páginas citam a zona (7ª Zona Eleitoral — Campo Maior)', (txtAux.match(/Devolução - 7ª Zona Eleitoral — Campo Maior/g) || []).length === 2, txtAux.slice(0, 200));
+
+  await p.click('button:has-text("Imprimir recibo — Junta Eleitoral")');
+  await p.waitForTimeout(250);
+  check('Junta: 1 bloco de QR', await p.locator('#print-area .ra-qr-dev-impresso').count() === 1);
+  check('canvas #ra-qr-dev-canvas-0 desenhado pra Junta também', await p.locator('#ra-qr-dev-canvas-0 canvas').count() === 1);
+
+  // Payload da devolução — sempre valor em aberto (nunca a fração calculada
+  // na hora de imprimir, que varia por pessoa) e descrição em ASCII.
+  const payloadDev = await p.evaluate(() =>
+    window.raPayloadDevolucao({ pixDevolucaoChave: '86999990000', pixDevolucaoNome: 'Cartório da 7ª Zona' }, 'Eleições 2026 - Devolução - Seção 5'));
+  check('payload de devolução nunca inclui o campo de valor (54) — fica em aberto', !payloadDev.includes('5402') && !/54\d{2}\d+\.\d{2}/.test(payloadDev), payloadDev);
+  check('payload de devolução contém a descrição em ASCII', payloadDev.includes('ELEICOES 2026 - DEVOLUCAO - SECAO 5'), payloadDev);
+  const semDestino = await p.evaluate(() => window.raPayloadDevolucao({ pixDevolucaoChave: '' }, 'teste'));
+  check('sem chave de devolução configurada, raPayloadDevolucao devolve null', semDestino === null);
+
+  check('nenhum erro JS', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

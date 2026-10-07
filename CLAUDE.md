@@ -9187,6 +9187,166 @@ só o recibo ausente (mesa completa) grava a flag, mantém os 4 cargos como
 `presente`, nunca mostra "deve devolver", aparece no resumo e no filtro
 dedicado, e desmarcar grava `false` de volta.
 
+---
+
+## JANELA UNIFICADA DO AUXÍLIO ALIMENTAÇÃO — QR DE DEVOLUÇÃO, AGRUPAMENTO E DOCUMENTOS NO MODAL DA PESSOA (`sime_recibo_alimentacao.js`, 06/10/2026)
+
+Dois pedidos diretos, em sequência, sobre o módulo que até aqui já tinha
+três sub-abas separadas (🖨️ Impressão / 💰 Controle de pagamento / 📋
+Frequência e Devolução, ver seções acima) e um modal por pessoa sem QR de
+devolução nem documento de envio/devolução ainda:
+
+> "para o controle do pagamento do auxilio alimentação vamos pensar em uma
+> pagina unificada, com modal, agrupado por cidade, local de votação e
+> seção, e cada modal ao abrir poderá ver as informações pix do presidente,
+> data de envio do pix, documento de envio, frequencia da mesa receptora,
+> caso haja ausencia poder marcar o ausente, o valor a ser devolvido pela
+> mesa. se ja foi devolvido o documento da devolução. para o controle ser
+> feito de forma mais facil. no mesmo sentido o controle do pagamento dos
+> auxiliares, coordenadores, marcando presença ou ausencia. não esqueça de
+> incluir o qrcode, e com uma informação"
+
+> "pense em uma unica janela para verificar o pagamento, ter o qrcode, a
+> quantidade de pix realizado para cada membro, controlar as frequencias e
+> verificar as devoluções dos valores não pagos. imprimir recibos, nos
+> recibos um qrcode para a devolução do valor pago, constando a informação
+> do pix eleições 2026, devolução seção xxx ou algo que caiba"
+
+**Decisão de desenho: extensão aditiva do modal já compartilhado, não uma
+reescrita da árvore de abas.** Reescrever a página numa "janela única" de
+verdade jogaria fora o modal batch "❌ Faltou" por cargo de mesa (e o
+recibo ausente) recém-construído na mesma sessão (ver seção acima) e as
+258 asserções já existentes em `tests/test_convocacao_alimentacao.mjs`.
+`raAbrirModal`/`raRenderModal()` — o modal compartilhado que já abre tanto
+de "💰 Controle de pagamento" quanto de "📋 Frequência e Devolução" — já
+era, na prática, a "janela única" que o pedido descreve: um só lugar que
+mostra PIX, pagamento e (desde a mudança anterior) frequência/devolução de
+qualquer pessoa, nas duas abas. Em vez de destruir a árvore de sub-abas,
+este modal ganhou os pedaços que faltavam.
+
+**"Documento de envio" — reaproveita a coluna que já existia.**
+`sime_atores.auxilio_alimentacao_documento` já existia desde 19/09/2026,
+até aqui só populado por conferência manual de extrato bancário (SQL
+Editor/MCP) e mostrado só-leitura no "Relatório de Pagamentos" — é
+exatamente o "documento de envio" do pedido, não precisou de coluna nova.
+Virou editável direto no modal (`#ra-modal-doc-envio`, logo abaixo do
+campo de Chave PIX), onblur salva sozinho (`raSalvarDocumentoEnvio()`),
+mesmo padrão de toda caixa de edição rápida do projeto. "Data de envio do
+pix" do pedido já era servida pelo `auxilio_alimentacao_pago_em` que o
+modal já mostrava ("Pago em dd/mm/aaaa HH:MM") — não precisou de campo
+novo.
+
+**"📋 Frequência e devolução" dentro do modal (`raHtmlModalFrequenciaDevolucao`)**
+— dois caminhos, porque mesário (com mesa de 4 cargos) e as demais funções
+(pagamento individual) já tinham fluxos de frequência diferentes desde a
+feature anterior:
+- **Presidente de mesa** (`funcao==='mesario' && secao_id`) — mostra o
+  mesmo resumo só-leitura dos 4 cargos (`raHtmlResumoMesa`, já existente) e
+  um botão que pivota pro modal batch "❌ Marcar quem faltou / recibo
+  ausente" (`raAbrirModalFalta`) — **nunca** reimplementa marcação por
+  cargo aqui dentro; editar frequência de mesa continua sendo só por
+  aquele modal dedicado, que já sabe lidar com os 4 cargos e o recibo
+  ausente de uma vez.
+- **Coordenador/Auxiliar/Junta** (sem mesa) — ganham os botões inline
+  "✅ Presente"/"❌ Faltou" direto aqui (`raModalMarcarFrequencia()`, casca
+  fina sobre o mesmo `raMarcarFrequenciaCore()` que a lista da aba já
+  usava — não duplica a escrita, só chama de outro lugar e redesenha tanto
+  a lista de Frequência e Devolução quanto o próprio modal, se estiver
+  aberto).
+
+Abaixo disso, **"deve devolver"/documento da devolução/"Já devolveu"**
+aparecem só quando `raDeveDevolver(p)` é verdadeiro ou a pessoa já
+devolveu (`mostrarDevolucao`) — mesmos helpers derivados de sempre
+(`raDeveDevolver`/`raValorADevolver`, nunca uma flag gravada à parte,
+documentado na seção de Frequência e Devolução acima). Campo "Documento
+da devolução" (`sime_atores.auxilio_alimentacao_devolucao_documento`,
+novo, texto livre nunca validado — mesmo critério de `uc_equatorial`/
+`codigo_rastreio`/`pix`) salva sozinho (`raSalvarDocumentoDevolucao()`);
+marcar "Já devolveu" chama o mesmo `raToggleDevolvidoCore()` de sempre.
+
+**QR de devolução — sempre em VALOR ABERTO, nunca a fração calculada na
+hora.** `raPayloadDevolucao(cfg, descricao)` reaproveita o MESMO motor de
+BR Code já usado pro QR de pagamento (`raPixPayload`/`raCrc16Ccitt`/
+`raEmvTLV`/`raPixAscii`/`raPixChaveNormalizada`, 30/09-01/10/2026) — só com
+`valor=0`, que a própria `raPixPayload` já trata como "omite o campo 54"
+(o mesmo truque que o pedido original pediu — "devolução seção xxx ou algo
+que caiba" — a descrição vira "Eleições 2026 - Devolução - Seção N" /
+local / zona, cortada dinamicamente pro limite de 99 bytes do campo 26,
+mesmo mecanismo de sempre). Em ABERTO porque a fração a devolver varia por
+pessoa (mesário devolve R$ valor÷4×faltantes; as demais funções devolvem o
+valor pago inteiro) e porque o documento impresso é genérico — quem for
+devolver digita o valor na hora, o QR só poupa de digitar a chave PIX.
+
+**Destino do PIX de devolução — campo próprio na configuração, opcional,
+nunca inventado.** `sime_eleicoes.pix_devolucao_chave`/`pix_devolucao_nome`
+(novo, `ALTER TABLE ADD COLUMN IF NOT EXISTS`, aplicado via
+`mcp__Supabase__apply_migration`) — mesma filosofia de
+`valor_auxilio_alimentacao`: editável na própria aba "⚙️ Configuração do
+auxílio" (dentro da sub-aba "🖨️ Impressão"), campo + "💾 Salvar"
+(`raSalvarConfigDevolucao()`, botão distinto do "💾 Salvar" de valor/forma
+— os dois têm o mesmo texto, então qualquer automação/teste precisa alvo
+por `onclick`, não por texto). Sem chave cadastrada, `raCfg().pixDevolucaoChave`
+fica vazio e **nenhum QR de devolução aparece em lugar nenhum** — nem no
+modal (mostra "Cadastre o destino do PIX de devolução em '⚙️ Configuração
+do auxílio'..." no lugar), nem nos 4 recibos impressos (o bloco inteiro
+some do HTML, página sai idêntica a antes desta feature).
+
+**QR de devolução nos 4 recibos impressos (`raHtmlBlocoQrDevolucaoImpresso`)**
+— inserido logo antes do rodapé de total/suprido em todos os quatro
+modelos (Mesa Receptora, Coordenador, Auxiliares, Junta), reaproveitando o
+mesmo mecanismo `#print-area`/`window.print()` sem popup de sempre.
+`raImprimirDocumento()` ganhou um 4º parâmetro opcional (`qrPayloads`,
+array indexado por `idSuffix`) — depois do HTML inteiro já estar no DOM
+(`new QRCode()` precisa do elemento já presente), desenha um `<canvas>`
+por payload não-nulo em `#ra-qr-dev-canvas-{i}`. Cada chamador
+(`raImprimirMesaReceptora`/`Coordenadores`/`Auxiliares`/`Junta`) monta seu
+próprio array local — a Mesa Receptora usa o índice da SEÇÃO (uma folha
+por seção, i=0,1,2...), o Coordenador o índice do LOCAL, e Auxiliares (que
+sai em DUAS páginas — Sábado/Domingo — no mesmo clique, ver seção de
+Auxílio Alimentação mais acima) passa `idSuffix` explícito (0 e 1) em vez
+de depender de um índice de laço implícito, pra as duas páginas nunca
+colidirem no mesmo `#ra-qr-dev-canvas-0`.
+
+**Agrupamento por cidade/local de votação/seção (`raGrupoChave`/
+`raGrupoLabel`/`raOrdenarAgrupado`/`raHtmlListaComGrupos`)** — compartilhado
+pelas duas listas interativas que o pedido citou ("agrupado por cidade,
+local de votação e seção"): Controle de pagamento e Frequência e
+Devolução. Cabeçalho de grupo (`.ra-grupo-cabecalho`, só CSS — cor/
+tamanho/borda, nenhuma lógica nova) aparece a cada troca de
+município+local na lista já ordenada; quem não resolveu seção (coordenador
+sem local, auxiliar de eleição, junta eleitoral) cai no grupo "⚠ Sem local
+definido", sempre por ÚLTIMO — nunca escondido, só sem como agrupar por
+prédio (mesmo critério "nunca inventa agrupamento" de sempre). Dentro do
+grupo, ordena por nome — verificado contra produção real que isso não
+quebra nenhuma asserção existente de ORDEM relativa entre pessoas
+diferentes (nenhum teste anterior dependia da ordem cruzada entre pessoas,
+só de `:has-text("NOME")`, checado por busca no arquivo de teste antes de
+mudar o `.sort()` de `raPagFiltrar()`/`raDevFiltrar()`).
+
+> **Pergunta de uma sessão anterior, ainda sem resposta — deliberadamente
+> intocada aqui.** Um segundo PIX de R$65 pra SONIA MARIA SOUSA PEREIRA
+> (documento 100196, 01/10/2026 15:12), achado num extrato bancário — pode
+> ser duplicata/erro ou um segundo papel legítimo (mesmo padrão de Anita
+> Alves de Oliveira/Luiz Carlos Santiago Junior, já documentado acima) —
+> continua sem registrar/decidir nada sobre isso até o dono do projeto
+> responder.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 19, 258 checks
+no total no arquivo): destino de devolução salva em `sime_eleicoes`;
+agrupamento com 3 cabeçalhos nas duas listas (2 locais + "sem local"),
+mesma ordem nas duas; modal de não-mesa mostra os botões inline Presente/
+Faltou e nunca abre a seção de devolução enquanto não deve nada; modal de
+mesa nunca mostra os botões inline, sempre mostra o resumo + o botão que
+pivota pro modal batch; "Documento de envio" pré-preenchido e salvando
+sozinho; aviso de "deve devolver" com o valor certo (sem a cláusula "por
+membro" fora da mesa); "Já devolveu" + "Documento da devolução" + QR só
+aparecem quando aplicável, e o QR só quando o destino está configurado;
+QR de devolução ausente nos 4 recibos sem destino configurado (confirmação
+explícita de retrocompatibilidade) e presente com o id/legenda certos
+quando configurado, inclusive nas duas páginas de Auxiliares sem colisão
+de canvas; payload de devolução sempre sem o campo de valor e com a
+descrição certa em ASCII.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
