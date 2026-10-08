@@ -351,7 +351,7 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
 
   // Total = 2 Presidentes (m1, m5) + 2 coordenadores + 2 auxiliares + 1
@@ -360,22 +360,22 @@ async function login(p) {
   // direto (25/09/2026, pedido direto: "só faremos pagamento para os
   // presidente... que se encarregará de repassar os outros membros da
   // mesa").
-  const resumoTxt = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoTxt = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('resumo mostra 1 de 7 pagos (só Presidentes + coord + aux + junta, sem juiz)', /1 de 7 já pagos/.test(resumoTxt), resumoTxt.slice(0, 200));
   check('juiz eleitoral (CARLOS MARCELLO) nunca aparece no controle de pagamento', !/CARLOS MARCELLO/.test(resumoTxt));
 
   // Muda o filtro pra "Todos" só pra confirmar a exclusão dos demais cargos
   // da mesa, independente de status (não é um problema de filtro Pendente/
   // Pago escondendo eles).
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
-  const resumoTodos = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoTodos = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('1º Mesário/2º Mesário/1º Secretário NUNCA aparecem, nem em "Todos"', !/MESARIO 1 JOAO/.test(resumoTodos) && !/MESARIO 2 ANA/.test(resumoTodos) && !/JOAO PEDRO OLIVEIRA/.test(resumoTodos) && !/ANA CAROLINA FERREIRA/.test(resumoTodos) && !/FRANCISCO DAS CHAGAS RODRIGUES/.test(resumoTodos), resumoTodos);
   check('os dois Presidentes aparecem em "Todos" (um pago, um pendente)', /PRESIDENTE MARIA —/.test(resumoTodos) && /PRESIDENTE MARIA DA SILVA/.test(resumoTodos), resumoTodos);
-  await p.selectOption('#ra-controle-pagamento select', 'pendente');
+  await p.selectOption('#ra-controle-unificado select', 'pendente');
   await p.waitForTimeout(200);
 
-  const resumoTxt2 = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoTxt2 = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('abre filtrado em "Pendentes" por padrão — PRESIDENTE MARIA (já paga) não aparece na lista', !/PRESIDENTE MARIA —/.test(resumoTxt2), resumoTxt2);
   check('o outro Presidente (pendente) aparece com sugestão de valor R$260', /PRESIDENTE MARIA DA SILVA/.test(resumoTxt2), resumoTxt2);
   check('valor sugerido do 2º Presidente já vem 260.00 (não o valor único de sime_eleicoes, que é 65)', await p.locator('#ra-pag-valor-m5').inputValue() === '260.00');
@@ -387,7 +387,7 @@ async function login(p) {
   // literalmente deixa de existir no DOM logo depois do clique — check()
   // ficaria esperando pra sempre por um "confirmado marcado" que nunca
   // chega a ser observável ali.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") input[type=checkbox]');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") input[type=checkbox]');
   await p.waitForTimeout(200);
 
   const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && e.payload.auxilio_alimentacao_pago === true));
@@ -398,26 +398,26 @@ async function login(p) {
 
   // Some da lista "Pendentes" (padrão) depois de marcado — reflete direto,
   // sem precisar trocar de filtro.
-  const resumoTxt3 = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoTxt3 = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('depois de marcar, some da lista de pendentes e o resumo sobe pra 2 de 7', /2 de 7 já pagos/.test(resumoTxt3) && !/PRESIDENTE MARIA DA SILVA/.test(resumoTxt3), resumoTxt3.slice(0, 200));
 
   // Filtro "Pagos" mostra os 2 Presidentes marcados.
-  await p.selectOption('#ra-controle-pagamento select', 'pago');
+  await p.selectOption('#ra-controle-unificado select', 'pago');
   await p.waitForTimeout(200);
-  const resumoPagos = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoPagos = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('filtro "Pagos" mostra os dois Presidentes', /PRESIDENTE MARIA —/.test(resumoPagos) && /PRESIDENTE MARIA DA SILVA/.test(resumoPagos), resumoPagos);
 
   // Busca por nome — volta pro "Todos" pra não competir com o filtro de status.
-  await p.selectOption('#ra-controle-pagamento select', '');
-  await p.fill('#ra-pag-busca', 'coordenadora');
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.fill('#ra-ctl-busca', 'coordenadora');
   await p.waitForTimeout(350);
-  const resumoBusca = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoBusca = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('busca por nome filtra só quem bate (COORDENADORA BEATRIZ)', /COORDENADORA BEATRIZ/.test(resumoBusca) && !/PRESIDENTE MARIA/.test(resumoBusca) && !/AUXILIAR/.test(resumoBusca), resumoBusca);
-  await p.fill('#ra-pag-busca', '');
+  await p.fill('#ra-ctl-busca', '');
   await p.waitForTimeout(350);
 
   // Desmarcar volta pra pendente e limpa a data (mas não o valor).
-  await p.uncheck('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") input[type=checkbox]');
+  await p.uncheck('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") input[type=checkbox]');
   await p.waitForTimeout(200);
   const updDesfeito = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'm5'));
   check('desmarcar limpa a data de pagamento', updDesfeito.auxilio_alimentacao_pago === false && updDesfeito.auxilio_alimentacao_pago_em === null, JSON.stringify(updDesfeito));
@@ -425,7 +425,7 @@ async function login(p) {
   check('grava log de auditoria ao desmarcar', !!logDespago);
 
   // Editar só o valor (sem mexer no checkbox) grava sozinho, onblur.
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
   await p.fill('#ra-pag-valor-c1', '65,00'.replace(',', '.'));
   await p.locator('#ra-pag-valor-c1').blur();
@@ -436,8 +436,8 @@ async function login(p) {
   // Seletor "🗓️ dias…" do auxiliar — só existe pra auxiliar_eleicao, nunca
   // pra Presidente/coordenador — escolher "Sáb. + dom." preenche e SALVA
   // o valor (130) sozinho, sem precisar de onblur manual.
-  check('seletor de dias só existe nas linhas de auxiliar de eleição', await p.locator('#ra-controle-pagamento .m-hist-item:has-text("AUXILIAR PEDRO") select').count() === 1 && await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ") select').count() === 0);
-  await p.selectOption('#ra-controle-pagamento .m-hist-item:has-text("AUXILIAR PEDRO") select', '2');
+  check('seletor de dias só existe nas linhas de auxiliar de eleição', await p.locator('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO") select').count() === 1 && await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA BEATRIZ") select').count() === 0);
+  await p.selectOption('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO") select', '2');
   await p.waitForTimeout(200);
   check('escolher "Sáb. + dom." preenche o campo de valor com 130.00', await p.locator('#ra-pag-valor-a1').inputValue() === '130.00');
   const updDias = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.auxilio_alimentacao_valor_pago === 130));
@@ -465,28 +465,28 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
 
-  const resumoTxt = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoTxt = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('resumo avisa 2 pessoas com papel duplicado', /2 com papel duplicado/.test(resumoTxt), resumoTxt.slice(0, 250));
 
-  const linhaPresidente = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —")').textContent()).replace(/\s+/g, ' ');
+  const linhaPresidente = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —")').textContent()).replace(/\s+/g, ' ');
   check('linha do Presidente avisa que a mesma pessoa também é Coordenadora, com a seção dela', /mesma pessoa também está em: Coordenador de Acessibilidade \(Seção 12\)/.test(linhaPresidente), linhaPresidente);
 
-  const linhaCoord = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
+  const linhaCoord = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
   check('linha da Coordenadora avisa que a mesma pessoa também é Presidente, com a seção dele', /mesma pessoa também está em: Presidente \(Seção 5\)/.test(linhaCoord), linhaCoord);
 
-  const linhaSemConflito = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ")').textContent()).replace(/\s+/g, ' ');
+  const linhaSemConflito = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA BEATRIZ")').textContent()).replace(/\s+/g, ' ');
   check('quem não tem conflito não mostra nenhum aviso', !/mesma pessoa também está em/.test(linhaSemConflito), linhaSemConflito);
 
   // Marcar um dos dois como pago não afeta o aviso do outro — o aviso é
   // sobre a EXISTÊNCIA do papel duplicado, não sobre o status de pagamento.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
   await p.waitForTimeout(200);
-  const linhaCoordDepois = (await p.locator('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
+  const linhaCoordDepois = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
   check('aviso continua depois de um dos dois ser marcado como pago', /mesma pessoa também está em: Presidente \(Seção 5\)/.test(linhaCoordDepois), linhaCoordDepois);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
@@ -505,14 +505,14 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
 
   // Clica no nome do Presidente pendente (m5, Seção 63) — abre o modal
   // compartilhado (#overlay/#modal-body).
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
   await p.waitForTimeout(300);
 
   check('overlay abre', await p.locator('#overlay').evaluate(el => el.classList.contains('open')));
@@ -537,7 +537,7 @@ async function login(p) {
   await p.waitForTimeout(200);
   const updPago = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'm5' && e.payload.auxilio_alimentacao_pago === true));
   check('marcar "PIX feito" no modal grava pago=true com o valor certo', updPago?.payload?.auxilio_alimentacao_valor_pago === 260, JSON.stringify(updPago));
-  const resumoDepois = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const resumoDepois = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('a lista por baixo (mesmo escondida atrás do overlay) já reflete o pagamento no resumo', /1 de 7 já pagos/.test(resumoDepois), resumoDepois.slice(0, 200));
 
   // Observação — mesmo campo/ação de log usados em Contatar mesários
@@ -572,12 +572,12 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
 
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —") b');
   await p.waitForTimeout(300);
   const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
   check('modal do Presidente com conflito avisa a Coordenadora duplicada', /mesma pessoa também está em: Coordenador de Acessibilidade \(Seção 12\)/.test(modalTxt), modalTxt.slice(0, 400));
@@ -600,17 +600,17 @@ async function login(p) {
   await p.waitForTimeout(400);
 
   check('nasce na sub-aba Impressão — botão de Mesa Receptora visível de cara', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 1);
-  check('controle de pagamento não está no DOM ainda (só aparece na outra sub-aba)', await p.locator('#ra-controle-pagamento').count() === 0);
-  check('botão da sub-aba de pagamento já mostra o resumo (0/7) sem precisar clicar', /Controle de pagamento — 0\/7/.test(await p.locator('button:has-text("💰 Controle de pagamento")').textContent()));
+  check('controle de pagamento não está no DOM ainda (só aparece na outra sub-aba)', await p.locator('#ra-controle-unificado').count() === 0);
+  check('botão da sub-aba de pagamento já mostra o resumo (0/7) sem precisar clicar', /Controle de pagamento e frequência — 0\/7/.test(await p.locator('button:has-text("Controle de pagamento e frequência")').textContent()));
 
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
   check('trocando pra "Controle de pagamento", os botões de imprimir somem', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 0);
-  check('e a lista de pagamento aparece', await p.locator('#ra-controle-pagamento').count() === 1);
+  check('e a lista de pagamento aparece', await p.locator('#ra-controle-unificado').count() === 1);
 
   await p.click('button:has-text("🖨️ Impressão")');
   await p.waitForTimeout(300);
-  check('voltando pra "Impressão", a lista de pagamento some de novo', await p.locator('#ra-controle-pagamento').count() === 0);
+  check('voltando pra "Impressão", a lista de pagamento some de novo', await p.locator('#ra-controle-unificado').count() === 0);
   check('e os botões de imprimir voltam', await p.locator('button:has-text("Imprimir recibos — Mesa Receptora")').count() === 1);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
@@ -630,13 +630,13 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select', '');
+  await p.selectOption('#ra-controle-unificado select', '');
   await p.waitForTimeout(200);
 
   // m5 = Presidente, Seção 63, ainda sem PIX cadastrado.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
   await p.waitForTimeout(300);
 
   check('sem PIX cadastrado, o modal não desenha QR nenhum', await p.locator('#ra-modal-qr canvas').count() === 0);
@@ -708,12 +708,12 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select >> nth=0', ''); // status: Todos, pra ver o universo inteiro
+  await p.selectOption('#ra-controle-unificado select >> nth=0', ''); // status: Todos, pra ver o universo inteiro
   await p.waitForTimeout(200);
 
-  const selects = p.locator('#ra-controle-pagamento select');
+  const selects = p.locator('#ra-controle-unificado select');
   const selFuncao = selects.nth(1);
   const selMunicipio = selects.nth(2);
 
@@ -725,17 +725,17 @@ async function login(p) {
 
   await selFuncao.selectOption('mesario');
   await p.waitForTimeout(200);
-  let itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  let itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('filtro "Presidente" mostra só os 2 Presidentes, nenhum coordenador/auxiliar/junta', itens.length === 2 && itens.every(t => /PRESIDENTE/.test(t)), JSON.stringify(itens));
 
   await selFuncao.selectOption('coord_acessibilidade');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('filtro "Coordenador" mostra as 3 coordenadoras/coordenador, ninguém mais', itens.length === 3 && itens.every(t => /COORDENAD/.test(t)), JSON.stringify(itens));
 
   await selFuncao.selectOption('auxiliar_eleicao');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('filtro "Auxiliar" mostra só os 2 auxiliares de eleição', itens.length === 2 && itens.every(t => /AUXILIAR/.test(t)), JSON.stringify(itens));
 
   // Volta pra "Todas as funções" e filtra só por município — Campo Maior
@@ -746,25 +746,25 @@ async function login(p) {
   await p.waitForTimeout(150);
   await selMunicipio.selectOption('Campo Maior');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('filtro "Campo Maior" mostra as 3 pessoas com seção nesse município', itens.length === 3, JSON.stringify(itens));
 
   await selMunicipio.selectOption('Jatobá do Piauí');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('filtro "Jatobá do Piauí" mostra só a coordenadora de lá', itens.length === 1 && /COORDENADORA JATOBA/.test(itens[0]), JSON.stringify(itens));
 
   // Combina função + município — só quem bate nos dois ao mesmo tempo.
   await selMunicipio.selectOption('Campo Maior');
   await selFuncao.selectOption('coord_acessibilidade');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('função + município combinados mostram só quem bate nos dois (COORDENADORA BEATRIZ)', itens.length === 1 && /COORDENADORA BEATRIZ/.test(itens[0]), JSON.stringify(itens));
 
   await selMunicipio.selectOption('');
   await selFuncao.selectOption('');
   await p.waitForTimeout(200);
-  itens = (await p.locator('#ra-controle-pagamento .m-hist-item b').allTextContents());
+  itens = (await p.locator('#ra-controle-unificado .m-hist-item b').allTextContents());
   check('voltando os dois pra "Todos"/"Todas as funções", a lista completa (8) volta', itens.length === 8, JSON.stringify(itens));
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
@@ -815,11 +815,11 @@ async function login(p) {
   // nota explicando o ajuste — nunca em silêncio.
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.selectOption('#ra-controle-unificado select >> nth=0', '');
   await p.waitForTimeout(200);
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
   await p.waitForTimeout(300);
 
   await p.fill('#ra-modal-pix', '86981083472');
@@ -870,12 +870,12 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.selectOption('#ra-controle-unificado select >> nth=0', '');
   await p.waitForTimeout(200);
 
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA BEATRIZ") b');
   await p.waitForTimeout(300);
 
   check('campo "Chave PIX" avisa que é só informativo pra este cargo', /do próprio coordenador — informativo/.test(await p.locator('.form-group label').first().textContent()));
@@ -896,7 +896,7 @@ async function login(p) {
 
   // Coordenador sem local nenhum (c2) — mensagem própria, nunca um QR
   // inventado.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADOR CARLOS SEM LOCAL") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("COORDENADOR CARLOS SEM LOCAL") b');
   await p.waitForTimeout(300);
   check('coordenador sem local: nenhum canvas desenhado', await p.locator('#ra-modal-qr canvas').count() === 0);
   check('coordenador sem local: mensagem explica que a regra não se aplica', /Sem local de votação definido/.test(await p.locator('#ra-modal-qr-wrap').textContent()));
@@ -905,7 +905,7 @@ async function login(p) {
 
   // Coordenadora com local, mas SEM nenhum Presidente ativo lá — mensagem
   // distinta (não confunde "sem local" com "local sem Presidente").
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA SEM PRESIDENTE") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA SEM PRESIDENTE") b');
   await p.waitForTimeout(300);
   check('coordenadora sem Presidente no local: nenhum canvas desenhado', await p.locator('#ra-modal-qr canvas').count() === 0);
   check('coordenadora sem Presidente no local: mensagem própria, distinta de "sem local"', /Nenhum Presidente ativo encontrado/.test(await p.locator('#ra-modal-qr-wrap').textContent()));
@@ -914,7 +914,7 @@ async function login(p) {
 
   // Mesário (Presidente) continua pago na PRÓPRIA chave, sem passar pela
   // regra do coordenador — nenhuma regressão no fluxo de sempre.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b');
   await p.waitForTimeout(300);
   check('campo "Chave PIX" do Presidente NÃO mostra o aviso "informativo" (só vale pra coordenador)', !/do próprio coordenador — informativo/.test(await p.locator('.form-group label').first().textContent()));
   await p.fill('#ra-modal-pix', '99988877766');
@@ -950,7 +950,7 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
 
   // Deixa a tela filtrada em "Pendentes" (padrão) de propósito — o
@@ -974,7 +974,7 @@ async function login(p) {
 
   // Filtro por função (já existente na tela) é respeitado pelo relatório —
   // só o Presidente, a coordenadora some.
-  const selects = p.locator('#ra-controle-pagamento select');
+  const selects = p.locator('#ra-controle-unificado select');
   const selStatus = selects.nth(0);
   const selFuncao = selects.nth(1);
   await selFuncao.selectOption('mesario');
@@ -993,9 +993,9 @@ async function login(p) {
   // filtro em "Pagos", desmarcar faz a própria linha sumir da tela — uncheck()
   // ficaria esperando pra sempre por um estado "desmarcado e visível" que
   // nunca chega a existir.
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —") input[type=checkbox]');
   await p.waitForTimeout(200);
-  await p.click('#ra-controle-pagamento .m-hist-item:has-text("COORDENADORA BEATRIZ") input[type=checkbox]');
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA BEATRIZ") input[type=checkbox]');
   await p.waitForTimeout(200);
   const chamadasAntes = await p.evaluate(() => window.__printCalls);
   await p.click('button:has-text("🖨️ Imprimir relatório")');
@@ -1022,8 +1022,12 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  // Presidente já está pago — sem isso, o filtro de pagamento (default
+  // "Pendentes") esconderia a própria linha que o teste precisa manipular.
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
 
   const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
   check('linha do Presidente tem botão ❌ Faltou (abre modal, não marca direto)', await linhaPresidente.locator('button:has-text("❌ Faltou")').count() === 1);
@@ -1084,8 +1088,10 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
 
   const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
   await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
@@ -1122,8 +1128,10 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
 
   const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
   await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
@@ -1145,14 +1153,14 @@ async function login(p) {
   check('card da seção mostra a nota de recibo ausente', /Recibo não foi assinado\/recolhido — mesa funcionou completa/.test(txt), txt);
 
   // Filtro "📄 Recibo ausente" mostra só esta seção.
-  await p.locator('#ra-controle-devolucao select').nth(0).selectOption('recibo_ausente');
+  await p.locator('#ra-controle-unificado select').nth(3).selectOption('recibo_ausente');
   await p.waitForTimeout(250);
-  const txtFiltro = (await p.locator('#ra-controle-devolucao').textContent()).replace(/\s+/g, ' ');
+  const txtFiltro = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   check('filtro "recibo ausente" mostra o Presidente da seção 63', /PRESIDENTE MARIA DA SILVA/.test(txtFiltro));
   check('e não mostra quem não tem recibo ausente marcado', !/COORDENADORA BEATRIZ/.test(txtFiltro), txtFiltro);
 
   // Desmarcar de volta.
-  await p.locator('#ra-controle-devolucao select').nth(0).selectOption('');
+  await p.locator('#ra-controle-unificado select').nth(3).selectOption('');
   await p.waitForTimeout(200);
   await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
   await p.waitForTimeout(250);
@@ -1216,23 +1224,23 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
 
-  const cabecalhosPag = await p.locator('#ra-controle-pagamento .ra-grupo-cabecalho').allTextContents();
+  const cabecalhosPag = await p.locator('#ra-controle-unificado .ra-grupo-cabecalho').allTextContents();
   check('3 grupos no Controle de pagamento (2 com local + "sem local")', cabecalhosPag.length === 3, JSON.stringify(cabecalhosPag));
   check('1º grupo é Campo Maior — Escola A', cabecalhosPag[0] === 'Campo Maior — Escola A', JSON.stringify(cabecalhosPag));
   check('2º grupo é Campo Maior — Escola Municipal Grande do Centro', cabecalhosPag[1] === 'Campo Maior — Escola Municipal Grande do Centro', JSON.stringify(cabecalhosPag));
   check('último grupo é "Sem local definido"', cabecalhosPag[2] === '⚠ Sem local definido', JSON.stringify(cabecalhosPag));
-  const txtPag = (await p.locator('#ra-controle-pagamento').textContent()).replace(/\s+/g, ' ');
+  const txtPag = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
   const posCab = txtPag.indexOf('Campo Maior — Escola A');
   const posCoord = txtPag.indexOf('COORDENADORA BEATRIZ');
   const posPres = txtPag.indexOf('PRESIDENTE MARIA ');
   check('dentro do grupo, COORDENADORA BEATRIZ vem antes de PRESIDENTE MARIA (ordem alfabética)', posCab < posCoord && posCoord < posPres, `${posCab} ${posCoord} ${posPres}`);
 
-  await p.click('button:has-text("📋 Frequência e Devolução")');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  const cabecalhosDev = await p.locator('#ra-controle-devolucao .ra-grupo-cabecalho').allTextContents();
+  const cabecalhosDev = await p.locator('#ra-controle-unificado .ra-grupo-cabecalho').allTextContents();
   check('mesmo agrupamento em Frequência e Devolução', JSON.stringify(cabecalhosDev) === JSON.stringify(cabecalhosPag), JSON.stringify(cabecalhosDev));
 
   check('nenhum erro JS', erros.length === 0, erros.join(' | '));
@@ -1256,8 +1264,8 @@ async function login(p) {
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
-  await p.click('button:has-text("💰 Controle de pagamento")');
-  await p.selectOption('#ra-controle-pagamento select >> nth=0', '');
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.selectOption('#ra-controle-unificado select >> nth=0', '');
   await p.waitForTimeout(250);
 
   // c1 (coordenadora, não-mesa, ainda sem pagamento) — botões inline de

@@ -9347,6 +9347,77 @@ quando configurado, inclusive nas duas páginas de Auxiliares sem colisão
 de canvas; payload de devolução sempre sem o campo de valor e com a
 descrição certa em ASCII.
 
+---
+
+## CONTROLE DE PAGAMENTO + FREQUÊNCIA/DEVOLUÇÃO — UNIFICADOS EM UMA LISTA SÓ (`sime_recibo_alimentacao.js`, 08/10/2026)
+
+Pedido direto: "quero unificar o controle de pagamento e frequencia e
+devolução". Até aqui, "🍽️ Auxílio Alimentação" tinha 3 sub-abas:
+"🖨️ Impressão", "💰 Controle de pagamento" e "📋 Frequência e Devolução" —
+as duas últimas (criadas em dias diferentes, 25/09 e 05-06/10/2026) já
+iteravam exatamente o MESMO `raDados.todos`, só que em duas listas
+separadas, cada uma com sua própria busca/filtro de função/município — a
+mesma pessoa aparecia duas vezes na navegação (marcar PIX/pago numa aba,
+frequência/devolução noutra), sem nenhum motivo real pra estarem
+separadas.
+
+**Viraram uma lista só** (`raHtmlSecaoControle()`/`renderControleUnificado()`,
+substituindo `raHtmlSecaoPagamento()`/`renderControlePagamento()` e
+`raHtmlSecaoDevolucao()`/`renderControleDevolucao()`) — cada linha mostra
+os dois grupos de controle ao mesmo tempo (pagamento em cima, frequência/
+devolução embaixo, com o resumo só-leitura da mesa quando aplicável). Sub-
+abas da página caíram de 3 pra 2: "🖨️ Impressão" e "💰📋 Controle de
+pagamento e frequência" (`raSubTab`: `'impressao' | 'controle'`, antes
+`'impressao' | 'pagamento' | 'devolucao'`).
+
+**Estado de filtro único** (`raCtlBusca`/`raCtlFiltroPago`/
+`raCtlFiltroFuncao`/`raCtlFiltroMunicipio`/`raCtlFiltroSituacao`,
+substituindo os dois conjuntos `raPag*`/`raDev*` que existiam em paralelo)
+— quatro `<select>`, na ordem **Pagamento (status) → Função → Município →
+Situação (frequência/devolução)**. A ordem não é arbitrária: Pagamento/
+Função/Município mantêm a MESMA posição (nth 0/1/2) que já tinham na antiga
+aba de pagamento, então nenhum fluxo que dependia de "o 1º/2º/3º select" se
+move; só o filtro de Situação (que vivia sozinho na antiga aba de
+devolução, nth=0 lá) entra como 4º, no fim.
+
+**Resumo combinado** (`raCtlResumo()`, substituindo `raPagResumo()`/
+`raDevResumo()` separados) — uma função só computando pagos/total/
+conflitos/deveDevolver/totalADevolver/jaDevolveram/totalDevolvido/
+semMarcar/reciboAusente, usada tanto no cabeçalho da aba (badge do botão da
+sub-aba) quanto na linha de resumo da lista.
+
+**Agrupamento por cidade/local de votação (`raOrdenarAgrupado`/
+`raHtmlListaComGrupos`, já existente desde a feature anterior) e as funções
+"core" de pagamento/frequência/devolução (`raTogglePagoCore`/
+`raSalvarValorPagoCore`/`raMarcarFrequenciaCore`/`raToggleDevolvidoCore`,
+também já existentes) não mudaram** — a unificação é só de APRESENTAÇÃO e
+ESTADO DE FILTRO; a lógica de gravação/log já era compartilhada entre as
+duas abas antigas (cada uma só tinha sua própria casca de
+busca+filtro+renderização por cima).
+
+**Achado ao testar: o filtro de Pagamento (default "Pendentes") esconde
+quem já está pago, inclusive do fluxo de frequência/devolução — que
+precisa justamente ver quem já foi pago pra marcar comparecimento/
+devolução.** Isso nunca foi um problema na aba separada "Frequência e
+Devolução" (que não tinha filtro de status de pagamento nenhum, só de
+situação) — virou um problema real depois da unificação, porque agora os
+dois filtros convivem na mesma lista. Não ajustado no código (o default
+"Pendentes" continua sendo a visão mais acionável pra quem está PAGANDO,
+critério já documentado desde 25/09/2026) — quem for trabalhar
+especificamente com frequência/devolução de alguém já pago muda o filtro
+de Pagamento pra "Todos" primeiro, mesmo gesto que o resto da tela já pedia
+pra combinar função+município+busca.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (258 checks, mesmo
+arquivo, nenhum check novo — a suíte inteira foi migrada pros ids/botão/
+ordem de seletor novos: `#ra-controle-pagamento`/`#ra-controle-devolucao`
+→ `#ra-controle-unificado`; `#ra-pag-busca` → `#ra-ctl-busca`; os botões
+"💰 Controle de pagamento"/"📋 Frequência e Devolução" → o único botão
+"💰📋 Controle de pagamento e frequência"; os 3 testes que interagiam com
+um Presidente já pago dentro do antigo fluxo de frequência ganharam um
+`selectOption(..., '')` explícito pro filtro de Pagamento, pelo motivo
+documentado acima).
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
