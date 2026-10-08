@@ -1753,6 +1753,152 @@ function raMudarSubTab(t) {
   renderReciboAlimentacao();
 }
 
+// ── 🗺️ Conferência por cidade/local/seção (08/10/2026, pedido direto:
+// "quero um painel, separado por cidade, e em cada cidade, o local de
+// votação e seções no estilo do anexo para conferencia dos auxilios" —
+// anexo era um print do drilldown por local do Dashboard de Convocação,
+// `sime_resumo_secoes.js`: card por local, cargos de mesa em grade com
+// ícone de status, coordenador listado no cabeçalho). Painel NOVO,
+// puramente de LEITURA — nunca escreve nada sozinho, é só uma visão
+// condensada pra bater o olho e conferir rápido, antes/depois de marcar
+// pagamento; editar continua sendo clicando no nome (mesmo `raAbrirModal`
+// de sempre) ou pela lista detalhada logo abaixo, que não foi tocada.
+//
+// Agrupa por MUNICÍPIO → LOCAL DE VOTAÇÃO (mesma chave `local_nome`+
+// `municipio` de sempre, `sime_secoes` não tem id próprio de "local") →
+// dentro do local, um card por SEÇÃO com os 4 cargos de mesa
+// (`raDados.mesarios`, lista CHEIA — não a filtrada de `raDados.todos`,
+// que só tem o Presidente — é o que já alimenta `raMesaMembros` em todo o
+// resto do arquivo) e o(s) coordenador(es) de acessibilidade daquele
+// local, se houver. Auxiliar de Eleição/Junta Eleitoral quase nunca têm
+// `secao_id` resolvido (mesmo achado já documentado pro Dashboard —
+// "Auxiliar de Eleição virou contagem por PESSOA") — ficam numa lista
+// própria "⚠ Sem local definido" no fim, nunca escondidos.
+let raConferenciaAberto = true;
+function raToggleConferencia() {
+  raConferenciaAberto = !raConferenciaAberto;
+  renderReciboAlimentacao();
+}
+
+function raIconFrequencia(freq) {
+  return freq === 'faltou' ? '❌' : freq === 'presente' ? '✅' : '➖';
+}
+function raBadgePago(p) {
+  return p.auxilio_alimentacao_pago
+    ? `<span style="color:var(--green,#16a34a)">💰✅ pago</span>`
+    : `<span style="color:var(--text2)">💰⏳ pendente</span>`;
+}
+
+// Só o Presidente é clicável pra editar PIX/pagamento — é o único dos 4
+// cargos que de fato recebe pagamento (ver "só o Presidente entra no
+// controle de pagamento" em `raCarregar`); os outros 3 nunca entram em
+// `raDados.todos`, então `raAbrirModal` neles abriria um modal vazio
+// (`raPessoaModal()` não acha ninguém) — mostrados só como texto, com o
+// ícone de frequência de cada um.
+function raHtmlCardSecaoConferencia(entry) {
+  const membros = entry.membros.slice().sort((x, y) => RA_ORDEM_MESA.indexOf(x.funcao_mesa) - RA_ORDEM_MESA.indexOf(y.funcao_mesa));
+  const presidente = membros.find(m => m.funcao_mesa === 'Presidente');
+  const reciboAusente = presidente?.auxilio_alimentacao_recibo_ausente;
+  return `
+    <div style="border:1px solid var(--border2);border-radius:8px;padding:8px 10px;min-width:200px;flex:1 1 200px">
+      <div style="font-weight:700;font-size:.8rem;display:flex;justify-content:space-between;gap:6px;align-items:baseline">
+        <span>Seção ${entry.sec.numero}</span>
+        ${presidente ? raBadgePago(presidente) : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">
+        ${membros.map(m => `
+          <div style="font-size:.74rem;display:flex;gap:4px;align-items:baseline">
+            <span>${raIconFrequencia(m.auxilio_alimentacao_frequencia)}</span>
+            <span style="color:var(--text2)">${raEsc(m.funcao_mesa || raFuncaoLabel(m))}:</span>
+            ${m.funcao_mesa === 'Presidente'
+              ? `<span style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${m.id}')" title="Clique pra ver PIX/pagamento">${raEsc(m.nome_completo)}</span>`
+              : raEsc(m.nome_completo)}
+          </div>`).join('')}
+      </div>
+      ${reciboAusente ? '<div class="ic-sub" style="margin-top:4px">📄 recibo ausente (mesa completa)</div>' : ''}
+    </div>`;
+}
+
+function raAgruparConferencia() {
+  const porMunicipio = {};
+  const semLocal = [];
+  const secoesPorId = {};
+  for (const m of raDados.mesarios || []) {
+    if (!m.sec) continue;
+    if (!secoesPorId[m.secao_id]) secoesPorId[m.secao_id] = { sec: m.sec, membros: [] };
+    secoesPorId[m.secao_id].membros.push(m);
+  }
+  const getLocal = (municipio, localNome) => {
+    if (!porMunicipio[municipio]) porMunicipio[municipio] = {};
+    if (!porMunicipio[municipio][localNome]) porMunicipio[municipio][localNome] = { secoes: [], coordenadores: [] };
+    return porMunicipio[municipio][localNome];
+  };
+  for (const entry of Object.values(secoesPorId)) getLocal(entry.sec.municipio, entry.sec.local_nome).secoes.push(entry);
+  for (const c of raDados.coord || []) {
+    if (c.sec) getLocal(c.sec.municipio, c.sec.local_nome).coordenadores.push(c);
+    else semLocal.push(c);
+  }
+  for (const a of raDados.auxiliares || []) semLocal.push(a);
+  for (const j of raDados.junta || []) semLocal.push(j);
+  for (const mun of Object.keys(porMunicipio)) {
+    for (const locNome of Object.keys(porMunicipio[mun])) {
+      porMunicipio[mun][locNome].secoes.sort((a, b) => a.sec.numero - b.sec.numero);
+    }
+  }
+  return { porMunicipio, municipios: Object.keys(porMunicipio).sort(), semLocal: semLocal.sort((a, b) => a.nome_completo.localeCompare(b.nome_completo)) };
+}
+
+function raHtmlSecaoConferencia() {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="raToggleConferencia()">
+        <span>🗺️ Conferência por cidade e local de votação</span>
+        <span>${raConferenciaAberto ? '▾' : '▸'}</span>
+      </div>
+      <div class="ic-sub">Visão rápida pra conferir, por município e local de votação, se o Presidente já foi pago e
+        quem compareceu em cada seção — só leitura, clique no nome pra editar. Separado da lista detalhada logo
+        abaixo (essa aí continua pra marcar pagamento/frequência um a um).</div>
+      <div id="ra-conferencia-body" style="margin-top:8px"></div>
+    </div>`;
+}
+
+function renderConferencia() {
+  const alvo = document.getElementById('ra-conferencia-body');
+  if (!alvo) return;
+  if (!raConferenciaAberto) { alvo.innerHTML = ''; return; }
+  const { porMunicipio, municipios, semLocal } = raAgruparConferencia();
+  alvo.innerHTML = `
+    ${municipios.map(mun => `
+      <div style="margin-bottom:16px">
+        <div style="font-weight:800;font-size:.9rem;padding-bottom:4px;border-bottom:2px solid var(--border2);margin-bottom:8px">📍 ${raEsc(mun)}</div>
+        ${Object.keys(porMunicipio[mun]).sort().map(localNome => {
+          const loc = porMunicipio[mun][localNome];
+          return `
+          <div style="margin:0 0 12px 6px">
+            <div style="font-weight:700;font-size:.82rem">${raEsc(localNome)}</div>
+            ${loc.coordenadores.map(c => `
+              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+              ${loc.secoes.map(raHtmlCardSecaoConferencia).join('') || '<div class="ic-sub" style="margin:0">Nenhuma seção com mesa cadastrada neste local.</div>'}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`).join('')}
+    ${semLocal.length ? `
+      <div style="margin-top:6px;padding-top:10px;border-top:1px solid var(--border2)">
+        <div style="font-weight:700;font-size:.82rem;margin-bottom:6px">⚠ Sem local definido</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          ${semLocal.map(p => `
+          <div style="font-size:.78rem">
+            ${raIconFrequencia(p.auxilio_alimentacao_frequencia)}
+            <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${p.id}')">${raEsc(p.nome_completo)}</b>
+            — ${raEsc(raFuncaoLabel(p))} — ${raBadgePago(p)}
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    ${!municipios.length && !semLocal.length ? '<div class="ic-sub" style="margin:0">Nenhum dado carregado ainda.</div>' : ''}`;
+}
+
 function raHtmlSecaoImpressao(cfg) {
   return `
     <div class="import-card">
@@ -2290,9 +2436,10 @@ function renderReciboAlimentacao() {
       </div>
     </div>
 
-    ${raSubTab === 'controle' ? raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
+    ${raSubTab === 'controle' ? raHtmlSecaoConferencia() + raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
     ${raSubTab === 'controle' ? raHtmlSecaoVeiculos() : ''}
   `;
+  if (raSubTab === 'controle') renderConferencia();
   if (raSubTab === 'controle') renderControleUnificado();
   if (raSubTab === 'controle') renderControleVeiculos();
 }

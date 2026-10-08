@@ -283,7 +283,7 @@ async function cmCarregar() {
 
   const [{ data: pessoas, error: e1 }, { data: secoes, error: e2 }, { data: campanhas, error: e3 }, { data: tentativasManuais }, { data: equipe }] = await Promise.all([
     sb.from('sime_atores')
-      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, telefones_sem_whatsapp, telefones_ignorados, telefones_confirmados, responsavel_usuario_id, proximo_contato_em, proximo_contato_nota, pix')
+      .select('id, nome_completo, telefone_whatsapp, telefone_alternativo, funcao, funcao_mesa, secao_id, confirmacao, ativo, observacao, meio_contato, status_contato_alternativo, codigo_rastreio, inscricao_eleitoral, precisa_substituir, substituto_nome, substituto_telefone, tem_relato_terceiro_pendente, convocacao_recebida, telefones_sem_whatsapp, telefones_ignorados, telefones_confirmados, responsavel_usuario_id, proximo_contato_em, proximo_contato_nota, pix, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_recibo_ausente')
       // Mesário (MRV) + apoio logístico (coord_acessibilidade/auxiliar_eleicao)
       // — antes só mesário; apoio ficava contado no Dashboard mas sem fila de
       // contato própria (21/08/2026, achado real: precisavam contactar apoio
@@ -953,6 +953,43 @@ function cmFmtDataHist(ts) {
   return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+// Bloco "🍽️ Auxílio Alimentação" (08/10/2026, pedido direto: "no modal de
+// cada mesário... quero informação sobre a transferencia do pix e se foi
+// presente ou ausente na seção") — SÓ LEITURA: marcar pagamento/frequência
+// continua sendo só na aba 🍽️ Auxílio Alimentação (SIME_convocacao.html →
+// "💰📋 Controle de pagamento e frequência"), que já tem toda a lógica de
+// cálculo de devolução por mesa, QR do PIX, etc. — duplicar escrita aqui
+// arriscaria os dois lugares divergirem; isto é só visibilidade a mais pro
+// cartório não precisar trocar de aba enquanto trabalha na convocação.
+//
+// Só o Presidente de mesa (ou quem não é da mesa receptora) de fato recebe
+// pagamento direto — mesma regra já documentada em
+// `sime_recibo_alimentacao.js` ("só o Presidente entra no controle de
+// pagamento... repassa aos outros 3 da mesa fora do sistema"); pros outros
+// 3 cargos de mesa (1º/2º Mesário, 1º Secretário) o bloco mostra só a
+// frequência, nunca um "pendente" que sugeriria que eles também deveriam
+// ser pagos diretamente.
+function cmHtmlAuxilioAlimentacao(p) {
+  const pagavel = p.funcao !== 'mesario' || p.funcao_mesa === 'Presidente';
+  const freqTxt = p.auxilio_alimentacao_frequencia === 'faltou' ? '❌ Faltou'
+    : p.auxilio_alimentacao_frequencia === 'presente' ? '✅ Presente'
+    : '➖ Ainda não marcada';
+  return `
+      <div class="m-section">
+        <div class="m-section-hdr">🍽️ Auxílio Alimentação</div>
+        <div class="ic-sub" style="margin-bottom:6px">Só leitura — marcar pagamento/frequência é na aba "🍽️ Auxílio Alimentação" → "💰📋 Controle de pagamento e frequência".</div>
+        <div class="m-kv">
+          <div class="m-kv-row"><b>Presença na seção</b><span>${freqTxt}${p.funcao === 'mesario' && p.funcao_mesa === 'Presidente' && p.auxilio_alimentacao_recibo_ausente ? ' · 📄 recibo não recolhido' : ''}</span></div>
+          ${pagavel ? `
+          <div class="m-kv-row"><b>Transferência do PIX</b><span>${p.auxilio_alimentacao_pago
+            ? `✅ Pago${p.auxilio_alimentacao_valor_pago != null ? ` — R$ ${Number(p.auxilio_alimentacao_valor_pago).toFixed(2).replace('.', ',')}` : ''}${p.auxilio_alimentacao_pago_em ? ` em ${cmFmtDataHist(p.auxilio_alimentacao_pago_em)}` : ''}`
+            : '⏳ Ainda não pago'}</span></div>
+          ${p.auxilio_alimentacao_documento ? `<div class="m-kv-row"><b>Documento do PIX</b><span>${cmEsc(p.auxilio_alimentacao_documento)}</span></div>` : ''}`
+            : `<div class="m-kv-row"><b>Transferência do PIX</b><span>— pago direto ao Presidente de mesa, que repassa em mãos</span></div>`}
+        </div>
+      </div>`;
+}
+
 function cmPessoaModal() {
   return cmDados?.pessoas?.find(x => x.id === cmModalId) || null;
 }
@@ -1440,6 +1477,8 @@ function cmRenderModal() {
           ${p.codigo_rastreio ? `<div style="margin-top:4px"><a href="${cmLinkRastreio(p.codigo_rastreio)}" target="_blank" rel="noopener" style="font-size:.72rem">📦 Rastrear no site dos Correios</a></div>` : ''}
         </div>` : ''}
       </div>
+
+      ${cmHtmlAuxilioAlimentacao(p)}
 
       <div class="m-section">
         <div class="m-section-hdr">📞 Tentativas de contato</div>
