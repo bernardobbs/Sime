@@ -9418,6 +9418,46 @@ um Presidente já pago dentro do antigo fluxo de frequência ganharam um
 `selectOption(..., '')` explícito pro filtro de Pagamento, pelo motivo
 documentado acima).
 
+---
+
+## "QUANTOS E QUAIS PIX FORAM REALIZADOS PRA ELE" (`sime_recibo_alimentacao.js`, 08/10/2026)
+
+Pergunta direta: "por mesario tem como informar quantos e quais pix foram
+realizados para ele, ou no modal de convocação ou no modal do controle de
+auxílio?" — respondida implementando no **modal do controle de auxílio**
+(`raRenderModal`/a linha da lista unificada), não no modal de Contatar
+Mesários: só lá já existia toda a infraestrutura necessária
+(`raOutrosPapeis`/`raCalcularConflitosPorTitulo`, de 26/09/2026, e os
+próprios campos `auxilio_alimentacao_pago`/`valor_pago` já carregados) —
+replicar isso no modal de Convocação (`sime_contatar_mesarios.js`) exigiria
+buscar essas 4 colunas numa tela que nunca as usou e duplicar a mesma
+lógica de agrupamento por título de eleitor que já existe aqui.
+
+**Só tem valor informativo de verdade quando há papel duplicado** (mesma
+pessoa com Presidente + Auxiliar de Eleição, ou Presidente + Coordenador,
+ver "Aviso de papel duplicado" de 26/09/2026) — sem conflito, "quantos" já
+é só o que o checkbox "PIX feito" do próprio papel mostra, não precisa de
+resumo à parte.
+
+`raResumoPixPessoa(p)` (nova) — soma o próprio registro com os demais
+papéis da MESMA pessoa (`raOutrosPapeis`, mesmo título de eleitor):
+quantos desses papéis já têm `auxilio_alimentacao_pago=true` e o total em
+R$. O aviso "⚠️ mesma pessoa também está em: ..." (já existente, nos DOIS
+lugares que o mostram — a linha da lista unificada e o modal de detalhe,
+templates separados, cada um precisou do mesmo ajuste) ganhou o status de
+pagamento de cada papel citado (✅ pago R$X / ⏳ ainda não pago) e uma
+linha de resumo logo abaixo ("💰 N de M papel(éis) desta pessoa já com PIX
+pago — total R$X"). **Nunca bloqueia nem decide nada sozinho** — é só
+visibilidade a mais pro cartório decidir qual papel de fato paga antes de
+marcar os dois, mesmo critério de sempre do aviso que já existia.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 20, 266 checks
+no total no arquivo): status de cada papel (pago/não pago) aparece dos
+dois lados do conflito, com o valor certo; resumo "N de M" aparece igual
+na linha da lista E no modal de detalhe da mesma pessoa; quem não tem
+papel duplicado nunca mostra o resumo; marcar o segundo papel como pago
+atualiza o resumo (e o total somado) na hora, sem precisar recarregar.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

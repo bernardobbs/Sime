@@ -1423,6 +1423,56 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 20. "Quantos e quais PIX já foram realizados" por pessoa, no mesmo
+// aviso de papel duplicado (08/10/2026, pedido direto: "por mesario tem
+// como informar quantos e quais pix foram realizados para ele"). Só tem
+// valor informativo quando há papel duplicado (Presidente + Coordenador,
+// mesmo caso do bloco 9/11) — cada papel listado mostra o próprio status
+// (✅ pago/⏳ ainda não pago), e uma linha de resumo soma quantos dos
+// papéis da MESMA pessoa já têm PIX pago. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.push({ id: 'c3', nome_completo: 'COORDENADORA DUPLICADA MARIA', funcao: 'coord_acessibilidade', funcao_mesa: null, secao_id: 's2', inscricao_eleitoral: '111111111111', zona_id: 'z7', ativo: true });
+  // PRESIDENTE MARIA (m1) já pago — a Coordenadora duplicada (c3) ainda não.
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago = true;
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_valor_pago = 260;
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
+
+  const linhaPresidente = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —")').textContent()).replace(/\s+/g, ' ');
+  check('linha do Presidente mostra que a Coordenadora duplicada ainda não foi paga', /Coordenador de Acessibilidade \(Seção 12\) \(⏳ ainda não pago\)/.test(linhaPresidente), linhaPresidente);
+  check('linha do Presidente resume 1 de 2 papéis já pagos, com o total', /💰 1 de 2 papel\(éis\) desta pessoa já com PIX pago — total R\$ 260,00/.test(linhaPresidente), linhaPresidente);
+
+  const linhaCoord = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA")').textContent()).replace(/\s+/g, ' ');
+  check('linha da Coordenadora mostra que o Presidente duplicado já foi pago, com o valor', /Presidente \(Seção 5\) \(✅ pago R\$ 260,00\)/.test(linhaCoord), linhaCoord);
+  check('o mesmo resumo (1 de 2) aparece na linha da Coordenadora', /💰 1 de 2 papel\(éis\) desta pessoa já com PIX pago — total R\$ 260,00/.test(linhaCoord), linhaCoord);
+
+  const linhaSemConflito = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA BEATRIZ")').textContent()).replace(/\s+/g, ' ');
+  check('quem não tem papel duplicado não mostra o resumo de PIX', !/papel\(éis\) desta pessoa já com PIX pago/.test(linhaSemConflito), linhaSemConflito);
+
+  // Mesmo resumo, dentro do modal de detalhe da Coordenadora.
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("COORDENADORA DUPLICADA MARIA") b');
+  await p.waitForTimeout(300);
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('modal da Coordenadora mostra o Presidente duplicado já pago e o resumo 1 de 2', /Presidente \(Seção 5\) \(✅ pago R\$ 260,00\)/.test(modalTxt) && /💰 1 de 2 papel\(éis\) desta pessoa já com PIX pago — total R\$ 260,00/.test(modalTxt), modalTxt.slice(0, 500));
+
+  // Marcar o 2º papel (Coordenadora) como pago atualiza o resumo pra 2 de 2.
+  await p.click('#modal-body input[type=checkbox]');
+  await p.waitForTimeout(200);
+  const linhaPresidenteDepois = (await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —")').textContent()).replace(/\s+/g, ' ');
+  check('depois de pagar os dois papéis, o resumo vira 2 de 2 (somando os dois valores — 260 do Presidente + 65 sugerido da Coordenadora)', /💰 2 de 2 papel\(éis\) desta pessoa já com PIX pago — total R\$ 325,00/.test(linhaPresidenteDepois), linhaPresidenteDepois);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

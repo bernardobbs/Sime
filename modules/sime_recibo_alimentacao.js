@@ -298,6 +298,23 @@ function raOutrosPapeis(a) {
   return lista.filter(o => o.id !== a.id);
 }
 
+// "Quantos e quais PIX já foram pagos pra ESTA pessoa" (06/10/2026, pedido
+// direto) — soma o próprio registro com os demais papéis dela
+// (`raOutrosPapeis`, mesmo título de eleitor). Só tem valor informativo de
+// verdade quando há papel duplicado (Presidente + Auxiliar de Eleição,
+// Presidente + Coordenador...) — sem conflito, "quantos" já é só o que o
+// checkbox "PIX feito" do próprio papel já mostra, não precisa de resumo
+// à parte.
+function raResumoPixPessoa(p) {
+  const todos = [p, ...raOutrosPapeis(p)];
+  const pagos = todos.filter(a => a.auxilio_alimentacao_pago);
+  return {
+    totalPapeis: todos.length,
+    count: pagos.length,
+    total: pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0),
+  };
+}
+
 function raCfg() {
   const hoje = new Date();
   const dataStr = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
@@ -1217,6 +1234,7 @@ function raRenderModal() {
   if (!p) { modal.innerHTML = ''; return; }
   const cfg = raCfg();
   const outros = raOutrosPapeis(p);
+  const resumoPix = outros.length ? raResumoPixPessoa(p) : null;
   const observacoes = raParseObservacoes(p.observacao);
   const blocoObs = observacoes.length
     ? [...observacoes].reverse().map(txt => `<div class="m-hist-item">${raEsc(txt)}</div>`).join('')
@@ -1234,7 +1252,8 @@ function raRenderModal() {
       </div>
       <button onclick="raFecharModal()" aria-label="Fechar" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text2);line-height:1">✕</button>
     </div>
-    ${outros.length ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
+    ${outros.length ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ mesma pessoa também está em: ${outros.map(o => `${raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))} ${o.auxilio_alimentacao_pago ? `(✅ pago ${raEsc(raFmtValor(o.auxilio_alimentacao_valor_pago))})` : '(⏳ ainda não pago)'}`).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>
+    <div class="ic-sub" style="margin:4px 0 0">💰 ${resumoPix.count} de ${resumoPix.totalPapeis} papel(éis) desta pessoa já com PIX pago${resumoPix.count ? ` — total ${raEsc(raFmtValor(resumoPix.total))}` : ''}.</div>` : ''}
 
     <div class="form-group" style="margin-top:12px">
       <label>Chave PIX${destino.viaPresidente ? ' (do próprio coordenador — informativo)' : ''}</label>
@@ -1864,6 +1883,7 @@ function renderControleUnificado() {
     <div class="m-hist" style="max-height:480px;overflow-y:auto">
       ${raHtmlListaComGrupos(lista, a => {
         const outros = raOutrosPapeis(a);
+        const resumoPix = outros.length ? raResumoPixPessoa(a) : null;
         const deve = raDeveDevolver(a);
         const ehMesa = a.funcao === 'mesario' && a.secao_id;
         const valorDevolver = raValorADevolver(a);
@@ -1874,7 +1894,7 @@ function renderControleUnificado() {
           <span>
             <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX, marcar pagamento e anotar observação">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
             ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
-            ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))).join(', ')} — confira qual papel de fato paga antes de marcar os dois.</div>` : ''}
+            ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => `${raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))} ${o.auxilio_alimentacao_pago ? `(✅ pago ${raEsc(raFmtValor(o.auxilio_alimentacao_valor_pago))})` : '(⏳ ainda não pago)'}`).join(', ')} — confira qual papel de fato paga antes de marcar os dois.<br>💰 ${resumoPix.count} de ${resumoPix.totalPapeis} papel(éis) desta pessoa já com PIX pago${resumoPix.count ? ` — total ${raEsc(raFmtValor(resumoPix.total))}` : ''}.</div>` : ''}
           </span>
           <span style="display:flex;align-items:center;gap:6px">
             ${a.funcao === 'auxiliar_eleicao' ? `
