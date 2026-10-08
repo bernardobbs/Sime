@@ -1325,11 +1325,6 @@ function raRenderModal() {
 
     ${p.auxilio_alimentacao_isento ? `
     <div class="import-result ir-warn" style="background:var(--bg2);color:var(--text2);margin:12px 0">🟡 Isento — trabalhou só pela folga, sem repasse do auxílio alimentação (nunca entra como pendente).</div>
-    <div style="margin:0 0 12px">
-      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Motivo (opcional)</label>
-      <input id="ra-modal-isento-motivo" type="text" value="${raEsc(p.auxilio_alimentacao_isento_motivo || '')}" placeholder="ex.: compensou com folga, não vai receber PIX" onblur="raSalvarIsentoMotivo('${p.id}', this.value)" style="width:260px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
-      <button class="btn btn-out" style="margin-left:8px" onclick="raModalToggleIsento('${p.id}', false)">↺ Desfazer isenção</button>
-    </div>
     ` : `
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
       ${p.funcao === 'auxiliar_eleicao' ? `
@@ -1347,7 +1342,6 @@ function raRenderModal() {
       <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
         <input type="checkbox" ${p.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raModalTogglePago('${p.id}', this.checked)"> PIX feito
       </label>
-      <button class="btn btn-out" onclick="raModalToggleIsento('${p.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento (folga)</button>
     </div>
     ${p.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(p.auxilio_alimentacao_pago_em))}</div>` : ''}
 
@@ -1459,9 +1453,15 @@ function raHtmlModalFrequenciaDevolucao(p, cfg) {
       ${ehMesa
         ? `${raHtmlResumoMesa(p.secao_id) || '<div class="ic-sub" style="margin:0 0 6px">Frequência da mesa ainda não marcada.</div>'}
            <button class="btn btn-out" style="margin-top:6px" onclick="raAbrirModalFalta('${p.secao_id}')">❌ Marcar quem faltou / recibo ausente</button>`
-        : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        : `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
              <button class="btn ${p.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:6px 10px;font-size:.8rem" onclick="raModalMarcarFrequencia('${p.id}', 'presente')">✅ Presente</button>
              <button class="btn ${p.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:6px 10px;font-size:.8rem" onclick="raModalMarcarFrequencia('${p.id}', 'faltou')">❌ Faltou</button>
+             ${p.auxilio_alimentacao_isento ? `
+             <input id="ra-modal-isento-motivo" type="text" value="${raEsc(p.auxilio_alimentacao_isento_motivo || '')}" placeholder="motivo da isenção (opcional)" onblur="raSalvarIsentoMotivo('${p.id}', this.value)" style="width:220px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:.8rem">
+             <button class="btn btn-out" style="padding:6px 10px;font-size:.8rem" onclick="raModalToggleIsento('${p.id}', false)">↺ Desfazer isenção</button>
+             ` : `
+             <button class="btn btn-out" style="padding:6px 10px;font-size:.8rem" onclick="raModalToggleIsento('${p.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento (folga)</button>
+             `}
            </div>`}
       ${deve ? `<div class="import-result ir-warn" style="margin-top:8px">⚠️ ${ehMesa ? `${qtdFaltantes} de 4 membro(s) da mesa faltou(aram)` : 'Faltou e já recebeu'} — deve devolver ${raEsc(raFmtValor(valorDevolver))}${ehMesa ? ` (${raEsc(raFmtValor(raValorPorMembroMesa(p)))} por membro)` : ''}.</div>` : ''}
       ${mostrarDevolucao ? `
@@ -2115,8 +2115,6 @@ function renderControleUnificado() {
           <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             ${a.auxilio_alimentacao_isento ? `
             <span class="ic-sub" style="margin:0">🟡 Isento — sem repasse do auxílio</span>
-            <input type="text" id="ra-isento-motivo-${a.id}" value="${raEsc(a.auxilio_alimentacao_isento_motivo || '')}" placeholder="motivo (opcional)" onblur="raSalvarIsentoMotivo('${a.id}', this.value)" style="width:150px;font-size:.72rem;padding:4px 6px">
-            <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', false)">↺ Desfazer isenção</button>
             ` : `
             ${a.funcao === 'auxiliar_eleicao' ? `
             <select onchange="raPagAplicarDias('${a.id}', this.value)" style="font-size:.72rem;padding:4px 6px;border-radius:6px" title="Só ajusta o campo de valor ao lado — o que vale de verdade é o valor, não esta escolha">
@@ -2129,7 +2127,6 @@ function renderControleUnificado() {
             <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;cursor:pointer">
               <input type="checkbox" ${a.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePago('${a.id}', this.checked)"> Pago
             </label>
-            <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento</button>
             `}
           </span>
         </div>
@@ -2143,6 +2140,12 @@ function renderControleUnificado() {
             <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>` : ''}
             ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez (nunca mexe no recibo)">👥 Todos presentes</button>
             <button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raAbrirModalFalta('${a.secao_id}')" title="Indicar quem faltou e não foi substituído, ou marcar que só o recibo ficou faltando">❌ Faltou</button>` : ''}
+            ${a.auxilio_alimentacao_isento ? `
+            <input type="text" id="ra-isento-motivo-${a.id}" value="${raEsc(a.auxilio_alimentacao_isento_motivo || '')}" placeholder="motivo (opcional)" onblur="raSalvarIsentoMotivo('${a.id}', this.value)" style="width:150px;font-size:.72rem;padding:4px 6px">
+            <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', false)">↺ Desfazer isenção</button>
+            ` : `
+            <button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleIsento('${a.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento</button>
+            `}
             ${deve ? `<button class="btn btn-dark" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', true)">✅ Marcar devolvido</button>` : ''}
             ${a.auxilio_alimentacao_devolvido ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raToggleDevolvido('${a.id}', false)">↺ Desfazer devolução</button>` : ''}
           </span>

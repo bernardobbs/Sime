@@ -9489,33 +9489,52 @@ sempre sobre `raDados.todos` inteiro, nunca só o que o filtro atual
 mostra) ganhou a contagem "🟡 N isento(s) (trabalhou(aram) só pela folga,
 sem repasse)".
 
-**Toggle, não um estado permanente** — botão "🟡 Isento" na linha da lista
-(ao lado do campo de valor/checkbox "Pago", que por sua vez SOME quando
-isento — não faz sentido editar valor/marcar pago de quem não vai
-receber PIX nenhum) e no modal de detalhe (substitui o bloco inteiro de
-Valor/PIX feito/QR Code por um aviso + motivo + "↺ Desfazer isenção",
-mesmo critério de "esconder, não desabilitar" já usado alhures no
-projeto). Marcar isento NUNCA mexe em `auxilio_alimentacao_pago`/`valor_pago`
-— são campos totalmente independentes; se alguém já tinha sido marcado
-pago por engano antes de descobrir que o acordo era folga, desmarcar o
-"Pago" continua sendo uma ação separada. Motivo é editável a qualquer
-momento (onblur salva sozinho, mesmo padrão de "Documento de envio"),
-nunca exigido pra marcar/desmarcar — "nunca bloquear por campo opcional"
-de sempre.
+**Toggle, não um estado permanente — ao lado de "✅ Presente"/"❌ Faltou",
+não da caixa de pagamento (corrigido no mesmo dia, pedido direto: "o
+isento (folga) deve ficar ao lado de presente, faltou em 📋 Frequência e
+devolução").** A primeira versão colocava o botão "🟡 Isento" na linha de
+pagamento (junto do valor/checkbox "Pago") — fazia sentido por ser "o
+oposto de pagar", mas visualmente ficava longe de onde a pessoa já estava
+olhando pra registrar a frequência do dia, que é o contexto real de
+"trabalhou, só que pela folga". Botão "🟡 Isento" (linha da lista) e "🟡
+Isento (folga)" (modal, dentro de `raHtmlModalFrequenciaDevolucao`) agora
+vivem no mesmo grupo dos botões de frequência — depois de
+"✅ Presente"/"❌ Faltou" pra quem não é mesa, depois de "👥 Todos
+presentes"/"❌ Faltou" (mesa) pra Presidente de mesa. A linha de pagamento
+continua existindo (valor/checkbox "Pago"), só que SOME inteira quando
+isento (não faz sentido editar valor/marcar pago de quem não vai receber
+PIX nenhum) — vira só o badge "🟡 Isento — sem repasse do auxílio", sem
+botão nem motivo ali; motivo+"↺ Desfazer isenção" também migraram pra
+dentro do grupo de frequência, ao lado do botão. No modal de detalhe, o
+bloco inteiro de Valor/PIX feito/QR Code (que já sumia quando isento, mesmo
+critério de "esconder, não desabilitar" já usado alhures no projeto)
+manteve só o aviso "🟡 Isento — trabalhou só pela folga..."; o botão de
+toggle + motivo + desfazer saíram de lá e entraram na seção "📋 Frequência
+e devolução" do modal, ao lado de Presente/Faltou — mesmo lugar da lista.
+Marcar isento NUNCA mexe em `auxilio_alimentacao_pago`/`valor_pago` — são
+campos totalmente independentes; se alguém já tinha sido marcado pago por
+engano antes de descobrir que o acordo era folga, desmarcar o "Pago"
+continua sendo uma ação separada. Motivo é editável a qualquer momento
+(onblur salva sozinho, mesmo padrão de "Documento de envio"), nunca
+exigido pra marcar/desmarcar — "nunca bloquear por campo opcional" de
+sempre.
 
 Log de auditoria (`mesario_auxilio_alimentacao_isento`/`_desfeito`/
 `_motivo_editado`, com autor/motivo no payload) — mesmo padrão de log já
 usado por todo o resto do controle de pagamento.
 
 Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 22, 286 checks
-no total no arquivo): marcar isento grava a flag sem tocar em pago/valor,
-com log; some do filtro "Pendentes" mas o resumo (que é sobre o total,
-não sobre o filtro atual) já avisa a contagem; filtro "Isentos" isola só
-quem está marcado, sem o campo de valor/checkbox Pago na linha; "Todos"
-também mostra, com o badge; motivo salva sozinho ao sair do campo;
-desfazer isenção volta a aparecer em "Pendentes"; o mesmo toggle funciona
-pelo modal de detalhe, escondendo valor/QR e mostrando o aviso + motivo +
-desfazer, gravando a mesma flag que a lista usa.
+no total no arquivo — os mesmos selectors de texto já cobriam a
+relocalização sem precisar de ajuste, já que nenhum deles dependia de
+POSIÇÃO dentro da linha/modal, só de presença/ausência do elemento):
+marcar isento grava a flag sem tocar em pago/valor, com log; some do
+filtro "Pendentes" mas o resumo (que é sobre o total, não sobre o filtro
+atual) já avisa a contagem; filtro "Isentos" isola só quem está marcado,
+sem o campo de valor/checkbox Pago na linha; "Todos" também mostra, com
+o badge; motivo salva sozinho ao sair do campo; desfazer isenção volta a
+aparecer em "Pendentes"; o mesmo toggle funciona pelo modal de detalhe,
+escondendo valor/QR e mostrando o aviso + motivo + desfazer, gravando a
+mesma flag que a lista usa.
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
