@@ -1473,6 +1473,35 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 21. Painel "🗺️ Conferência por cidade e local de votação" sempre
+// mostra a linha do Coordenador(a) de Acessibilidade, mesmo quando falta
+// designar (08/10/2026, pedido direto: "cada local de votação deve ter um
+// coordenador de acessibilidade designado. mesmo que não conste no
+// sistema, adicione o espaço"). Antes, um local sem nenhum
+// `coord_acessibilidade` vinculado (`loc.coordenadores` vazio) simplesmente
+// não mostrava linha nenhuma de coordenador — não dava pra distinguir "esse
+// local não precisa" de "ninguém reparou que falta". Agora toda vez que o
+// local não tem coordenador, aparece "❌ ... Sem coordenador de
+// acessibilidade designado" — mesmo texto já usado no drilldown do
+// Dashboard de Convocação (`sime_resumo_secoes.js`), não um texto novo. ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  const txt = (await p.locator('#ra-conferencia-body').textContent()).replace(/\s+/g, ' ');
+  check('Escola A (com coordenador) mostra o nome da COORDENADORA BEATRIZ', /Escola A.*Coordenador\(a\) de Acessibilidade: COORDENADORA BEATRIZ/.test(txt), txt);
+  check('Escola B (sem coordenador algum) mostra o aviso de falta, não omite a linha', /Escola B.*❌ Coordenador\(a\) de Acessibilidade: Sem coordenador de acessibilidade designado/.test(txt), txt);
+  check('Escola Municipal Grande do Centro (seção 63, sem coordenador) também mostra o aviso', /Escola Municipal Grande do Centro.*❌ Coordenador\(a\) de Acessibilidade: Sem coordenador de acessibilidade designado/.test(txt), txt);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

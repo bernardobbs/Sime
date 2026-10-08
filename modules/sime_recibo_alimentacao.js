@@ -1876,8 +1876,10 @@ function renderConferencia() {
           return `
           <div style="margin:0 0 12px 6px">
             <div style="font-weight:700;font-size:.82rem">${raEsc(localNome)}</div>
-            ${loc.coordenadores.map(c => `
-              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')}
+            ${loc.coordenadores.length
+              ? loc.coordenadores.map(c => `
+              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')
+              : `<div style="font-size:.78rem;margin:2px 0 2px 10px;color:var(--text2)">🧏 ❌ Coordenador(a) de Acessibilidade: Sem coordenador de acessibilidade designado</div>`}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
               ${loc.secoes.map(raHtmlCardSecaoConferencia).join('') || '<div class="ic-sub" style="margin:0">Nenhuma seção com mesa cadastrada neste local.</div>'}
             </div>
