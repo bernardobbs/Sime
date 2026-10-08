@@ -1502,6 +1502,84 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 22. Isento de pagamento (08/10/2026, pedido direto: "existem
+// auxiliares que trabalharam somente pela folga, sem o repasse do
+// auxilio alimentação") — marcar isento tira a pessoa do filtro padrão
+// "Pendentes" (ela nunca vai receber PIX, não é mais uma pendência de
+// ação de verdade), sem apagar nada — some de "Pendentes", continua
+// aparecendo em "Isentos"/"Todos" com um badge próprio, e nunca mexe em
+// `auxilio_alimentacao_pago`/valor (são campos independentes). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  check('AUXILIAR PEDRO aparece normalmente em "Pendentes" antes de ser isento', await p.locator('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO")').count() === 1);
+
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO") button:has-text("🟡 Isento")');
+  await p.waitForTimeout(200);
+
+  const upd = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.auxilio_alimentacao_isento === true));
+  check('marcar isento grava a flag, e nunca mexe em auxilio_alimentacao_pago/valor', !!upd && upd.payload.auxilio_alimentacao_pago === undefined && upd.payload.auxilio_alimentacao_valor_pago === undefined, JSON.stringify(upd));
+  const logIsento = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_auxilio_alimentacao_isento' && l.payload.ator_id === 'a1'));
+  check('grava log de auditoria ao marcar isento', !!logIsento);
+
+  const resumoPendente = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
+  check('some do filtro padrão "Pendentes" depois de marcado isento', !/AUXILIAR PEDRO/.test(resumoPendente), resumoPendente.slice(0, 300));
+  check('resumo avisa 1 isento, mesmo com o filtro em "Pendentes" (resumo é sobre o total, não sobre o filtro)', /1 isento\(s\)/.test(resumoPendente), resumoPendente.slice(0, 400));
+
+  // Filtro dedicado "Isentos" mostra só quem está marcado, com o badge e
+  // sem o campo de valor/checkbox Pago daquela linha.
+  await p.selectOption('#ra-controle-unificado select', 'isento');
+  await p.waitForTimeout(200);
+  const resumoIsentos = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
+  check('filtro "Isentos" mostra o AUXILIAR PEDRO e mais ninguém', /AUXILIAR PEDRO/.test(resumoIsentos) && !/AUXILIAR LUCIA/.test(resumoIsentos) && !/PRESIDENTE MARIA —/.test(resumoIsentos), resumoIsentos);
+  check('linha do isento mostra o badge', /Isento — sem repasse do auxílio/.test(resumoIsentos));
+  check('linha do isento não mostra o campo de valor nem o checkbox Pago', await p.locator('#ra-pag-valor-a1').count() === 0);
+
+  // "Todos" também mostra o isento, com o mesmo badge.
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
+  check('"Todos" também mostra o isento, com o badge', /AUXILIAR PEDRO.*Isento — sem repasse do auxílio/.test((await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ')));
+
+  // Motivo opcional, onblur salva sozinho — mesmo padrão de "Documento de
+  // envio"/PIX do resto do módulo.
+  await p.fill('#ra-isento-motivo-a1', 'Compensou com folga em 10/10');
+  await p.locator('#ra-isento-motivo-a1').blur();
+  await p.waitForTimeout(200);
+  const updMotivo = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'a1' && e.payload.auxilio_alimentacao_isento_motivo === 'Compensou com folga em 10/10'));
+  check('motivo salva sozinho ao sair do campo', !!updMotivo, JSON.stringify(updMotivo));
+
+  // Desfazer isenção volta a aparecer em "Pendentes" normalmente.
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO") button:has-text("Desfazer isenção")');
+  await p.waitForTimeout(200);
+  const updDesfeito = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a1'));
+  check('desfazer isenção grava a flag de volta a false', updDesfeito.auxilio_alimentacao_isento === false, JSON.stringify(updDesfeito));
+  await p.selectOption('#ra-controle-unificado select', 'pendente');
+  await p.waitForTimeout(200);
+  check('volta a aparecer em "Pendentes" depois de desfazer', await p.locator('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO")').count() === 1);
+
+  // Mesmo controle dentro do modal de detalhe — AUXILIAR LUCIA (a2): antes
+  // de marcar, o modal mostra valor/QR normalmente; depois de marcar isento
+  // pelo botão do modal, os dois somem e vira o aviso + motivo + desfazer.
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR LUCIA") b');
+  await p.waitForTimeout(300);
+  check('modal mostra o campo de valor e o bloco de QR normalmente antes de marcar isento', await p.locator('#ra-modal-valor').count() === 1 && await p.locator('#ra-modal-qr-wrap').count() === 1);
+  await p.click('#modal-body button:has-text("🟡 Isento (folga)")');
+  await p.waitForTimeout(300);
+  const modalTxt = (await p.locator('#modal-body').textContent()).replace(/\s+/g, ' ');
+  check('modal passa a mostrar o aviso de isento, sem campo de valor nem QR', /trabalhou só pela folga/.test(modalTxt) && await p.locator('#ra-modal-valor').count() === 0 && await p.locator('#ra-modal-qr-wrap').count() === 0, modalTxt.slice(0, 300));
+  const updModal = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
+  check('toggle pelo modal grava a mesma flag que a lista usa', updModal.auxilio_alimentacao_isento === true, JSON.stringify(updModal));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

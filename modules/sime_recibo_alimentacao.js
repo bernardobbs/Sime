@@ -169,7 +169,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao, pix_devolucao_chave, pix_devolucao_nome')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, auxilio_alimentacao_isento, auxilio_alimentacao_isento_motivo, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
   ]);
@@ -793,7 +793,10 @@ function raCtlFiltrar() {
   const q = raCtlBusca.trim().toLowerCase();
   const filtrados = (raDados.todos || []).filter(a => {
     if (raCtlFiltroPago === 'pago' && !a.auxilio_alimentacao_pago) return false;
-    if (raCtlFiltroPago === 'pendente' && a.auxilio_alimentacao_pago) return false;
+    // Isento nunca conta como "pendente" — é o próprio pedido que motivou a
+    // flag (08/10/2026): "pra eles não aparecerem mais como pendente".
+    if (raCtlFiltroPago === 'pendente' && (a.auxilio_alimentacao_pago || a.auxilio_alimentacao_isento)) return false;
+    if (raCtlFiltroPago === 'isento' && !a.auxilio_alimentacao_isento) return false;
     if (raCtlFiltroFuncao && a.funcao !== raCtlFiltroFuncao) return false;
     if (raCtlFiltroMunicipio && (a.sec?.municipio || '') !== raCtlFiltroMunicipio) return false;
     if (raCtlFiltroSituacao === 'presente') {
@@ -855,6 +858,7 @@ function raCtlResumo() {
     totalDevolvido: jaDevolveramLista.reduce((s, a) => s + raValorADevolver(a), 0),
     semMarcar: todos.filter(a => a.funcao === 'mesario' ? raMesaNenhumMarcado(a.secao_id) : !a.auxilio_alimentacao_frequencia).length,
     reciboAusente: todos.filter(a => a.funcao === 'mesario' && raMesaReciboAusente(a.secao_id)).length,
+    isentos: todos.filter(a => a.auxilio_alimentacao_isento).length,
   };
 }
 
@@ -917,6 +921,59 @@ async function raModalTogglePago(atorId, marcarPago) {
   await raTogglePagoCore(atorId, marcarPago, valorDigitado);
   renderControleUnificado();
   if (raModalId === atorId) raRenderModal();
+}
+
+// ── Isento de pagamento (08/10/2026, pedido direto: "existem auxiliares que
+// trabalharam somente pela folga, sem o repasse do auxilio alimentação") —
+// flag própria (`sime_atores.auxilio_alimentacao_isento`), nunca um valor de
+// `auxilio_alimentacao_pago`/`frequencia`: a pessoa TRABALHOU normalmente (a
+// frequência continua independente disso), só não recebe PIX nenhum porque o
+// acordo foi folga (dia de compensação) em vez de pagamento — bem diferente
+// de "faltou" (que gera devolução de um valor já pago) ou "ainda não pago"
+// (que continua pendente de ação). Mesmo espírito de `dispensado_manual`/
+// `precisa_substituir`: flag manual do cartório, nunca escrita por sync
+// nenhum, nunca bloqueia nenhuma outra ação (a pessoa pode ser desmarcada e
+// voltar a ser paga normalmente se o acordo mudar). ──
+async function raToggleIsentoCore(atorId, marcarIsento, motivo) {
+  const sb = window.supabaseAtores;
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa) return false;
+  const payload = { auxilio_alimentacao_isento: marcarIsento };
+  if (motivo !== undefined) payload.auxilio_alimentacao_isento_motivo = motivo || null;
+  const { error } = await sb.from('sime_atores').update(payload).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return false; }
+  Object.assign(pessoa, payload);
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log(marcarIsento ? 'mesario_auxilio_alimentacao_isento' : 'mesario_auxilio_alimentacao_isento_desfeito', '', { ator_id: atorId, nome: pessoa.nome_completo, motivo: pessoa.auxilio_alimentacao_isento_motivo, autor });
+  showToast(marcarIsento ? '🟡 Marcado como isento — não entra mais como pendente' : '↺ Isenção desfeita');
+  return true;
+}
+
+async function raToggleIsento(atorId, marcarIsento) {
+  const motivoEl = document.getElementById(`ra-isento-motivo-${atorId}`);
+  await raToggleIsentoCore(atorId, marcarIsento, motivoEl ? motivoEl.value.trim() : undefined);
+  renderControleUnificado();
+}
+
+async function raModalToggleIsento(atorId, marcarIsento) {
+  const motivoEl = document.getElementById('ra-modal-isento-motivo');
+  await raToggleIsentoCore(atorId, marcarIsento, motivoEl ? motivoEl.value.trim() : undefined);
+  renderControleUnificado();
+  if (raModalId === atorId) raRenderModal();
+}
+
+// Motivo editável a qualquer momento (onblur salva sozinho, mesmo padrão do
+// "Documento de envio") — independente do toggle, pra poder corrigir/
+// completar o motivo sem precisar desmarcar e marcar de novo.
+async function raSalvarIsentoMotivo(atorId, motivo) {
+  const pessoa = (raDados.todos || []).find(a => a.id === atorId);
+  if (!pessoa || (pessoa.auxilio_alimentacao_isento_motivo || '') === (motivo || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_isento_motivo: motivo || null }).eq('id', atorId);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  pessoa.auxilio_alimentacao_isento_motivo = motivo || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_isento_motivo_editado', '', { ator_id: atorId, motivo: pessoa.auxilio_alimentacao_isento_motivo, autor });
 }
 
 // Valor editável independente do checkbox (onblur salva sozinho, mesmo
@@ -1266,6 +1323,14 @@ function raRenderModal() {
       <input id="ra-modal-doc-envio" type="text" value="${raEsc(p.auxilio_alimentacao_documento || '')}" placeholder="opcional" onblur="raSalvarDocumentoEnvio('${p.id}')" style="width:220px">
     </div>
 
+    ${p.auxilio_alimentacao_isento ? `
+    <div class="import-result ir-warn" style="background:var(--bg2);color:var(--text2);margin:12px 0">🟡 Isento — trabalhou só pela folga, sem repasse do auxílio alimentação (nunca entra como pendente).</div>
+    <div style="margin:0 0 12px">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Motivo (opcional)</label>
+      <input id="ra-modal-isento-motivo" type="text" value="${raEsc(p.auxilio_alimentacao_isento_motivo || '')}" placeholder="ex.: compensou com folga, não vai receber PIX" onblur="raSalvarIsentoMotivo('${p.id}', this.value)" style="width:260px;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
+      <button class="btn btn-out" style="margin-left:8px" onclick="raModalToggleIsento('${p.id}', false)">↺ Desfazer isenção</button>
+    </div>
+    ` : `
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin:12px 0">
       ${p.funcao === 'auxiliar_eleicao' ? `
       <select onchange="raModalAplicarDias('${p.id}', this.value)" style="font-size:.78rem;padding:7px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)" title="Só ajusta o campo de valor abaixo — o que vale de verdade é o valor, não esta escolha">
@@ -1282,6 +1347,7 @@ function raRenderModal() {
       <label style="display:flex;align-items:center;gap:4px;font-size:.85rem;cursor:pointer">
         <input type="checkbox" ${p.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raModalTogglePago('${p.id}', this.checked)"> PIX feito
       </label>
+      <button class="btn btn-out" onclick="raModalToggleIsento('${p.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento (folga)</button>
     </div>
     ${p.auxilio_alimentacao_pago_em ? `<div class="ic-sub" style="margin:0 0 10px">Pago em ${raFmtDataHora(new Date(p.auxilio_alimentacao_pago_em))}</div>` : ''}
 
@@ -1296,6 +1362,7 @@ function raRenderModal() {
             ? `<div class="ic-sub" style="margin:6px 0 0">${p.sec ? 'Nenhum Presidente ativo encontrado pra este local — não dá pra gerar o QR automaticamente.' : 'Sem local de votação definido — não dá pra aplicar a regra do Presidente automaticamente.'}</div>`
             : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>')}
     </div>
+    `}
 
     ${raHtmlModalFrequenciaDevolucao(p, cfg)}
 
@@ -2008,13 +2075,14 @@ function renderControleUnificado() {
   alvo.innerHTML = `
     <div class="ic-sub" style="margin:0 0 8px">
       ${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.${resumo.conflitos ? ` <b style="color:var(--red)">⚠️ ${resumo.conflitos} com papel duplicado — confira antes de marcar como pago.</b>` : ''}<br>
-      ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda${resumo.reciboAusente ? ` · <b style="color:var(--text2)">📄 ${resumo.reciboAusente} com recibo ausente</b> (mesa completa, só falta o papel)` : ''}.
+      ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda${resumo.reciboAusente ? ` · <b style="color:var(--text2)">📄 ${resumo.reciboAusente} com recibo ausente</b> (mesa completa, só falta o papel)` : ''}${resumo.isentos ? ` · <span style="color:var(--text2)">🟡 ${resumo.isentos} isento(s) (trabalhou(aram) só pela folga, sem repasse)</span>` : ''}.
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <input type="text" id="ra-ctl-busca" value="${raEsc(raCtlBusca)}" oninput="raOnCtlBuscaInput(this.value)" placeholder="Buscar por nome ou seção…" style="flex:1;min-width:160px;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--bg2);color:var(--text)">
       <select onchange="raCtlMudarFiltroPago(this.value)" style="padding:8px 10px;border-radius:7px">
         <option value="pendente" ${raCtlFiltroPago === 'pendente' ? 'selected' : ''}>Pagamento: Pendentes</option>
         <option value="pago" ${raCtlFiltroPago === 'pago' ? 'selected' : ''}>Pagamento: Pagos</option>
+        <option value="isento" ${raCtlFiltroPago === 'isento' ? 'selected' : ''}>Pagamento: Isentos (trabalhou pela folga)</option>
         <option value="" ${raCtlFiltroPago === '' ? 'selected' : ''}>Pagamento: Todos</option>
       </select>
       <select onchange="raCtlMudarFiltroFuncao(this.value)" style="padding:8px 10px;border-radius:7px">
@@ -2044,7 +2112,12 @@ function renderControleUnificado() {
             ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
             ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => `${raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))} ${o.auxilio_alimentacao_pago ? `(✅ pago ${raEsc(raFmtValor(o.auxilio_alimentacao_valor_pago))})` : '(⏳ ainda não pago)'}`).join(', ')} — confira qual papel de fato paga antes de marcar os dois.<br>💰 ${resumoPix.count} de ${resumoPix.totalPapeis} papel(éis) desta pessoa já com PIX pago${resumoPix.count ? ` — total ${raEsc(raFmtValor(resumoPix.total))}` : ''}.</div>` : ''}
           </span>
-          <span style="display:flex;align-items:center;gap:6px">
+          <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${a.auxilio_alimentacao_isento ? `
+            <span class="ic-sub" style="margin:0">🟡 Isento — sem repasse do auxílio</span>
+            <input type="text" id="ra-isento-motivo-${a.id}" value="${raEsc(a.auxilio_alimentacao_isento_motivo || '')}" placeholder="motivo (opcional)" onblur="raSalvarIsentoMotivo('${a.id}', this.value)" style="width:150px;font-size:.72rem;padding:4px 6px">
+            <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', false)">↺ Desfazer isenção</button>
+            ` : `
             ${a.funcao === 'auxiliar_eleicao' ? `
             <select onchange="raPagAplicarDias('${a.id}', this.value)" style="font-size:.72rem;padding:4px 6px;border-radius:6px" title="Só ajusta o campo de valor ao lado — o que vale de verdade é o valor, não esta escolha">
               <option value="">🗓️ dias…</option>
@@ -2056,6 +2129,8 @@ function renderControleUnificado() {
             <label style="display:flex;align-items:center;gap:4px;font-size:.8rem;cursor:pointer">
               <input type="checkbox" ${a.auxilio_alimentacao_pago ? 'checked' : ''} onchange="raTogglePago('${a.id}', this.checked)"> Pago
             </label>
+            <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', true)" title="A pessoa trabalhou, mas o acordo foi folga (dia de compensação) em vez de pagamento — some do filtro de pendentes">🟡 Isento</button>
+            `}
           </span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">

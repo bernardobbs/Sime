@@ -9458,6 +9458,65 @@ na linha da lista E no modal de detalhe da mesma pessoa; quem não tem
 papel duplicado nunca mostra o resumo; marcar o segundo papel como pago
 atualiza o resumo (e o total somado) na hora, sem precisar recarregar.
 
+---
+
+## "ISENTO" — AUXILIARES QUE TRABALHARAM SÓ PELA FOLGA, SEM PIX (`sime_recibo_alimentacao.js`, 08/10/2026)
+
+Pedido direto: "existem auxiliares que trabalharam somente pela folga, sem
+o repasse do auxilio alimentação" — depois de esclarecido (`AskUserQuestion`)
+que a ação desejada era marcar esses casos pra pararem de aparecer como
+"pendente" no Controle de pagamento. Diferente de "faltou" (gera devolução
+de um valor JÁ pago) ou de "ainda não pago" (continua sendo cobrado), aqui
+a pessoa trabalhou normalmente — só o acordo foi compensar com folga (dia
+de compensação) em vez de repassar o auxílio em dinheiro, então nunca vai
+existir PIX nenhum pra ela e cobrar isso eternamente como pendência é
+ruído puro.
+
+`sime_atores.auxilio_alimentacao_isento` (boolean, default `false`) +
+`auxilio_alimentacao_isento_motivo` (texto livre, opcional) — mesmo
+espírito de `dispensado_manual`/`precisa_substituir`: flag própria do
+cartório, nunca escrita por sync nenhum, nunca bloqueia nenhuma outra ação
+(pode ser desfeita a qualquer momento se o acordo mudar e a pessoa passar
+a receber PIX de verdade).
+
+**Isento some do filtro padrão "Pagamento: Pendentes"** (`raCtlFiltrar()`:
+`pendente` exclui quem está `auxilio_alimentacao_isento=true`, do mesmo
+jeito que já excluía quem está pago) — é o próprio pedido ("pra eles não
+aparecerem mais como pendente"). Ganhou um 4º valor no mesmo `<select>` de
+status de pagamento, **"Pagamento: Isentos (trabalhou pela folga)"**, e
+continua aparecendo normalmente em "Todos". O resumo da lista (`raCtlResumo`,
+sempre sobre `raDados.todos` inteiro, nunca só o que o filtro atual
+mostra) ganhou a contagem "🟡 N isento(s) (trabalhou(aram) só pela folga,
+sem repasse)".
+
+**Toggle, não um estado permanente** — botão "🟡 Isento" na linha da lista
+(ao lado do campo de valor/checkbox "Pago", que por sua vez SOME quando
+isento — não faz sentido editar valor/marcar pago de quem não vai
+receber PIX nenhum) e no modal de detalhe (substitui o bloco inteiro de
+Valor/PIX feito/QR Code por um aviso + motivo + "↺ Desfazer isenção",
+mesmo critério de "esconder, não desabilitar" já usado alhures no
+projeto). Marcar isento NUNCA mexe em `auxilio_alimentacao_pago`/`valor_pago`
+— são campos totalmente independentes; se alguém já tinha sido marcado
+pago por engano antes de descobrir que o acordo era folga, desmarcar o
+"Pago" continua sendo uma ação separada. Motivo é editável a qualquer
+momento (onblur salva sozinho, mesmo padrão de "Documento de envio"),
+nunca exigido pra marcar/desmarcar — "nunca bloquear por campo opcional"
+de sempre.
+
+Log de auditoria (`mesario_auxilio_alimentacao_isento`/`_desfeito`/
+`_motivo_editado`, com autor/motivo no payload) — mesmo padrão de log já
+usado por todo o resto do controle de pagamento.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 22, 286 checks
+no total no arquivo): marcar isento grava a flag sem tocar em pago/valor,
+com log; some do filtro "Pendentes" mas o resumo (que é sobre o total,
+não sobre o filtro atual) já avisa a contagem; filtro "Isentos" isola só
+quem está marcado, sem o campo de valor/checkbox Pago na linha; "Todos"
+também mostra, com o badge; motivo salva sozinho ao sair do campo;
+desfazer isenção volta a aparecer em "Pendentes"; o mesmo toggle funciona
+pelo modal de detalhe, escondendo valor/QR e mostrando o aviso + motivo +
+desfazer, gravando a mesma flag que a lista usa.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
