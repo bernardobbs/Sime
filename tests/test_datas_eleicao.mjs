@@ -17,6 +17,33 @@ async function abrirConfig(p) {
   await p.waitForTimeout(200);
 }
 
+// Mesmo algoritmo de `domingosDeOutubro()`/`anoEleitoralPadrao()` em
+// SIME_principal.html — replicado aqui (não importado, o teste roda fora do
+// navegador) pra não travar em "2026" como se fosse sempre o ano corrente.
+// Sem isso, o teste vira um time-bomb: passa enquanto "hoje" é antes do 1º
+// turno daquele ano, e falha sozinho a partir do dia seguinte à eleição,
+// mesmo sem nenhuma mudança de código (o padrão corretamente rola pro ano
+// seguinte, só o teste é que ficava hardcoded).
+function domingosDeOutubro(ano) {
+  const primeiro = new Date(ano, 9, 1);
+  primeiro.setDate(1 + ((7 - primeiro.getDay()) % 7));
+  const ultimo = new Date(ano, 9, 31);
+  ultimo.setDate(31 - ultimo.getDay());
+  return { primeiro, ultimo };
+}
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function anoEleitoralPadrao() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const ano = hoje.getFullYear();
+  return domingosDeOutubro(ano).primeiro < hoje ? ano + 1 : ano;
+}
+function vesperaDe(d) {
+  const v = new Date(d); v.setDate(v.getDate() - 1);
+  return ymd(v);
+}
+
 // ── Padrões com armazenamento limpo ──
 {
   const p = await b.newPage();
@@ -33,12 +60,17 @@ async function abrirConfig(p) {
     t2d1: document.getElementById('t2-d1').value,
   }));
 
-  // 2026: 1º de outubro cai numa quinta → primeiro domingo é 04/10.
-  // 31 de outubro cai num sábado → último domingo é 25/10.
-  check('1º turno usa o primeiro domingo de outubro', r.t1d === '2026-10-04', r.t1d);
-  check('2º turno usa o último domingo de outubro', r.t2d === '2026-10-25', r.t2d);
-  check('véspera do 1º turno é o dia anterior', r.t1d1 === '2026-10-03', r.t1d1);
-  check('véspera do 2º turno é o dia anterior', r.t2d1 === '2026-10-24', r.t2d1);
+  const anoEsperado = anoEleitoralPadrao();
+  const { primeiro, ultimo } = domingosDeOutubro(anoEsperado);
+  const t1dEsperado = ymd(primeiro);
+  const t2dEsperado = ymd(ultimo);
+  const t1d1Esperado = vesperaDe(primeiro);
+  const t2d1Esperado = vesperaDe(ultimo);
+
+  check('1º turno usa o primeiro domingo de outubro', r.t1d === t1dEsperado, `${r.t1d} (esperado ${t1dEsperado})`);
+  check('2º turno usa o último domingo de outubro', r.t2d === t2dEsperado, `${r.t2d} (esperado ${t2dEsperado})`);
+  check('véspera do 1º turno é o dia anterior', r.t1d1 === t1d1Esperado, `${r.t1d1} (esperado ${t1d1Esperado})`);
+  check('véspera do 2º turno é o dia anterior', r.t2d1 === t2d1Esperado, `${r.t2d1} (esperado ${t2d1Esperado})`);
   check('D-X (carga e lacre) fica em branco para o cartório definir', r.t1dx === '', r.t1dx);
   check('sem erro JS', erros.length === 0, erros.join(' | '));
 

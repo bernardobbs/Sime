@@ -1,0 +1,51 @@
+-- SIME_sync_conflito_cargo_e_funcao.sql (18/09/2026)
+--
+-- Pedido direto, depois de uma varredura pedida pelo cartório ("todas seções
+-- com 4 membros? cada local com 1 coordenador?") achar 66 seções com ≠4
+-- mesários e 7 locais com ≠1 coordenador de acessibilidade. Investigado caso
+-- a caso (secao 243, exemplo real): cada cargo com 2+ pessoas tinha uma linha
+-- "31/07 data_nomeacao" (designação antiga) e outra "10/09 data_convocacao"
+-- (a atual) — confirmado pelo dono do projeto: "a última atualização vai ser
+-- o cenário mais atual, inclusive com um mesário mudando de função".
+--
+-- Dois bugs relacionados, os dois na função sime_sync_atores_from_raw():
+--
+-- 1) CONFLITO DE CARGO ENTRE PESSOAS DIFERENTES — quando o TRE dispensa um
+--    mesário/coordenador de um cargo/local e nomeia OUTRA pessoa (título
+--    diferente) pro mesmo lugar, a antiga só é inativada quando some por
+--    completo do arquivo. Se ela ainda aparecer (mesmo com a designação
+--    velha), as duas ficam ativo=true disputando o mesmo cargo — o
+--    desempate por data_atribuicao mais recente (já usado desde 01/09/2026
+--    pra duplicata da MESMA pessoa, ver SIME_sync_atribuicao_mais_recente.sql)
+--    nunca comparava PESSOAS DIFERENTES entre si. Corrigido: depois do
+--    upsert de sempre, um passo novo agrupa por (secao_id, funcao_mesa) pra
+--    mesário e por (local_nome, municipio) pra coordenador — mantém quem tem
+--    a data_atribuicao mais recente, desativa os demais (com carimbo em
+--    observacao, nunca silencioso).
+--
+-- 2) INATIVAÇÃO SÓ CHECAVA "O TÍTULO SUMIU DO ARQUIVO", NÃO "SUMIU DESSA
+--    FUNÇÃO" — achado caso real: KAILANE RABELO DE SOUSA era Coordenadora de
+--    Acessibilidade; no arquivo mais novo ela virou Presidente de mesa
+--    (MRV). Como o título dela CONTINUA aparecendo no arquivo (só que numa
+--    categoria diferente), o registro antigo de coordenadora nunca
+--    inativava — a checagem original só perguntava "esse título existe em
+--    qualquer linha (MRV ou AL)?", nunca "existe NESSA função específica?".
+--    Corrigido escopando o NOT EXISTS por função (mesario→MRV;
+--    coord_acessibilidade→AL+'Coordenador de Acessibilidade';
+--    auxiliar_eleicao→AL+qualquer outra descrição).
+--
+-- Resultado na 7ª Zona, rodando de novo sobre o staging já existente:
+--   66 seções ≠4 mesários  → 6 (todas vaga real, sem duplicata — ok)
+--    7 locais ≠1 coordenador → 0
+--   83 inativados no total (82 por conflito de cargo/função a mais + a
+--   inativação de sempre por ausência)
+--
+-- Idempotente — pode rodar quantas vezes precisar, mesmo padrão de sempre:
+select * from sime_sync_atores_from_raw(7, 'PI');
+select * from sime_sync_atores_from_raw(94, 'PI');
+
+-- Verificação rápida pra confirmar (sem side-effect):
+-- select s.numero, count(*) from sime_secoes s
+-- join sime_atores a on a.secao_id=s.id and a.funcao='mesario' and a.ativo
+-- where s.zona_id=(select id from sime_zonas where numero=7)
+-- group by s.id, s.numero having count(*) <> 4;

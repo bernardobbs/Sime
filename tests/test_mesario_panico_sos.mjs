@@ -38,9 +38,17 @@ class QB {
 export function createClient(url, key, opts) {
   return {
     from(table) { return new QB(table); },
+    // SIME_mesario.html abre MAIS de um canal Realtime (pânico em
+    // sime_mesa_estado + mídia em sime_midias, ver auditoria de 03/09/2026)
+    // — guarda todos num array, indexável por tabela, em vez de assumir que
+    // só existe um (o que faria o canal de mídia, aberto por último,
+    // sobrescrever o de pânico que este teste precisa).
     channel(name) {
+      if (!window.__mockConfig.canais) window.__mockConfig.canais = [];
+      const registro = { nome: name };
+      window.__mockConfig.canais.push(registro);
       const chan = {
-        on(ev, filtro, cb) { window.__mockConfig.realtimeCallback = cb; return chan; },
+        on(ev, filtro, cb) { registro.filtro = filtro; registro.callback = cb; return chan; },
         subscribe() { return chan; },
       };
       return chan;
@@ -138,7 +146,7 @@ async function abrirLogado(ctx, mockConfig) {
   await p.click('#btn-sos');
   await p.waitForTimeout(200);
 
-  await p.evaluate(() => window.__mockConfig.realtimeCallback({
+  await p.evaluate(() => window.__mockConfig.canais.find(c => c.filtro?.table === 'sime_mesa_estado').callback({
     new: { secao_id: 'sec-uuid-63', panico_energia: false, panico_urna: false,
            panico_energia_resolvido: false, panico_urna_resolvido: false,
            panico_sos: false, panico_sos_resolvido: true },
