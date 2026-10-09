@@ -164,10 +164,18 @@ async function raCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { raDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: zona }, { data: eleicao }, { data: atores, error }] = await Promise.all([
+  const [{ data: zona }, { data: eleicao }, { data: outrasEleicoes }, { data: atores, error }] = await Promise.all([
     sb.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle(),
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao, pix_devolucao_chave, pix_devolucao_nome')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    // Candidato a "próximo turno" (09/10/2026) — qualquer eleição da mesma
+    // zona ainda não ativada, pra oferecer o botão de arquivar/zerar/trocar
+    // (ver raHtmlProximoTurno/raIniciarProximoTurno). Só existe de verdade
+    // quando o cartório já cadastrou o 2º turno de antemão (como a 7ª Zona
+    // já tem, data_d 25/10/2026) — sem isso, a lista vem vazia e o botão
+    // simplesmente não aparece, nunca inventa uma eleição.
+    sb.from('sime_eleicoes').select('id, turno, data_d')
+      .eq('zona_id', zonaId).eq('ativa', false).order('turno'),
     sb.from('sime_atores')
       .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, auxilio_alimentacao_isento, auxilio_alimentacao_isento_motivo, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
@@ -199,6 +207,11 @@ async function raCarregar() {
     // sistema). Coordenador de acessibilidade e auxiliar de eleição
     // continuam todos, sem essa restrição — o pedido foi só sobre a mesa.
     todos: (atores || []).filter(a => !raEhJuizEleitoral(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente')),
+    // Só oferece o botão de trocar de turno quando há EXATAMENTE 1 eleição
+    // inativa candidata — 0 (zona sem 2º turno cadastrado ainda) ou 2+
+    // (ambíguo, não deveria acontecer) nunca mostram o botão, nunca adivinha
+    // qual delas é "a próxima".
+    proximoTurno: (outrasEleicoes && outrasEleicoes.length === 1) ? outrasEleicoes[0] : null,
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
@@ -1968,8 +1981,65 @@ function renderConferencia() {
     ${!municipios.length && !semLocal.length ? '<div class="ic-sub" style="margin:0">Nenhum dado carregado ainda.</div>' : ''}`;
 }
 
+// Card "🗳️ Encerrar turno e começar o próximo" (09/10/2026, pedido direto,
+// a partir de uma pergunta sobre o recibo do 2º turno) — só aparece quando
+// `raDados.proximoTurno` existe (ver raCarregar). O FORMATO do recibo já
+// funciona sozinho pro 2º turno (raEleicaoTexto() já lê turno/data_d) — o
+// que faltava era um jeito de o cartório, na hora certa, arquivar o estado
+// de pagamento/frequência/devolução do turno que está terminando (pra não
+// perder o histórico, mesmos valores já reconciliados na planilha de
+// conferência) e ZERAR pra todo mundo antes do 2º turno começar — senão
+// todo mundo apareceria "já pago"/"faltou" do 1º turno dentro do controle
+// do 2º. Ver sql/SIME_auxilio_alimentacao_historico_turno.sql.
+function raHtmlProximoTurno() {
+  if (!raDados.proximoTurno || !raDados.eleicao) return '';
+  const pt = raDados.proximoTurno;
+  const turnoAtualTxt = raEleicaoTexto(raDados.eleicao);
+  const turnoNovoTxt = raEleicaoTexto(pt);
+  return `
+    <div class="import-card" style="border:1px solid var(--red-bd,#e0a09a)">
+      <div class="ic-title" style="font-size:.85rem;color:var(--red,#c0392b)">🗳️ Encerrar ${raEsc(turnoAtualTxt)} e começar o ${raEsc(turnoNovoTxt)}</div>
+      <div class="ic-sub">Quando chegar a hora do próximo turno: arquiva o estado atual de pagamento, frequência
+        e devolução de TODA a zona (mesários, coordenadores, auxiliares, junta e motoristas de repartições) num
+        histórico — nada se perde, fica consultável depois — e ZERA esses campos pra todo mundo, pra o controle
+        de pagamento do ${raEsc(turnoNovoTxt)} começar limpo. Também troca qual eleição fica "ativa" no sistema.
+        Ação única, feita uma vez só quando o ${raEsc(turnoNovoTxt)} de fato começar — não antes.</div>
+      <button class="btn btn-red" style="margin-top:10px" onclick="raIniciarProximoTurno()">🗳️ Arquivar ${raEsc(turnoAtualTxt)} e ativar o ${raEsc(turnoNovoTxt)}</button>
+    </div>`;
+}
+
+async function raIniciarProximoTurno() {
+  if (!raDados.proximoTurno || !raDados.eleicao) return;
+  const pt = raDados.proximoTurno;
+  const turnoAtualTxt = raEleicaoTexto(raDados.eleicao);
+  const turnoNovoTxt = raEleicaoTexto(pt);
+  const zonaId = await zonaDoUsuario();
+  const ok = confirm(
+    `Arquivar o estado de pagamento/frequência/devolução do ${turnoAtualTxt} e ZERAR pra todo mundo, ativando o ${turnoNovoTxt}?\n\n` +
+    `Isso não pode ser desfeito pela tela — o estado anterior fica guardado no histórico, mas os campos de pagamento ` +
+    `de cada pessoa (e dos motoristas de repartições) voltam a "não pago"/"não marcado".\n\n` +
+    `Só confirme se o ${turnoNovoTxt} está de fato começando agora.`
+  );
+  if (!ok) return;
+  const sb = window.supabaseAtores;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  const { data, error } = await sb.rpc('sime_arquivar_auxilio_alimentacao_e_ativar_turno', {
+    p_zona_id: zonaId,
+    p_eleicao_id_atual: raDados.eleicao.id,
+    p_eleicao_id_novo: pt.id,
+    p_autor: autor,
+  });
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  await log('recibo_alimentacao_turno_trocado', '', {
+    eleicao_anterior: raDados.eleicao.id, eleicao_nova: pt.id, autor, ...(data || {}),
+  });
+  showToast(`✓ ${turnoNovoTxt} ativado — ${data?.atores_arquivados ?? 0} pessoa(s) e ${data?.veiculos_arquivados ?? 0} veículo(s) arquivados`);
+  await raCarregar();
+}
+
 function raHtmlSecaoImpressao(cfg) {
   return `
+    ${raHtmlProximoTurno()}
     <div class="import-card">
       <div class="ic-title" style="font-size:.85rem">⚙️ Configuração do auxílio</div>
       <div class="ic-sub">Documento de distribuição do auxílio alimentação — mesmo modelo já usado pelo cartório no

@@ -955,36 +955,59 @@ function cmFmtDataHist(ts) {
 
 // Bloco "🍽️ Auxílio Alimentação" (08/10/2026, pedido direto: "no modal de
 // cada mesário... quero informação sobre a transferencia do pix e se foi
-// presente ou ausente na seção") — SÓ LEITURA: marcar pagamento/frequência
-// continua sendo só na aba 🍽️ Auxílio Alimentação (SIME_convocacao.html →
-// "💰📋 Controle de pagamento e frequência"), que já tem toda a lógica de
-// cálculo de devolução por mesa, QR do PIX, etc. — duplicar escrita aqui
-// arriscaria os dois lugares divergirem; isto é só visibilidade a mais pro
-// cartório não precisar trocar de aba enquanto trabalha na convocação.
+// presente ou ausente na seção") — SÓ LEITURA pro pagamento/frequência em
+// si: marcar isso continua sendo só na aba 🍽️ Auxílio Alimentação
+// (SIME_convocacao.html → "💰📋 Controle de pagamento e frequência"), que já
+// tem toda a lógica de cálculo de devolução por mesa, QR do PIX, etc. —
+// duplicar essa escrita aqui arriscaria os dois lugares divergirem; isto é
+// só visibilidade a mais pro cartório não precisar trocar de aba.
+//
+// A Chave PIX (único campo deste bloco que continua editável aqui) migrou
+// pra dentro desta seção em 09/10/2026 (pedido direto de reorganização do
+// modal: "na coluna do meio a chave pix e abaixo dela as informações de
+// auxílio alimentação") — o campo em si e `cmSalvarPix()` não mudaram, só
+// saíram da seção "📇 Contato" (que ficou só com telefones/meio de contato)
+// pra ficar junto do que esse PIX de fato paga.
+//
+// "Devolveu?" (mesmo pedido: "...e se houve devolução") é sempre DERIVADO
+// de `auxilio_alimentacao_devolvido`/`_devolvido_em` — nunca recalcula
+// "deveria devolver" (isso depende da frequência dos 4 cargos da mesa
+// inteira, cálculo que só existe em `sime_recibo_alimentacao.js`); aqui é
+// só leitura do que já foi registrado lá, mesmo critério do resto do bloco.
 //
 // Só o Presidente de mesa (ou quem não é da mesa receptora) de fato recebe
 // pagamento direto — mesma regra já documentada em
 // `sime_recibo_alimentacao.js` ("só o Presidente entra no controle de
 // pagamento... repassa aos outros 3 da mesa fora do sistema"); pros outros
 // 3 cargos de mesa (1º/2º Mesário, 1º Secretário) o bloco mostra só a
-// frequência, nunca um "pendente" que sugeriria que eles também deveriam
-// ser pagos diretamente.
+// frequência, nunca um "pendente"/"devolveu" que sugeriria que eles também
+// deveriam ser pagos diretamente (nunca são — `auxilio_alimentacao_pago`
+// e `auxilio_alimentacao_devolvido` só existem de verdade na linha do
+// Presidente).
 function cmHtmlAuxilioAlimentacao(p) {
   const pagavel = p.funcao !== 'mesario' || p.funcao_mesa === 'Presidente';
   const freqTxt = p.auxilio_alimentacao_frequencia === 'faltou' ? '❌ Faltou'
     : p.auxilio_alimentacao_frequencia === 'presente' ? '✅ Presente'
     : '➖ Ainda não marcada';
+  const devolveuTxt = p.auxilio_alimentacao_devolvido
+    ? `✅ Sim${p.auxilio_alimentacao_devolvido_em ? ` — em ${cmFmtDataHist(p.auxilio_alimentacao_devolvido_em)}` : ''}`
+    : '➖ Não';
   return `
       <div class="m-section">
         <div class="m-section-hdr">🍽️ Auxílio Alimentação</div>
-        <div class="ic-sub" style="margin-bottom:6px">Só leitura — marcar pagamento/frequência é na aba "🍽️ Auxílio Alimentação" → "💰📋 Controle de pagamento e frequência".</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Chave PIX (auxílio alimentação)</label>
+          <input id="mm-pix" type="text" value="${cmEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="cmSalvarPix('${p.id}')">
+        </div>
+        <div class="ic-sub" style="margin-bottom:6px">O resto é só leitura — marcar pagamento/frequência é na aba "🍽️ Auxílio Alimentação" → "💰📋 Controle de pagamento e frequência".</div>
         <div class="m-kv">
           <div class="m-kv-row"><b>Presença na seção</b><span>${freqTxt}${p.funcao === 'mesario' && p.funcao_mesa === 'Presidente' && p.auxilio_alimentacao_recibo_ausente ? ' · 📄 recibo não recolhido' : ''}</span></div>
           ${pagavel ? `
           <div class="m-kv-row"><b>Transferência do PIX</b><span>${p.auxilio_alimentacao_pago
             ? `✅ Pago${p.auxilio_alimentacao_valor_pago != null ? ` — R$ ${Number(p.auxilio_alimentacao_valor_pago).toFixed(2).replace('.', ',')}` : ''}${p.auxilio_alimentacao_pago_em ? ` em ${cmFmtDataHist(p.auxilio_alimentacao_pago_em)}` : ''}`
             : '⏳ Ainda não pago'}</span></div>
-          ${p.auxilio_alimentacao_documento ? `<div class="m-kv-row"><b>Documento do PIX</b><span>${cmEsc(p.auxilio_alimentacao_documento)}</span></div>` : ''}`
+          ${p.auxilio_alimentacao_documento ? `<div class="m-kv-row"><b>Documento do PIX</b><span>${cmEsc(p.auxilio_alimentacao_documento)}</span></div>` : ''}
+          <div class="m-kv-row"><b>Devolveu?</b><span>${devolveuTxt}${p.auxilio_alimentacao_devolucao_documento ? ` · doc. ${cmEsc(p.auxilio_alimentacao_devolucao_documento)}` : ''}</span></div>`
             : `<div class="m-kv-row"><b>Transferência do PIX</b><span>— pago direto ao Presidente de mesa, que repassa em mãos</span></div>`}
         </div>
       </div>`;
@@ -1405,10 +1428,6 @@ function cmRenderModal() {
 
       <div class="m-section">
         <div class="m-section-hdr">📇 Contato</div>
-        <div class="form-group" style="margin-bottom:10px">
-          <label>Chave PIX (auxílio alimentação)</label>
-          <input id="mm-pix" type="text" value="${cmEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="cmSalvarPix('${p.id}')">
-        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end">
           ${p.precisa_substituir ? `
           <label style="font-size:.72rem;color:var(--text2);flex:1;min-width:160px">Nome do substituto (opcional)
