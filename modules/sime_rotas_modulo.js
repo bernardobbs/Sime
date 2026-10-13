@@ -2286,7 +2286,7 @@ function rtHtmlTimbreTransmissao() {
       <div class="rtt-timbre-texto">
         <div class="rtt-timbre-orgao">${rtEsc(zonaTexto)}${zona.municipio ? ` — ${rtEsc(zona.municipio)}` : ''}</div>
         <div class="rtt-timbre-titulo">Seções por Ponto de Transmissão</div>
-        <div class="rtt-timbre-sub">Eleições Gerais de 2026 - 1º turno (04/10/2026) — Recolhimento de mídias eleitorais</div>
+        <div class="rtt-timbre-sub">Eleições Gerais de 2026 - 2º turno (25/10/2026) — Recolhimento de mídias eleitorais</div>
       </div>
       <div class="rtt-timbre-data">${rtEsc(dataHoraStr)}</div>
     </div>
@@ -2353,8 +2353,8 @@ async function rtImprimirRelatorioTransmissao() {
 // raEleicaoTexto em sime_recibo_alimentacao.js) — 03/10 é a véspera (D-1,
 // quando o veículo sai do cartório com as urnas), 04/10 é o Dia D (quando
 // recolhe de volta).
-const RT_PROTOCOLO_DATA_ENTREGA = '03/10/2026';
-const RT_PROTOCOLO_DATA_RECOLHIMENTO = '04/10/2026';
+const RT_PROTOCOLO_DATA_ENTREGA = '24/10/2026';
+const RT_PROTOCOLO_DATA_RECOLHIMENTO = '25/10/2026';
 
 // Boilerplate da empresa/contrato — igual pras 12 rotas, não repetido por
 // rota nenhuma (mesmo contrato, mesma contratada) — fica como constante de
