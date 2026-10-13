@@ -2268,7 +2268,7 @@ async function lerDestino(p) {
   check('protocolo agrupa as 2 seções do mesmo endereço numa linha só, com a quantidade certa', /30, 31[\s\S]{0,200}Povoado Água Branca/.test(printHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')), printHtml);
   check('total de urnas vem de urnas_estimadas', /TOTAL[\s\S]{0,80}5/.test(printHtml), printHtml);
   check('mostra motorista/telefone/placa/veículo/ano', /JOAO MOTORISTA/.test(printHtml) && /\(86\) 99999-8888/.test(printHtml) && /NHX1905/.test(printHtml) && /GM\/Classic Life/.test(printHtml) && /2008 \/ 2008/.test(printHtml), printHtml);
-  check('mostra as datas fixas de entrega (03/10) e recolhimento (04/10)', /03\/10\/2026/.test(printHtml) && /04\/10\/2026/.test(printHtml), printHtml);
+  check('mostra as datas fixas de entrega (24/10) e recolhimento (25/10) do 2º turno', /24\/10\/2026/.test(printHtml) && /25\/10\/2026/.test(printHtml), printHtml);
   check('NUNCA imprime o checklist junto (0 páginas .cl-pagina)', await p.locator('.cl-pagina').count() === 0);
   check('só 1 página .pe-pagina (1 rota)', await p.locator('.pe-pagina').count() === 1);
 
@@ -2492,7 +2492,7 @@ async function lerDestino(p) {
   check('imprime numa chamada só de window.print()', await p.evaluate(() => window.__printCalls) === 1);
 
   const printHtml = await p.locator('#print-area').innerHTML();
-  check('timbre institucional presente (logo + zona + título + eleição)', /logo_eleicoes2026\.png/.test(printHtml) && /7ª Zona Eleitoral do Piau[ií]/.test(printHtml) && /Seções por Ponto de Transmiss[ãa]o/.test(printHtml) && /1º turno \(04\/10\/2026\)/.test(printHtml), printHtml.slice(0, 600));
+  check('timbre institucional presente (logo + zona + título + eleição)', /logo_eleicoes2026\.png/.test(printHtml) && /7ª Zona Eleitoral do Piau[ií]/.test(printHtml) && /Seções por Ponto de Transmiss[ãa]o/.test(printHtml) && /2º turno \(25\/10\/2026\)/.test(printHtml), printHtml.slice(0, 600));
 
   const idxCartorio = printHtml.indexOf('Cartório Eleitoral da 7ª Zona Eleitoral');
   const idxPosto = printHtml.indexOf('Posto de Saúde da Vila Nova');
