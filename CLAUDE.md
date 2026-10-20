@@ -9711,6 +9711,53 @@ aparece (largura cheia) e "Local:" migra pra dentro dela; e o teste já
 existente de "EXATAMENTE 3 páginas físicas" (18/09/2026) continua
 passando sem regressão.
 
+---
+
+## BUG REAL — RECIBO DE AUXILIARES/JUNTA SEM A LINHA "ELEIÇÃO:" (`sime_recibo_alimentacao.js`, 20/10/2026)
+
+Pedido direto, depois de uma conferência (ver seção anterior, "QR do PIX dava
+'chave não encontrada'" e a auditoria de recibos/documentos do 2º turno):
+"cada recibo deve caber em exatamente em uma folha a4 - deve ter informação
+do 2º turno". A garantia de 1 página por folha já era um critério antigo
+(18/09/2026, reverificado em toda alteração desde então) — o achado real
+foi a segunda parte: **`raHtmlListaFlat()` (usada pelos recibos de
+Auxiliares de Eleição e Junta Eleitoral) nunca teve a linha "Eleição:"**,
+diferente de `raHtmlMesaReceptora()`/`raHtmlPorLocal()` (Mesa Receptora e
+Coordenador de Acessibilidade), que já mostravam isso desde 18/09/2026.
+Não era um problema específico do 2º turno — a linha simplesmente nunca
+existia nesses dois modelos, em nenhum turno.
+
+`raEleicaoTexto(raDados.eleicao)` (já existente, lê `sime_eleicoes.turno`/
+`data_d` da eleição ATIVA da zona) foi acrescentada como `<div
+class="ra-linha-info">` logo abaixo do timbre em `raHtmlListaFlat()`, mesmo
+padrão/posição já usada nos outros dois modelos — nenhuma lógica nova de
+turno: a zona já estava corretamente no 2º turno (`sime_eleicoes.turno=2`,
+`ativa=true`, `data_d=2026-10-25`) desde a virada documentada na seção
+"🗳️ Encerrar turno..." — só faltava ESTES DOIS modelos lerem e mostrarem
+esse dado, que os outros dois já liam.
+
+Verificado com `page.pdf()` de verdade (mesmo critério de sempre) que a
+linha nova não faz nenhum dos dois documentos transbordar: Auxiliares
+continua em exatamente 2 páginas físicas (Sábado + Domingo), Junta em
+exatamente 1 — a folga de sobra nesses dois modelos já era generosa (são
+listas únicas da zona, sem a complexidade por seção/local da Mesa
+Receptora/Coordenador), então uma linha a mais nunca chegou perto do
+limite.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 4-6 revisados
++ bloco 6b novo, 349 checks no total no arquivo): linha "Eleição:" presente
+nos 4 modelos (Mesa Receptora já cobria desde 18/09/2026; Coordenador,
+Auxiliares — nas duas páginas — e Junta ganharam o check agora);
+page.pdf() confirmando 2 páginas físicas pro Coordenador (1 por local), 2
+pro Auxiliares e 1 pra Junta, todas sem transbordar depois da linha nova;
+e um bloco dedicado (6b) com a zona já no 2º turno (mock com
+`sime_eleicoes` só de turno 2, `data_d=2026-10-25`) confirmando que os 4
+recibos mostram "Eleições Gerais de 2026 - 2º turno (25/10/2026)" sem
+precisar de nenhuma mudança de código além da linha acrescentada — a
+função já se ajusta sozinha a qualquer turno ativo.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

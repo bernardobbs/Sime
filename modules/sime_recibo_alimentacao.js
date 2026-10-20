@@ -589,10 +589,19 @@ function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
 
 // Lista única, sem agrupar por local — auxiliares de eleição (geral) e
 // junta eleitoral: um recibo só pro grupo inteiro da zona, não por prédio.
+//
+// Linha "Eleição:" acrescentada em 20/10/2026 (achado revisando o pedido
+// "cada recibo deve... ter informação do [turno atual]" — a Mesa Receptora
+// e o Coordenador já mostravam essa linha desde 18/09/2026, raHtmlListaFlat
+// era o único dos 3 templates que nunca a teve). Mesmo `cfg.eleicaoNome`
+// (`raEleicaoTexto`, lê `sime_eleicoes.turno`/`data_d` da eleição ATIVA) —
+// não precisa saber qual turno está rodando: já se ajusta sozinho quando a
+// zona troca de turno, igual os outros dois.
 function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroPagina, idSuffix, qrOut) {
   return `
     <div class="ra-pagina">
       ${raHtmlTimbre(titulo, subtituloDia, cfg, numeroPagina)}
+      <div class="ra-linha-info"><span><b>Eleição:</b> ${raEsc(cfg.eleicaoNome)}</span></div>
       <div class="ra-linha-info">
         <span><b>Forma de Auxílio:</b> ${raEsc(cfg.forma)} &nbsp; <b>Valor:</b> ${raFmtValor(cfg.valor)}</span>
       </div>

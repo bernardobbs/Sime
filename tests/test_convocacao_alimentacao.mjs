@@ -251,6 +251,16 @@ async function login(p) {
   check('rótulo de função correto (sem "(a)", igual ao ELO)', /Coordenador de Acessibilidade/.test(txt) && !/Coordenador\(a\)/.test(txt));
   check('sem coluna "Seção Origem" nas substituições (documento é por local, não por seção)', !/Seção\s*Origem/.test(txt), txt.slice(0, 400));
   check('linha "OBS:" presente', /OBS:/.test(txt));
+  check('linha "Eleição:" presente', /Eleição:\s*Eleições Gerais de 2026 - 1º turno \(04\/10\/2026\)/.test(txt), txt.slice(0, 300));
+
+  // "cada recibo deve caber em exatamente uma folha A4" (20/10/2026) —
+  // verificado com page.pdf() de verdade (mesmo critério da Mesa Receptora),
+  // não só contagem de .ra-pagina no DOM.
+  await p.emulateMedia({ media: 'print' });
+  const coordPdf = await p.pdf({ printBackground: true });
+  const coordMediaBoxes = [...coordPdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('recibo de coordenador gerado em EXATAMENTE 2 páginas físicas (1 por local — Escola A + Sem local)', coordMediaBoxes.length === 2, String(coordMediaBoxes.length));
+  await p.emulateMedia({ media: 'screen' });
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -281,6 +291,20 @@ async function login(p) {
   check('zona aparece no timbre (lista geral, sem local de votação)', /7ª Zona Eleitoral — Campo Maior/.test(txt));
   check('sem coluna "Seção Origem" nas substituições (lista geral)', !/Seção\s*Origem/.test(txt));
   check('linha "OBS:" presente nas duas páginas', (txt.match(/OBS:/g) || []).length === 2);
+  // Linha "Eleição:" (20/10/2026) — antes só a Mesa Receptora e o
+  // Coordenador mostravam isso; raHtmlListaFlat (Auxiliares/Junta) nunca
+  // teve essa linha, achado revisando o pedido "deve ter informação do
+  // [turno]". Presente nas duas páginas (Sábado e Domingo).
+  check('linha "Eleição:" presente nas duas páginas', (txt.match(/Eleição:\s*Eleições Gerais de 2026 - 1º turno \(04\/10\/2026\)/g) || []).length === 2, txt.slice(0, 300));
+
+  // "cada recibo deve caber em exatamente uma folha A4" — a adição da linha
+  // "Eleição:" acima não pode fazer nenhuma das 2 páginas (Sábado/Domingo)
+  // transbordar. Verificado com page.pdf() de verdade.
+  await p.emulateMedia({ media: 'print' });
+  const auxPdf = await p.pdf({ printBackground: true });
+  const auxMediaBoxes = [...auxPdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('recibo de auxiliares continua em EXATAMENTE 2 páginas físicas (Sábado + Domingo, sem transbordar)', auxMediaBoxes.length === 2, String(auxMediaBoxes.length));
+  await p.emulateMedia({ media: 'screen' });
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -306,6 +330,15 @@ async function login(p) {
   check('rótulo "Membro da Junta Eleitoral"', /Membro da Junta Eleitoral/.test(txt));
   check('sem subtítulo de dia (Sábado/Domingo) — recibo único', !/Sábado/.test(txt) && !/Domingo/.test(txt));
   check('linha "OBS:" presente', /OBS:/.test(txt));
+  check('linha "Eleição:" presente (raHtmlListaFlat ganhou essa linha em 20/10/2026)', /Eleição:\s*Eleições Gerais de 2026 - 1º turno \(04\/10\/2026\)/.test(txt), txt.slice(0, 300));
+
+  // "cada recibo deve caber em exatamente uma folha A4" — verificado com
+  // page.pdf() de verdade.
+  await p.emulateMedia({ media: 'print' });
+  const juntaPdf = await p.pdf({ printBackground: true });
+  const juntaMediaBoxes = [...juntaPdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+  check('recibo da junta continua em EXATAMENTE 1 página física', juntaMediaBoxes.length === 1, String(juntaMediaBoxes.length));
+  await p.emulateMedia({ media: 'screen' });
 
   // Juiz Eleitoral (18/09/2026, "carlos marcello, é membro da junta, mas é
   // o juiz eleitoral ele não assina recibo") — Presidente da Junta é, por
@@ -313,6 +346,45 @@ async function login(p) {
   // contagem nem no recibo.
   check('CARLOS MARCELLO (juiz eleitoral, Presidente da Junta) NUNCA aparece no recibo', !/CARLOS MARCELLO/.test(txt), txt.slice(0, 400));
   check('recibo mostra só 1 pessoa (o juiz foi excluído da contagem)', (txt.match(/JUNTA FERNANDO/g) || []).length >= 1 && !/Presidente/.test(txt), txt.slice(0, 400));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 6b. Zona já no 2º turno — os 4 recibos devem mostrar "2º turno" (não
+// cravado no código: `raEleicaoTexto()` já lê `turno`/`data_d` de
+// `sime_eleicoes` sempre que a eleição ATIVA muda — só muda o mock pra uma
+// eleição turno=2, sem tocar em nenhuma outra linha do teste) ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes = [{ id: 'el7t2', zona_id: 'z7', turno: 2, data_d: '2026-10-25', ativa: true, nome: 'Eleições Municipais 2026', valor_auxilio_alimentacao: 65, forma_auxilio_alimentacao: 'DINHEIRO' }];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  const esperado = /Eleição:\s*Eleições Gerais de 2026 - 2º turno \(25\/10\/2026\)/;
+
+  await p.click('button:has-text("Imprimir recibos — Mesa Receptora")');
+  await p.waitForTimeout(300);
+  let txt = (await p.locator('#print-area').innerHTML()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('Mesa Receptora mostra "2º turno (25/10/2026)"', esperado.test(txt), txt.slice(0, 300));
+
+  await p.click('button:has-text("Imprimir recibos — Coordenadores")');
+  await p.waitForTimeout(300);
+  txt = (await p.locator('#print-area').innerHTML()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('Coordenadores mostra "2º turno (25/10/2026)"', esperado.test(txt), txt.slice(0, 300));
+
+  await p.click('button:has-text("Imprimir recibos — Sábado e Domingo")');
+  await p.waitForTimeout(300);
+  txt = (await p.locator('#print-area').innerHTML()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('Auxiliares mostra "2º turno (25/10/2026)" nas duas páginas', (txt.match(esperado) || []).length >= 1 && (txt.match(/2º turno/g) || []).length === 2, txt.slice(0, 300));
+
+  await p.click('button:has-text("Imprimir recibo — Junta Eleitoral")');
+  await p.waitForTimeout(300);
+  txt = (await p.locator('#print-area').innerHTML()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('Junta Eleitoral mostra "2º turno (25/10/2026)"', esperado.test(txt), txt.slice(0, 300));
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
