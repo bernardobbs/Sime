@@ -1423,6 +1423,66 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 19h. Rodapé final redesenhado (20/10/2026, pedido direto com um mockup
+// real anexado: "adapte o modelo de recibo o modelo em anexo. aumentando o
+// qrcode para ficar mais legivel") — duas caixas com borda lado a lado (PIX
+// de devolução + "Para Uso Exclusivo do Cartório Eleitoral"), QR maior.
+// Substitui o par "QR solto + linhas soltas de Total pago/Local/Data/
+// Suprido" que existia desde 06-18/09/2026. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes[0].pix_devolucao_chave = '86999990000';
+  m.sime_eleicoes[0].pix_devolucao_nome = 'Cartório da 7ª Zona';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  await p.click('button:has-text("Imprimir recibos — Mesa Receptora")');
+  await p.waitForTimeout(300);
+  const htmlComPix = await p.locator('#print-area').innerHTML();
+  check('"Para Uso Exclusivo do Cartório Eleitoral" presente (caixa nova)', /Para Uso Exclusivo do Cartório Eleitoral/.test(htmlComPix));
+  check('"Total pago" e "Suprido" continuam presentes (dentro da caixa nova)', /Total pago/.test(htmlComPix) && /Suprido \(carimbo e assinatura\)/.test(htmlComPix));
+  check('duas caixas com borda — PIX (.ra-qr-dev-impresso) e Cartório (.ra-cartorio-box), uma por seção', await p.locator('#print-area .ra-qr-dev-impresso.ra-rodape-col').count() === 3 && await p.locator('#print-area .ra-cartorio-box.ra-rodape-col').count() === 3);
+  check('"Local:" aparece dentro da caixa do PIX quando ele existe', await p.locator('#print-area .ra-qr-dev-impresso .ra-qr-dev-local:has-text("Local:")').count() === 3);
+
+  // QR fisicamente MAIOR que antes (era 18mm) — checado pelo CSS computado
+  // do próprio elemento, com a media 'print' ativa (a regra vive dentro de
+  // `@media print`).
+  await p.emulateMedia({ media: 'print' });
+  const qrSizePx = await p.evaluate(() => {
+    const el = document.querySelector('#print-area .ra-qr-dev-canvas');
+    return el ? getComputedStyle(el).width : null;
+  });
+  const qrSizeMm = qrSizePx ? parseFloat(qrSizePx) / (96 / 25.4) : 0;
+  check('QR impresso é maior que os 18mm de antes (mais legível)', qrSizeMm > 18, qrSizePx);
+  await p.emulateMedia({ media: 'screen' });
+
+  check('nenhum erro JS (com destino configurado)', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// Sem destino configurado — "Para Uso Exclusivo do Cartório Eleitoral"
+// ocupa a largura toda sozinho, e o "Local:" (que vivia só dentro da caixa
+// do PIX) migra pra dentro dela, nunca some.
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  await p.click('button:has-text("Imprimir recibos — Mesa Receptora")');
+  await p.waitForTimeout(300);
+  check('sem destino: nenhuma caixa de PIX, só a do Cartório', await p.locator('#print-area .ra-qr-dev-impresso').count() === 0 && await p.locator('#print-area .ra-cartorio-box').count() === 3);
+  check('"Para Uso Exclusivo do Cartório Eleitoral" continua presente', /Para Uso Exclusivo do Cartório Eleitoral/.test(await p.locator('#print-area').innerHTML()));
+  check('"Local:" aparece como fallback dentro da caixa do Cartório', await p.locator('#print-area .ra-cartorio-box:has-text("Local: Seção 5")').count() === 1);
+
+  check('nenhum erro JS (sem destino configurado)', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 20. "Quantos e quais PIX já foram realizados" por pessoa, no mesmo
 // aviso de papel duplicado (08/10/2026, pedido direto: "por mesario tem
 // como informar quantos e quais pix foram realizados para ele"). Só tem
@@ -1575,6 +1635,82 @@ async function login(p) {
   check('modal passa a mostrar o aviso de isento, sem campo de valor nem QR', /trabalhou só pela folga/.test(modalTxt) && await p.locator('#ra-modal-valor').count() === 0 && await p.locator('#ra-modal-qr-wrap').count() === 0, modalTxt.slice(0, 300));
   const updModal = await p.evaluate(() => window.__mock.sime_atores.find(a => a.id === 'a2'));
   check('toggle pelo modal grava a mesma flag que a lista usa', updModal.auxilio_alimentacao_isento === true, JSON.stringify(updModal));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 21. "Ver outro turno" — seletor somente leitura (20/10/2026, pedido
+// direto: "resete para o 2º turno a parte de controle de pagamento e
+// frequencia, ou mesmo coloque uma forma de selecionar entre o 1 e 2
+// turno"). `raCarregar()` já só lê a eleição ATIVA (o "reset" em si já
+// acontece sozinho na troca de turno) — o que faltava era o seletor pra
+// CONSULTAR o turno anterior, já arquivado em
+// `sime_auxilio_alimentacao_historico`. Mock com 2 eleições (1º turno
+// inativo/arquivado, 2º turno ativo) + histórico do 1º turno. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes = [
+    { id: 'el7', zona_id: 'z7', turno: 1, data_d: '2026-10-04', ativa: false, nome: 'Eleições Municipais 2026', valor_auxilio_alimentacao: 65, forma_auxilio_alimentacao: 'DINHEIRO' },
+    { id: 'el7b', zona_id: 'z7', turno: 2, data_d: '2026-10-25', ativa: true, nome: 'Eleições Municipais 2026', valor_auxilio_alimentacao: 65, forma_auxilio_alimentacao: 'DINHEIRO' },
+  ];
+  m.sime_auxilio_alimentacao_historico = [
+    { id: 'h1', zona_id: 'z7', eleicao_id: 'el7', origem: 'ator', ator_id: 'm1', nome: 'PRESIDENTE MARIA (1º TURNO)', funcao: 'mesario', funcao_mesa: 'Presidente', inscricao_eleitoral: '111111111111', secao_id: 's1', pago: true, valor_pago: 260, pago_em: '2026-10-03T12:00:00.000Z', documento: 'DOC1T', frequencia: 'presente', devolvido: false, devolvido_em: null, devolucao_documento: null, recibo_ausente: false, isento: false, isento_motivo: null },
+    { id: 'h2', zona_id: 'z7', eleicao_id: 'el7', origem: 'ator', ator_id: 'a1', nome: 'AUXILIAR PEDRO (1º TURNO)', funcao: 'auxiliar_eleicao', funcao_mesa: null, inscricao_eleitoral: '666666666666', secao_id: null, pago: false, valor_pago: null, pago_em: null, documento: null, frequencia: null, devolvido: false, devolvido_em: null, devolucao_documento: null, recibo_ausente: false, isento: false, isento_motivo: null },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+
+  // Zona com 2º turno JÁ ativo — o botão de "avançar de turno" nunca deveria
+  // oferecer "voltar pro 1º turno" (a única eleição "inativa" que sobra é o
+  // passado, não um turno futuro genuíno). Bug real corrigido em
+  // 20/10/2026 — antes só contava eleições inativas, sem checar se eram
+  // passado ou futuro.
+  const txtImpressao = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
+  check('não oferece "avançar de turno" quando a única inativa é o turno PASSADO', !/Encerrar.*e começar o/.test(txtImpressao), txtImpressao.slice(0, 300));
+
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  check('seletor de turno aparece (há 1 turno arquivado)', await p.locator('#ra-controle-unificado select').count() >= 1);
+  const opcoes = await p.locator('#ra-controle-unificado select').first().locator('option').allTextContents();
+  check('1ª opção é o turno ATUAL (editável)', /2º turno.*atual \(editável\)/.test(opcoes[0] || ''), JSON.stringify(opcoes));
+  check('2ª opção é o turno arquivado (somente leitura)', /1º turno.*arquivado \(somente leitura\)/.test(opcoes[1] || ''), JSON.stringify(opcoes));
+
+  // Turno atual (2º) ainda editável normalmente — mesário/auxiliar do mock
+  // padrão (não os do histórico) continuam aparecendo com os controles de
+  // sempre (checkbox "Pago" etc.).
+  check('turno atual mostra PRESIDENTE MARIA (dado ao vivo, não o do histórico)', await p.locator('#ra-controle-unificado').locator('text=PRESIDENTE MARIA').first().count() >= 1);
+  check('turno atual tem checkbox de "Pago" (editável)', await p.locator('#ra-controle-unificado input[type=checkbox]').count() > 0);
+
+  await p.selectOption('#ra-controle-unificado select', 'el7');
+  await p.waitForTimeout(400);
+
+  const txtHist = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
+  check('mostra o aviso de somente leitura', /Somente leitura/.test(txtHist), txtHist.slice(0, 300));
+  check('mostra as pessoas do turno arquivado (1º turno)', /PRESIDENTE MARIA \(1º TURNO\)/.test(txtHist) && /AUXILIAR PEDRO \(1º TURNO\)/.test(txtHist), txtHist.slice(0, 500));
+  check('mostra o documento/valor pago do histórico', /DOC1T/.test(txtHist) && /260/.test(txtHist), txtHist.slice(0, 500));
+  check('resumo "X de Y já pagos" do histórico (1 de 2)', /1 de 2 tinham sido pagos/.test(txtHist), txtHist.slice(0, 300));
+  check('nenhum checkbox "Pago" (somente leitura, nada editável)', await p.locator('#ra-controle-unificado input[type=checkbox]').count() === 0);
+  check('nenhum botão de ação (Presente/Faltou/Isento/etc.) no histórico', await p.locator('#ra-controle-unificado button').count() === 0);
+  check('nenhum campo de valor editável no histórico', await p.locator('#ra-controle-unificado input[type=text]').count() === 0);
+
+  // Reconsulta (cache) não deveria gerar uma 2ª leitura da tabela de
+  // histórico — volta pro atual e seleciona o arquivado de novo.
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(300);
+  check('voltar pro atual restaura a edição (checkbox "Pago" de volta)', await p.locator('#ra-controle-unificado input[type=checkbox]').count() > 0);
+  await p.selectOption('#ra-controle-unificado select', 'el7');
+  await p.waitForTimeout(300);
+  const leiturasHistorico = await p.evaluate(() =>
+    (window.__mock.sime_auxilio_alimentacao_historico || []).length); // só garante que a tabela em si não foi mutada
+  check('tabela de histórico nunca é escrita por esta tela (somente leitura de verdade)', leiturasHistorico === 2);
+  const escritasNoHistorico = await p.evaluate(() =>
+    window.__mock.escritas.filter(e => e.tabela === 'sime_auxilio_alimentacao_historico').length);
+  check('nenhuma escrita em sime_auxilio_alimentacao_historico', escritasNoHistorico === 0);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();

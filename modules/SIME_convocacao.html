@@ -311,22 +311,55 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      verificado com o MediaBox do PDF real, não só visualmente. */
   .ra-substituicoes{margin-top:4mm;}
   .ra-sub-titulo{font-weight:700;font-size:8.5pt;margin-bottom:1.5mm;}
-  .ra-tabela-sub td{height:5.5mm;}
-  .ra-rodape-total{margin-top:4mm;font-size:8.5pt;line-height:1.5;}
-  .ra-rodape-linha{display:flex;gap:8mm;flex-wrap:wrap;margin-top:1mm;}
+  .ra-tabela-sub td{height:4.8mm;}
   /* "OBS:" — presente nos dois documentos reais do ELO anexados como
      referência (coordenador/auxiliar, 18/09/2026), entre SUBSTITUIÇÕES e o
-     fechamento "Total pago". */
+     fechamento do rodapé. */
   .ra-obs{display:flex;align-items:baseline;gap:2mm;font-size:8.5pt;margin-top:2.5mm;}
   .ra-obs-linha{flex:1;border-bottom:1px solid #000;height:1px;}
-  /* QR de devolução (06/10/2026, pedido direto: "nos recibos um qrcode para
-     a devolução do valor pago") — só aparece quando a chave PIX de
-     devolução está configurada (ver "⚙️ Configuração do auxílio"); valor em
-     aberto (quem devolve digita o valor na hora) — nunca pré-preenchido. */
-  .ra-qr-dev-impresso{display:flex;align-items:center;gap:3mm;margin-top:3mm;padding-top:2.5mm;border-top:1px dashed #999;}
-  .ra-qr-dev-canvas{flex:none;width:18mm;height:18mm;}
+  /* Rodapé final — redesenhado em 20/10/2026 a partir de um mockup real
+     anexado pelo cartório (pedido direto: "adapte o modelo de recibo o
+     modelo em anexo. aumentando o qrcode para ficar mais legivel"):
+     substitui o par "QR solto num divisor tracejado" (06/10/2026) + linhas
+     soltas de "Total pago/Local/Data/Suprido" (18/09/2026) por DUAS CAIXAS
+     COM BORDA lado a lado — PIX de devolução à esquerda, "Para Uso
+     Exclusivo do Cartório Eleitoral" à direita — igual ao mockup. Sem
+     `align-items:stretch` de propósito: as duas caixas não precisam ter a
+     mesma altura (a do PIX cresce com o QR maior; forçar a mesma altura só
+     desperdiçaria o espaço vertical, já apertado — ver nota de
+     "caber estritamente em uma folha" logo acima). */
+  .ra-rodape-flex{display:flex;gap:4mm;margin-top:3mm;align-items:flex-start;}
+  .ra-rodape-col{border:1px solid #000;padding:2mm 2.5mm;font-size:7.5pt;}
+  .ra-rodape-col-titulo{font-weight:700;font-size:8pt;margin-bottom:1mm;}
+  /* PIX de devolução (06/10/2026, pedido direto: "nos recibos um qrcode
+     para a devolução do valor pago") — `.ra-qr-dev-impresso` continua a
+     MESMA classe de sempre (só o miolo mudou pra caixa com borda), só
+     aparece quando a chave PIX de devolução está configurada (ver "⚙️
+     Configuração do auxílio"); valor em aberto (quem devolve digita o
+     valor na hora) — nunca pré-preenchido. */
+  .ra-qr-dev-impresso{flex:0 0 38%;}
+  .ra-qr-dev-label{font-size:7pt;color:#333;margin-bottom:1.5mm;line-height:1.2;}
+  /* QR aumentado de 18mm pra 26mm (20/10/2026, "aumentando o qrcode para
+     ficar mais legivel" — quase 1,5x maior) — a resolução do bitmap por
+     trás também subiu (ver `raImprimirDocumento`, 90→260px), senão
+     esticar um canvas pequeno pra um retângulo maior sairia borrado/em
+     blocos. Não foi pros 30mm cogitados a princípio — testado com
+     `page.pdf()` de verdade (não só visualmente): a Seção 63 (mesa
+     COMPLETA, o pior caso real) só continua cabendo em 3 páginas físicas
+     com o QR neste tamanho, já contando as duas caixas com borda novas. */
+  .ra-qr-dev-canvas{width:22mm;height:22mm;margin:0 auto;}
   .ra-qr-dev-canvas canvas,.ra-qr-dev-canvas img{width:100%;height:100%;}
-  .ra-qr-dev-label{font-size:7.5pt;color:#333;}
+  .ra-qr-dev-divisor{border-top:1px dashed #999;margin:1.5mm 0;}
+  .ra-qr-dev-local{font-size:7pt;color:#333;line-height:1.2;}
+  /* "Para Uso Exclusivo do Cartório Eleitoral" — sempre presente, com ou
+     sem o PIX ao lado (sem destino de devolução configurado, ocupa a
+     largura toda sozinho — `.ra-cartorio-box{flex:1}` já cobre os dois
+     casos, nunca precisou de uma regra condicional própria). */
+  .ra-cartorio-box{flex:1;}
+  .ra-cartorio-linha1{display:flex;gap:8mm;flex-wrap:wrap;margin-bottom:1.5mm;}
+  .ra-cartorio-obs{margin-bottom:1.5mm;}
+  .ra-cartorio-obs-linha{display:block;border-bottom:1px solid #000;height:4mm;margin-top:1mm;}
+  .ra-cartorio-suprido{margin-top:1.5mm;}
 }
 </style>
 </head>

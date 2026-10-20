@@ -208,10 +208,22 @@ async function raCarregar() {
     // continuam todos, sem essa restrição — o pedido foi só sobre a mesa.
     todos: (atores || []).filter(a => !raEhJuizEleitoral(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente')),
     // Só oferece o botão de trocar de turno quando há EXATAMENTE 1 eleição
-    // inativa candidata — 0 (zona sem 2º turno cadastrado ainda) ou 2+
+    // inativa candidata, e ela é genuinamente POSTERIOR (número de turno
+    // maior) à ativa — 0 (zona sem turno seguinte cadastrado ainda) ou 2+
     // (ambíguo, não deveria acontecer) nunca mostram o botão, nunca adivinha
-    // qual delas é "a próxima".
-    proximoTurno: (outrasEleicoes && outrasEleicoes.length === 1) ? outrasEleicoes[0] : null,
+    // qual delas é "a próxima". Corrigido em 20/10/2026 — antes comparava só
+    // a CONTAGEM de eleições inativas, sem checar se é passado ou futuro: já
+    // arquivado o 1º turno (zona com 2º turno ativo), ele vira a única
+    // "inativa" que sobra, e o botão oferecia, sem sentido, "voltar pro 1º
+    // turno" — achado investigando o pedido de reset/seletor de turno.
+    proximoTurno: (() => {
+      const futuros = (outrasEleicoes || []).filter(o => eleicao && Number(o.turno) > Number(eleicao.turno));
+      return futuros.length === 1 ? futuros[0] : null;
+    })(),
+    // Turnos já encerrados/arquivados (número de turno menor que o ativo) —
+    // candidatos pro seletor de visualização histórica (📜 "Ver outro turno",
+    // somente leitura, ver `raTurnoView`/`raCarregarHistoricoTurno` abaixo).
+    turnosAnteriores: (outrasEleicoes || []).filter(o => eleicao && Number(o.turno) < Number(eleicao.turno)),
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
@@ -428,18 +440,6 @@ function raHtmlObs() {
   return '<div class="ra-obs"><b>OBS:</b><span class="ra-obs-linha"></span></div>';
 }
 
-function raHtmlRodapeTotal(localTexto, dataStr) {
-  return `
-    <div class="ra-rodape-total">
-      <div><b>Total pago:</b> R$ ______________</div>
-      <div class="ra-rodape-linha">
-        <span><b>Local:</b> ${raEsc(localTexto || '')}</span>
-        <span><b>Data:</b> ${dataStr ? raEsc(dataStr) : '___/___/______'}</span>
-        <span><b>Suprido (carimbo e assinatura):</b> ________________________</span>
-      </div>
-    </div>`;
-}
-
 // Timbre institucional (18/09/2026, pedido direto com print anexado do
 // modelo real do ELO: "quero um recibo, mais institucional... com
 // timbre"). Reproduz a ESTRUTURA do cabeçalho oficial (marca à esquerda,
@@ -476,22 +476,54 @@ function raHtmlTimbre(titulo, subtitulo, cfg, numeroPagina) {
 // página própria, com timbre e paginação "Página N de M". Sem coluna de
 // Seção na tabela principal (seria repetir o mesmo número 4 vezes na
 // mesma folha) — o número já está no cabeçalho da página.
-// Bloco impresso do QR de devolução (06/10/2026, pedido direto: "nos
-// recibos um qrcode para a devolução do valor pago") — só existe quando há
-// destino configurado (ver raSalvarConfigDevolucao); sem isso, a página sai
-// EXATAMENTE como antes, sem o bloco, sem nenhuma mudança de layout.
+// Rodapé final — PIX de devolução (QR maior, mais legível) + "Para Uso
+// Exclusivo do Cartório Eleitoral", lado a lado (20/10/2026, pedido direto
+// com um print real anexado de referência: "adapte o modelo de recibo o
+// modelo em anexo. aumentando o qrcode para ficar mais legivel"). Substitui
+// os dois blocos que existiam separados até aqui — o QR solto dentro de um
+// divisor tracejado (06/10/2026) e as linhas soltas "Total pago/Local/
+// Data/Suprido" (18/09/2026) — por duas caixas com borda, lado a lado,
+// batidas contra o mockup real anexado (mesmo cabeçalho/tabela de sempre,
+// só o rodapé mudou).
+//
+// O bloco de PIX (`.ra-qr-dev-impresso`, mesma classe/ids de sempre — só
+// o MIOLO mudou) continua só existindo quando há destino de devolução
+// configurado (`raPayloadDevolucao` devolve `null` sem isso, ver
+// `raSalvarConfigDevolucao`) — sem destino, "Para Uso Exclusivo do
+// Cartório Eleitoral" ocupa a largura toda sozinho, e a linha "Local:"
+// (que vivia dentro do bloco do PIX) migra pra dentro dele, nunca some.
 // `qrOut` (array compartilhado por todas as páginas de um mesmo documento)
 // recebe o payload no índice `idSuffix` — `raImprimirDocumento` desenha os
 // canvases depois que o HTML inteiro já estiver no DOM (`new QRCode()`
 // precisa do elemento já presente na página).
-function raHtmlBlocoQrDevolucaoImpresso(cfg, descricao, idSuffix, qrOut) {
-  const payload = raPayloadDevolucao(cfg, descricao);
+function raHtmlRodapeFinal(cfg, descricaoQr, localTexto, idSuffix, qrOut) {
+  const payload = raPayloadDevolucao(cfg, descricaoQr);
   if (qrOut) qrOut[idSuffix] = payload;
-  if (!payload) return '';
-  return `
-    <div class="ra-qr-dev-impresso">
+  const linhaLocal = `<div class="ra-qr-dev-local">Local: ${raEsc(localTexto || '')}</div>`;
+  const boxPix = payload ? `
+    <div class="ra-rodape-col ra-qr-dev-impresso">
+      <div class="ra-rodape-col-titulo">📲 PIX para devolução (se houver falta)</div>
+      <div class="ra-qr-dev-label">${raEsc(descricaoQr)}</div>
       <div id="ra-qr-dev-canvas-${idSuffix}" class="ra-qr-dev-canvas"></div>
-      <div class="ra-qr-dev-label">📲 PIX para devolução (se houver falta) — ${raEsc(descricao)}</div>
+      <div class="ra-qr-dev-divisor"></div>
+      ${linhaLocal}
+    </div>` : '';
+  return `
+    <div class="ra-rodape-flex">
+      ${boxPix}
+      <div class="ra-rodape-col ra-cartorio-box">
+        <div class="ra-rodape-col-titulo">Para Uso Exclusivo do Cartório Eleitoral</div>
+        <div class="ra-cartorio-linha1">
+          <span><b>Data:</b> ___/___/______</span>
+          <span><b>Total pago:</b> R$ ______________</span>
+        </div>
+        <div class="ra-cartorio-obs">
+          <b>Observação</b>
+          ${Array.from({ length: 1 }).map(() => '<span class="ra-cartorio-obs-linha"></span>').join('')}
+        </div>
+        <div class="ra-cartorio-suprido"><b>Suprido (carimbo e assinatura):</b> ________________________</div>
+        ${payload ? '' : linhaLocal}
+      </div>
     </div>`;
 }
 
@@ -519,8 +551,7 @@ function raHtmlMesaReceptora(secoes, cfg, qrOut) {
       </table>
       ${raHtmlSubstituicoes(true)}
       ${raHtmlObs()}
-      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - Seção ${s.numero}`, i, qrOut)}
-      ${raHtmlRodapeTotal(`Seção ${s.numero} — ${s.local_nome}`)}
+      ${raHtmlRodapeFinal(cfg, `Eleições 2026 - Devolução - Seção ${s.numero}`, `Seção ${s.numero} — ${s.local_nome}`, i, qrOut)}
     </div>`).join('');
 }
 
@@ -552,8 +583,7 @@ function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
       </table>
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
-      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - ${raNomeLocalSemCodigo(loc.local_nome)}`, i, qrOut)}
-      ${raHtmlRodapeTotal(loc.local_nome)}
+      ${raHtmlRodapeFinal(cfg, `Eleições 2026 - Devolução - ${raNomeLocalSemCodigo(loc.local_nome)}`, loc.local_nome, i, qrOut)}
     </div>`).join('');
 }
 
@@ -579,8 +609,7 @@ function raHtmlListaFlat(titulo, subtituloDia, pessoas, cfg, localTexto, numeroP
       </table>
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
-      ${raHtmlBlocoQrDevolucaoImpresso(cfg, `Eleições 2026 - Devolução - ${localTexto}`, idSuffix ?? 0, qrOut)}
-      ${raHtmlRodapeTotal(localTexto)}
+      ${raHtmlRodapeFinal(cfg, `Eleições 2026 - Devolução - ${localTexto}`, localTexto, idSuffix ?? 0, qrOut)}
     </div>`;
 }
 
@@ -598,7 +627,12 @@ async function raImprimirDocumento(html, acaoLog, quantidade, qrPayloads) {
       const el = document.getElementById(`ra-qr-dev-canvas-${i}`);
       if (!el) return;
       el.innerHTML = '';
-      try { new QRCode(el, { text: payload, width: 90, height: 90, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { /* nunca trava a impressão por causa do QR */ }
+      // Resolução do bitmap aumentada de 90 pra 260px (20/10/2026, pedido
+      // direto: "aumentando o qrcode para ficar mais legivel", junto do
+      // aumento físico de 18mm pra 30mm em `.ra-qr-dev-canvas` — sem subir
+      // a resolução junto, um QR de 90px esticado pra 30mm sairia em
+      // blocos/borrado, exatamente o oposto do pedido.
+      try { new QRCode(el, { text: payload, width: 260, height: 260, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M }); } catch (e) { /* nunca trava a impressão por causa do QR */ }
     });
   }
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
@@ -861,7 +895,13 @@ function raCtlResumo() {
   const pagos = todos.filter(a => a.auxilio_alimentacao_pago);
   const totalPago = pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
   const conflitos = todos.filter(a => raOutrosPapeis(a).length > 0).length;
-  const deveDevolverLista = todos.filter(raDeveDevolver);
+  // Nunca `todos.filter(raDeveDevolver)` — `.filter` chama o callback com
+  // `(elemento, índice, array)`, e o índice vazaria pro 2º parâmetro
+  // opcional `mesariosList` de `raDeveDevolver` (`undefined` é a única coisa
+  // que ativa o valor-padrão; um índice numérico, mesmo 0, não é
+  // `undefined`). Achado real: travava com "filter is not a function" toda
+  // vez que o 1º registro da lista era de mesário E tinha algo a devolver.
+  const deveDevolverLista = todos.filter(a => raDeveDevolver(a));
   const jaDevolveramLista = todos.filter(a => a.auxilio_alimentacao_devolvido);
   return {
     total: todos.length, pagos: pagos.length, totalPago, conflitos,
@@ -1833,6 +1873,136 @@ function raMudarSubTab(t) {
   renderReciboAlimentacao();
 }
 
+// ── Ver outro turno — somente leitura (20/10/2026, pedido direto: "resete
+// para o 2º turno a parte de controle de pagamento e frequencia, ou mesmo
+// coloque uma forma de selecionar entre o 1 e 2 turno"). ──
+//
+// O "reset" em si já tinha acontecido sozinho: `raCarregar()` só lê a
+// eleição ATIVA (`eq('ativa', true)`), e a troca de turno
+// (`sime_arquivar_auxilio_alimentacao_e_ativar_turno`, ver
+// `raIniciarProximoTurno` acima) já ZERA `sime_atores.auxilio_alimentacao_*`
+// na hora de trocar — então o Controle de Pagamento/Frequência já mostra o
+// 2º turno limpo, sem precisar de nenhum botão de reset. O que faltava era
+// a segunda metade do pedido: um jeito de CONSULTAR o turno anterior sem
+// perder essa visão depois que ele é arquivado.
+//
+// `raTurnoView` guarda o id da eleição sendo visualizada — `null` é sempre
+// o turno ATIVO (editável, a lista de sempre); qualquer outro valor é um
+// turno ARQUIVADO, lido de `sime_auxilio_alimentacao_historico` e mostrado
+// SOMENTE LEITURA — essa tabela não tem colunas `pix`/`observacao` (só
+// arquiva o que `auxilio_alimentacao_*` já cobria no momento da troca), então
+// não dá pra reconstituir QR Code nem o texto de observação pra um turno
+// passado; editar segue sendo só no turno atual.
+let raTurnoView = null;
+let raHistoricoPorTurno = {}; // cache { eleicaoId: { todos, mesarios } }
+let raHistoricoCarregando = false;
+
+// Mesmo filtro que `raDados.todos`/`raDados.mesarios` já aplicam na carga
+// ao vivo (ver `raCarregar()`) — Juiz Eleitoral nunca entra, e da mesa só o
+// Presidente recebe pagamento direto — replicado aqui porque o histórico
+// nunca filtra nada ao arquivar (guarda TODOS os 4 cargos de mesa, pra
+// `raQtdFaltantesMesa` ter o que contar).
+async function raCarregarHistoricoTurno(eleicaoId) {
+  if (raHistoricoPorTurno[eleicaoId]) return raHistoricoPorTurno[eleicaoId];
+  const sb = window.supabaseAtores;
+  const zonaId = await zonaDoUsuario();
+  const { data, error } = await sb.from('sime_auxilio_alimentacao_historico')
+    .select('id, ator_id, nome, funcao, funcao_mesa, inscricao_eleitoral, secao_id, pago, valor_pago, pago_em, documento, frequencia, devolvido, devolvido_em, devolucao_documento, recibo_ausente, isento, isento_motivo')
+    .eq('zona_id', zonaId).eq('eleicao_id', eleicaoId).eq('origem', 'ator');
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return { todos: [], mesarios: [] }; }
+
+  const secaoIds = [...new Set((data || []).map(r => r.secao_id).filter(Boolean))];
+  const { data: secoes } = secaoIds.length
+    ? await sb.from('sime_secoes').select('id, numero, local_nome, municipio').in('id', secaoIds)
+    : { data: [] };
+  const secoesPorId = Object.fromEntries((secoes || []).map(s => [s.id, s]));
+
+  const normalizados = (data || []).map(r => ({
+    id: r.id,
+    ator_id: r.ator_id,
+    nome_completo: r.nome,
+    funcao: r.funcao,
+    funcao_mesa: r.funcao_mesa,
+    inscricao_eleitoral: r.inscricao_eleitoral,
+    secao_id: r.secao_id,
+    sec: r.secao_id ? secoesPorId[r.secao_id] : null,
+    auxilio_alimentacao_pago: r.pago,
+    auxilio_alimentacao_valor_pago: r.valor_pago,
+    auxilio_alimentacao_pago_em: r.pago_em,
+    auxilio_alimentacao_documento: r.documento,
+    auxilio_alimentacao_frequencia: r.frequencia,
+    auxilio_alimentacao_devolvido: r.devolvido,
+    auxilio_alimentacao_devolvido_em: r.devolvido_em,
+    auxilio_alimentacao_devolucao_documento: r.devolucao_documento,
+    auxilio_alimentacao_recibo_ausente: r.recibo_ausente,
+    auxilio_alimentacao_isento: r.isento,
+    auxilio_alimentacao_isento_motivo: r.isento_motivo,
+  }));
+  const mesarios = normalizados.filter(a => a.funcao === 'mesario');
+  const ehJuiz = a => a.funcao === 'junta_eleitoral' && a.funcao_mesa === 'Presidente';
+  const todos = normalizados.filter(a => !ehJuiz(a) && (a.funcao !== 'mesario' || a.funcao_mesa === 'Presidente'));
+  const resultado = { todos: raOrdenarAgrupado(todos), mesarios };
+  raHistoricoPorTurno[eleicaoId] = resultado;
+  return resultado;
+}
+
+async function raMudarTurnoView(valor) {
+  raTurnoView = valor || null;
+  if (raTurnoView) {
+    raHistoricoCarregando = true;
+    renderControleUnificado();
+    await raCarregarHistoricoTurno(raTurnoView);
+    raHistoricoCarregando = false;
+  }
+  renderControleUnificado();
+}
+
+function raHtmlSeletorTurno() {
+  if (!raDados.turnosAnteriores?.length) return '';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <label style="font-size:.78rem;color:var(--text2)">📜 Turno:</label>
+      <select onchange="raMudarTurnoView(this.value)" style="padding:6px 8px;border-radius:6px">
+        <option value="">${raEsc(raEleicaoTexto(raDados.eleicao))} — atual (editável)</option>
+        ${raDados.turnosAnteriores.map(t => `<option value="${t.id}" ${raTurnoView === t.id ? 'selected' : ''}>${raEsc(raEleicaoTexto(t))} — arquivado (somente leitura)</option>`).join('')}
+      </select>
+    </div>`;
+}
+
+// Linha de um registro histórico — sem NENHUM onclick/onchange de escrita
+// (nem o nome abre modal: `raAbrirModal` edita o ator ATIVO, não faz
+// sentido aqui). Mostra os mesmos sinais da lista ao vivo (pago/valor/
+// documento/frequência/devolução/recibo ausente/isento), só que travados.
+function raHtmlLinhaHistorico(a, mesariosList) {
+  const ehMesa = a.funcao === 'mesario' && a.secao_id;
+  const deve = raDeveDevolver(a, mesariosList);
+  const valorDevolver = raValorADevolver(a, mesariosList);
+  const qtdFaltantes = ehMesa ? raQtdFaltantesMesa(a.secao_id, mesariosList) : 0;
+  return `
+    <div class="m-hist-item" style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>
+          <b>${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+          ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
+        </span>
+        <span style="font-size:.8rem">
+          ${a.auxilio_alimentacao_isento ? '🟡 Isento' : a.auxilio_alimentacao_pago ? `💰✅ ${raEsc(raFmtValor(a.auxilio_alimentacao_valor_pago))}` : '💰⏳ pendente'}
+          ${a.auxilio_alimentacao_documento ? ` · doc. ${raEsc(a.auxilio_alimentacao_documento)}` : ''}
+        </span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.78rem;color:var(--text2)">
+          ${ehMesa ? raIconFrequencia(a.auxilio_alimentacao_frequencia) + ' Presidente' : a.auxilio_alimentacao_frequencia ? `${raIconFrequencia(a.auxilio_alimentacao_frequencia)} ${a.auxilio_alimentacao_frequencia === 'presente' ? 'Presente' : 'Faltou'}` : '➖ sem frequência marcada'}
+          ${a.funcao === 'mesario' && a.auxilio_alimentacao_recibo_ausente ? ' · 📄 recibo ausente' : ''}
+        </span>
+        <span>
+          ${deve ? `<span class="import-result ir-warn" style="font-size:.74rem">⚠️ ${ehMesa ? `${qtdFaltantes} de 4 faltou(aram)` : 'faltou e já recebeu'} — deveria devolver ${raEsc(raFmtValor(valorDevolver))}</span>` : ''}
+          ${a.auxilio_alimentacao_devolvido ? `<span class="ic-sub">✅ devolvido${a.auxilio_alimentacao_devolvido_em ? ` em ${raFmtDataHora(new Date(a.auxilio_alimentacao_devolvido_em))}` : ''}</span>` : ''}
+        </span>
+      </div>
+    </div>`;
+}
+
 // ── 🗺️ Conferência por cidade/local/seção (08/10/2026, pedido direto:
 // "quero um painel, separado por cidade, e em cada cidade, o local de
 // votação e seções no estilo do anexo para conferencia dos auxilios" —
@@ -2034,6 +2204,9 @@ async function raIniciarProximoTurno() {
     eleicao_anterior: raDados.eleicao.id, eleicao_nova: pt.id, autor, ...(data || {}),
   });
   showToast(`✓ ${turnoNovoTxt} ativado — ${data?.atores_arquivados ?? 0} pessoa(s) e ${data?.veiculos_arquivados ?? 0} veículo(s) arquivados`);
+  // Volta pra visão do turno ATUAL (o recém-ativado) — nunca deixa a tela
+  // presa olhando pro turno que acabou de ser arquivado.
+  raTurnoView = null;
   await raCarregar();
 }
 
@@ -2130,6 +2303,31 @@ function raHtmlSecaoControle() {
 function renderControleUnificado() {
   const alvo = document.getElementById('ra-controle-unificado');
   if (!alvo) return;
+
+  // Ver outro turno (somente leitura) — curto-circuita ANTES de tocar nos
+  // filtros/busca ao vivo, que são sobre `raDados.todos` (sempre o turno
+  // ATIVO) e não fazem sentido sobre um turno arquivado.
+  if (raTurnoView) {
+    const historico = raHistoricoPorTurno[raTurnoView];
+    if (raHistoricoCarregando || !historico) {
+      alvo.innerHTML = `${raHtmlSeletorTurno()}<div class="ic-sub">Carregando turno arquivado…</div>`;
+      return;
+    }
+    const pagos = historico.todos.filter(a => a.auxilio_alimentacao_pago);
+    const totalPago = pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
+    alvo.innerHTML = `
+      ${raHtmlSeletorTurno()}
+      <div class="import-result ir-warn" style="margin-bottom:8px">📜 Somente leitura — este é o estado ARQUIVADO de
+        um turno já encerrado. Sem edição, sem QR de PIX/devolução, sem observação (a tabela de histórico não guarda
+        esses dois campos) — pra mexer em pagamento/frequência, volte pro turno atual no seletor acima.</div>
+      <div class="ic-sub" style="margin:0 0 8px">${pagos.length} de ${historico.todos.length} tinham sido pagos —
+        total pago: ${raFmtValor(totalPago)}.</div>
+      <div class="m-hist" style="max-height:480px;overflow-y:auto">
+        ${raHtmlListaComGrupos(historico.todos, a => raHtmlLinhaHistorico(a, historico.mesarios))}
+      </div>`;
+    return;
+  }
+
   const buscaEl = document.getElementById('ra-ctl-busca');
   const buscaAtiva = document.activeElement === buscaEl;
   const buscaSelStart = buscaAtiva ? buscaEl.selectionStart : null;
@@ -2143,6 +2341,7 @@ function renderControleUnificado() {
   const municipios = [...new Set((raDados.todos || []).map(a => a.sec?.municipio).filter(Boolean))].sort();
 
   alvo.innerHTML = `
+    ${raHtmlSeletorTurno()}
     <div class="ic-sub" style="margin:0 0 8px">
       ${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.${resumo.conflitos ? ` <b style="color:var(--red)">⚠️ ${resumo.conflitos} com papel duplicado — confira antes de marcar como pago.</b>` : ''}<br>
       ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda${resumo.reciboAusente ? ` · <b style="color:var(--text2)">📄 ${resumo.reciboAusente} com recibo ausente</b> (mesa completa, só falta o papel)` : ''}${resumo.isentos ? ` · <span style="color:var(--text2)">🟡 ${resumo.isentos} isento(s) (trabalhou(aram) só pela folga, sem repasse)</span>` : ''}.
@@ -2271,21 +2470,27 @@ let raModalFaltaReciboAusente = false;
 // nunca é o R$260 inteiro automaticamente: é dividido pelos 4 cargos
 // (R$65 cada, o mesmo valor-padrão usado pros demais papéis) e multiplicado
 // só pela quantidade de quem de fato faltou.
-function raMesaMembros(secaoId) {
-  return (raDados.mesarios || []).filter(m => m.secao_id === secaoId);
+// Todas aceitam um `mesariosList` opcional (default `raDados.mesarios`, a
+// lista do turno ATIVO) — 20/10/2026, pra dar pro seletor de turno (📜 "Ver
+// outro turno", somente leitura) reaproveitar exatamente a mesma conta
+// "quantos dos 4 cargos faltaram" sobre a lista ARQUIVADA do turno
+// histórico escolhido, sem misturar com a mesa do turno atual. Nenhum
+// chamador existente passa o 2º argumento — comportamento idêntico a antes.
+function raMesaMembros(secaoId, mesariosList = raDados.mesarios) {
+  return (mesariosList || []).filter(m => m.secao_id === secaoId);
 }
-function raMesaTodosPresentes(secaoId) {
-  const membros = raMesaMembros(secaoId);
+function raMesaTodosPresentes(secaoId, mesariosList = raDados.mesarios) {
+  const membros = raMesaMembros(secaoId, mesariosList);
   return membros.length > 0 && membros.every(m => m.auxilio_alimentacao_frequencia === 'presente');
 }
-function raMesaNenhumMarcado(secaoId) {
-  return raMesaMembros(secaoId).every(m => !m.auxilio_alimentacao_frequencia);
+function raMesaNenhumMarcado(secaoId, mesariosList = raDados.mesarios) {
+  return raMesaMembros(secaoId, mesariosList).every(m => !m.auxilio_alimentacao_frequencia);
 }
-function raQtdFaltantesMesa(secaoId) {
-  return raMesaMembros(secaoId).filter(m => m.auxilio_alimentacao_frequencia === 'faltou').length;
+function raQtdFaltantesMesa(secaoId, mesariosList = raDados.mesarios) {
+  return raMesaMembros(secaoId, mesariosList).filter(m => m.auxilio_alimentacao_frequencia === 'faltou').length;
 }
-function raMesaPresidente(secaoId) {
-  return raMesaMembros(secaoId).find(m => m.funcao_mesa === 'Presidente');
+function raMesaPresidente(secaoId, mesariosList = raDados.mesarios) {
+  return raMesaMembros(secaoId, mesariosList).find(m => m.funcao_mesa === 'Presidente');
 }
 // "Recibo ausente" (06/10/2026, pedido direto: "tambem pode acontecer de
 // faltar o recibo e a mesa funcionar completa") — flag independente da
@@ -2293,8 +2498,8 @@ function raMesaPresidente(secaoId) {
 // 4 cargos presentes. Gravada só na linha do Presidente (mesma linha que já
 // carrega pix/documento da seção) — nunca afeta `raDeveDevolver`, é só uma
 // pendência de documentação.
-function raMesaReciboAusente(secaoId) {
-  return !!raMesaPresidente(secaoId)?.auxilio_alimentacao_recibo_ausente;
+function raMesaReciboAusente(secaoId, mesariosList = raDados.mesarios) {
+  return !!raMesaPresidente(secaoId, mesariosList)?.auxilio_alimentacao_recibo_ausente;
 }
 // Valor por membro é sempre o pago ao Presidente ÷ 4 cargos — não ÷ pelo
 // nº de membros efetivamente cadastrados, pra não inflar o valor por
@@ -2302,9 +2507,9 @@ function raMesaReciboAusente(secaoId) {
 function raValorPorMembroMesa(presidenteRow) {
   return Number(presidenteRow.auxilio_alimentacao_valor_pago || 0) / 4;
 }
-function raValorADevolverMesa(presidenteRow) {
+function raValorADevolverMesa(presidenteRow, mesariosList = raDados.mesarios) {
   if (!presidenteRow.secao_id || !presidenteRow.auxilio_alimentacao_pago) return 0;
-  const qtd = raQtdFaltantesMesa(presidenteRow.secao_id);
+  const qtd = raQtdFaltantesMesa(presidenteRow.secao_id, mesariosList);
   return qtd ? raValorPorMembroMesa(presidenteRow) * qtd : 0;
 }
 
@@ -2320,13 +2525,13 @@ function raAcharAtorQualquer(atorId) {
 // cargos que faltaram (`raValorADevolverMesa`); pras demais funções
 // (coordenador/auxiliar/junta — pagamento individual de verdade, sem mesa)
 // continua sendo a lógica binária de sempre.
-function raDeveDevolver(a) {
+function raDeveDevolver(a, mesariosList = raDados.mesarios) {
   if (!a.auxilio_alimentacao_pago || a.auxilio_alimentacao_devolvido) return false;
-  if (a.funcao === 'mesario') return raValorADevolverMesa(a) > 0;
+  if (a.funcao === 'mesario') return raValorADevolverMesa(a, mesariosList) > 0;
   return a.auxilio_alimentacao_frequencia === 'faltou';
 }
-function raValorADevolver(a) {
-  return a.funcao === 'mesario' ? raValorADevolverMesa(a) : Number(a.auxilio_alimentacao_valor_pago || 0);
+function raValorADevolver(a, mesariosList = raDados.mesarios) {
+  return a.funcao === 'mesario' ? raValorADevolverMesa(a, mesariosList) : Number(a.auxilio_alimentacao_valor_pago || 0);
 }
 
 // Marcar frequência — toque único (presente/faltou), mesmo padrão de toda

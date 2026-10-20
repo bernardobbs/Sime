@@ -9536,6 +9536,181 @@ aparecer em "Pendentes"; o mesmo toggle funciona pelo modal de detalhe,
 escondendo valor/QR e mostrando o aviso + motivo + desfazer, gravando a
 mesma flag que a lista usa.
 
+---
+
+## "VER OUTRO TURNO" NO CONTROLE DE PAGAMENTO — SOMENTE LEITURA (`sime_recibo_alimentacao.js`, 20/10/2026)
+
+Pedido direto: "resete para o 2º turno a parte de controle de pagamento e
+frequencia, ou mesmo coloque uma forma de selecionar entre o 1 e 2 turno".
+Investigado antes de mexer em código: o "reset" em si **já tinha
+acontecido sozinho**, sem precisar de nenhuma ação nova — `raCarregar()`
+só lê a eleição com `ativa=true` (`eq('ativa', true)`), e a troca de turno
+já existente (`sime_arquivar_auxilio_alimentacao_e_ativar_turno`, ver
+"🗳️ Encerrar turno..." acima) já ZERA `sime_atores.auxilio_alimentacao_*`
+na hora de trocar — o Controle de Pagamento/Frequência do 2º turno já
+nasce limpo, sem precisar de botão nenhum. Faltava mesmo a segunda metade
+do pedido: um jeito de CONSULTAR o turno anterior depois dele ser
+arquivado, sem perder essa visão.
+
+**Bug real, achado investigando (não reportado antes, corrigido junto) —
+o botão "🗳️ Encerrar X e começar o Y" podia oferecer "voltar pro 1º
+turno".** `raDados.proximoTurno` só checava a CONTAGEM de eleições
+inativas (`outrasEleicoes.length === 1`), nunca se a candidata era
+passado ou futuro — numa zona já no 2º turno, a única eleição "inativa"
+que sobra é o 1º turno (já arquivado), e o botão virava, sem sentido,
+"Encerrar 2º turno e começar o 1º turno". Corrigido comparando o NÚMERO
+do turno: só vira candidato a "próximo" quem tem `turno` maior que o da
+eleição ativa; quem tem `turno` menor vira candidato a
+`turnosAnteriores` (a lista nova, usada pelo seletor abaixo) — mesma
+critério "nunca adivinha" de sempre, só que aplicado à direção do tempo,
+não só à contagem.
+
+**`raTurnoView`** (`null` = turno ATUAL, editável, o comportamento de
+sempre; qualquer outro valor = id de uma eleição arquivada, SOMENTE
+LEITURA) — `<select>` novo (`raHtmlSeletorTurno()`, só aparece quando
+`raDados.turnosAnteriores.length` > 0 — zona com um único turno, como a
+94ª hoje, nunca mostra o seletor) no topo do Controle de Pagamento/
+Frequência, nos dois modos (editável e histórico), listando "{turno
+atual} — atual (editável)" e cada turno arquivado como "{turno} —
+arquivado (somente leitura)".
+
+**Por que é SEMPRE somente leitura, nunca editável — limitação real de
+schema, não escolha de design.** `sime_auxilio_alimentacao_historico` (a
+única fonte pra um turno já arquivado) não tem colunas `pix` nem
+`observacao` — só arquiva o que `sime_atores.auxilio_alimentacao_*` já
+cobria no instante da troca de turno. Sem `pix`, não dá pra desenhar QR
+Code de pagamento nem de devolução pro histórico; sem `observacao`, não
+dá pra anexar nem ler nenhum recado. Editar um turno arquivado também
+não faria sentido prático — a prestação de contas daquele turno já foi
+fechada quando ele foi arquivado. Por isso `raCarregarHistoricoTurno()`
+busca e normaliza os campos (`nome`→`nome_completo`, `pago`→
+`auxilio_alimentacao_pago`, etc. — mesmo formato de `raDados.todos`, pra
+reaproveitar `raGrupoChave`/`raGrupoLabel`/`raOrdenarAgrupado`/
+`raHtmlListaComGrupos` sem duplicar a lógica de agrupamento por cidade/
+local), mas `raHtmlLinhaHistorico()` nunca desenha `onclick`/`onchange`
+nenhum — só texto: pago/valor/documento/frequência/devolução/recibo
+ausente/isento, exatamente como ficaram congelados na hora da troca.
+Banner fixo no topo ("📜 Somente leitura...") deixa isso explícito, com
+um lembrete de voltar pro seletor pra editar o turno atual.
+
+**`raDeveDevolver`/`raValorADevolver`/`raQtdFaltantesMesa`/
+`raMesaMembros` (e as demais funções de mesa) ganharam um 2º parâmetro
+opcional `mesariosList` (default `raDados.mesarios`, o turno ATIVO)** —
+sem isso, calcular "quantos dos 4 cargos da mesa faltaram" pro turno
+HISTÓRICO acabaria contando contra a mesa do turno ATUAL (o módulo-global
+`raDados.mesarios`), misturando os dois turnos na mesma conta. A lista
+histórica normalizada mantém TODOS os 4 cargos de mesa (o próprio
+arquivamento nunca filtra por `funcao_mesa`, só por `funcao` — ver
+`sime_arquivar_auxilio_alimentacao_e_ativar_turno`), então
+`raCarregarHistoricoTurno()` passa essa lista própria pros mesmos
+cálculos, sem duplicar a fórmula. Nenhum chamador existente passa o 2º
+argumento — comportamento idêntico a antes em todo o resto do arquivo.
+
+**Bug real, achado escrevendo o teste de regressão: `todos.filter(raDeveDevolver)`
+quebrava com "filter is not a function".** `Array.prototype.filter` chama
+o callback com `(elemento, índice, array)` — passar `raDeveDevolver` como
+referência BARE (sem envolver numa arrow function) fazia o ÍNDICE do
+array vazar pro novo 2º parâmetro `mesariosList` (um número, não
+`undefined`, então o valor-padrão nunca entrava em ação) — quebrava toda
+vez que havia um mesário ANTES do 1º registro não-zero da lista
+(`(índiceNumérico || []).filter` só não quebra quando o índice é `0`,
+porque `0 || []` vira `[]` por coerção, mascarando o bug pro 1º item e
+estourando a partir do 2º). Corrigido envolvendo numa arrow function
+(`todos.filter(a => raDeveDevolver(a))`) — único ponto do arquivo que
+passava uma dessas funções como referência direta pra `.filter()`/`.map()`/
+etc. (conferido com busca no arquivo inteiro antes de considerar
+corrigido).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 21, 303 checks
+no total no arquivo): zona já no 2º turno nunca oferece "avançar pro 1º
+turno"; seletor aparece com as 2 opções certas (atual primeiro, arquivado
+depois); turno atual continua 100% editável (checkbox "Pago", campos de
+valor); trocar pro turno arquivado mostra o banner de somente leitura, as
+pessoas/valores/documentos do histórico (não os do turno atual), o resumo
+"X de Y pagos", e NENHUM elemento editável (zero checkbox, zero botão,
+zero campo de texto); voltar pro atual restaura a edição; a tabela de
+histórico nunca é escrita por esta tela, em nenhum momento.
+
+---
+
+## RODAPÉ FINAL DO RECIBO REDESENHADO — "PARA USO EXCLUSIVO DO CARTÓRIO ELEITORAL" + QR MAIOR (`sime_recibo_alimentacao.js`, 20/10/2026)
+
+Pedido direto, com um mockup real anexado (print de um recibo de Junta
+Eleitoral, mesmo cabeçalho/tabela/substituições/OBS de sempre, só o rodapé
+redesenhado): "adapte o modelo de recibo o modelo em anexo. aumentando o
+qrcode para ficar mais legivel". O rodapé final dos 4 recibos de
+assinatura (Mesa Receptora/Coordenador/Auxiliares/Junta) tinha, até aqui,
+dois blocos SEPARADOS e empilhados: o QR de devolução (06/10/2026, dentro
+de um divisor tracejado, 18mm) e, abaixo, três linhas soltas "Total pago/
+Local/Data/Suprido" (18/09/2026). O mockup reorganiza isso em **duas
+caixas com borda lado a lado** — PIX de devolução à esquerda, "Para Uso
+Exclusivo do Cartório Eleitoral" à direita — e pede o QR maior.
+
+**`raHtmlBlocoQrDevolucaoImpresso()` + `raHtmlRodapeTotal()` viraram uma
+função só, `raHtmlRodapeFinal()`** — as duas metades nunca foram
+independentes de verdade (sempre apareciam juntas, na mesma posição, nos
+mesmos 3 templates), então juntar numa função só também simplifica os 3
+pontos de chamada (`raHtmlMesaReceptora`/`raHtmlPorLocal`/
+`raHtmlListaFlat`), que antes precisavam lembrar de chamar as duas em
+sequência. **`.ra-qr-dev-impresso` continua sendo a MESMA classe de
+sempre** (só o miolo virou uma caixa com borda, `.ra-rodape-col`) — nunca
+renomeada, pra não quebrar nenhuma das ~15 asserções já existentes que
+contam esse seletor pra saber quantos QRs de devolução saíram no
+documento.
+
+**Caixa do PIX** — título "📲 PIX para devolução (se houver falta)",
+descrição pequena (a mesma string que já existia, "Eleições 2026 -
+Devolução - Seção N"/local/zona — reaproveitada, não reescrita), o QR, um
+divisor tracejado, e **"Local: ..."** — que antes vivia solto na linha de
+rodapé de sempre, migrou pra dentro desta caixa. Continua só existindo
+quando há destino de devolução configurado (`raPayloadDevolucao()` devolve
+`null` sem isso, comportamento intocado desde 06/10/2026).
+
+**Caixa do Cartório** — título "Para Uso Exclusivo do Cartório Eleitoral"
+(texto literal do mockup, não inventado), "Data: ___/___/______" e "Total
+pago: R$______" na mesma linha, "Observação" com uma linha em branco pra
+escrever, e "Suprido (carimbo e assinatura): ________" no fim — **sempre
+presente**, com ou sem a caixa do PIX ao lado (`.ra-cartorio-box{flex:1}`
+já cobre os dois casos: com o PIX, ocupa o espaço que sobra; sem ele,
+ocupa a largura toda sozinha). **Sem destino de devolução configurado, a
+linha "Local:" (que vivia só na caixa do PIX) migra pra dentro desta
+caixa** — nunca some, só muda de onde mora.
+
+**QR aumentado de 18mm pra 22mm, com a resolução do bitmap por trás
+também subindo (90px→260px)** — "aumentando o qrcode para ficar mais
+legivel" exige os dois: só crescer o `width`/`height` em CSS sem subir a
+resolução esticaria um bitmap pequeno (90px) pra um retângulo maior,
+saindo borrado/em blocos, o oposto do pedido (mesmo princípio já usado
+alhures no projeto — `rtQrSizePx()`/`tkQrCanvasPx()` — pra QR impresso
+maior que o tamanho em que foi gerado).
+
+**Por que 22mm e não os 30mm cogitados a princípio — medido com
+`page.pdf()` de verdade, não estimado.** A primeira tentativa (30mm,
+título+descrição dentro da caixa do PIX, 3 linhas de "Observação" na
+caixa do Cartório) estourou a garantia de "cada recibo de seção deve
+caber estritamente em uma folha" (18/09/2026) — a Seção 63 (mesa
+COMPLETA, o pior caso real, com nomes longos) virou 4 páginas físicas em
+vez de 3, confirmado pelo mesmo teste de regressão que já cobria essa
+garantia (`mediaBoxes.length`). Reduzido e remedido até caber de novo: QR
+22mm (ainda ~22% maior que os 18mm de antes — perceptível, mas sem
+estourar a página), "Observação" com 1 linha em branco em vez de 3, linha
+da tabela de SUBSTITUIÇÕES comprimida de 5,5mm pra 4,8mm, padding/margem
+das duas caixas levemente reduzidos — voltando a caber nas mesmas 3
+páginas físicas de sempre (verificado de novo com `page.pdf()`, não só
+visualmente).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 19h/19i, 313
+checks no total no arquivo): "Para Uso Exclusivo do Cartório Eleitoral"
+presente; "Total pago"/"Suprido (carimbo e assinatura)" continuam
+presentes (dentro da caixa nova); as duas caixas (`.ra-qr-dev-impresso`/
+`.ra-cartorio-box`, ambas `.ra-rodape-col`) aparecem uma vez por seção;
+"Local:" aparece dentro da caixa do PIX quando ele existe; o QR impresso
+é fisicamente maior que os 18mm de antes (CSS computado, não só o
+atributo); sem destino de devolução configurado, só a caixa do Cartório
+aparece (largura cheia) e "Local:" migra pra dentro dela; e o teste já
+existente de "EXATAMENTE 3 páginas físicas" (18/09/2026) continua
+passando sem regressão.
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
