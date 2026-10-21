@@ -9973,6 +9973,60 @@ Coordenadores pagos no 2º turno: de 0/59 para **25/59**.
 
 ---
 
+## CONFERÊNCIA DOS EXTRATOS BANCÁRIOS REAIS — PIX DOS MESÁRIOS (21/10/2026)
+
+Pedido direto, com os dois extratos reais anexados (setembro e outubro/2026,
+formato `.bbt` do Banco do Brasil): "verifique os pix feitos para os
+mesários". Extraídos os 241 "Pix - Enviado" cujo valor é múltiplo de R$65
+(65/130/260/325 — os únicos valores que o auxílio alimentação usa) e casados
+por nome contra `sime_auxilio_alimentacao_historico` (1º turno) e
+`sime_atores` (2º turno ativo), somando por pessoa.
+
+**Achado inicial, levado ao dono do projeto antes de mexer em qualquer
+coisa:** ~49 pessoas têm um pagamento do 2º turno registrado no SIME
+(documento na faixa 4158–4240, `pago_em='2026-10-16'`) sem nenhuma
+transação correspondente em nenhum dos dois extratos — enquanto o lote de
+verdade do 2º turno saiu no mesmo dia da conferência (21/10/2026, documentos
+102102-102146). **Resposta do dono do projeto: esses 49 pagamentos saíram
+pelo TRE direto, nunca por essa conta — por isso nunca apareceriam nos
+extratos dela.** Não é dado fictício nem erro — é só outro canal de
+pagamento, fora do escopo do que uma conta corrente específica consegue
+confirmar. Nenhuma ação necessária ali.
+
+**Segundo achado, esse sim real e seguro de corrigir**: 29 Presidentes de
+mesa do 1º turno receberam, além do próprio R$260 (29/09-02/10/2026), um
+PIX extra de R$65 pro MESMO nome/conta — o R$65 do Coordenador de
+Acessibilidade do local, roteado pela chave PIX do Presidente (mesma regra
+de "QR DO COORDENADOR DE ACESSIBILIDADE VAI PRO PIX DO PRESIDENTE",
+01/10/2026). Checado nome a nome contra o Coordenador do mesmo local
+(`local_nome`+`municipio` via `secao_id`): **28 dos 29 já estavam
+corretamente creditados** — com o documento REAL do banco (ex.: `100171`,
+`100160`, `100156`...), não um placeholder — confirmando que a correção já
+tinha sido feita em sessão anterior, com dado bom. **Só 1 ficou faltando**:
+MARIA JOSE RIBEIRO, Coordenadora de Acessibilidade de "1201 - EMATER"
+(Campo Maior), Coordenadora da seção de ELAYNE CRISTINA DAMASCENO TÔRRES —
+corrigida (`pago=true`, `valor_pago=65`, `documento='100172'`,
+`pago_em='2026-10-01'`), logado em `sime_logs`
+(`auxilio_alimentacao_coordenador_pago_via_pix_presidente_verificacao_extrato_bancario`).
+
+**Três pendências reais, levantadas mas NÃO corrigidas nesta rodada —
+ficam para quando o cartório confirmar:**
+- **SELLIANNE FERREIRA SILVA** (Auxiliar de Eleição) recebeu DOIS PIX reais
+  de R$65 (03/10 e 04/10 — sábado+domingo, regra já documentada de R$130
+  pros dois dias), mas o SIME só reflete um dos dois (`valor_pago=65`).
+- **JANIZETE DA PAZ MELO** (Auxiliar de Eleição) recebeu R$130 (09/10,
+  doc 100901) e nunca foi marcada paga no SIME.
+- **JOELSON DOS SANTOS SILVA, MARIA CLARA LIMA FELIPE, WANDERSON JORGE
+  SANTOS MACEDO** receberam R$65 cada (06-07/10) mas nenhum dos três é
+  Presidente de mesa (são 1º Secretário/2º Mesário/2º Mesário — cargos que,
+  pela regra de sempre, não recebem PIX direto, só o Presidente repassa em
+  mãos) — não dá pra saber, sem perguntar ao cartório, se isso foi um
+  pagamento avulso por algum motivo (substituição, erro) ou se algum deles
+  também é Coordenador/Auxiliar sob outro cadastro — por isso não foi
+  creditado a nenhum papel por adivinhação.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
