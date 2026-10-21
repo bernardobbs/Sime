@@ -9819,6 +9819,27 @@ DOC2T no 2º — cada coluna só mostra o seu); pessoa pendente nos dois turnos
 mostra "⏳ Pendente" nas duas colunas, nunca "✅ Pago"; zona sem turno
 arquivado nunca mostra o bloco.
 
+**Linha da lista fica verde quando já está paga (21/10/2026, mesmo dia,
+pedido direto: "os que estiverem pago no 2º turno pode mudar de cor?").**
+A lista unificada (`renderControleUnificado()`, abaixo do resumo/filtros)
+só tinha o checkbox "Pago" como sinal — pra bater o olho em várias dezenas
+de linhas e achar quem já recebeu, era preciso ler cada checkbox um por
+um. Cada `.m-hist-item` passou a ganhar fundo/borda verde
+(`rgba(22,163,74,.08)` + `border-left:3px solid var(--green,#16a34a)`,
+mesma cor já usada em `raBadgePago()`/`raStatusPagamentoResumo()` pro sinal
+de "pago") quando `a.auxilio_alimentacao_pago` é verdadeiro. Como
+`raDados.todos` é sempre o turno ATIVO da zona (hoje o 2º turno na 7ª),
+"pago" aqui já É "pago no 2º turno" — nenhuma lógica de turno nova, só uma
+leitura do mesmo campo que o checkbox já usa. Escopado só a esta lista
+(editável, do turno atual) — a lista somente-leitura de um turno arquivado
+(`raHtmlLinhaHistorico`, usada por "📜 Ver outro turno") não foi tocada.
+Isento continua só com o badge de texto de sempre (🟡), sem cor de fundo —
+o pedido foi especificamente sobre "pago".
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 24, 335 checks
+no total no arquivo): a linha de quem está marcado pago ganha o estilo
+verde; a de quem ainda está pendente não ganha.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

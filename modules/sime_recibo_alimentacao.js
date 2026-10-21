@@ -2397,6 +2397,14 @@ function raHtmlSecaoControle() {
 // cada linha mostra os dois grupos de controle (pagamento em cima,
 // frequência/devolução embaixo), com um resumo mesa (`raHtmlResumoMesa`)
 // quando aplicável.
+//
+// Linha ganha fundo/borda verde quando `auxilio_alimentacao_pago` é
+// verdadeiro (21/10/2026, pedido direto: "os que estiverem pago no 2º
+// turno pode mudar de cor?") — `raDados.todos` é sempre o turno ATIVO da
+// zona (hoje o 2º na 7ª), então "pago" aqui já É "pago no 2º turno", sem
+// precisar de nenhuma lógica de turno nova. Só esta lista (editável, do
+// turno atual) — a lista somente-leitura de um turno arquivado
+// (`raHtmlLinhaHistorico`, abaixo) não foi tocada.
 function renderControleUnificado() {
   const alvo = document.getElementById('ra-controle-unificado');
   if (!alvo) return;
@@ -2471,7 +2479,7 @@ function renderControleUnificado() {
         const valorDevolver = raValorADevolver(a);
         const qtdFaltantes = ehMesa ? raQtdFaltantesMesa(a.secao_id) : 0;
         return `
-      <div class="m-hist-item" style="display:flex;flex-direction:column;gap:6px">
+      <div class="m-hist-item" style="display:flex;flex-direction:column;gap:6px${a.auxilio_alimentacao_pago ? ';background:rgba(22,163,74,.08);border-left:3px solid var(--green,#16a34a);border-radius:6px;padding-left:8px' : ''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <span>
             <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX, marcar pagamento e anotar observação">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
