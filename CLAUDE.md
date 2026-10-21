@@ -10027,6 +10027,30 @@ ficam para quando o cartório confirmar:**
 
 ---
 
+## NOME EM VERMELHO PRA QUEM AINDA NÃO FOI PAGO (`sime_recibo_alimentacao.js`, 21/10/2026)
+
+Pedido direto, complementando a linha verde de 21/10/2026 ("Linha fica verde
+na lista do Controle de Pagamento quando já está paga"): "pode colocar em
+vermelho os nomes ainda não pagos?" — mesmo `renderControleUnificado()`,
+mesma condição inversa (`!a.auxilio_alimentacao_pago`), só que no `<b>` do
+nome em vez do fundo/borda da linha inteira — pedido foi especificamente
+sobre o nome, não sobre repetir o tratamento de linha cheia (que já é o
+sinal forte reservado pra "pago").
+
+**Isento nunca fica vermelho** — mesma lógica de sempre (isento já tem o
+próprio badge amarelo, "🟡 Isento — sem repasse do auxílio") — ele não está
+"faltando pagar", está deliberadamente fora da fila de pagamento; pintar de
+vermelho sugeriria pendência onde não há nenhuma. Condição final:
+`!a.auxilio_alimentacao_pago && !a.auxilio_alimentacao_isento`.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 24, estendido —
+338 checks no total no arquivo): nome de quem já foi pago não fica
+vermelho; nome de quem ainda não foi pago fica vermelho
+(`color:var(--red,#dc2626)`); nome de quem está isento não fica vermelho
+mesmo não tendo `auxilio_alimentacao_pago`.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

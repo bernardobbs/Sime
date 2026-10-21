@@ -1872,26 +1872,37 @@ async function login(p) {
 // ── 24. Linha fica verde quando já está paga (21/10/2026, pedido direto:
 // "os que estiverem pago no 2º turno pode mudar de cor?") — `raDados.todos`
 // é sempre o turno ATIVO, então basta olhar `auxilio_alimentacao_pago` de
-// cada linha ao vivo; não precisa de nenhum turno/mock especial pra isso. ──
+// cada linha ao vivo; não precisa de nenhum turno/mock especial pra isso.
+// Nome em vermelho quando ainda não pago (mesmo dia, pedido direto: "pode
+// colocar em vermelho os nomes ainda não pagos?") — isento nunca fica
+// vermelho (é "não vai ser pago, por decisão", não "falta pagar"). ──
 {
   const ctx = await b.newContext();
   const m = mock();
   m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago = true; // PRESIDENTE MARIA já paga
   // m5 (PRESIDENTE MARIA DA SILVA...) continua sem `auxilio_alimentacao_pago` — pendente.
+  m.sime_atores.find(a => a.id === 'a1').auxilio_alimentacao_isento = true; // AUXILIAR PEDRO isento
   const { p, erros } = await abrir(ctx, m);
   await login(p);
   await p.click('#tab-alimentacao-btn');
   await p.waitForTimeout(400);
   await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
-  await p.selectOption('#ra-controle-unificado select', ''); // "Pagamento: Todos" — pra ver pago e pendente juntos
+  await p.selectOption('#ra-controle-unificado select', ''); // "Pagamento: Todos" — pra ver pago, pendente e isento juntos
   await p.waitForTimeout(300);
 
   const styleMaria = await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —")').getAttribute('style');
   check('linha da PRESIDENTE MARIA (paga) ganha fundo/borda verde', /background:rgba\(22,163,74/.test(styleMaria || '') && /border-left:3px solid/.test(styleMaria || ''), styleMaria);
+  const nomeMariaStyle = await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA —") b').first().getAttribute('style');
+  check('nome da PRESIDENTE MARIA (paga) não fica vermelho', !/color:var\(--red/.test(nomeMariaStyle || ''), nomeMariaStyle);
 
   const styleOutraMaria = await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")').getAttribute('style');
-  check('linha da outra Presidente (ainda pendente) NÃO ganha a cor', !/background:rgba\(22,163,74/.test(styleOutraMaria || ''), styleOutraMaria);
+  check('linha da outra Presidente (ainda pendente) NÃO ganha a cor verde', !/background:rgba\(22,163,74/.test(styleOutraMaria || ''), styleOutraMaria);
+  const nomeOutraMariaStyle = await p.locator('#ra-controle-unificado .m-hist-item:has-text("PRESIDENTE MARIA DA SILVA") b').first().getAttribute('style');
+  check('nome da outra Presidente (ainda pendente) fica vermelho', /color:var\(--red,#dc2626\)/.test(nomeOutraMariaStyle || ''), nomeOutraMariaStyle);
+
+  const nomePedroStyle = await p.locator('#ra-controle-unificado .m-hist-item:has-text("AUXILIAR PEDRO") b').first().getAttribute('style');
+  check('nome do isento (AUXILIAR PEDRO) não fica vermelho', !/color:var\(--red/.test(nomePedroStyle || ''), nomePedroStyle);
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
