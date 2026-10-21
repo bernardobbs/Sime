@@ -9929,6 +9929,50 @@ linhas atualizadas e a nota sobre a linha excluída do Bernardo).
 
 ---
 
+## COORDENADOR DE ACESSIBILIDADE NÃO ENTRAVA COMO PAGO QUANDO O VALOR CHEGAVA VIA PIX DO PRESIDENTE (2º TURNO, 21/10/2026)
+
+Achado real reportado pelo cartório: "DOUGLAS CHARDSON DE SOUSA IBIAPINA
+recebeu 2º turno... R$325,00 — doc. 4176 — 16/10/2026 09:51, justamente
+para a coordenadora LANA GRASIELLY DA SILVA PAIVA." Confirmado contra o
+banco: Douglas é Presidente da seção 12 (única seção com Presidente ativo
+no local "1074 - SECRETARIA MUNICIPAL DE EDUCAÇÃO", Campo Maior — as
+demais seções do prédio estão com o cargo vago), e Lana é a Coordenadora
+de Acessibilidade do mesmo local — exatamente o cenário já documentado em
+"QR DO COORDENADOR DE ACESSIBILIDADE VAI PRO PIX DO PRESIDENTE"
+(01/10/2026): o R$65 dela sai combinado no PIX do Presidente da seção de
+menor número do local, nunca separado.
+
+**O lote de pagamento do 2º turno (16/10/2026, documentos 4158-4224, ~70
+PIX seguidos no mesmo minuto) marcou o Presidente como pago com o valor
+combinado (R$325), mas nunca espelhou a parte do Coordenador na própria
+linha dele** — `sime_atores` do Coordenador ficava com
+`auxilio_alimentacao_pago=false` mesmo o dinheiro já tendo sido
+transferido (só que pra conta de outra pessoa). Varredura em toda a zona
+(todo Presidente ativo com `valor_pago=325.00` do mesmo lote) achou **25
+casos idênticos** — Douglas/Lana era só o primeiro que o cartório notou,
+não o único. Confirmado antes de corrigir: as 25 ocorrências batem 100%
+com o critério formal (`raCalcularPresidentePorLocal`) — o Presidente em
+questão é sempre o de MENOR número de seção entre os Presidentes ativos
+daquele local, e cada local tem exatamente 1 Coordenador de Acessibilidade
+ativo, ainda não marcado como pago.
+
+Corrigido em lote via SQL Editor/MCP (não é migração): os 25 Coordenadores
+ganharam `auxilio_alimentacao_pago=true`, `valor_pago=65.00`, o MESMO
+`documento`/`pago_em` do respectivo Presidente (é o mesmo evento de PIX,
+só que metade dele pertence ao Coordenador) — nunca um novo documento
+inventado. Cada um ganhou um carimbo em `observacao` explicando a origem
+(nunca em silêncio). Logado em `sime_logs`
+(`auxilio_alimentacao_coordenador_pago_via_pix_presidente_lote`).
+Coordenadores pagos no 2º turno: de 0/59 para **25/59**.
+
+> **Pendência real**: isso só cobre os casos onde o PRESIDENTE já estava
+> marcado pago com o valor combinado (325). Se existir algum Coordenador
+> cujo Presidente ainda não foi pago (ou cujo pagamento saiu avulso, sem
+> passar pelo lote de 16/10), a varredura de hoje não alcança — fica pra
+> quando o cartório trouxer o próximo lote/relato.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
