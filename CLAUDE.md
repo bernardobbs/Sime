@@ -9842,6 +9842,93 @@ verde; a de quem ainda está pendente não ganha.
 
 ---
 
+## SERGIO LUIZ MONTEIRO ACRESCENTADO COMO 2º MESÁRIO DA SEÇÃO 256 (21/10/2026)
+
+Pedido direto, com uma linha solta no formato TRE/ELO de 81 colunas colada no
+chat ("acrescente ele na base... como 2º mesário da seção 256") — ele não
+constava em `sime_atores`/`sime_mesarios_raw`/`sime_voluntarios` quando
+consultado antes ("SERGIO LUIZ MONTEIRO esta nomeado?"). A linha colada foi
+parseada pelo mapeamento de 81 colunas de `scripts/parse_mesarios_gsheet_csv.py`
+(nunca por posição adivinhada) e conferida contra o cadastro real ANTES de
+inserir: `numero_local_votacao_local_trabalho='1694'`/
+`nome_local_votacao_local_trabalho='ESCOLA MUNICIPAL N. S. DE FÁTIMA'`
+bateram exatamente com `sime_secoes` da seção 256 (zona 7) — confirmação de
+que o mapeamento de colunas estava correto antes de gravar qualquer coisa.
+
+Inserida UMA linha nova em `sime_mesarios_raw` (não um reload do staging
+inteiro — as ~1183 linhas já existentes da 7ª Zona ficaram intactas, mesmo
+critério de sempre: apagar e recarregar só o parcial inativaria por engano
+todo mundo ausente do arquivo). `sime_sync_atores_from_raw(7,'PI')` rodada
+em seguida (`{atualizados: 690, inativados: 0}` — nenhuma inativação
+colateral). Resultado: `sime_atores` ganhou SERGIO LUIZ MONTEIRO,
+`funcao='mesario'`, `funcao_mesa='2º Mesário'`, `secao_numero=256`,
+`confirmacao='pendente'` (nunca herdado do ELO), telefone normalizado
+`5586995031052`.
+
+---
+
+## RECONCILIAÇÃO COM O ARQUIVO DE RETORNO DO TRE — PRIMEIRO PAGAMENTO, 1º TURNO (21/10/2026)
+
+Pedido direto, com o `.xlsx` real do TRE anexado ("007_ZE - ARQUIVO RETORNO
+- PRIMEIRO PAGAMENTO - 25-09-2026"): "esse foram os pagamentos do TRE para
+o 1º turno". 58 linhas (57 pagamentos individuais + 1 linha final) — sem
+cabeçalho, 14 colunas, `status='PAGO'`, zona `'ZE007'`. Valores: 47× R$260
+(Presidente), 8× R$65 (Coordenador de Acessibilidade/Auxiliar de Eleição) e
+2× R$325 (R$260+R$65 — exatamente os dois casos de papel duplicado já
+documentados, Anita Alves de Oliveira e Luiz Carlos Santiago Junior).
+
+**Cruzado contra `sime_auxilio_alimentacao_historico` do 1º turno (zona 7,
+já arquivado — ver "Encerrar turno..." alhures), por NOME** (o arquivo do
+TRE só traz CPF, não título de eleitor, e `sime_atores`/o histórico não
+guardam CPF — mesmo critério já documentado pra outros cruzamentos CPF×SIME:
+casar por nome é o único caminho). Pra os 2 casos de R$325, o valor foi
+desmembrado em R$260+R$65 antes de casar — cada metade bate com o `funcao`
+certo (mesário/Presidente e auxiliar_eleicao), nunca com o valor combinado.
+
+**Resultado: 57/57 batem 100%** — todos já estavam `pago=true` com
+`valor_pago` idêntico ao do TRE, na linha/função CERTA (verificado inclusive
+contra 3 pessoas com papel duplo-mas-não-documentado-antes — Antonio
+Francisco de Oliveira dos Santos, Maria José Ribeiro, Vicente de Paula da
+Silva — cada uma tem uma 2ª linha de histórico com OUTRA função, não
+relacionada ao pagamento do TRE; a função que o TRE de fato pagou sempre
+bate exatamente). Nenhuma correção de `pago`/`valor_pago` foi necessária —
+o arquivo CONFIRMA o que o SIME já rastreava, não corrige nada.
+
+**A última linha ("BERNARDO BORGES SILVA — R$34.645,00") não é pagamento de
+pessoa nenhuma** — confirmado com o dono do projeto (`AskUserQuestion`):
+é o chefe de cartório/suprido recebendo o lote inteiro pra repassar, não um
+Presidente/Coordenador — excluída do cruzamento, nunca gravada como
+pagamento individual.
+
+**`documento` preenchido nos 58 registros que ainda estavam em branco**
+(só 1 dos 58 já tinha, no formato de 6 dígitos usado desde a conferência
+manual de extrato bancário — ex. "100147" — que não aparece em nenhuma
+coluna clara deste arquivo do TRE). Confirmado com o dono do projeto usar
+o **número sequencial da própria linha do arquivo de retorno** (coluna 0,
+ex. "3199") como valor — mesmo critério de sempre pra campo de texto livre
+(`uc_equatorial`/`codigo_rastreio`): nunca formatado/validado, só guardado
+como referência real do documento de origem. Os 2 casos de papel duplicado
+gravam o MESMO número nas duas linhas (é o mesmo evento de pagamento do
+TRE cobrindo os dois papéis). Rodado uma vez via SQL Editor/MCP (não é
+migração), logado em `sime_logs`
+(`auxilio_alimentacao_documento_backfill_tre_1turno`, com a lista de
+linhas atualizadas e a nota sobre a linha excluída do Bernardo).
+
+> **Achado no caminho, sem ação necessária**: Antonio Francisco de Oliveira
+> dos Santos, Maria José Ribeiro e Vicente de Paula da Silva são mais 3
+> casos do mesmo padrão de "papel duplicado" já documentado (Adriana Paz
+> Oliveira, Anita, Luiz Carlos) — cada um é Presidente de Mesa E também
+> Coordenador de Acessibilidade/Auxiliar de Eleição ao mesmo tempo. O aviso
+> de papel duplicado (`raCalcularConflitosPorTitulo`) já cobre isso
+> automaticamente na tela, sem precisar de nada novo.
+>
+> **Pendência real**: o arquivo é explicitamente "PRIMEIRO PAGAMENTO" — só
+> cobre 57 das ~147+218 pessoas elegíveis (Presidentes+Coordenadores+
+> Auxiliares) da zona. Falta(m) o(s) arquivo(s) de pagamentos seguintes do
+> TRE pra reconciliar o restante.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
