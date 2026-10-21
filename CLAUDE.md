@@ -9758,6 +9758,69 @@ função já se ajusta sozinha a qualquer turno ativo.
 
 ---
 
+## COMPARATIVO DE PAGAMENTO POR TURNO, DENTRO DO MODAL (`sime_recibo_alimentacao.js`, 21/10/2026)
+
+Pedido direto: "quero me mostre no modal do controle de pagamento abaixo do
+qrcode dividido em duas colunas, 1º e 2º turno" — motivado por uma auditoria
+anterior (SQL direto no Supabase, sem código) que já tinha confirmado: dos
+147 Presidentes ativos da 7ª Zona, o 1º turno estava 100% pago, mas o 2º
+turno só tinha 71 de 147. O pedido pôs essa comparação DENTRO do modal, pra
+não precisar repetir a auditoria manual toda vez.
+
+Até aqui, `raAbrirModal()` só sabia editar o turno ATIVO (`p`, de
+`raDados.todos`) — o jeito de CONSULTAR um turno arquivado era só a nível de
+página inteira, trocando o seletor "📜 Ver outro turno" (20/10/2026, ver
+seção acima) pra somente-leitura, que não abre modal nenhum (`raHtmlLinhaHistorico`
+nunca tem `onclick`). O pedido pede os DOIS ao mesmo tempo, na mesma tela:
+editar o turno atual em cima, ver o histórico logo abaixo, sem trocar nada.
+
+**`raHtmlComparativoTurnos(p)`** (nova) — monta uma coluna por eleição já
+cadastrada da zona (cada turno em `raDados.turnosAnteriores` + o turno
+ATUAL), em ordem cronológica, inserida logo abaixo do bloco do QR Code
+(`${raHtmlComparativoTurnos(p)}`, antes de "📋 Frequência e devolução").
+**Só aparece quando há pelo menos 1 turno arquivado** — mesmo critério de
+"📜 Ver outro turno": zona ainda no 1º turno (94ª hoje) não tem nada pra
+comparar, e o bloco nem entra no HTML — nunca uma coluna vazia inventada.
+
+**Casado por TÍTULO DE ELEITOR, nunca por `id`** — o `ator_id` arquivado em
+`sime_auxilio_alimentacao_historico` pode não ser mais o mesmo registro se a
+pessoa foi remanejada/dispensada entre turnos (mesmo raciocínio já usado na
+auditoria original, feita por SQL antes desta feature); título de eleitor é
+o identificador estável. Quem não tem `inscricao_eleitoral` cadastrado
+mostra "sem título de eleitor — não dá pra cruzar com outros turnos" em vez
+de tentar casar por nome (nunca adivinha).
+
+**Carregamento em segundo plano, reaproveitando o MESMO cache de
+`raCarregarHistoricoTurno`/`raHistoricoPorTurno`** já usado por "📜 Ver outro
+turno" — não duplica a consulta: `raAbrirModal()` renderiza o modal na hora
+(coluna do turno arquivado mostra "carregando…" se ainda não tiver sido
+buscado nenhuma vez nesta sessão) e, assim que cada turno anterior resolve,
+chama `raRenderModal()` de novo — só se `raModalId` ainda for a mesma pessoa
+(evita redesenhar por cima de quem o cartório já fechou/trocou enquanto a
+busca estava no ar). Se a página já tiver visitado "📜 Ver outro turno"
+antes (ou aberto o modal de outra pessoa), o histórico já está cacheado e a
+coluna aparece de cara, sem "carregando…".
+
+**`raStatusPagamentoResumo(registro)`** — mesmo vocabulário/prioridade já
+usado no resto do Controle de Pagamento (isento vence pago, que vence
+pendente): 🟡 Isento (com o motivo, se houver) / ✅ Pago (valor + documento +
+data, quando existirem) / ⏳ Pendente / ❔ Sem registro (pessoa que não
+existia ainda naquele turno — nunca deveria acontecer pra quem já está
+sincronizado do TRE há tempo, mas não trava nada se acontecer).
+`raTurnoLabelCurto(eleicao)` — versão compacta de `raEleicaoTexto()` ("1º
+turno (04/10/2026)", sem o "Eleições Gerais de 2026 -" por extenso), só pra
+caber no cabeçalho de uma coluna estreita.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 22-23, 332
+checks no total no arquivo): as duas colunas aparecem com os rótulos certos;
+cada coluna mostra o documento/valor/data do TURNO CERTO, sem misturar (uma
+pessoa paga nos dois turnos, com documentos diferentes — DOC1T no 1º,
+DOC2T no 2º — cada coluna só mostra o seu); pessoa pendente nos dois turnos
+mostra "⏳ Pendente" nas duas colunas, nunca "✅ Pago"; zona sem turno
+arquivado nunca mostra o bloco.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

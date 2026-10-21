@@ -1336,6 +1336,92 @@ async function raAbrirModal(id) {
   document.getElementById('overlay')?.classList.add('open');
   if (!raDados || !raDados.todos) { await raCarregar(); if (raModalId !== id) return; }
   raRenderModal();
+  // Comparativo por turno (21/10/2026, ver raHtmlComparativoTurnos abaixo) —
+  // melhor-esforço, assíncrono: a 1ª renderização já mostra "carregando…" na
+  // coluna de cada turno arquivado ainda não cacheado; assim que
+  // raCarregarHistoricoTurno resolver (mesma função/cache que já alimenta
+  // "📜 Ver outro turno"), o modal é redesenhado — só se ainda for a mesma
+  // pessoa aberta (evita redesenhar por cima de quem o cartório já fechou/
+  // trocou enquanto a busca estava no ar).
+  for (const t of raDados.turnosAnteriores || []) {
+    if (raHistoricoPorTurno[t.id]) continue;
+    await raCarregarHistoricoTurno(t.id);
+    if (raModalId === id) raRenderModal();
+  }
+}
+
+// "Pago"/"Isento"/"Pendente" resumido, pra uma coluna do comparativo por
+// turno — mesmo vocabulário/critério já usado no resto do Controle de
+// Pagamento (isento vence pago, que vence pendente), só compactado pra
+// caber numa coluna estreita.
+function raStatusPagamentoResumo(registro) {
+  if (!registro) return { icone: '❔', texto: 'Sem registro', sub: '' };
+  if (registro.auxilio_alimentacao_isento) {
+    return { icone: '🟡', texto: 'Isento (folga)', sub: registro.auxilio_alimentacao_isento_motivo ? raEsc(registro.auxilio_alimentacao_isento_motivo) : '' };
+  }
+  if (registro.auxilio_alimentacao_pago) {
+    const partes = [raFmtValor(registro.auxilio_alimentacao_valor_pago)];
+    if (registro.auxilio_alimentacao_documento) partes.push(`doc. ${registro.auxilio_alimentacao_documento}`);
+    if (registro.auxilio_alimentacao_pago_em) partes.push(raFmtDataHora(new Date(registro.auxilio_alimentacao_pago_em)));
+    return { icone: '✅', texto: 'Pago', sub: raEsc(partes.join(' — ')) };
+  }
+  return { icone: '⏳', texto: 'Pendente', sub: '' };
+}
+
+// "1º turno (04/10/2026)" / "2º turno (25/10/2026)" — versão curta de
+// raEleicaoTexto, só pra caber no cabeçalho de uma coluna estreita.
+function raTurnoLabelCurto(eleicao) {
+  const turno = Number(eleicao?.turno) === 2 ? '2º' : '1º';
+  const data = raFmtDataISO(eleicao?.data_d);
+  return `${turno} turno${data ? ` (${data})` : ''}`;
+}
+
+// Comparativo de pagamento entre turnos (21/10/2026, pedido direto: "quero
+// no modal do controle de pagamento, abaixo do qrcode, dividido em duas
+// colunas, 1º e 2º turno") — uma coluna por eleição já cadastrada da zona
+// (cada turno arquivado + o turno ATUAL), em ordem cronológica. Só aparece
+// quando existe pelo menos 1 turno arquivado (`raDados.turnosAnteriores`,
+// mesmo critério de "📜 Ver outro turno" acima) — sem isso não há nada pra
+// comparar (zona ainda no 1º turno, como a 94ª hoje), e o bloco nem entra
+// no HTML. A coluna do turno atual sempre reflete o que já está editável
+// acima (pago/valor/isento); as colunas de turno arquivado vêm de
+// `sime_auxilio_alimentacao_historico` (via `raCarregarHistoricoTurno`,
+// cacheado, carregado em segundo plano por `raAbrirModal`) — casado por
+// TÍTULO DE ELEITOR, nunca por `id` (o `ator_id` arquivado pode não ser
+// mais o mesmo registro se a pessoa foi remanejada/dispensada entre
+// turnos; título é o identificador estável).
+function raHtmlComparativoTurnos(p) {
+  if (!raDados.turnosAnteriores?.length) return '';
+  const anteriores = [...raDados.turnosAnteriores].sort((a, b) => Number(a.turno) - Number(b.turno));
+  const colunas = [
+    ...anteriores.map(t => {
+      const hist = raHistoricoPorTurno[t.id];
+      if (!hist) return { label: raTurnoLabelCurto(t), carregando: true };
+      const registro = p.inscricao_eleitoral ? hist.todos.find(h => h.inscricao_eleitoral === p.inscricao_eleitoral) : null;
+      return { label: raTurnoLabelCurto(t), registro };
+    }),
+    { label: `${raTurnoLabelCurto(raDados.eleicao)} — atual`, registro: p },
+  ];
+  return `
+    <div id="ra-modal-comparativo-turnos" style="margin-top:10px">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:6px">📊 Pagamento por turno</label>
+      <div style="display:grid;grid-template-columns:repeat(${colunas.length},1fr);gap:8px">
+        ${colunas.map(c => {
+          const corpo = c.carregando
+            ? `<div class="ic-sub" style="margin:0">carregando…</div>`
+            : !p.inscricao_eleitoral
+              ? `<div class="ic-sub" style="margin:0">sem título de eleitor — não dá pra cruzar com outros turnos</div>`
+              : (() => {
+                  const r = raStatusPagamentoResumo(c.registro);
+                  return `<div>${r.icone} ${raEsc(r.texto)}</div>${r.sub ? `<div class="ic-sub" style="margin:2px 0 0">${r.sub}</div>` : ''}`;
+                })();
+          return `<div style="border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:.78rem">
+            <div style="font-weight:700;margin-bottom:4px">${raEsc(c.label)}</div>
+            ${corpo}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 function raFecharModal(e) {
@@ -1419,6 +1505,8 @@ function raRenderModal() {
             : '<div class="ic-sub" style="margin:6px 0 0">Cadastre uma chave PIX acima pra gerar o QR Code.</div>')}
     </div>
     `}
+
+    ${raHtmlComparativoTurnos(p)}
 
     ${raHtmlModalFrequenciaDevolucao(p, cfg)}
 

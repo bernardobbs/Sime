@@ -1788,6 +1788,87 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 22. Comparativo de pagamento por turno, dentro do modal (21/10/2026,
+// pedido direto: "quero no modal do controle de pagamento, abaixo do
+// qrcode, dividido em duas colunas, 1º e 2º turno") — mesmo mock de 2
+// turnos do bloco 21 (1º arquivado + 2º ativo), agora abrindo o MODAL de
+// uma pessoa em vez do seletor de página inteira. PRESIDENTE MARIA (m1) é
+// marcada paga nos DOIS turnos (com documentos diferentes, pra confirmar
+// que cada coluna lê o documento/valor certo); AUXILIAR PEDRO (a1)
+// continua pendente nos dois, pra cobrir o caminho "⏳ Pendente" ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_eleicoes = [
+    { id: 'el7', zona_id: 'z7', turno: 1, data_d: '2026-10-04', ativa: false, nome: 'Eleições Municipais 2026', valor_auxilio_alimentacao: 65, forma_auxilio_alimentacao: 'DINHEIRO' },
+    { id: 'el7b', zona_id: 'z7', turno: 2, data_d: '2026-10-25', ativa: true, nome: 'Eleições Municipais 2026', valor_auxilio_alimentacao: 65, forma_auxilio_alimentacao: 'DINHEIRO' },
+  ];
+  const presidenteMaria = m.sime_atores.find(a => a.id === 'm1');
+  Object.assign(presidenteMaria, {
+    auxilio_alimentacao_pago: true, auxilio_alimentacao_valor_pago: 260,
+    auxilio_alimentacao_documento: 'DOC2T', auxilio_alimentacao_pago_em: '2026-10-24T10:00:00.000Z',
+  });
+  m.sime_auxilio_alimentacao_historico = [
+    { id: 'h1', zona_id: 'z7', eleicao_id: 'el7', origem: 'ator', ator_id: 'm1', nome: 'PRESIDENTE MARIA (1º TURNO)', funcao: 'mesario', funcao_mesa: 'Presidente', inscricao_eleitoral: '111111111111', secao_id: 's1', pago: true, valor_pago: 260, pago_em: '2026-10-03T12:00:00.000Z', documento: 'DOC1T', frequencia: 'presente', devolvido: false, devolvido_em: null, devolucao_documento: null, recibo_ausente: false, isento: false, isento_motivo: null },
+    { id: 'h2', zona_id: 'z7', eleicao_id: 'el7', origem: 'ator', ator_id: 'a1', nome: 'AUXILIAR PEDRO (1º TURNO)', funcao: 'auxiliar_eleicao', funcao_mesa: null, inscricao_eleitoral: '666666666666', secao_id: null, pago: false, valor_pago: null, pago_em: null, documento: null, frequencia: null, devolvido: false, devolvido_em: null, devolucao_documento: null, recibo_ausente: false, isento: false, isento_motivo: null },
+  ];
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  // PRESIDENTE MARIA já está paga (2º turno) — o filtro padrão é
+  // "Pendentes", que a esconderia; muda pra "Todos" antes de clicar nela
+  // (2º <select> da barra de filtros: o 1º é o seletor de turno, que
+  // também existe aqui por já haver 1 turno arquivado).
+  await p.locator('#ra-controle-unificado select').nth(1).selectOption('');
+  await p.waitForTimeout(200);
+
+  await p.locator('.m-hist-item:has-text("PRESIDENTE MARIA —") b').click();
+  await p.waitForTimeout(400); // raCarregarHistoricoTurno é assíncrono — dá tempo do 2º render (com o histórico já cacheado) acontecer
+
+  const cmpMaria = (await p.locator('#ra-modal-comparativo-turnos').textContent()).replace(/\s+/g, ' ');
+  check('mostra as duas colunas de turno (1º e 2º)', /1º turno \(04\/10\/2026\)/.test(cmpMaria) && /2º turno \(25\/10\/2026\) — atual/.test(cmpMaria), cmpMaria);
+  check('coluna do 1º turno mostra pago com o documento/valor do histórico', /1º turno \(04\/10\/2026\).*✅ Pago.*R\$ 260,00.*doc\. DOC1T/.test(cmpMaria), cmpMaria);
+  check('coluna do 2º turno (atual) mostra pago com o documento/valor AO VIVO, diferente do 1º', /2º turno \(25\/10\/2026\) — atual.*✅ Pago.*R\$ 260,00.*doc\. DOC2T/.test(cmpMaria), cmpMaria);
+  // Separa as duas colunas pelo próprio cabeçalho do 2º turno — "nunca
+  // mistura" precisa olhar CADA metade isoladamente, não a string inteira
+  // (um .*DOC2T sem fronteira sempre bate, já que DOC2T aparece mais
+  // adiante na mesma linha achatada, só que na OUTRA coluna).
+  const [colunaUm, colunaDois] = cmpMaria.split(/2º turno \(25\/10\/2026\) — atual/);
+  check('nunca mistura os dois documentos na coluna errada', /DOC1T/.test(colunaUm) && !/DOC2T/.test(colunaUm) && /DOC2T/.test(colunaDois) && !/DOC1T/.test(colunaDois), cmpMaria);
+
+  await p.click('button:has-text("Fechar")');
+  await p.waitForTimeout(200);
+  await p.locator('.m-hist-item:has-text("AUXILIAR PEDRO") b').click();
+  await p.waitForTimeout(400);
+
+  const cmpPedro = (await p.locator('#ra-modal-comparativo-turnos').textContent()).replace(/\s+/g, ' ');
+  check('pessoa pendente nos dois turnos mostra "⏳ Pendente" nas duas colunas', (cmpPedro.match(/⏳ Pendente/g) || []).length === 2, cmpPedro);
+  check('nunca mostra "✅ Pago" pra quem está pendente nos dois turnos', !/✅ Pago/.test(cmpPedro), cmpPedro);
+
+  // Zona sem turno arquivado (94ª — só o 1º turno, ainda ativo) nunca mostra
+  // o comparativo: não há nada pra comparar, e inventar uma coluna vazia
+  // seria pior que simplesmente omitir o bloco.
+  await p.click('button:has-text("Fechar")');
+  await ctx.close();
+}
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock()); // mock() padrão só tem 1 eleição (turno 1, sem turnosAnteriores)
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.locator('.m-hist-item:has-text("PRESIDENTE MARIA —") b').click();
+  await p.waitForTimeout(300);
+  check('sem turno arquivado, o comparativo nem aparece no modal', await p.locator('#ra-modal-comparativo-turnos').count() === 0);
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
