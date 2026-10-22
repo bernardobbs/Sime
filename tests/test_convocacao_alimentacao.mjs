@@ -1908,6 +1908,63 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 25. Nome do Presidente e do Coordenador(a) de Acessibilidade também
+// ficam vermelhos na Conferência por cidade/local (21/10/2026, pedido
+// direto com print anexado: "o nome do presidente, e dos coordenadores de
+// acessibilidade continuam preto, e não vermelho, quero destacar quem
+// falta pagar") — o bloco 24 já tinha coberto só `renderControleUnificado`
+// (a lista detalhada); esta tela usa cards/linhas PRÓPRIOS
+// (`raHtmlCardSecaoConferencia`/`renderConferencia`), que precisaram do
+// mesmo `raCorNomePendente()` aplicado separadamente. Isento continua
+// nunca ficando vermelho, mesmo critério de sempre. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.find(a => a.id === 'c1').auxilio_alimentacao_isento = true; // COORDENADORA BEATRIZ isenta
+  // m1 (PRESIDENTE MARIA, Escola A) e a1 (AUXILIAR PEDRO, sem local) continuam
+  // sem `auxilio_alimentacao_pago` — pendentes, devem sair vermelhos.
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  const corpo = p.locator('#ra-conferencia-body');
+  const stylePresidentePendente = await corpo.getByText('PRESIDENTE MARIA', { exact: true }).first().getAttribute('style');
+  check('Presidente de mesa (pendente) fica vermelho na Conferência', /color:var\(--red,#dc2626\)/.test(stylePresidentePendente || ''), stylePresidentePendente);
+
+  const styleCoordIsenta = await corpo.getByText('COORDENADORA BEATRIZ', { exact: true }).first().getAttribute('style');
+  check('Coordenadora isenta NÃO fica vermelha na Conferência', !/color:var\(--red/.test(styleCoordIsenta || ''), styleCoordIsenta);
+
+  const styleAuxiliarSemLocal = await corpo.getByText('AUXILIAR PEDRO', { exact: true }).first().getAttribute('style');
+  check('Auxiliar de Eleição pendente (lista "Sem local definido") fica vermelho', /color:var\(--red,#dc2626\)/.test(styleAuxiliarSemLocal || ''), styleAuxiliarSemLocal);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+{
+  // Mesmo cenário, mas com o Presidente já pago (marcado ANTES de carregar
+  // a página, mesmo padrão do bloco 24 — a tela nunca re-busca o mock
+  // sozinha só porque o objeto em memória mudou).
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores.find(a => a.id === 'm1').auxilio_alimentacao_pago = true; // PRESIDENTE MARIA já paga
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  const corpo = p.locator('#ra-conferencia-body');
+  const stylePresidentePago = await corpo.getByText('PRESIDENTE MARIA', { exact: true }).first().getAttribute('style');
+  check('Presidente de mesa (já pago) não fica vermelho na Conferência', !/color:var\(--red/.test(stylePresidentePago || ''), stylePresidentePago);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

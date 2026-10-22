@@ -2135,6 +2135,15 @@ function raBadgePago(p) {
     ? `<span style="color:var(--green,#16a34a)">💰✅ pago</span>`
     : `<span style="color:var(--text2)">💰⏳ pendente</span>`;
 }
+// Nome em vermelho pra quem ainda falta pagar (21/10/2026, pedido direto:
+// "o nome do presidente, e dos coordenadores de acessibilidade continuam
+// preto, e não vermelho, quero destacar quem falta pagar" — a conferência
+// por local/seção usa cards/linhas próprios, nunca os mesmos elementos de
+// `renderControleUnificado`, então precisa do mesmo tratamento aqui
+// também). Isento nunca fica vermelho — mesmo critério de sempre.
+function raCorNomePendente(p) {
+  return (!p.auxilio_alimentacao_pago && !p.auxilio_alimentacao_isento) ? ';color:var(--red,#dc2626)' : '';
+}
 
 // Só o Presidente é clicável pra editar PIX/pagamento — é o único dos 4
 // cargos que de fato recebe pagamento (ver "só o Presidente entra no
@@ -2158,7 +2167,7 @@ function raHtmlCardSecaoConferencia(entry) {
             <span>${raIconFrequencia(m.auxilio_alimentacao_frequencia)}</span>
             <span style="color:var(--text2)">${raEsc(m.funcao_mesa || raFuncaoLabel(m))}:</span>
             ${m.funcao_mesa === 'Presidente'
-              ? `<span style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${m.id}')" title="Clique pra ver PIX/pagamento">${raEsc(m.nome_completo)}</span>`
+              ? `<span style="cursor:pointer;text-decoration:underline${raCorNomePendente(m)}" onclick="raAbrirModal('${m.id}')" title="Clique pra ver PIX/pagamento">${raEsc(m.nome_completo)}</span>`
               : raEsc(m.nome_completo)}
           </div>`).join('')}
       </div>
@@ -2225,7 +2234,7 @@ function renderConferencia() {
             <div style="font-weight:700;font-size:.82rem">${raEsc(localNome)}</div>
             ${loc.coordenadores.length
               ? loc.coordenadores.map(c => `
-              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')
+              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(c)}" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')
               : `<div style="font-size:.78rem;margin:2px 0 2px 10px;color:var(--text2)">🧏 ❌ Coordenador(a) de Acessibilidade: Sem coordenador de acessibilidade designado</div>`}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
               ${loc.secoes.map(raHtmlCardSecaoConferencia).join('') || '<div class="ic-sub" style="margin:0">Nenhuma seção com mesa cadastrada neste local.</div>'}
@@ -2240,7 +2249,7 @@ function renderConferencia() {
           ${semLocal.map(p => `
           <div style="font-size:.78rem">
             ${raIconFrequencia(p.auxilio_alimentacao_frequencia)}
-            <b style="cursor:pointer;text-decoration:underline" onclick="raAbrirModal('${p.id}')">${raEsc(p.nome_completo)}</b>
+            <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(p)}" onclick="raAbrirModal('${p.id}')">${raEsc(p.nome_completo)}</b>
             — ${raEsc(raFuncaoLabel(p))} — ${raBadgePago(p)}
           </div>`).join('')}
         </div>
@@ -2482,7 +2491,7 @@ function renderControleUnificado() {
       <div class="m-hist-item" style="display:flex;flex-direction:column;gap:6px${a.auxilio_alimentacao_pago ? ';background:rgba(22,163,74,.08);border-left:3px solid var(--green,#16a34a);border-radius:6px;padding-left:8px' : ''}">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <span>
-            <b style="cursor:pointer;text-decoration:underline${(!a.auxilio_alimentacao_pago && !a.auxilio_alimentacao_isento) ? ';color:var(--red,#dc2626)' : ''}" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX, marcar pagamento e anotar observação">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
+            <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(a)}" onclick="raAbrirModal('${a.id}')" title="Clique pra ver PIX, marcar pagamento e anotar observação">${raEsc(a.nome_completo)}</b> — ${raEsc(raFuncaoLabel(a))}${a.sec ? ` — Seção ${a.sec.numero}` : ''}
             ${a.auxilio_alimentacao_pago_em ? `<span class="ic-sub" style="margin-left:6px">pago em ${raFmtDataHora(new Date(a.auxilio_alimentacao_pago_em))}</span>` : ''}
             ${outros.length ? `<div class="import-result ir-warn" style="margin-top:4px;display:inline-block;font-size:.76rem">⚠️ mesma pessoa também está em: ${outros.map(o => `${raEsc(raFuncaoLabel(o) + (o.sec ? ` (Seção ${o.sec.numero})` : ''))} ${o.auxilio_alimentacao_pago ? `(✅ pago ${raEsc(raFmtValor(o.auxilio_alimentacao_valor_pago))})` : '(⏳ ainda não pago)'}`).join(', ')} — confira qual papel de fato paga antes de marcar os dois.<br>💰 ${resumoPix.count} de ${resumoPix.totalPapeis} papel(éis) desta pessoa já com PIX pago${resumoPix.count ? ` — total ${raEsc(raFmtValor(resumoPix.total))}` : ''}.</div>` : ''}
           </span>

@@ -10049,6 +10049,38 @@ vermelho; nome de quem ainda não foi pago fica vermelho
 (`color:var(--red,#dc2626)`); nome de quem está isento não fica vermelho
 mesmo não tendo `auxilio_alimentacao_pago`.
 
+**Estendido no mesmo dia pra "🗺️ Conferência por cidade e local de
+votação" — pedido direto, com print anexado do painel:** "o nome do
+presidente, e dos coordenadores de acessibilidade continuam preto, e não
+vermelho, quero destacar quem falta pagar". `renderControleUnificado()`
+(a lista detalhada) é uma tela DIFERENTE da Conferência — esta usa seus
+próprios templates (`raHtmlCardSecaoConferencia()`, pros 4 cargos de mesa
+de cada seção, e `renderConferencia()`, pro agrupamento por município/
+local e a lista "⚠ Sem local definido") — nenhum dos dois reaproveitava a
+lógica de cor do outro, então o fix precisou ser aplicado separadamente
+ali, mesmo sendo visualmente "a mesma ideia".
+
+A condição virou um helper só (`raCorNomePendente(p)`, logo abaixo de
+`raBadgePago`) — `renderControleUnificado()` foi refatorada pra usar o
+mesmo helper em vez de repetir a expressão inline, assim um dia que a
+regra mudar (ex.: um novo critério de "falta pagar") só precisa mudar num
+lugar. Aplicado nos 3 pontos que mostram um nome clicável na Conferência:
+o span do Presidente dentro do card de cada seção
+(`raHtmlCardSecaoConferencia`, único dos 4 cargos de mesa que é clicável —
+só ele de fato recebe PIX), o `<b>` do Coordenador(a) de Acessibilidade no
+cabeçalho de cada local (`renderConferencia`), e o `<b>` de cada pessoa na
+lista "⚠ Sem local definido" (coordenador sem local, auxiliar de eleição,
+junta eleitoral). **Isento continua nunca ficando vermelho**, mesmo
+critério de sempre — `raCorNomePendente()` já embute essa exceção, então
+nenhum dos 3 novos pontos precisou reimplementá-la.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 25, novo — 344
+checks no total no arquivo): Presidente de mesa pendente fica vermelho no
+card da seção; Coordenadora isenta não fica vermelha no cabeçalho do
+local; Auxiliar de Eleição pendente (lista "Sem local definido") fica
+vermelho; Presidente já pago (mock separado, flag setada antes de
+carregar a página) não fica vermelho.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
