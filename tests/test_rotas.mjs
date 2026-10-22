@@ -467,6 +467,10 @@ async function lerDestino(p) {
   await p.fill('#rt-hora-chegada', '08:00');
   await p.selectOption('#rt-responsavel', 'a1');
   await p.fill('#rt-placa', 'abc 1d23');
+  await p.fill('#rt-veiculo-marca', 'GM');
+  await p.fill('#rt-veiculo-modelo', 'Classic Life');
+  await p.fill('#rt-veiculo-ano', '2008 / 2008');
+  await p.fill('#rt-veiculo-cor', 'Prata');
   await p.click('#modal-body button:has-text("Salvar")');
   await p.waitForTimeout(150);
 
@@ -475,12 +479,25 @@ async function lerDestino(p) {
   check('grava horário de saída/chegada prevista', upd?.payload?.horario_saida === '06:30' && upd?.payload?.horario_chegada_previsto === '08:00', JSON.stringify(upd));
   check('grava o responsável escolhido', upd?.payload?.responsavel_ator_id === 'a1', JSON.stringify(upd));
   check('grava a placa normalizada (sem espaço, maiúscula)', upd?.payload?.placa === 'ABC1D23', JSON.stringify(upd));
+  check('grava marca+modelo juntos em veiculo_descricao ("Marca/Modelo")', upd?.payload?.veiculo_descricao === 'GM/Classic Life', JSON.stringify(upd));
+  check('grava ano/cor do veículo', upd?.payload?.veiculo_ano === '2008 / 2008' && upd?.payload?.veiculo_cor === 'Prata', JSON.stringify(upd));
 
   const txt = (await p.locator('.import-card:has-text("Rota 002")').textContent()).replace(/\s+/g, ' ');
   check('card mostra partida → destino', /Sede da 7ª Zona → Escola B/.test(txt), txt);
   check('card mostra horário de saída/chegada', /06:30/.test(txt) && /08:00/.test(txt), txt);
   check('card mostra o nome do responsável', /JOAO MOTORISTA/.test(txt), txt);
   check('card mostra a placa junto do responsável', /ABC1D23/.test(txt), txt);
+
+  // Reabrir o modal já tem que vir com marca/modelo separados de novo
+  // (`veiculo_descricao` salvo como "GM/Classic Life" precisa voltar a
+  // casar os dois campos, não só reaparecer inteiro num dos dois).
+  await p.locator('.import-card:has-text("Rota 002")').locator('div[title="Clique pra editar"]').click();
+  await p.waitForTimeout(100);
+  check('reabrir o modal separa marca de volta', await p.locator('#rt-veiculo-marca').inputValue() === 'GM');
+  check('reabrir o modal separa modelo de volta', await p.locator('#rt-veiculo-modelo').inputValue() === 'Classic Life');
+  check('reabrir o modal mantém ano', await p.locator('#rt-veiculo-ano').inputValue() === '2008 / 2008');
+  check('reabrir o modal mantém cor', await p.locator('#rt-veiculo-cor').inputValue() === 'Prata');
+  await p.click('#modal-body button:has-text("Cancelar")');
 
   check('zero erros JS', erros.length === 0, erros.join(' | '));
   await ctx.close();

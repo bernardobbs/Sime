@@ -10159,6 +10159,51 @@ Controle única e ativa, sem duplicação.
 
 ---
 
+## MARCA/MODELO/ANO/COR DO VEÍCULO EDITÁVEIS NO MODAL DA ROTA (`SIME_rotas.html`, 22/10/2026)
+
+Pedido direto: "na rota precisa mdar a marca, modelo ano de fabricação e
+cor do veiculo". As três colunas (`sime_rotas.veiculo_descricao` —
+"Marca/Modelo" — `veiculo_ano`, `veiculo_cor`) já existiam desde
+02/10/2026 (`sql/SIME_rotas_protocolo_entrega_checklist.sql`), lidas pelo
+Protocolo de Entrega e pelo Check List de Veículos impressos — mas só
+tinham sido POPULADAS uma vez, em lote, via SQL Editor/MCP, pras 12 rotas
+de distribuição de urna originais (28/09/2026, ver "MOTORISTAS/PLACAS DAS
+ROTAS DE URNA"). Não existia nenhum campo no modal de editar rota pra
+alterar isso depois — só placa e responsável eram editáveis pela UI.
+
+**4 campos novos no modal** (`rtRenderModalRota()`), logo abaixo de "Placa
+do veículo", numa linha `flex` só (mesmo padrão de `display:flex;gap:8px`
+já usado pra partida/destino e horário de saída/chegada): "Marca do
+veículo", "Modelo do veículo", "Ano de fabricação" e "Cor do veículo" —
+todos opcionais, texto livre (`veiculo_ano` já era `text`, não número — a
+planilha-fonte original trazia valores como "2008 / 2008").
+
+**Marca e Modelo continuam gravados na MESMA coluna combinada
+`veiculo_descricao`** ("Marca/Modelo") — nunca um schema novo: o
+Protocolo/Check List já fazem `.split('/')` pra separar os dois na hora de
+imprimir (`rtHtmlChecklistVeiculo`), então o jeito mais simples de editar
+sem duplicar a lógica de leitura era ter dois `<input>` que se combinam
+no save (`rtSalvarRota()`: `veiculo_descricao = marca || modelo ?
+'{marca}/{modelo}' : null`) e se SEPARAM de volta ao reabrir o modal
+(`(r?.veiculo_descricao || '/').split('/')`, mesmo `.split('/')` de
+sempre). Ano e Cor mapeiam direto pras próprias colunas, sem combinação
+nenhuma.
+
+**Modo somente-leitura (`auxiliar_eleicao`) já cobre os 4 campos novos de
+graça** — `rtAplicarSomenteLeituraModal()` desabilita `input, select,
+textarea` genericamente dentro do modal, não campo a campo; nenhuma
+mudança precisou ser feita ali.
+
+Coberto por `tests/test_rotas.mjs` (bloco 9, estendido — 393 checks no
+total no arquivo): salvar grava marca+modelo combinados em
+`veiculo_descricao` e ano/cor nas próprias colunas; reabrir o modal depois
+de salvar separa marca/modelo de volta nos dois campos certos e mantém
+ano/cor. Suíte de acesso por perfil (`test_acesso_perfil.mjs`, 18/18)
+continua passando sem ajuste — a checagem de "todo campo desabilitado" já
+é genérica (`.every(...)`), não uma contagem fixa de campos.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

@@ -1336,6 +1336,20 @@ function rtRenderModalRota() {
       </div>
       <div class="form-group"><label for="rt-placa">Placa do veículo (opcional)</label>
         <input type="text" id="rt-placa" maxlength="10" value="${rtEsc(r?.placa || '')}" placeholder="ABC1D23"></div>
+      ${(() => {
+        const [marcaAtual, modeloAtual] = (r?.veiculo_descricao || '/').split('/').map(x => (x || '').trim());
+        return `
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:120px"><label for="rt-veiculo-marca">Marca do veículo (opcional)</label>
+          <input type="text" id="rt-veiculo-marca" value="${rtEsc(marcaAtual)}" placeholder="ex.: GM"></div>
+        <div class="form-group" style="flex:1;min-width:140px"><label for="rt-veiculo-modelo">Modelo do veículo (opcional)</label>
+          <input type="text" id="rt-veiculo-modelo" value="${rtEsc(modeloAtual)}" placeholder="ex.: Classic Life"></div>
+        <div class="form-group" style="flex:1;min-width:110px"><label for="rt-veiculo-ano">Ano de fabricação (opcional)</label>
+          <input type="text" id="rt-veiculo-ano" value="${rtEsc(r?.veiculo_ano || '')}" placeholder="ex.: 2008 / 2008"></div>
+        <div class="form-group" style="flex:1;min-width:110px"><label for="rt-veiculo-cor">Cor do veículo (opcional)</label>
+          <input type="text" id="rt-veiculo-cor" value="${rtEsc(r?.veiculo_cor || '')}" placeholder="ex.: Branca"></div>
+      </div>`;
+      })()}
       <div class="form-group"><label for="rt-urnas">Urnas estimadas (opcional)</label>
         <input type="number" id="rt-urnas" min="0" value="${r?.urnas_estimadas ?? ''}"></div>
       ${!isNovo ? `
@@ -1548,6 +1562,16 @@ async function rtSalvarRota() {
   const horario_chegada_previsto = document.getElementById('rt-hora-chegada').value || null;
   const responsavel_ator_id = document.getElementById('rt-responsavel').value || null;
   const placa = document.getElementById('rt-placa').value.trim().toUpperCase().replace(/\s+/g, '') || null;
+  // Marca/Modelo gravados juntos em `veiculo_descricao` ("Marca/Modelo"),
+  // mesma convenção já usada pelo Protocolo de Entrega/Check List de
+  // Veículos (`rtHtmlChecklistVeiculo`, que lê de volta fazendo
+  // `.split('/')`) — nunca um campo novo no schema, só dois inputs a mais
+  // no formulário escrevendo na mesma coluna de sempre.
+  const marcaVeiculo = document.getElementById('rt-veiculo-marca').value.trim();
+  const modeloVeiculo = document.getElementById('rt-veiculo-modelo').value.trim();
+  const veiculo_descricao = (marcaVeiculo || modeloVeiculo) ? `${marcaVeiculo}/${modeloVeiculo}` : null;
+  const veiculo_ano = document.getElementById('rt-veiculo-ano').value.trim() || null;
+  const veiculo_cor = document.getElementById('rt-veiculo-cor').value.trim() || null;
   const urnasRaw = document.getElementById('rt-urnas').value.trim();
   const urnas_estimadas = urnasRaw ? parseInt(urnasRaw, 10) : null;
   const tempoParadaRaw = document.getElementById('rt-tempo-parada').value.trim();
@@ -1562,7 +1586,7 @@ async function rtSalvarRota() {
 
   const zonaId = rtDados.zonaId;
   const rotaOrigemId = isNovo ? rtGerandoRetornoDe : null;
-  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, tempo_parada_min };
+  const payload = { nome, municipios, tipos, itinerario, urnas_estimadas, ponto_partida, destino, horario_saida, horario_chegada_previsto, responsavel_ator_id, placa, veiculo_descricao, veiculo_ano, veiculo_cor, tempo_parada_min };
   try {
     if (isNovo) {
       const { error } = await sb.from('sime_rotas').insert({ ...payload, codigo, zona_id: zonaId, ativo: true, rota_origem_id: rotaOrigemId || null });
