@@ -1605,6 +1605,36 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── "Mix dos dois" — duplicação visual reportada em produção (22/10/2026,
+// pedido direto: "vi que... o controle de pagamento esta duplicado" →
+// escolhido "faça um mix dos dois, gostei da ideia de selecionar o turno,
+// mas não vi logo acima"). Conferência nasce FECHADA por padrão (não
+// compete de cara com a lista de Controle, que também já agrupa por
+// município/local desde 06/10/2026) e perdeu o badge de pago/pendente
+// (`raBadgePago`, removido — dado 100% duplicado da lista de baixo). ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  check('Conferência nasce fechada (corpo vazio)', (await p.locator('#ra-conferencia-body').innerHTML()).trim() === '');
+  check('título mostra ▸ (fechado), não ▾', /▸/.test(await p.locator('.ic-title:has-text("Conferência por cidade e local de votação")').textContent()));
+
+  await p.click('.ic-title:has-text("Conferência por cidade e local de votação")');
+  await p.waitForTimeout(200);
+  const txtAberta = await p.locator('#ra-conferencia-body').textContent();
+  check('clicar no título abre (corpo deixa de estar vazio)', txtAberta.trim().length > 0, txtAberta.slice(0, 80));
+  check('título mostra ▾ (aberto)', /▾/.test(await p.locator('.ic-title:has-text("Conferência por cidade e local de votação")').textContent()));
+  check('sem badge de pago/pendente duplicado dentro da Conferência', !/💰✅|💰⏳/.test(txtAberta), txtAberta);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 21. Painel "🗺️ Conferência por cidade e local de votação" sempre
 // mostra a linha do Coordenador(a) de Acessibilidade, mesmo quando falta
 // designar (08/10/2026, pedido direto: "cada local de votação deve ter um
@@ -1624,6 +1654,10 @@ async function login(p) {
   await p.waitForTimeout(400);
   await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  // Conferência nasce FECHADA desde 22/10/2026 (ver "mix dos dois") — abre
+  // antes de olhar o corpo dela.
+  await p.click('.ic-title:has-text("Conferência por cidade e local de votação")');
+  await p.waitForTimeout(200);
 
   const txt = (await p.locator('#ra-conferencia-body').textContent()).replace(/\s+/g, ' ');
   check('Escola A (com coordenador) mostra o nome da COORDENADORA BEATRIZ', /Escola A.*Coordenador\(a\) de Acessibilidade: COORDENADORA BEATRIZ/.test(txt), txt);
@@ -1747,8 +1781,15 @@ async function login(p) {
   await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
 
-  check('seletor de turno aparece (há 1 turno arquivado)', await p.locator('#ra-controle-unificado select').count() >= 1);
-  const opcoes = await p.locator('#ra-controle-unificado select').first().locator('option').allTextContents();
+  // Seletor de turno virou um card PRÓPRIO, no topo da aba — não mais
+  // dentro de `#ra-controle-unificado` (22/10/2026, "mix dos dois": "gostei
+  // da ideia de selecionar o turno, mas não vi logo acima").
+  check('seletor de turno aparece (há 1 turno arquivado), fora de #ra-controle-unificado', await p.locator('#ra-turno-select').count() === 1 && await p.locator('#ra-controle-unificado #ra-turno-select').count() === 0);
+  const html = await p.locator('#content').innerHTML();
+  const idxTurno = html.indexOf('ra-turno-select');
+  const idxConferencia = html.indexOf('Conferência por cidade');
+  check('seletor de turno aparece ANTES da Conferência (mais acima na página)', idxTurno > -1 && idxConferencia > -1 && idxTurno < idxConferencia, `${idxTurno} vs ${idxConferencia}`);
+  const opcoes = await p.locator('#ra-turno-select').locator('option').allTextContents();
   check('1ª opção é o turno ATUAL (editável)', /2º turno.*atual \(editável\)/.test(opcoes[0] || ''), JSON.stringify(opcoes));
   check('2ª opção é o turno arquivado (somente leitura)', /1º turno.*arquivado \(somente leitura\)/.test(opcoes[1] || ''), JSON.stringify(opcoes));
 
@@ -1758,7 +1799,7 @@ async function login(p) {
   check('turno atual mostra PRESIDENTE MARIA (dado ao vivo, não o do histórico)', await p.locator('#ra-controle-unificado').locator('text=PRESIDENTE MARIA').first().count() >= 1);
   check('turno atual tem checkbox de "Pago" (editável)', await p.locator('#ra-controle-unificado input[type=checkbox]').count() > 0);
 
-  await p.selectOption('#ra-controle-unificado select', 'el7');
+  await p.selectOption('#ra-turno-select', 'el7');
   await p.waitForTimeout(400);
 
   const txtHist = (await p.locator('#ra-controle-unificado').textContent()).replace(/\s+/g, ' ');
@@ -1772,10 +1813,10 @@ async function login(p) {
 
   // Reconsulta (cache) não deveria gerar uma 2ª leitura da tabela de
   // histórico — volta pro atual e seleciona o arquivado de novo.
-  await p.selectOption('#ra-controle-unificado select', '');
+  await p.selectOption('#ra-turno-select', '');
   await p.waitForTimeout(300);
   check('voltar pro atual restaura a edição (checkbox "Pago" de volta)', await p.locator('#ra-controle-unificado input[type=checkbox]').count() > 0);
-  await p.selectOption('#ra-controle-unificado select', 'el7');
+  await p.selectOption('#ra-turno-select', 'el7');
   await p.waitForTimeout(300);
   const leiturasHistorico = await p.evaluate(() =>
     (window.__mock.sime_auxilio_alimentacao_historico || []).length); // só garante que a tabela em si não foi mutada
@@ -1820,9 +1861,9 @@ async function login(p) {
   await p.waitForTimeout(300);
   // PRESIDENTE MARIA já está paga (2º turno) — o filtro padrão é
   // "Pendentes", que a esconderia; muda pra "Todos" antes de clicar nela
-  // (2º <select> da barra de filtros: o 1º é o seletor de turno, que
-  // também existe aqui por já haver 1 turno arquivado).
-  await p.locator('#ra-controle-unificado select').nth(1).selectOption('');
+  // (1º <select> da barra de filtros é o de Pagamento — o seletor de
+  // turno agora vive num card à parte, fora de `#ra-controle-unificado`).
+  await p.locator('#ra-controle-unificado select').nth(0).selectOption('');
   await p.waitForTimeout(200);
 
   await p.locator('.m-hist-item:has-text("PRESIDENTE MARIA —") b').click();
@@ -1929,6 +1970,8 @@ async function login(p) {
   await p.waitForTimeout(400);
   await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  await p.click('.ic-title:has-text("Conferência por cidade e local de votação")');
+  await p.waitForTimeout(200);
 
   const corpo = p.locator('#ra-conferencia-body');
   const stylePresidentePendente = await corpo.getByText('PRESIDENTE MARIA', { exact: true }).first().getAttribute('style');
@@ -1956,6 +1999,8 @@ async function login(p) {
   await p.waitForTimeout(400);
   await p.click('button:has-text("Controle de pagamento e frequência")');
   await p.waitForTimeout(300);
+  await p.click('.ic-title:has-text("Conferência por cidade e local de votação")');
+  await p.waitForTimeout(200);
 
   const corpo = p.locator('#ra-conferencia-body');
   const stylePresidentePago = await corpo.getByText('PRESIDENTE MARIA', { exact: true }).first().getAttribute('style');

@@ -2057,13 +2057,29 @@ async function raMudarTurnoView(valor) {
 function raHtmlSeletorTurno() {
   if (!raDados.turnosAnteriores?.length) return '';
   return `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <label style="font-size:.78rem;color:var(--text2)">📜 Turno:</label>
-      <select onchange="raMudarTurnoView(this.value)" style="padding:6px 8px;border-radius:6px">
+      <select id="ra-turno-select" onchange="raMudarTurnoView(this.value)" style="padding:6px 8px;border-radius:6px">
         <option value="">${raEsc(raEleicaoTexto(raDados.eleicao))} — atual (editável)</option>
         ${raDados.turnosAnteriores.map(t => `<option value="${t.id}" ${raTurnoView === t.id ? 'selected' : ''}>${raEsc(raEleicaoTexto(t))} — arquivado (somente leitura)</option>`).join('')}
       </select>
     </div>`;
+}
+
+// Card próprio, no TOPO da aba (22/10/2026, pedido direto depois do "mix
+// dos dois": "gostei da ideia de selecionar o turno, mas não vi logo
+// acima" — antes o seletor só vivia dentro do corpo de
+// `renderControleUnificado()` (`#ra-controle-unificado`), ou seja, embaixo
+// do card inteiro de Conferência e do título/descrição do card de
+// Controle — fácil de nunca chegar a ver. Virou o primeiro card logo
+// depois do alternador de sub-abas, antes de Conferência/Controle;
+// `renderControleUnificado()` não desenha mais o seletor, só o resto do
+// corpo (lista ao vivo ou histórico somente leitura) — trocar de turno
+// continua chamando o mesmo `raMudarTurnoView()`/recarregando o mesmo
+// `#ra-controle-unificado` de sempre.
+function raHtmlCardTurno() {
+  if (!raDados.turnosAnteriores?.length) return '';
+  return `<div class="import-card" style="padding:12px">${raHtmlSeletorTurno()}</div>`;
 }
 
 // Linha de um registro histórico — sem NENHUM onclick/onchange de escrita
@@ -2121,7 +2137,25 @@ function raHtmlLinhaHistorico(a, mesariosList) {
 // `secao_id` resolvido (mesmo achado já documentado pro Dashboard —
 // "Auxiliar de Eleição virou contagem por PESSOA") — ficam numa lista
 // própria "⚠ Sem local definido" no fim, nunca escondidos.
-let raConferenciaAberto = true;
+//
+// Nasce FECHADO + sem badge de pago/pendente (22/10/2026, revisão — achado
+// real reportado pelo cartório: "o controle de pagamento esta duplicado"
+// no site em produção. Desde que `renderControleUnificado()` também passou
+// a agrupar por município/local (06/10/2026), as duas listas mostravam
+// praticamente a mesma coisa empilhadas uma embaixo da outra — remover a
+// Conferência de vez foi cogitado e descartado (ela tem um dado que a
+// outra lista não tem sempre: os 4 cargos da mesa, incluindo quem ainda
+// nem foi marcado presente/faltou — a lista de Controle só mostra isso
+// depois que a frequência já foi tocada, ver `raHtmlResumoMesa`). Decisão,
+// pedido explícito do dono do projeto ("faça um mix dos dois"): não
+// apagar, não manter do jeito que estava — um MIX das duas opções
+// oferecidas (apagar vs. só colapsar): nasce FECHADA (não compete visualmente
+// com a lista de baixo de cara) e perde o badge de pago/pendente por
+// Presidente/Coordenador (`raBadgePago`, removido — quem quiser esse dado
+// de verdade, com os controles de editar, já tem a lista de Controle logo
+// abaixo). O que sobra aqui é só o que a outra lista não oferece de graça:
+// o mapa da mesa inteira por local, pronto pra abrir quando precisar.
+let raConferenciaAberto = false;
 function raToggleConferencia() {
   raConferenciaAberto = !raConferenciaAberto;
   renderReciboAlimentacao();
@@ -2129,11 +2163,6 @@ function raToggleConferencia() {
 
 function raIconFrequencia(freq) {
   return freq === 'faltou' ? '❌' : freq === 'presente' ? '✅' : '➖';
-}
-function raBadgePago(p) {
-  return p.auxilio_alimentacao_pago
-    ? `<span style="color:var(--green,#16a34a)">💰✅ pago</span>`
-    : `<span style="color:var(--text2)">💰⏳ pendente</span>`;
 }
 // Nome em vermelho pra quem ainda falta pagar (21/10/2026, pedido direto:
 // "o nome do presidente, e dos coordenadores de acessibilidade continuam
@@ -2150,16 +2179,17 @@ function raCorNomePendente(p) {
 // controle de pagamento" em `raCarregar`); os outros 3 nunca entram em
 // `raDados.todos`, então `raAbrirModal` neles abriria um modal vazio
 // (`raPessoaModal()` não acha ninguém) — mostrados só como texto, com o
-// ícone de frequência de cada um.
+// ícone de frequência de cada um. Sem badge de pago/pendente (removido em
+// 22/10/2026 — ver nota acima); o nome em vermelho já avisa quem falta
+// pagar, e o resto é com a lista de Controle.
 function raHtmlCardSecaoConferencia(entry) {
   const membros = entry.membros.slice().sort((x, y) => RA_ORDEM_MESA.indexOf(x.funcao_mesa) - RA_ORDEM_MESA.indexOf(y.funcao_mesa));
   const presidente = membros.find(m => m.funcao_mesa === 'Presidente');
   const reciboAusente = presidente?.auxilio_alimentacao_recibo_ausente;
   return `
     <div style="border:1px solid var(--border2);border-radius:8px;padding:8px 10px;min-width:200px;flex:1 1 200px">
-      <div style="font-weight:700;font-size:.8rem;display:flex;justify-content:space-between;gap:6px;align-items:baseline">
+      <div style="font-weight:700;font-size:.8rem">
         <span>Seção ${entry.sec.numero}</span>
-        ${presidente ? raBadgePago(presidente) : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">
         ${membros.map(m => `
@@ -2211,9 +2241,9 @@ function raHtmlSecaoConferencia() {
         <span>🗺️ Conferência por cidade e local de votação</span>
         <span>${raConferenciaAberto ? '▾' : '▸'}</span>
       </div>
-      <div class="ic-sub">Visão rápida pra conferir, por município e local de votação, se o Presidente já foi pago e
-        quem compareceu em cada seção — só leitura, clique no nome pra editar. Separado da lista detalhada logo
-        abaixo (essa aí continua pra marcar pagamento/frequência um a um).</div>
+      <div class="ic-sub">Mapa da mesa inteira (os 4 cargos, mesmo quem ainda não foi marcado) por município e local
+        de votação — só leitura, clique no nome pra editar. Pago/pendente já é a lista de Controle logo abaixo, que
+        é quem também marca pagamento/frequência um a um; aqui é só pra bater o olho em quem está em cada mesa.</div>
       <div id="ra-conferencia-body" style="margin-top:8px"></div>
     </div>`;
 }
@@ -2234,7 +2264,7 @@ function renderConferencia() {
             <div style="font-weight:700;font-size:.82rem">${raEsc(localNome)}</div>
             ${loc.coordenadores.length
               ? loc.coordenadores.map(c => `
-              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(c)}" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b> — ${raBadgePago(c)}</div>`).join('')
+              <div style="font-size:.78rem;margin:2px 0 2px 10px">🧏 ${raIconFrequencia(c.auxilio_alimentacao_frequencia)} Coordenador(a) de Acessibilidade: <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(c)}" onclick="raAbrirModal('${c.id}')">${raEsc(c.nome_completo)}</b></div>`).join('')
               : `<div style="font-size:.78rem;margin:2px 0 2px 10px;color:var(--text2)">🧏 ❌ Coordenador(a) de Acessibilidade: Sem coordenador de acessibilidade designado</div>`}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
               ${loc.secoes.map(raHtmlCardSecaoConferencia).join('') || '<div class="ic-sub" style="margin:0">Nenhuma seção com mesa cadastrada neste local.</div>'}
@@ -2250,7 +2280,7 @@ function renderConferencia() {
           <div style="font-size:.78rem">
             ${raIconFrequencia(p.auxilio_alimentacao_frequencia)}
             <b style="cursor:pointer;text-decoration:underline${raCorNomePendente(p)}" onclick="raAbrirModal('${p.id}')">${raEsc(p.nome_completo)}</b>
-            — ${raEsc(raFuncaoLabel(p))} — ${raBadgePago(p)}
+            — ${raEsc(raFuncaoLabel(p))}
           </div>`).join('')}
         </div>
       </div>` : ''}
@@ -2424,16 +2454,16 @@ function renderControleUnificado() {
   if (raTurnoView) {
     const historico = raHistoricoPorTurno[raTurnoView];
     if (raHistoricoCarregando || !historico) {
-      alvo.innerHTML = `${raHtmlSeletorTurno()}<div class="ic-sub">Carregando turno arquivado…</div>`;
+      alvo.innerHTML = `<div class="ic-sub">Carregando turno arquivado…</div>`;
       return;
     }
     const pagos = historico.todos.filter(a => a.auxilio_alimentacao_pago);
     const totalPago = pagos.reduce((s, a) => s + Number(a.auxilio_alimentacao_valor_pago || 0), 0);
     alvo.innerHTML = `
-      ${raHtmlSeletorTurno()}
       <div class="import-result ir-warn" style="margin-bottom:8px">📜 Somente leitura — este é o estado ARQUIVADO de
         um turno já encerrado. Sem edição, sem QR de PIX/devolução, sem observação (a tabela de histórico não guarda
-        esses dois campos) — pra mexer em pagamento/frequência, volte pro turno atual no seletor acima.</div>
+        esses dois campos) — pra mexer em pagamento/frequência, volte pro turno atual no seletor logo acima do card
+        de Conferência.</div>
       <div class="ic-sub" style="margin:0 0 8px">${pagos.length} de ${historico.todos.length} tinham sido pagos —
         total pago: ${raFmtValor(totalPago)}.</div>
       <div class="m-hist" style="max-height:480px;overflow-y:auto">
@@ -2455,7 +2485,6 @@ function renderControleUnificado() {
   const municipios = [...new Set((raDados.todos || []).map(a => a.sec?.municipio).filter(Boolean))].sort();
 
   alvo.innerHTML = `
-    ${raHtmlSeletorTurno()}
     <div class="ic-sub" style="margin:0 0 8px">
       ${resumo.pagos} de ${resumo.total} já pagos — total pago: ${raFmtValor(resumo.totalPago)}.${resumo.conflitos ? ` <b style="color:var(--red)">⚠️ ${resumo.conflitos} com papel duplicado — confira antes de marcar como pago.</b>` : ''}<br>
       ${resumo.deveDevolver ? `<b style="color:var(--red)">⚠️ ${resumo.deveDevolver} deve${resumo.deveDevolver === 1 ? '' : 'm'} devolver — ${raFmtValor(resumo.totalADevolver)}</b> · ` : ''}${resumo.jaDevolveram} já devolve${resumo.jaDevolveram === 1 ? 'u' : 'ram'} (${raFmtValor(resumo.totalDevolvido)}) · ${resumo.semMarcar} sem frequência marcada ainda${resumo.reciboAusente ? ` · <b style="color:var(--text2)">📄 ${resumo.reciboAusente} com recibo ausente</b> (mesa completa, só falta o papel)` : ''}${resumo.isentos ? ` · <span style="color:var(--text2)">🟡 ${resumo.isentos} isento(s) (trabalhou(aram) só pela folga, sem repasse)</span>` : ''}.
@@ -2905,7 +2934,7 @@ function renderReciboAlimentacao() {
       </div>
     </div>
 
-    ${raSubTab === 'controle' ? raHtmlSecaoConferencia() + raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
+    ${raSubTab === 'controle' ? raHtmlCardTurno() + raHtmlSecaoConferencia() + raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
     ${raSubTab === 'controle' ? raHtmlSecaoVeiculos() : ''}
   `;
   if (raSubTab === 'controle') renderConferencia();

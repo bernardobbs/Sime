@@ -10083,6 +10083,82 @@ carregar a página) não fica vermelho.
 
 ---
 
+## CONTROLE DE PAGAMENTO DUPLICADO — "MIX DOS DOIS" + SELETOR DE TURNO NO TOPO (`sime_recibo_alimentacao.js`, 22/10/2026)
+
+Reportado direto, em produção: "vi que em
+https://sime-cyan.vercel.app/modules/SIME_convocacao.html o controle de
+pagamento esta duplicado". Investigado antes de mexer em qualquer coisa
+(sem acesso de navegador à URL de produção autenticada, reproduzido
+localmente com um screenshot Playwright usando dado mock realista) — não
+era bug de renderização, era redundância genuína: desde que
+`renderControleUnificado()` (a lista detalhada, editável) também passou a
+agrupar por município/local em 06/10/2026, ela ficou mostrando
+praticamente a mesma coisa que "🗺️ Conferência por cidade e local de
+votação" (criada em 08/10/2026 **antes** da lista de Controle ter esse
+agrupamento) — as duas empilhadas, cada uma listando as mesmas pessoas,
+pela mesma hierarquia geográfica, uma com status pago/pendente e a outra
+também.
+
+Perguntado ao dono do projeto como resolver (`AskUserQuestion`, três
+opções: apagar a Conferência / manter as duas mas colapsar a Conferência
+por padrão / outra coisa) — resposta: **"faça um mix dos dois, gostei da
+ideia de selecionar o turno, mas não vi logo acima"**. Duas peças, as duas
+endereçadas:
+
+**1) "Mix dos dois" — nem apagar, nem manter do jeito que estava.**
+Mantida a Conferência (ela tem um dado real que a lista de Controle não
+mostra sempre: os 4 cargos da mesa, incluindo quem ainda nem foi marcado
+presente/faltou — a lista de Controle só exibe isso via `raHtmlResumoMesa`
+DEPOIS que a frequência já foi tocada pela primeira vez), mas:
+- **Nasce FECHADA por padrão** (`raConferenciaAberto` de `true` pra
+  `false`) — não compete de cara com a lista de Controle; continua a um
+  clique de distância no mesmo `▸`/`▾` de sempre (`raToggleConferencia`).
+- **Perdeu o badge de pago/pendente** (`raBadgePago`, removido por
+  inteiro — era usado só dentro da Conferência, nos 3 pontos: cabeçalho do
+  card de seção, linha do Coordenador, e a lista "⚠ Sem local definido")
+  — essa informação já é 100% coberta pela lista de Controle logo abaixo
+  (com os controles de verdade pra editar), repeti-la ali era a parte mais
+  redundante das duas. O nome em vermelho pra quem falta pagar
+  (`raCorNomePendente`, 21/10/2026) continua — é sinal suficiente sem
+  precisar do texto do badge.
+- Descrição do card reescrita pra deixar claro o que sobrou de distinto:
+  "Mapa da mesa inteira (os 4 cargos, mesmo quem ainda não foi marcado)
+  por município e local de votação... Pago/pendente já é a lista de
+  Controle logo abaixo... aqui é só pra bater o olho em quem está em cada
+  mesa."
+
+**2) Seletor de turno — "não vi logo acima".** O seletor
+(`raHtmlSeletorTurno()`, criado em 20/10/2026 pra consultar um turno já
+arquivado) sempre viveu só dentro do CORPO de `renderControleUnificado()`
+(`#ra-controle-unificado`) — ou seja, embaixo do card inteiro de
+Conferência e do título/descrição do card de Controle: fácil de nunca
+chegar a ver, mesmo gostando da ideia. Virou um card PRÓPRIO
+(`raHtmlCardTurno()`), o PRIMEIRO depois do alternador de sub-abas
+("🖨️ Impressão" / "💰📋 Controle..."), antes de Conferência e de Controle —
+só aparece quando há turno arquivado pra consultar (mesmo guard de
+sempre, `raDados.turnosAnteriores?.length`), nunca um card vazio.
+`renderControleUnificado()` não desenha mais o seletor — trocar de turno
+continua chamando o mesmo `raMudarTurnoView()`/recarregando o mesmo
+`#ra-controle-unificado` de sempre, só a localização do `<select>` em si
+mudou (ganhou `id="ra-turno-select"`, fora de `#ra-controle-unificado`
+agora).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco novo antes do
+21, mais os blocos "21. Ver outro turno"/"22. Comparativo de pagamento por
+turno"/"21. Conferência..."/25 ajustados pros novos seletores — 351 checks
+no total no arquivo): Conferência nasce fechada (corpo vazio, ▸), clique
+abre (▾) e o conteúdo não tem mais `💰✅`/`💰⏳`; seletor de turno aparece
+fora de `#ra-controle-unificado` e ANTES da Conferência no HTML (verificado
+comparando o índice das duas strings); as 3 asserções da Conferência que
+liam `#ra-conferencia-body` direto ganharam um clique de expandir antes;
+trocar de filtro na lista de Controle com turno arquivado presente passou
+a mirar `nth(0)` em vez de `nth(1)` (o seletor de turno não entra mais
+nessa contagem). Verificado também visualmente (screenshot Playwright
+local, mesmo mock da investigação inicial) — Conferência fechada, lista de
+Controle única e ativa, sem duplicação.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
