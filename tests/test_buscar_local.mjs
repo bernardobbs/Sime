@@ -97,6 +97,14 @@ await withPage(async (page, logs) => {
   check('sem pageerror/404 disparado pelo carregamento inicial',
     !logs.some(l => l.includes('PAGEERROR') || l.includes('Failed to load module')), logs.join(' | '));
 
+  // 23/10/2026, pedido direto: "quero que fique bem explicito que a consulta
+  // é para a 7ª Zona Eleitoral do piauí" — tem que aparecer ANTES de buscar,
+  // não só dentro do card de resultado.
+  const subHeader = await page.locator('#h-sub').textContent();
+  check('subtítulo do topo já diz a zona antes de buscar', subHeader.includes('7ª Zona Eleitoral do Piauí'), subHeader);
+  const buscaSub = await page.locator('.busca-sub').textContent();
+  check('texto de apoio da busca também diz a zona', buscaSub.includes('7ª Zona Eleitoral do Piauí'), buscaSub);
+
   await page.fill('#busca-input', '001');
   await page.waitForTimeout(600);
 

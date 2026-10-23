@@ -10419,6 +10419,101 @@ devolve vazio; `'85'` continua trazendo as 10 seções do prédio; busca por
 texto (`'oscar gil'`) continua funcionando sem mudança. Coberto por
 `tests/test_buscar_local.mjs` (Caso 1c).
 
+**Zona eleitoral explícita no topo da página (23/10/2026, pedido direto:
+"quero que fique bem explicito que a consulta é para a 7ª Zona Eleitoral do
+piauí").** Antes, só o CARD DE RESULTADO citava a zona ("Campo Maior — 7ª
+Zona Eleitoral do Piauí") — quem abria a página sem ainda ter buscado nada
+não tinha como saber o escopo (a RPC já é travada em `z.numero = 7` desde
+sempre, mas isso é invisível até o primeiro resultado aparecer). O subtítulo
+do cabeçalho (`#h-sub`) e o texto de apoio do card de busca passaram a citar
+"7ª Zona Eleitoral do Piauí" explicitamente, logo de cara — antes mesmo de
+digitar qualquer coisa.
+
+**Auditoria de segurança pedida no mesmo dia ("verifique se há a
+possibilidade do sistema ser hackeado pelo link publico?") — achado real,
+grave, sem relação nenhuma com esta página em si.** A própria
+`sime_buscar_local_votacao` está bem desenhada: `SECURITY DEFINER`, nunca
+expõe `sime_secoes` inteira, só 8 colunas seguras, sem SQL dinâmico (sem
+risco de injeção), travada em `z.numero = 7`. Testado e confirmado ao vivo
+que `sime_secoes` continua com RLS ativo e `anon` não tem acesso direto
+nenhum à tabela (`set role anon; select count(*) from sime_secoes` devolve
+`0`; uma tentativa de `INSERT` como `anon` é rejeitada com
+`new row violates row-level security policy`).
+
+O achado real foi em OUTRO lugar: o Postgres concede `EXECUTE` em toda
+função nova pros papéis `anon`/`authenticated`/`service_role`
+automaticamente (`ALTER DEFAULT PRIVILEGES`, configurado pelo próprio
+Supabase na criação do projeto — não é nada que este repositório tenha
+escrito) — e isso nunca tinha sido revisado pra **~23 funções operacionais**
+sensíveis: `sime_ocorrencia_abrir/assumir/resolver/delegar/contatou/
+definir_prioridade/marcar_visualizada/toggle_aguardando_terceiro`,
+`sime_acao_mesa`, `sime_acao_acessibilidade`, `sime_acao_midia`,
+`sime_arquivar_auxilio_alimentacao_e_ativar_turno`, `sime_importar_ator`,
+`sime_midia_transmissao_upsert`, `sime_notificar_auxiliares_urna`,
+`sime_notificar_manual`, `sime_rota_estado_upsert`, `sime_rota_urna_toggle`,
+`sime_sync_atores_from_raw`, e mais 4 só de uso interno
+(`sime_sync_ocorrencias`, `sime_chamar_hermes_notificar`,
+`sime_escalonar_ocorrencias`, `sime_proximo_numero_ocorrencia`). A maioria é
+`SECURITY DEFINER` (roda como o DONO da tabela — `postgres` — que ignora RLS
+porque `sime_ocorrencias`/`sime_mesa_estado`/etc. têm
+`relforcerowsecurity=false`) e nenhuma delas checa se quem chamou está
+autenticado — a própria função era o único freio.
+
+**Testado ao vivo, sem tocar dado real (UUID falso, nunca um id de
+ocorrência de verdade)**: `set role anon; select
+sime_ocorrencia_assumir('00000000-...-000001')` chegava até a `UPDATE` de
+`sime_ocorrencias` e só falhava pela checagem de NEGÓCIO da própria função
+("Ocorrência já tem responsável ou não está aberta" — nenhuma linha bateu),
+não por permissão nenhuma — ou seja, qualquer um, sem login algum, só com a
+chave pública `anon` (já embutida em toda página do site, inclusive a busca
+pública), conseguia chamar essa e as outras ~22 funções pelo endpoint REST
+do Supabase. `sime_ocorrencia_abrir` em particular nem exigia conhecer um id
+— criava uma ocorrência nova do zero.
+
+Confirmado, antes de corrigir, que **nenhum fluxo legítimo depende desse
+acesso anônimo**: todo login de campo (QR+PIN, `sime_campo_auth.js`) já
+troca token+PIN pela Edge Function `sime-login`, que devolve um JWT de
+verdade (papel `authenticated`, `Bearer` anexado em todo request global do
+cliente) ANTES de qualquer uma dessas RPCs ser chamada — nunca existiu
+dependência do papel `anon` pra escrever nada. As 4 "só uso interno" nunca
+são chamadas por `.rpc()` client nenhum (grep confirmou) — são gatilho ou
+chamadas de dentro de outra função `SECURITY DEFINER` (que já roda como o
+dono, então nunca precisou de `EXECUTE` próprio nem pra `authenticated`).
+
+**Corrigido em produção (`sql/SIME_hardening_rpc_anon.sql` +
+`sql/SIME_hardening_rpc_anon_explicito.sql`, aplicados via MCP) — duas
+rodadas, porque a primeira (`REVOKE EXECUTE ... FROM PUBLIC`) não bastou
+sozinha**: o Supabase concede `EXECUTE` a `anon` por um `GRANT` DIRETO (via
+`ALTER DEFAULT PRIVILEGES`), não só herdado de `PUBLIC` — revogar de
+`PUBLIC` não reflete nisso. A 2ª rodada revogou de `anon` explicitamente,
+função por função, mantendo `authenticated`/`service_role` intactos.
+Reverificado ao vivo depois: a mesma chamada agora dá
+`permission denied for function` (42501), e `authenticated` continua
+funcionando igual (nenhum fluxo de campo/admin quebrou). A única
+`sime_*` ainda executável por `anon` é `sime_buscar_local_votacao` (de
+propósito) + as 5 funções auxiliares da própria avaliação de RLS
+(`sime_user_zona`/`sime_is_super_admin`/`sime_zona_visivel`/
+`sime_usuario_atual`/`sime_user_e_equipe_cartorio`, já deliberadamente
+deixadas públicas desde `sql/SIME_hardening.sql`, 10/07/2026 — "revogar
+EXECUTE quebraria a avaliação das policies", continuam intocadas) +
+`sime_now()`/`sime_normalizar_telefone_whatsapp` (puras, sem acesso a dado
+nenhum).
+
+> **Pendência real, documentada no próprio `sql/SIME_hardening_rpc_anon.sql`**:
+> tentei também fechar a causa raiz pra sempre (`ALTER DEFAULT PRIVILEGES
+> FOR ROLE postgres/supabase_admin IN SCHEMA public REVOKE EXECUTE ON
+> FUNCTIONS FROM anon`, pra uma função NOVA já nascer sem acesso de `anon`
+> por padrão) — rejeitado com `permission denied to change default
+> privileges`: o papel `postgres` exposto neste projeto Supabase não é
+> superuser de verdade (Supabase reserva isso pro `supabase_admin` interno,
+> fora do alcance de quem só tem acesso de projeto). **Regra a seguir
+> manualmente daqui em diante**: toda função nova criada em `public`
+> precisa de um `REVOKE EXECUTE ON FUNCTION <assinatura> FROM anon;`
+> explícito logo depois do `CREATE FUNCTION`, A MENOS que ela seja
+> deliberadamente pública (como `sime_buscar_local_votacao`) — sem isso,
+> ela nasce executável por qualquer um com a chave `anon`, mesmo sem
+> nenhum `GRANT` escrito no próprio arquivo SQL.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
