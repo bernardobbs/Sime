@@ -10268,6 +10268,61 @@ vazio) — 369 checks no total no arquivo.
 
 ---
 
+## BUSCA PÚBLICA DE LOCAL DE VOTAÇÃO (`SIME_buscar_local.html`, 23/10/2026)
+
+Pedido direto: "quero uma forma de os mesários entrarem em um site e
+conseguir pesquisar o local de votação — por exemplo, onde é a seção 001".
+Página nova, **deliberadamente sem login nenhum** — único módulo do
+projeto pensado pra qualquer pessoa (mesário, eleitor, familiar) abrir
+sem token/PIN/e-mail-senha, a poucos dias da eleição. URL curta pra
+compartilhar por WhatsApp: `/onde-votar` (rewrite em `vercel.json` pro
+arquivo real).
+
+**RPC pública, não RLS aberta na tabela inteira** —
+`sime_buscar_local_votacao(p_termo text)` (`sql/`, aplicada via migração
+`sime_busca_local_votacao_publica`), `SECURITY DEFINER`, `GRANT EXECUTE`
+só pra `anon`/`authenticated`. Devolve só os campos seguros de
+`sime_secoes` (zona, seção, local, município, endereço, eleitores,
+coordenada) — **nunca** a tabela inteira, e nunca `token_ue` (coluna já
+existente no schema, sem nenhum uso/documentação em todo o repositório —
+tratada como sensível por precaução, mesmo sem saber ao certo o que
+guarda). Abrir a RLS de `sime_secoes` pra `anon` teria exposto qualquer
+coluna futura por engano; uma função que só devolve os campos escolhidos
+é a blindagem.
+
+**Busca combinada, acento-insensível** (`unaccent`/`pg_trgm`, já
+instalados no projeto) — termo só com dígitos casa por **número exato**
+de seção (prioridade 0 no `ORDER BY`); qualquer termo também casa por
+`ILIKE` em `local_nome`/`município`, sem diferenciar maiúscula/acento
+("jatoba" acha "Jatobá do Piauí"). Verificado direto no banco antes de
+expor na UI: `'001'` → só a Seção 1 (nunca lista tudo que contém "001"
+em algum lugar); `'monsenhor'` → as 10 seções do Grupo Escolar Monsenhor
+Mateus.
+
+**Front-end** (`modules/SIME_buscar_local.html`) — busca com debounce
+(400ms) + Enter + botão, sempre a última busca disparada vence (ignora
+resposta de uma busca anterior que chegou atrasada). Resultados
+agrupados por local no cliente (um card por prédio, todas as seções
+daquele prédio juntas como chips) — a RPC devolve uma linha por seção,
+igual a qualquer outra consulta deste projeto. `?q=` na URL já dispara a
+busca sozinho (link pronto pra compartilhar com uma seção específica).
+Link "🗺️ Ver no mapa" prioriza coordenada real; sem coordenada, cai pro
+endereço + município + "PI"; sem endereço nenhum (ex.: Penitenciária,
+ainda sem endereço cadastrado), usa o nome do local — nunca um link
+quebrado. Mensagens de erro amigáveis (sem conexão / falha do servidor),
+nunca o erro técnico cru — mesmo critério de sempre.
+
+Verificado com Playwright contra um stub do Supabase (mesmo padrão
+`STUB_SUPABASE_JS` já usado em `tests/*.mjs`) — este sandbox não tem
+acesso de rede ao Supabase real pra testar o round-trip completo do
+navegador, então a correção da RPC em si foi confirmada direto no banco
+(`execute_sql`) e o `GRANT EXECUTE` pra `anon` confirmado via
+`pg_proc.proacl`; a UI (agrupamento, link de mapa, estados vazio/erro,
+`?q=` na URL) foi confirmada com o stub. Sem teste de regressão
+permanente ainda em `tests/` — só a verificação pontual desta sessão.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
