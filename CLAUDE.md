@@ -10312,14 +10312,50 @@ ainda sem endereço cadastrado), usa o nome do local — nunca um link
 quebrado. Mensagens de erro amigáveis (sem conexão / falha do servidor),
 nunca o erro técnico cru — mesmo critério de sempre.
 
-Verificado com Playwright contra um stub do Supabase (mesmo padrão
-`STUB_SUPABASE_JS` já usado em `tests/*.mjs`) — este sandbox não tem
-acesso de rede ao Supabase real pra testar o round-trip completo do
-navegador, então a correção da RPC em si foi confirmada direto no banco
-(`execute_sql`) e o `GRANT EXECUTE` pra `anon` confirmado via
-`pg_proc.proacl`; a UI (agrupamento, link de mapa, estados vazio/erro,
-`?q=` na URL) foi confirmada com o stub. Sem teste de regressão
-permanente ainda em `tests/` — só a verificação pontual desta sessão.
+**Bug real, corrigido no mesmo dia — "testei e não funcionou" (produção,
+`/onde-votar` em branco, nenhuma busca funcionava).** Causa raiz: todo
+asset/import da página era **caminho relativo**
+(`./vendor/supabase-js.esm.js`, `./sime_config.js`, `./sime_theme_cream.css`,
+`./sime_components.css`, `./assets/icon-192.png`). Isso é seguro quando a
+página é aberta pelo caminho real (`/modules/SIME_buscar_local.html`) ou por
+um rewrite de **prefixo** como `/z/:zona/:caminho*` (um sub-request relativo
+cai sob o mesmo prefixo e é re-escrito de volta pra `/modules/...` pelo
+mesmo padrão genérico) — mas `/onde-votar` é um rewrite de **caminho
+único**: o navegador mantém `/onde-votar` na barra de endereço, e todo
+import relativo resolve contra `/` (a raiz), não contra `/modules/` — 404
+em produção, o `<script type="module">` inteiro falha ao importar, e a
+página fica morta (sem erro visível pro usuário, sem busca nenhuma
+funcionando — exatamente o relato). Corrigido trocando todo asset/import
+pra **caminho absoluto** (`/modules/vendor/supabase-js.esm.js`,
+`/modules/sime_config.js`, `/modules/sime_theme_cream.css`,
+`/modules/sime_components.css`, `/modules/assets/icon-192.png`) — caminho
+absoluto nunca depende de qual URL foi usada pra chegar na página.
+
+**QR Code do Google Maps (23/10/2026, pedido direto: "poderia além de
+dizer o local gerar um qrcode com a localização do google maps").** Cada
+card de resultado ganhou, ao lado do link de texto "🗺️ Ver no mapa" (que
+continua existindo, sem mudança), um QR Code desenhado com a MESMA URL de
+`linkMapa()` — quem está no local físico aponta a câmera do celular e abre
+a navegação direto, sem precisar digitar nada. Mesma lib vendorizada
+offline de sempre (`vendor/qrcode.min.js`, já usada em `SIME_tokens.html`/
+`SIME_rotas.html`/`sime_recibo_alimentacao.js`), desenhada depois do HTML
+já estar no DOM (`new QRCode(el, {...})` precisa do elemento presente),
+com `try/catch` (nunca trava a página por causa do QR) e resolução de
+canvas escalada pelo tamanho da URL (`qrSizePx()`, mesmo critério de
+`rtQrSizePx()`/`tkQrCanvasPx()` — um QR fixo em 96px ficaria ilegível pra
+uma URL de busca por endereço, bem mais longa que a de coordenada).
+
+Verificado com Playwright reproduzindo a topologia real de produção
+(`tests/test_buscar_local.mjs`, novo — 12 checks): a página é servida via
+`/onde-votar` com rotas stubadas de propósito pra só responder em
+`/onde-votar` e `/modules/*` (qualquer outro caminho 404, reproduzindo
+exatamente o que um import relativo quebrado produziria) — confirmado que
+o código ANTERIOR a este fix trava pra sempre nessa topologia (nenhum card
+chega a renderizar, timeout), e que o código corrigido carrega, busca,
+renderiza o card com QR e trata vazio/erro de rede sem travar. A correção
+da RPC em si (grant pra `anon`, ausência de sobrecarga ambígua) já tinha
+sido confirmada direto no banco (`execute_sql`/`pg_proc`) na sessão
+anterior — o problema nunca esteve do lado do banco.
 
 ---
 

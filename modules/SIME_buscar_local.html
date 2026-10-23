@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#f2efe9">
 <title>SIME · Onde Votar</title>
 <meta name="description" content="Busque sua seção eleitoral e veja o local de votação, endereço e mapa.">
-<link rel="apple-touch-icon" href="./assets/icon-192.png">
-<link rel="stylesheet" href="./sime_theme_cream.css">
-<link rel="stylesheet" href="./sime_components.css">
+<link rel="apple-touch-icon" href="/modules/assets/icon-192.png">
+<link rel="stylesheet" href="/modules/sime_theme_cream.css">
+<link rel="stylesheet" href="/modules/sime_components.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{min-height:100%;}
@@ -61,6 +61,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .vazio b{color:var(--text);}
 
 .rodape{font-size:.68rem;color:var(--text3);text-align:center;margin-top:10px;line-height:1.6;}
+
+.loc-qr{display:flex;align-items:center;gap:10px;margin-top:4px;}
+.loc-qr canvas{border-radius:8px;background:#fff;padding:4px;border:1px solid var(--border);flex-shrink:0;}
+.loc-qr-legenda{font-size:.72rem;color:var(--text2);line-height:1.4;}
 </style>
 </head>
 <body>
@@ -93,9 +97,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </div>
 </div>
 
+<script src="/modules/vendor/qrcode.min.js"></script>
 <script type="module">
-import { createClient } from './vendor/supabase-js.esm.js';
-import { SIME_CONFIG } from './sime_config.js';
+import { createClient } from '/modules/vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from '/modules/sime_config.js';
 
 const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
 
@@ -128,6 +133,14 @@ function linkMapa(row) {
   return `https://www.google.com/maps/search/?api=1&query=${q}`;
 }
 
+function qrSizePx(texto) {
+  const n = (texto || '').length;
+  if (n <= 60) return 96;
+  if (n <= 150) return 140;
+  if (n <= 260) return 190;
+  return 250;
+}
+
 function agruparPorLocal(linhas) {
   const grupos = [];
   const porChave = new Map();
@@ -154,7 +167,7 @@ function renderResultados(linhas, termo) {
     return;
   }
   const grupos = agruparPorLocal(linhas);
-  resultadosEl.innerHTML = grupos.map(g => {
+  resultadosEl.innerHTML = grupos.map((g, i) => {
     const secoesHtml = g.secoes
       .sort((a, b) => a - b)
       .map(n => `<span class="sec-chip">Seção ${fmtSecao(n)}</span>`)
@@ -171,8 +184,25 @@ function renderResultados(linhas, termo) {
         <div class="loc-acoes">
           <a class="loc-maps" href="${linkMapa(g)}" target="_blank" rel="noopener">🗺️ Ver no mapa</a>
         </div>
+        <div class="loc-qr" id="loc-qr-${i}"></div>
       </div>`;
   }).join('');
+
+  grupos.forEach((g, i) => {
+    const el = document.getElementById(`loc-qr-${i}`);
+    if (!el || !window.QRCode) return;
+    const url = linkMapa(g);
+    try {
+      const px = qrSizePx(url);
+      const canvasWrap = document.createElement('div');
+      el.appendChild(canvasWrap);
+      new QRCode(canvasWrap, { text: url, width: px, height: px, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      const legenda = document.createElement('div');
+      legenda.className = 'loc-qr-legenda';
+      legenda.textContent = 'Aponte a câmera do celular pra abrir a navegação até aqui.';
+      el.appendChild(legenda);
+    } catch (e) { el.innerHTML = ''; }
+  });
 }
 
 async function buscar() {
