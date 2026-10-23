@@ -139,6 +139,21 @@ await withPage(async (page) => {
   check('card mostra as 3 seções agregadas', ['085', '086', '177'].every(n => cardText.includes('Seção ' + n)), cardText);
 });
 
+// Caso 1c: bug real corrigido em 23/10/2026 — busca puramente numérica
+// ("40") não podia mais casar por SUBSTRING contra o código embutido no
+// nome do local (ex.: "1040 - ..."). A RPC real já filtra isso (ver
+// sql/SIME_busca_local_votacao_publica.sql); este teste garante que o
+// FRONT-END simplesmente mostra "nenhum resultado" quando a RPC devolve
+// vazio pra um número que não existe — sem mascarar com um resultado que
+// a RPC nunca deveria ter mandado.
+await withPage(async (page) => {
+  await page.evaluate(() => { window.__mockConfig.rows = []; });
+  await page.fill('#busca-input', '40');
+  await page.waitForTimeout(600);
+  const vazio = await page.locator('.vazio').first().textContent();
+  check('seção inexistente (ex.: "40") nunca é "resgatada" por nome embutido no prédio', vazio.includes('Nenhum local encontrado'), vazio);
+});
+
 // Caso 2: busca sem resultado nunca trava, mostra o vazio de sempre.
 await withPage(async (page) => {
   await page.evaluate(() => { window.__mockConfig.rows = []; });

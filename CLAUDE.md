@@ -10394,6 +10394,31 @@ desta busca pública — mesma priorização "7ª Zona é o foco, 94ª fica pra
 depois" já documentada em "PENDÊNCIAS" — zona não é mais um parâmetro
 aceito pela função, só uma decisão fixa dentro dela.
 
+**QR Code aumentado (23/10/2026, pedido direto: "quero o qrcode maior, o
+mesário vai consultar e e um terceiro vai ler o qrcode").** O uso real não
+é só conferir sozinho — é mostrar a tela do celular pra outra pessoa
+escanear. `qrSizePx()` (`modules/SIME_buscar_local.html`) subiu de
+96–250px pra 220–400px (mesma escala pelo tamanho do link já usada em
+`rtQrSizePx()`/`tkQrCanvasPx()`); `.loc-qr` virou coluna centralizada em
+vez de linha, pra o QR ficar o elemento dominante do card.
+
+**Bug real, corrigido no mesmo dia — número puro casava por SUBSTRING
+contra o código embutido no nome do prédio.** Reportado direto: "nunca
+procure pelo numero do local 40 retornou 1040 - UNIDADE ESCOLAR OSCAR GIL
+CASTELO BRANCO" — não existe seção 40 na 7ª Zona, mas o `ILIKE` contra
+`local_nome`/`municipio` (que sempre entrava em jogo JUNTO do match por
+`s.numero = v_num`) batia "40" como substring de "**1040** - UNIDADE
+ESCOLAR..." (o código do local do TSE, sempre na frente do nome). Toda
+busca puramente numérica corria esse risco — qualquer prédio cujo código
+contivesse o número buscado "resgatava" seções que não existem.
+Corrigido: quando o termo é só dígitos (`v_num is not null`), o `hits` vira
+EXCLUSIVAMENTE `s.numero = v_num` — o `ILIKE` de nome/município só entra
+em jogo pra termo não-numérico, nunca mais os dois ao mesmo tempo.
+Verificado direto no banco: `sime_buscar_local_votacao('40')` agora
+devolve vazio; `'85'` continua trazendo as 10 seções do prédio; busca por
+texto (`'oscar gil'`) continua funcionando sem mudança. Coberto por
+`tests/test_buscar_local.mjs` (Caso 1c).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

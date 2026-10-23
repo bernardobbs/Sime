@@ -24,6 +24,17 @@
 --     de busca puxa TODAS as seções ativas do mesmo (local_nome,município)
 --     junto — mesmo critério de agrupamento por prédio já usado em todo o
 --     resto do projeto (não existe tabela própria de "locais").
+--
+-- Bug real corrigido no mesmo dia, reportado direto: "nunca procure pelo
+-- numero do local" + "40 retornou 1040 - UNIDADE ESCOLAR OSCAR GIL CASTELO
+-- BRANCO". Causa: um termo PURAMENTE NUMÉRICO (ex.: "40") também caía no
+-- ILIKE contra local_nome/município — e local_nome sempre começa com o
+-- código do local do TSE ("1040 - ..."), então "40" batia como SUBSTRING
+-- desse código, trazendo prédios de seções que não existem (não há seção
+-- 40 na 7ª Zona). Corrigido: quando o termo é só dígitos, o hit vira
+-- EXCLUSIVAMENTE `s.numero = v_num` — nunca mais cai no ILIKE de nome/
+-- município nesse caso. Buscar por texto (nome do local/bairro/povoado)
+-- continua funcionando exatamente como antes, sem mudança nenhuma.
 create or replace function public.sime_buscar_local_votacao(p_termo text)
 returns table(
   zona_numero integer,
@@ -60,9 +71,13 @@ begin
     where s.ativo = true
       and z.numero = 7
       and (
-        (v_num is not null and s.numero = v_num)
-        or unaccent(lower(s.local_nome)) ilike '%' || v_termo_norm || '%'
-        or unaccent(lower(s.municipio)) ilike '%' || v_termo_norm || '%'
+        case
+          when v_num is not null then s.numero = v_num
+          else (
+            unaccent(lower(s.local_nome)) ilike '%' || v_termo_norm || '%'
+            or unaccent(lower(s.municipio)) ilike '%' || v_termo_norm || '%'
+          )
+        end
       )
   )
   select z.numero, s.numero, s.local_nome, s.municipio, s.endereco, s.eleitores,
