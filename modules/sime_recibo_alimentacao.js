@@ -164,7 +164,7 @@ async function raCarregar() {
   const zonaId = await zonaDoUsuario();
   if (!zonaId) { raDados = { erro: 'Conta sem zona associada' }; render(); return; }
 
-  const [{ data: zona }, { data: eleicao }, { data: outrasEleicoes }, { data: atores, error }] = await Promise.all([
+  const [{ data: zona }, { data: eleicao }, { data: outrasEleicoes }, { data: atores, error }, { data: locaisSecoes }] = await Promise.all([
     sb.from('sime_zonas').select('numero, municipio').eq('id', zonaId).maybeSingle(),
     sb.from('sime_eleicoes').select('id, nome, turno, data_d, valor_auxilio_alimentacao, forma_auxilio_alimentacao, pix_devolucao_chave, pix_devolucao_nome')
       .eq('zona_id', zonaId).eq('ativa', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
@@ -180,6 +180,18 @@ async function raCarregar() {
       .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, auxilio_alimentacao_isento, auxilio_alimentacao_isento_motivo, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
+    // TODAS as seções da zona (23/10/2026, pedido direto: "quero que os
+    // recibos do coordenadores devem ser emitidos mesmo não tendo
+    // coordenador de acessibilidade nomeado") — diferente da consulta
+    // abaixo (`secaoIds`, só as seções REFERENCIADAS por algum ator já
+    // cadastrado), esta traz o universo inteiro de locais de votação da
+    // zona, pra `raAgruparPorLocalComVazios()` poder completar com um grupo
+    // vazio qualquer local que ainda não tem coordenador nenhum — nunca
+    // filtra por `ativo` (mesmo critério já usado na consulta por
+    // `secaoIds` logo abaixo, que também nunca filtrou): uma seção
+    // duplicada/inativa do mesmo prédio nunca introduz um `local_nome`
+    // novo, só repete um que já existiria de qualquer forma.
+    sb.from('sime_secoes').select('local_nome, municipio').eq('zona_id', zonaId),
   ]);
   if (error) { raDados = { erro: error.message }; render(); return; }
 
@@ -189,6 +201,13 @@ async function raCarregar() {
     : { data: [] };
   const secoesPorId = Object.fromEntries((secoes || []).map(s => [s.id, s]));
   for (const a of atores || []) a.sec = a.secao_id ? secoesPorId[a.secao_id] : null;
+
+  const locaisMap = {};
+  for (const s of locaisSecoes || []) {
+    const chave = `${s.municipio}|||${s.local_nome}`;
+    if (!locaisMap[chave]) locaisMap[chave] = { municipio: s.municipio, local_nome: s.local_nome };
+  }
+  const locaisZona = Object.values(locaisMap).sort((a, b) => (a.municipio + a.local_nome).localeCompare(b.municipio + b.local_nome));
 
   raDados = {
     zona: zona || {},
@@ -224,6 +243,11 @@ async function raCarregar() {
     // candidatos pro seletor de visualização histórica (📜 "Ver outro turno",
     // somente leitura, ver `raTurnoView`/`raCarregarHistoricoTurno` abaixo).
     turnosAnteriores: (outrasEleicoes || []).filter(o => eleicao && Number(o.turno) < Number(eleicao.turno)),
+    // Todo local de votação da zona (município+local_nome, deduplicado) —
+    // usado só pra completar o recibo de Coordenador de Acessibilidade com
+    // um local que ainda não tem ninguém nomeado (ver
+    // `raAgruparPorLocalComVazios` abaixo).
+    locaisZona,
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
@@ -378,6 +402,35 @@ function raAgruparPorLocal(pessoas) {
     loc.pessoas.sort((a, b) => (a.numero - b.numero) || (RA_ORDEM_MESA.indexOf(a.funcaoLabel) - RA_ORDEM_MESA.indexOf(b.funcaoLabel)));
   }
   if (semLocal.length) locais.push({ municipio: '', local_nome: '⚠ Sem local definido', pessoas: semLocal });
+  return locais;
+}
+
+// Completa `raAgruparPorLocal()` com todo local de votação da zona que
+// ainda não apareceu (23/10/2026, pedido direto: "quero que os recibos do
+// coordenadores devem ser emitidos mesmo não tendo coordenador de
+// acessibilidade nomeado") — `raAgruparPorLocal` sozinha só lista locais
+// que JÁ têm pelo menos 1 pessoa cadastrada; aqui, qualquer local de
+// `raDados.locaisZona` (derivado de TODAS as seções da zona, não só as
+// referenciadas por atores) que ainda não bateu vira um grupo VAZIO
+// (`pessoas: []`) — em `raHtmlPorLocal()`, isso vira uma folha de recibo
+// em branco, pronta pra ser preenchida à mão assim que alguém for
+// designado, em vez de simplesmente não existir. O grupo "⚠ Sem local
+// definido" (gente sem secao_id resolvido) nunca é tocado por esta
+// completude — não é um local de votação de verdade, não tem como ganhar
+// companhia de locais vazios.
+function raAgruparPorLocalComVazios(pessoas, locaisTodos) {
+  const locais = raAgruparPorLocal(pessoas);
+  const semLocalIdx = locais.findIndex(l => l.local_nome === '⚠ Sem local definido' && !l.municipio);
+  const semLocalGrupo = semLocalIdx >= 0 ? locais.splice(semLocalIdx, 1)[0] : null;
+  const chaves = new Set(locais.map(l => `${l.municipio}|||${l.local_nome}`));
+  for (const loc of locaisTodos || []) {
+    const chave = `${loc.municipio}|||${loc.local_nome}`;
+    if (chaves.has(chave)) continue;
+    locais.push({ municipio: loc.municipio, local_nome: loc.local_nome, pessoas: [] });
+    chaves.add(chave);
+  }
+  locais.sort((a, b) => (a.municipio + a.local_nome).localeCompare(b.municipio + b.local_nome));
+  if (semLocalGrupo) locais.push(semLocalGrupo);
   return locais;
 }
 
@@ -560,8 +613,26 @@ function raHtmlMesaReceptora(secoes, cfg, qrOut) {
 // prédio inteiro, não uma mesa específica): várias pessoas do mesmo
 // prédio na mesma página, quebra a cada troca de local, cada página com
 // seu próprio bloco de substituições/fechamento.
+//
+// Local sem NINGUÉM cadastrado (`loc.pessoas` vazio — ver
+// `raAgruparPorLocalComVazios`, 23/10/2026, pedido direto: "quero que os
+// recibos do coordenadores devem ser emitidos mesmo não tendo coordenador
+// de acessibilidade nomeado") ainda ganha a folha inteira, com um aviso no
+// topo e UMA linha em branco (Função já preenchida com "Coordenador(a) de
+// Acessibilidade", Inscrição/Nome/Assinatura pra preencher à mão assim que
+// alguém for designado) — nunca uma tabela completamente vazia, sem
+// nenhuma linha pra escrever.
 function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
-  return locais.map((loc, i) => `
+  return locais.map((loc, i) => {
+    const semNinguem = loc.pessoas.length === 0;
+    const linhaVazia = `
+          <tr>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>Coordenador de Acessibilidade</td>
+            <td class="ra-linha-assin"></td>
+          </tr>`;
+    return `
     <div class="ra-pagina">
       ${raHtmlTimbre(titulo, null, cfg, i + 1)}
       <div class="ra-linha-info"><span><b>Eleição:</b> ${raEsc(cfg.eleicaoNome)}</span></div>
@@ -570,10 +641,11 @@ function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
         <span><b>Local de Votação:</b> ${raEsc(loc.local_nome)}</span>
         <span><b>Forma de Auxílio:</b> ${raEsc(cfg.forma)} &nbsp; <b>Valor:</b> ${raFmtValor(cfg.valor)}</span>
       </div>
+      ${semNinguem ? '<div class="ra-rel-aviso">⚠ Sem coordenador de acessibilidade nomeado neste local ainda — folha emitida para preenchimento manual assim que houver designação.</div>' : ''}
       <table class="ra-tabela">
         <colgroup><col class="ra-col-insc"><col><col class="ra-col-func"><col class="ra-col-assin"></colgroup>
         <thead><tr><th>Inscrição</th><th>Nome</th><th>Função</th><th>Assinatura</th></tr></thead>
-        <tbody>${loc.pessoas.map(p => `
+        <tbody>${semNinguem ? linhaVazia : loc.pessoas.map(p => `
           <tr>
             <td>${raEsc(p.inscricao || '—')}</td>
             <td>${raEsc(p.nome)}</td>
@@ -584,7 +656,8 @@ function raHtmlPorLocal(titulo, locais, cfg, qrOut) {
       ${raHtmlSubstituicoes(false)}
       ${raHtmlObs()}
       ${raHtmlRodapeFinal(cfg, `Eleições 2026 - Devolução - ${raNomeLocalSemCodigo(loc.local_nome)}`, loc.local_nome, i, qrOut)}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // Lista única, sem agrupar por local — auxiliares de eleição (geral) e
@@ -657,12 +730,19 @@ async function raImprimirMesaReceptora() {
   await raImprimirDocumento(html, 'recibo_alimentacao_mesa_impresso', raDados.mesarios.length, qrPayloads);
 }
 
+// Sempre emite uma folha por local de votação da zona — inclusive os que
+// ainda não têm coordenador de acessibilidade nomeado (23/10/2026, pedido
+// direto, ver `raAgruparPorLocalComVazios`/`raHtmlPorLocal`) — nunca mais
+// "nenhum coordenador cadastrado" como motivo pra não imprimir nada; só
+// fica sem nenhum documento se a zona não tiver local de votação algum
+// cadastrado (caso que, na prática, nunca deveria acontecer de verdade).
 async function raImprimirCoordenadores() {
-  if (!raDados.coord.length) { showToast('⚠ Nenhum coordenador de acessibilidade ativo'); return; }
-  const locais = raAgruparPorLocal(raDados.coord);
+  const locais = raAgruparPorLocalComVazios(raDados.coord, raDados.locaisZona);
+  if (!locais.length) { showToast('⚠ Nenhum local de votação cadastrado nesta zona'); return; }
   const qrPayloads = [];
   const html = raHtmlPorLocal('Recibo de Auxílio Alimentação — Coordenador de Acessibilidade', locais, raCfg(), qrPayloads);
-  await raImprimirDocumento(html, 'recibo_alimentacao_coord_impresso', raDados.coord.length, qrPayloads);
+  const totalPessoas = locais.reduce((s, l) => s + l.pessoas.length, 0);
+  await raImprimirDocumento(html, 'recibo_alimentacao_coord_impresso', totalPessoas, qrPayloads);
 }
 
 async function raImprimirAuxiliares() {
@@ -747,6 +827,107 @@ async function raImprimirRelatorioPagamentos() {
   if (!lista.length) { showToast('⚠ Nenhum pagamento registrado pra imprimir (confira os filtros aplicados na tela)'); return; }
   const html = raHtmlRelatorioPagamentos(lista, raCfg());
   await raImprimirDocumento(html, 'recibo_alimentacao_relatorio_pagamentos_impresso', lista.length);
+}
+
+// ── Relação — Coordenadores e Presidentes por cidade e local de votação
+// (23/10/2026, pedido direto: "quero um pdf com a relação dos coordenadores
+// e os presidentes das respectivas seções que receberam ou receberão os
+// auxílios alimentação separado por cidade e local de votação") — diferente
+// de `raListaPagosRelatorio`/`raHtmlRelatorioPagamentos` (só quem JÁ está
+// pago, lista achatada), este junta os dois papéis que de fato recebem
+// auxílio em cada prédio (Presidente de cada seção + Coordenador de
+// Acessibilidade do local), mostrando quem já recebeu e quem ainda vai
+// receber, agrupado por MUNICÍPIO → LOCAL DE VOTAÇÃO — mesma chave
+// `local_nome`+`municipio` de sempre. Auxiliar de Eleição/Junta Eleitoral
+// ficam de fora de propósito — o pedido foi só sobre coordenadores e
+// presidentes.
+//
+// Local sem nenhum coordenador nomeado ainda aparece do mesmo jeito (uma
+// linha "Sem coordenador de acessibilidade nomeado"), nunca escondido —
+// mesmo critério já usado na Conferência (`renderConferencia`) e no recibo
+// de Coordenador completado acima (`raAgruparPorLocalComVazios`). Local sem
+// NENHUM Presidente e NENHUM coordenador (ninguém a listar ali) não entra
+// no relatório — não faz sentido um grupo inteiramente vazio num documento
+// sobre "quem recebeu ou vai receber".
+function raCalcularRelatorioPresidentesCoordenadores() {
+  const porLocal = {};
+  const getLocal = (municipio, localNome) => {
+    const chave = `${municipio}|||${localNome}`;
+    if (!porLocal[chave]) porLocal[chave] = { municipio, local_nome: localNome, presidentes: [], coordenadores: [] };
+    return porLocal[chave];
+  };
+  for (const m of raDados.mesarios || []) {
+    if (m.funcao_mesa !== 'Presidente' || !m.sec) continue;
+    getLocal(m.sec.municipio, m.sec.local_nome).presidentes.push(m);
+  }
+  for (const c of raDados.coord || []) {
+    if (c.sec) getLocal(c.sec.municipio, c.sec.local_nome).coordenadores.push(c);
+  }
+  const locais = Object.values(porLocal);
+  for (const loc of locais) loc.presidentes.sort((a, b) => a.sec.numero - b.sec.numero);
+  locais.sort((a, b) => (a.municipio + a.local_nome).localeCompare(b.municipio + b.local_nome));
+  const porMunicipio = {};
+  for (const loc of locais) (porMunicipio[loc.municipio] = porMunicipio[loc.municipio] || []).push(loc);
+  return { porMunicipio, municipios: Object.keys(porMunicipio).sort() };
+}
+
+// "Já recebeu"/"Ainda vai receber"/"Isento" — mesmo vocabulário já usado em
+// `raHtmlLinhaHistorico()`, só com os rótulos por extenso (documento pra
+// terceiro ler, não um resumo compacto de tela).
+function raStatusRelatorioTexto(p) {
+  if (p.auxilio_alimentacao_isento) return `Isento${p.auxilio_alimentacao_isento_motivo ? ` — ${p.auxilio_alimentacao_isento_motivo}` : ''}`;
+  return p.auxilio_alimentacao_pago ? 'Já recebeu' : 'Ainda vai receber';
+}
+
+function raHtmlRelatorioLinha(funcaoLabel, secaoNumero, p) {
+  if (!p) {
+    return `<tr><td>${raEsc(funcaoLabel)}</td><td>${secaoNumero ?? '—'}</td><td colspan="4" style="color:#555">Sem coordenador de acessibilidade nomeado</td></tr>`;
+  }
+  return `
+    <tr>
+      <td>${raEsc(funcaoLabel)}</td>
+      <td>${secaoNumero ?? '—'}</td>
+      <td>${raEsc(p.nome_completo)}</td>
+      <td>${raEsc(raStatusRelatorioTexto(p))}</td>
+      <td>${p.auxilio_alimentacao_pago ? raFmtValor(p.auxilio_alimentacao_valor_pago) : '—'}</td>
+      <td>${raEsc(p.auxilio_alimentacao_documento || '—')}</td>
+    </tr>`;
+}
+
+function raHtmlRelatorioLocalPresCoord(loc) {
+  const coordRows = loc.coordenadores.length
+    ? loc.coordenadores.map(c => raHtmlRelatorioLinha('Coordenador de Acessibilidade', null, c))
+    : [raHtmlRelatorioLinha('Coordenador de Acessibilidade', null, null)];
+  const presRows = loc.presidentes.map(p => raHtmlRelatorioLinha('Presidente', p.sec.numero, p));
+  return `
+    <div class="ra-rel-grupo">
+      <div class="ra-rel-local-titulo">${raEsc(raNomeLocalSemCodigo(loc.local_nome))}</div>
+      <table class="ra-tabela ra-rel-tabela">
+        <colgroup><col style="width:22%"><col style="width:8%"><col><col style="width:16%"><col style="width:10%"><col style="width:12%"></colgroup>
+        <thead><tr><th>Função</th><th>Seção</th><th>Nome</th><th>Status</th><th>Valor</th><th>Documento</th></tr></thead>
+        <tbody>${[...coordRows, ...presRows].join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function raHtmlRelatorioPresidentesCoordenadores(porMunicipio, municipios, cfg) {
+  const totalLocais = municipios.reduce((s, m) => s + porMunicipio[m].length, 0);
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Relação — Coordenadores e Presidentes por Local de Votação', 'Auxílio Alimentação — quem já recebeu e quem ainda vai receber', cfg, 1)}
+      <div class="ra-rel-resumo">${municipios.length} cidade(s) · ${totalLocais} local(is) de votação</div>
+      ${municipios.map(mun => `
+        <div class="ra-rel-municipio-titulo">📍 ${raEsc(mun)}</div>
+        ${porMunicipio[mun].map(loc => raHtmlRelatorioLocalPresCoord(loc)).join('')}`).join('')}
+    </div>`;
+}
+
+async function raImprimirRelatorioPresidentesCoordenadores() {
+  const { porMunicipio, municipios } = raCalcularRelatorioPresidentesCoordenadores();
+  if (!municipios.length) { showToast('⚠ Nenhum Presidente ou Coordenador de Acessibilidade com local de votação resolvido'); return; }
+  const html = raHtmlRelatorioPresidentesCoordenadores(porMunicipio, municipios, raCfg());
+  const totalLocais = municipios.reduce((s, m) => s + porMunicipio[m].length, 0);
+  await raImprimirDocumento(html, 'recibo_alimentacao_relatorio_presidentes_coordenadores_impresso', totalLocais);
 }
 
 async function raSalvarConfig() {
@@ -2392,8 +2573,9 @@ function raHtmlSecaoImpressao(cfg) {
 
     <div class="import-card">
       <div class="ic-title" style="font-size:.85rem">♿ Coordenador de Acessibilidade (${raDados.coord.length})</div>
-      <div class="ic-sub">Um recibo por coordenador, agrupado por local de votação.</div>
-      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.coord.length ? 'disabled' : ''} onclick="raImprimirCoordenadores()">🖨️ Imprimir recibos — Coordenadores</button>
+      <div class="ic-sub">Um recibo por local de votação — mesmo sem coordenador nomeado ainda (sai uma linha em
+        branco, pronta pra preencher à mão assim que houver designação).</div>
+      <button class="btn btn-dark" style="margin-top:8px" ${!raDados.locaisZona?.length ? 'disabled' : ''} onclick="raImprimirCoordenadores()">🖨️ Imprimir recibos — Coordenadores</button>
     </div>
 
     <div class="import-card">
@@ -2426,6 +2608,12 @@ function raHtmlSecaoControle() {
       <div style="margin-top:8px">
         <button class="btn btn-out" onclick="raImprimirRelatorioPagamentos()">🖨️ Imprimir relatório (valores pagos + documentos)</button>
         <div class="ic-sub" style="margin-top:4px">Imprime só quem já está marcado como pago — respeita os filtros de função/município/busca abaixo, ignora os de status de pagamento/situação.</div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirRelatorioPresidentesCoordenadores()">📍 Imprimir relação — Coordenadores e Presidentes por cidade e local</button>
+        <div class="ic-sub" style="margin-top:4px">Presidente de cada seção + Coordenador(a) de Acessibilidade do local, separado por cidade e local de votação —
+          mostra quem já recebeu e quem ainda vai receber. Um local sem coordenador nomeado ainda aparece do mesmo
+          jeito, com um aviso no lugar do nome.</div>
       </div>
       <div id="ra-controle-unificado" style="margin-top:8px"></div>
     </div>`;

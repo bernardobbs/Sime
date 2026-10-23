@@ -10204,6 +10204,70 @@ continua passando sem ajuste — a checagem de "todo campo desabilitado" já
 
 ---
 
+## RELAÇÃO — COORDENADORES E PRESIDENTES POR CIDADE E LOCAL DE VOTAÇÃO + RECIBO DO COORDENADOR SEMPRE EMITIDO (`sime_recibo_alimentacao.js`, 23/10/2026)
+
+Dois pedidos diretos na mesma mensagem: "quero um pdf com a relação dos
+coordenadores e os presidentes da respectivas seções que receberam ou
+receberão os auxilios alimentação separado por cidade e local de votação" +
+"quero que os recibos do coordenadores devem ser emitidos mesmo não tendo
+coordenador de acessbilidade nomeado".
+
+**1) Novo relatório, botão "📍 Imprimir relação — Coordenadores e
+Presidentes por cidade e local" dentro de "💰📋 Controle de pagamento e
+frequência".** Diferente de `raListaPagosRelatorio()`/`raHtmlRelatorioPagamentos()`
+(só quem JÁ está pago, lista achatada, sem agrupar) — este junta os dois
+papéis que de fato recebem auxílio em cada prédio (Presidente de cada
+seção + Coordenador de Acessibilidade do local), mostrando "Já recebeu" /
+"Ainda vai receber" / "Isento — motivo" por pessoa, agrupado por MUNICÍPIO
+→ LOCAL DE VOTAÇÃO (`raCalcularRelatorioPresidentesCoordenadores()`).
+Auxiliar de Eleição/Junta Eleitoral ficam de fora — o pedido foi só sobre
+coordenadores e presidentes. Local sem nenhum coordenador nomeado ainda
+aparece do mesmo jeito, com a linha "Sem coordenador de acessibilidade
+nomeado" (mesmo critério já usado na Conferência) — local sem NENHUM
+Presidente e NENHUM coordenador (nada a listar ali) não entra, não faz
+sentido um grupo inteiramente vazio num relatório sobre "quem recebeu ou
+vai receber". Documento de RELATÓRIO (não formulário de assinatura) —
+página única contínua, `page-break-inside:avoid` só no cabeçalho do
+município e em cada grupo de local (`.ra-rel-municipio-titulo`/
+`.ra-rel-grupo`, novas classes CSS) — mesmo critério já usado em
+`rtHtmlRelatorioTransmissao()` (`sime_rotas_modulo.js`): os grupos aqui são
+pequenos (no máximo um Coordenador + as poucas seções de um prédio), nunca
+centenas de linhas, então `avoid` no grupo inteiro é seguro.
+
+**2) `raImprimirCoordenadores()` passou a emitir uma folha por TODO local de
+votação da zona, não só os que já têm coordenador cadastrado.**
+`raCarregar()` ganhou uma consulta a mais (`sime_secoes` da zona inteira,
+só `município`+`local_nome`, sem filtrar `ativo` — mesmo critério que a
+consulta por `secaoIds` logo abaixo já usava: uma seção duplicada/inativa
+do mesmo prédio nunca introduz um `local_nome` novo, só repete um que já
+existiria) — `raDados.locaisZona`, deduplicado e ordenado.
+`raAgruparPorLocalComVazios(pessoas, locaisTodos)` (nova) completa o que
+`raAgruparPorLocal()` já devolvia com um grupo VAZIO (`pessoas: []`) pra
+qualquer local de `locaisZona` que ainda não apareceu — o grupo "⚠ Sem
+local definido" nunca é tocado por essa completude (não é um local de
+votação de verdade). `raHtmlPorLocal()` (usada só por este recibo) passou
+a tratar `pessoas.length === 0`: mostra um aviso ("⚠ Sem coordenador de
+acessibilidade nomeado neste local ainda — folha emitida para
+preenchimento manual...") e UMA linha em branco na tabela (Função já
+preenchida com "Coordenador de Acessibilidade" — sem "(a)", mesmo rótulo
+batido contra o ELO que o resto do documento já usa — Inscrição/Nome/
+Assinatura em branco pra preencher à mão). Botão nunca mais fica
+desabilitado por falta de coordenador — só desabilita se a zona não tiver
+local de votação cadastrado algum (nunca deveria acontecer de verdade).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs`: bloco 4 (recibo de
+Coordenador) passou de 2 pra 4 páginas físicas (Escola A + Escola B +
+Escola Municipal Grande do Centro + Sem local definido — as duas últimas
+sem nenhum coordenador nomeado, ganham a folha em branco com o aviso);
+bloco 19g (QR de devolução) idem, de 2 pra 4 blocos; novo bloco "17b"
+(relatório: Presidente pago com valor/documento, Coordenadora isenta com o
+motivo, local sem coordenador mostra o aviso, local sem Presidente/
+Coordenador nenhum nunca aparece, resumo de cidades/locais, log de
+auditoria) e "17c" (sem ninguém pra listar, avisa em vez de imprimir
+vazio) — 369 checks no total no arquivo.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

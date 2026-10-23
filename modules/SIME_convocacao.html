@@ -360,6 +360,22 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .ra-cartorio-obs{margin-bottom:1.5mm;}
   .ra-cartorio-obs-linha{display:block;border-bottom:1px solid #000;height:4mm;margin-top:1mm;}
   .ra-cartorio-suprido{margin-top:1.5mm;}
+  /* "Recibo de Coordenador emitido mesmo sem ninguém nomeado" (23/10/2026)
+     e "Relação — Coordenadores e Presidentes por cidade e local de
+     votação" (mesmo pedido) — a nota de aviso reaproveita o estilo abaixo
+     nos dois lugares; os grupos do relatório são pequenos (no máximo o
+     Coordenador + as poucas seções de UM prédio), então
+     `page-break-inside:avoid` no grupo inteiro é seguro aqui (diferente de
+     um relatório com grupos de centenas de linhas, onde isso empurraria a
+     página inteira em branco — ver `rtt-grupo-cabecalho` em
+     sime_rotas_modulo.js, mesmo critério, achado real documentado lá). */
+  .ra-rel-aviso{font-size:7.5pt;color:#333;margin:0 0 2mm;font-style:italic;}
+  .ra-rel-resumo{font-size:8.5pt;color:#333;margin-bottom:3mm;}
+  .ra-rel-municipio-titulo{font-weight:800;font-size:10pt;margin:4mm 0 2mm;border-bottom:2px solid #000;padding-bottom:1mm;page-break-inside:avoid;}
+  .ra-rel-municipio-titulo:first-child{margin-top:0;}
+  .ra-rel-grupo{margin-bottom:3mm;page-break-inside:avoid;}
+  .ra-rel-local-titulo{font-weight:700;font-size:8.5pt;margin-bottom:1mm;}
+  .ra-rel-tabela td,.ra-rel-tabela th{font-size:8pt;padding:1.5mm 2mm;}
 }
 </style>
 </head>

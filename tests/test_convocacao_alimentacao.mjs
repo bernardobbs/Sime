@@ -232,8 +232,13 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 4. Imprimir recibos — Coordenadores: agrupa por local, e quem não tem
-//      local resolvido entra numa seção própria, nunca escondido ──
+// ── 4. Imprimir recibos — Coordenadores: agrupa por local, quem não tem
+//      local resolvido entra numa seção própria, e (23/10/2026, pedido
+//      direto: "quero que os recibos do coordenadores devem ser emitidos
+//      mesmo não tendo coordenador de acessibilidade nomeado") um local da
+//      zona SEM nenhum coordenador cadastrado (Escola B, Escola Municipal
+//      Grande do Centro — nenhum dos dois tem coord_acessibilidade no
+//      mock) também ganha a folha, em branco, nunca escondido ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -248,6 +253,8 @@ async function login(p) {
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   check('coordenadora com local aparece agrupada em Escola A', /Escola A/.test(txt) && /COORDENADORA BEATRIZ/.test(txt));
   check('coordenador sem local aparece mesmo assim, numa seção própria', /Sem local definido/.test(txt) && /COORDENADOR CARLOS SEM LOCAL/.test(txt), txt.slice(0, 800));
+  check('Escola B (sem coordenador algum) ganha a folha em branco, com o aviso', /Escola B.*Sem coordenador de acessibilidade nomeado neste local ainda/.test(txt), txt.slice(0, 1200));
+  check('Escola Municipal Grande do Centro (sem coordenador) também ganha a folha', /Escola Municipal Grande do Centro.*Sem coordenador de acessibilidade nomeado neste local ainda/.test(txt), txt.slice(0, 1200));
   check('rótulo de função correto (sem "(a)", igual ao ELO)', /Coordenador de Acessibilidade/.test(txt) && !/Coordenador\(a\)/.test(txt));
   check('sem coluna "Seção Origem" nas substituições (documento é por local, não por seção)', !/Seção\s*Origem/.test(txt), txt.slice(0, 400));
   check('linha "OBS:" presente', /OBS:/.test(txt));
@@ -259,7 +266,7 @@ async function login(p) {
   await p.emulateMedia({ media: 'print' });
   const coordPdf = await p.pdf({ printBackground: true });
   const coordMediaBoxes = [...coordPdf.toString('latin1').matchAll(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
-  check('recibo de coordenador gerado em EXATAMENTE 2 páginas físicas (1 por local — Escola A + Sem local)', coordMediaBoxes.length === 2, String(coordMediaBoxes.length));
+  check('recibo de coordenador gerado em EXATAMENTE 4 páginas físicas (Escola A + Escola B + Escola Municipal Grande do Centro + Sem local)', coordMediaBoxes.length === 4, String(coordMediaBoxes.length));
   await p.emulateMedia({ media: 'screen' });
 
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
@@ -1078,6 +1085,80 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 17b. Relação — Coordenadores e Presidentes por cidade e local de
+// votação (23/10/2026, pedido direto: "quero um pdf com a relação dos
+// coordenadores e os presidentes das respectivas seções que receberam ou
+// receberão os auxílios alimentação separado por cidade e local de
+// votação") — junta os dois papéis que de fato recebem auxílio em cada
+// prédio, mostrando quem já recebeu/vai receber/é isento; um local SEM
+// nenhum Presidente nem Coordenador (Escola B, no mock) não entra no
+// relatório — nada a listar ali. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  const m1 = m.sime_atores.find(a => a.id === 'm1');
+  m1.auxilio_alimentacao_pago = true;
+  m1.auxilio_alimentacao_valor_pago = 260;
+  m1.auxilio_alimentacao_documento = 'DOC1';
+  const c1 = m.sime_atores.find(a => a.id === 'c1');
+  c1.auxilio_alimentacao_isento = true;
+  c1.auxilio_alimentacao_isento_motivo = 'Trabalhou pela folga';
+  // m5 — Presidente de "Escola Municipal Grande do Centro" (seção 63),
+  // pendente, de propósito, e esse local não tem NENHUM coordenador
+  // cadastrado no mock.
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  await p.click('button:has-text("Imprimir relação — Coordenadores e Presidentes por cidade e local")');
+  await p.waitForTimeout(300);
+
+  check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
+  const paginas = await p.locator('#print-area .ra-pagina').count();
+  check('uma única página (lista contínua, não uma por local)', paginas === 1, String(paginas));
+  const html = await p.locator('#print-area').innerHTML();
+  const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  check('título do relatório presente', /Relação — Coordenadores e Presidentes por Local de Votação/.test(txt));
+  check('resumo mostra 1 cidade e 2 locais (Escola B, sem Presidente/Coordenador, não entra)', /1 cidade\(s\)\s*·\s*2 local\(is\) de votação/.test(txt), txt.slice(0, 300));
+  check('cabeçalho da cidade Campo Maior presente', /📍\s*Campo Maior/.test(txt));
+  check('"Jatobá do Piauí" (só tem Escola B) nunca aparece', !/Jatobá do Piauí/.test(txt));
+  check('Escola A: Presidente pago, com valor e documento', /Escola A.*Presidente.*5.*PRESIDENTE MARIA\b.*Já recebeu.*R\$ 260,00.*DOC1/.test(txt), txt.slice(0, 1000));
+  check('Escola A: Coordenadora isenta, com o motivo, sem valor/documento', /COORDENADORA BEATRIZ.*Isento — Trabalhou pela folga.*—.*—/.test(txt), txt.slice(0, 1000));
+  check('Escola Municipal Grande do Centro: Presidente pendente', /Escola Municipal Grande do Centro.*Sem coordenador de acessibilidade nomeado.*Presidente.*63.*PRESIDENTE MARIA DA SILVA.*Ainda vai receber/.test(txt), txt.slice(0, 1500));
+  check('Escola B nunca aparece no relatório (nenhum Presidente/Coordenador lá)', !/Escola B/.test(txt));
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const log = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_relatorio_presidentes_coordenadores_impresso');
+  check('log de auditoria gravado com quantidade 2 (2 locais)', !!log && log.payload.payload.quantidade === 2, JSON.stringify(log));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 17c. Relação — sem nenhum Presidente/Coordenador com local resolvido:
+// avisa em vez de imprimir vazio ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  m.sime_atores = m.sime_atores.filter(a => a.funcao !== 'mesario' && a.funcao !== 'coord_acessibilidade');
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  await p.click('button:has-text("Imprimir relação — Coordenadores e Presidentes por cidade e local")');
+  await p.waitForTimeout(300);
+  check('sem Presidente/Coordenador nenhum, avisa em vez de chamar window.print()', await p.evaluate(() => window.__printCalls) === 0);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 // ── 18. Frequência e Devolução da mesa — modal "❌ Faltou" (06/10/2026,
 // pedido direto: "quando marcar em faltou, deve abrir um modal para
 // indicar qual membro da mesa faltou e não foi substituido" + "tambem
@@ -1465,9 +1546,14 @@ async function login(p) {
 
   await p.click('button:has-text("Imprimir recibos — Coordenadores")');
   await p.waitForTimeout(250);
-  check('Coordenadores: 2 blocos de QR (Escola A + Sem local definido)', await p.locator('#print-area .ra-qr-dev-impresso').count() === 2);
+  // 4 blocos agora (23/10/2026) — Escola A, Escola B e Escola Municipal
+  // Grande do Centro (estas duas sem nenhum coordenador nomeado, mas ainda
+  // ganham a folha/QR) + "Sem local definido".
+  check('Coordenadores: 4 blocos de QR (Escola A + Escola B + Escola Municipal Grande do Centro + Sem local definido)', await p.locator('#print-area .ra-qr-dev-impresso').count() === 4);
   const txtCoord = (await p.locator('#print-area').innerHTML());
   check('legenda cita "Devolução - Escola A"', /Devolução - Escola A\b/.test(txtCoord));
+  check('legenda cita "Devolução - Escola B"', /Devolução - Escola B\b/.test(txtCoord));
+  check('legenda cita "Devolução - Escola Municipal Grande do Centro"', /Devolução - Escola Municipal Grande do Centro\b/.test(txtCoord));
   check('legenda cita "Devolução - ⚠ Sem local definido"', /Devolução - ⚠ Sem local definido/.test(txtCoord));
 
   await p.click('button:has-text("Imprimir recibos — Sábado e Domingo")');
