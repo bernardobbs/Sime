@@ -62,9 +62,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 .rodape{font-size:.68rem;color:var(--text3);text-align:center;margin-top:10px;line-height:1.6;}
 
-.loc-qr{display:flex;align-items:center;gap:10px;margin-top:4px;}
-.loc-qr canvas{border-radius:8px;background:#fff;padding:4px;border:1px solid var(--border);flex-shrink:0;}
-.loc-qr-legenda{font-size:.72rem;color:var(--text2);line-height:1.4;}
+.loc-qr{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:10px;}
+.loc-qr canvas{border-radius:10px;background:#fff;padding:8px;border:1px solid var(--border);flex-shrink:0;max-width:100%;height:auto;}
+.loc-qr-legenda{font-size:.78rem;color:var(--text2);line-height:1.4;text-align:center;max-width:280px;}
 </style>
 </head>
 <body>
@@ -134,11 +134,19 @@ function linkMapa(row) {
 }
 
 function qrSizePx(texto) {
+  // QR grande de propósito (23/10/2026, pedido direto: "quero o qrcode
+  // maior, o mesário vai consultar e um terceiro vai ler o qrcode") — quem
+  // olha o resultado na tela do próprio celular precisa conseguir MOSTRAR
+  // o QR pra outra pessoa escanear de uma distância razoável, não só ler
+  // de perto. Mesmo princípio de escalar pela URL já usado em
+  // rtQrSizePx()/tkQrCanvasPx() (SIME_rotas.html/SIME_tokens.html) — um
+  // link mais longo (ex.: busca por endereço, sem coordenada) precisa de
+  // mais módulos, então o canvas cresce junto pra não borrar.
   const n = (texto || '').length;
-  if (n <= 60) return 96;
-  if (n <= 150) return 140;
-  if (n <= 260) return 190;
-  return 250;
+  if (n <= 60) return 220;
+  if (n <= 150) return 280;
+  if (n <= 260) return 340;
+  return 400;
 }
 
 function agruparPorLocal(linhas) {
