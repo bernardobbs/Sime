@@ -20,7 +20,16 @@
 // QR Code do Google Maps.
 import pw from 'playwright';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 const { chromium } = pw;
+
+// Raiz do repo calculada a partir deste arquivo (tests/..), nunca um caminho
+// absoluto chumbado — bug real corrigido em 23/10/2026: o teste tinha
+// "/home/user/Sime" hardcoded, que só existe neste sandbox; no CI o checkout
+// vive em /home/runner/work/Sime/Sime e todo fs.readFileSync quebrava com
+// ENOENT, derrubando a suíte inteira mesmo com a página em si corrigida.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
@@ -54,7 +63,7 @@ async function withPage(run) {
       return route.fulfill({ contentType: 'application/javascript', body: STUB_SUPABASE_JS });
     }
     if (url.pathname.startsWith('/modules/')) {
-      const fsPath = '/home/user/Sime' + url.pathname;
+      const fsPath = path.join(REPO_ROOT, url.pathname);
       try {
         const body = fs.readFileSync(fsPath);
         let ct = 'application/octet-stream';
@@ -68,7 +77,7 @@ async function withPage(run) {
       }
     }
     if (url.pathname === '/onde-votar') {
-      const body = fs.readFileSync('/home/user/Sime/modules/SIME_buscar_local.html');
+      const body = fs.readFileSync(path.join(REPO_ROOT, 'modules/SIME_buscar_local.html'));
       return route.fulfill({ contentType: 'text/html', body });
     }
     return route.fulfill({ status: 404, body: 'not found: ' + url.pathname });
