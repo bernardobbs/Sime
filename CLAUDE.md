@@ -10346,7 +10346,7 @@ canvas escalada pelo tamanho da URL (`qrSizePx()`, mesmo critério de
 uma URL de busca por endereço, bem mais longa que a de coordenada).
 
 Verificado com Playwright reproduzindo a topologia real de produção
-(`tests/test_buscar_local.mjs`, novo — 12 checks): a página é servida via
+(`tests/test_buscar_local.mjs` — 14 checks): a página é servida via
 `/onde-votar` com rotas stubadas de propósito pra só responder em
 `/onde-votar` e `/modules/*` (qualquer outro caminho 404, reproduzindo
 exatamente o que um import relativo quebrado produziria) — confirmado que
@@ -10356,6 +10356,43 @@ renderiza o card com QR e trata vazio/erro de rede sem travar. A correção
 da RPC em si (grant pra `anon`, ausência de sobrecarga ambígua) já tinha
 sido confirmada direto no banco (`execute_sql`/`pg_proc`) na sessão
 anterior — o problema nunca esteve do lado do banco.
+
+**Revisão no mesmo dia (23/10/2026) — "quero que conste as seção
+agregadas, e somente da 7ª zona" + "na consulta tem que entender que 001 e
+01 e 1 é a mesma seção".** Achado real: buscar só pelo NÚMERO de uma seção
+devolvia só aquela linha, mesmo quando o prédio tem outras seções ativas
+no mesmo local — a Escola/Grupo Escolar Monsenhor Mateus, por exemplo, tem
+10 seções (85-90,132,151,158,177), e buscar "85" só mostrava a 85 sozinha,
+sem indicar que o mesmo prédio atende mais 9 seções. Buscar por NOME já
+agregava direito (a condição bate em toda linha com aquele `local_nome`),
+só a busca por número ficava de fora dessa agregação.
+
+`sime_buscar_local_votacao()` reescrita com um CTE em duas etapas — `hits`
+(quem bate no critério de busca, por número OU nome/município) e a query
+final, que devolve TODA seção ativa do MESMO `(local_nome, municipio)` de
+qualquer linha em `hits`, não só a que bateu — mesmo critério de
+agrupamento por prédio já usado em todo o resto do projeto (não existe
+tabela própria de "locais", o par `local_nome`+`municipio` é a chave de
+sempre). Verificado direto no banco: buscar "85" agora devolve as 10
+seções do prédio inteiro. `LIMIT` subido de 50 pra 300 — com agregação por
+prédio, uma busca por MUNICÍPIO grande (ex.: Campo Maior, ~92 seções)
+podia estourar o limite antigo e cortar o fim da lista no meio de um
+prédio.
+
+**"001"/"01"/"1" já eram a mesma seção** — o `v_termo::integer` já existia
+desde a v1 e descarta zero à esquerda sozinho (`'001'::integer = 1` em
+Postgres); verificado direto no banco que as três formas devolvem
+exatamente o mesmo resultado — não precisou de normalização nova, só
+confirmação.
+
+**Só a 7ª Zona** — `z.numero = 7` fixo nas duas etapas do CTE (`hits` e a
+query final), nunca mais um `join` solto que deixaria a 94ª entrar se
+algum termo batesse por coincidência (ex.: nome de município da 94ª).
+Verificado direto no banco: buscar "oeiras" (sede da 94ª, que tem dado
+real — 98 seções ativas) devolve 0 linhas. A 94ª continua fora do escopo
+desta busca pública — mesma priorização "7ª Zona é o foco, 94ª fica pra
+depois" já documentada em "PENDÊNCIAS" — zona não é mais um parâmetro
+aceito pela função, só uma decisão fixa dentro dela.
 
 ---
 

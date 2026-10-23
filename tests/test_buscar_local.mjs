@@ -118,6 +118,27 @@ await withPage(async (page, logs) => {
   check('legenda do QR explica o uso', legenda.includes('câmera'), legenda);
 });
 
+// Caso 1b: a RPC (23/10/2026, "quero que conste as seção agregadas, e
+// somente da 7ª zona") passou a devolver TODAS as seções do mesmo prédio
+// quando a busca bate por NÚMERO de uma delas — este teste garante que o
+// front-end (que só agrupa o que recebe) mostra as várias seções
+// agregadas num card só, não um card por seção.
+await withPage(async (page) => {
+  await page.evaluate(() => {
+    window.__mockConfig.rows = [
+      { zona_numero: 7, secao_numero: 85, local_nome: '1023 - GRUPO ESCOLAR MONSENHOR MATEUS', municipio: 'Sigefredo Pacheco', endereco: null, eleitores: 300, latitude: null, longitude: null },
+      { zona_numero: 7, secao_numero: 86, local_nome: '1023 - GRUPO ESCOLAR MONSENHOR MATEUS', municipio: 'Sigefredo Pacheco', endereco: null, eleitores: 280, latitude: null, longitude: null },
+      { zona_numero: 7, secao_numero: 177, local_nome: '1023 - GRUPO ESCOLAR MONSENHOR MATEUS', municipio: 'Sigefredo Pacheco', endereco: null, eleitores: 310, latitude: null, longitude: null },
+    ];
+  });
+  await page.fill('#busca-input', '85');
+  await page.waitForTimeout(600);
+  const cardCount = await page.locator('.loc-card').count();
+  check('seções do mesmo prédio viram 1 card só, não 3', cardCount === 1, 'cards=' + cardCount);
+  const cardText = await page.locator('.loc-card').first().textContent();
+  check('card mostra as 3 seções agregadas', ['085', '086', '177'].every(n => cardText.includes('Seção ' + n)), cardText);
+});
+
 // Caso 2: busca sem resultado nunca trava, mostra o vazio de sempre.
 await withPage(async (page) => {
   await page.evaluate(() => { window.__mockConfig.rows = []; });
