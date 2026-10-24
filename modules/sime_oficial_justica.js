@@ -118,7 +118,7 @@ async function ojSalvarStatus(id, status) {
     Object.assign(patch, { confirmacao: 'convocado', data_confirmacao: null, convocacao_recebida: true, convocacao_recebida_ts: ts });
   }
   const { error } = await sb.from('sime_atores').update(patch).eq('id', id);
-  if (error) { showToast('⚠ ' + error.message); return; }
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
   Object.assign(p, patch);
   // Mesma ação que o modal de "Contatar mesários" já usa (cmSalvarStatusAlt)
   // — uma mudança feita aqui aparece na timeline de Atualizações da pessoa

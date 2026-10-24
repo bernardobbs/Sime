@@ -2,26 +2,31 @@
 // botão antigo ("Resetar dados de teste") virou no-op depois da migração pro
 // Supabase, e isso deixava ocorrências e estado de Dia D (chegada, votação,
 // urna, pânico) de teste presos na tela pra sempre — reimplementado cobrindo
-// sime_ocorrencias E sime_mesa_estado da zona do usuário, com confirmação
-// mostrando a contagem de cada tabela antes de apagar.
+// sime_ocorrencias, sime_mesa_estado E (29/09/2026, mesma lacuna achada em
+// produção — TV Preparação presa em "9 de 174 lacradas" de teste)
+// sime_carga_lacre, todos da zona do usuário, com confirmação mostrando a
+// contagem de cada tabela antes de apagar.
 import pw from 'playwright';
 const { chromium } = pw;
 
 const results = []; const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 const b = await chromium.launch();
 
-function stubSupabaseJs({ ocorrencias, secoes, mesaEstado }) {
+function stubSupabaseJs({ ocorrencias, secoes, mesaEstado, eleicoes, cargaLacre }) {
   return `
 export function createClient(url, key) {
   let session = null;
   const ZONAS = [{ id: 'zona-7', numero: 7, municipio: 'Campo Maior' }];
   const SECOES = ${JSON.stringify(secoes)};
+  const ELEICOES = ${JSON.stringify(eleicoes || [])};
   let OCORRENCIAS = ${JSON.stringify(ocorrencias)};
   let MESA_ESTADO = ${JSON.stringify(mesaEstado)};
+  let CARGA_LACRE = ${JSON.stringify(cargaLacre || [])};
   let LOGS = [];
   window.__logs = LOGS;
   window.__ocorrenciasRestantes = () => OCORRENCIAS.length;
   window.__mesaEstadoRestantes = () => MESA_ESTADO.length;
+  window.__cargaLacreRestantes = () => CARGA_LACRE.length;
   return {
     auth: {
       getSession: async () => ({ data: { session } }),
@@ -46,6 +51,7 @@ export function createClient(url, key) {
         if (t === 'sime_zonas') return resolve({ data: ZONAS, error: null });
         if (t === 'sime_usuarios') return resolve({ data: [], error: null });
         if (t === 'sime_secoes') return resolve({ data: SECOES.filter(matches), error: null });
+        if (t === 'sime_eleicoes') return resolve({ data: ELEICOES.filter(matches), error: null });
         if (t === 'sime_ocorrencias') {
           if (qb._op === 'delete') { OCORRENCIAS = OCORRENCIAS.filter((o) => !matches(o)); return resolve({ error: null }); }
           if (qb._count) return resolve({ data: null, count: OCORRENCIAS.filter(matches).length, error: null });
@@ -55,6 +61,11 @@ export function createClient(url, key) {
           if (qb._op === 'delete') { MESA_ESTADO = MESA_ESTADO.filter((m) => !matches(m)); return resolve({ error: null }); }
           if (qb._count) return resolve({ data: null, count: MESA_ESTADO.filter(matches).length, error: null });
           return resolve({ data: MESA_ESTADO.filter(matches), error: null });
+        }
+        if (t === 'sime_carga_lacre') {
+          if (qb._op === 'delete') { CARGA_LACRE = CARGA_LACRE.filter((c) => !matches(c)); return resolve({ error: null }); }
+          if (qb._count) return resolve({ data: null, count: CARGA_LACRE.filter(matches).length, error: null });
+          return resolve({ data: CARGA_LACRE.filter(matches), error: null });
         }
         return resolve({ data: [], error: null });
       };
@@ -112,6 +123,15 @@ async function clicarResetar(p, accept) {
         { secao_id: 'sec-3', panico_energia: true },
         { secao_id: 'sec-90', votacao: true }, // outra zona — não pode ser tocada
       ],
+      eleicoes: [
+        { id: 'el-7', zona_id: 'zona-7', turno: 1 },
+        { id: 'el-94', zona_id: 'zona-94', turno: 1 },
+      ],
+      cargaLacre: [
+        { id: 'cl-1', eleicao_id: 'el-7', secao_id: 'sec-1', carga: true, preparacao: true, lacre: true },
+        { id: 'cl-2', eleicao_id: 'el-7', secao_id: 'sec-3', carga: true, preparacao: false, lacre: false },
+        { id: 'cl-3', eleicao_id: 'el-94', secao_id: 'sec-90', carga: true, preparacao: true, lacre: true }, // outra zona
+      ],
     }) });
   });
   await p.goto('http://localhost:8917/modules/SIME_admin.html');
@@ -124,9 +144,11 @@ async function clicarResetar(p, accept) {
   check('caso1: apagou as 2 ocorrências da própria zona, preservou a de outra', restantesOcor === 1, 'restantes=' + restantesOcor);
   const restantesMesa = await p.evaluate(() => window.__mesaEstadoRestantes());
   check('caso1: apagou as 2 seções de mesa_estado da própria zona, preservou a de outra', restantesMesa === 1, 'restantes=' + restantesMesa);
+  const restantesCarga = await p.evaluate(() => window.__cargaLacreRestantes());
+  check('caso1: apagou as 2 linhas de carga_lacre da própria zona, preservou a de outra', restantesCarga === 1, 'restantes=' + restantesCarga);
   const logs = await p.evaluate(() => window.__logs);
   const logReset = logs.find(l => l.acao === 'reset_dados_teste');
-  check('caso1: registrou log de auditoria com as duas quantidades', logReset && logReset.payload.problemas === 2 && logReset.payload.mesa_estado === 2, JSON.stringify(logReset));
+  check('caso1: registrou log de auditoria com as três quantidades', logReset && logReset.payload.problemas === 2 && logReset.payload.mesa_estado === 2 && logReset.payload.carga_lacre === 2, JSON.stringify(logReset));
   await ctx.close();
 }
 
@@ -199,6 +221,31 @@ async function clicarResetar(p, accept) {
   check('caso4: zero erros JS', erros.length === 0, erros.join('; '));
   const restantesMesa = await p.evaluate(() => window.__mesaEstadoRestantes());
   check('caso4: apaga mesa_estado mesmo sem ocorrências', restantesMesa === 0, 'restantes=' + restantesMesa);
+  await ctx.close();
+}
+
+// ── Caso 5: só tem carga_lacre de teste (sem ocorrências, sem mesa_estado) — apaga só o que existe ──
+{
+  const ctx = await b.newContext();
+  const p = await ctx.newPage();
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.route('**/vendor/supabase-js.esm.js**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/javascript', body: stubSupabaseJs({
+      secoes: [{ id: 'sec-1', zona_id: 'zona-7', numero: 1 }],
+      ocorrencias: [], mesaEstado: [],
+      eleicoes: [{ id: 'el-7', zona_id: 'zona-7', turno: 1 }],
+      cargaLacre: [{ id: 'cl-1', eleicao_id: 'el-7', secao_id: 'sec-1', carga: true, preparacao: true, lacre: true }],
+    }) });
+  });
+  await p.goto('http://localhost:8917/modules/SIME_admin.html');
+  await p.waitForTimeout(300);
+  await fazerLogin(p);
+  await clicarResetar(p, true);
+
+  check('caso5: zero erros JS', erros.length === 0, erros.join('; '));
+  const restantesCarga = await p.evaluate(() => window.__cargaLacreRestantes());
+  check('caso5: apaga carga_lacre mesmo sem ocorrências/mesa_estado', restantesCarga === 0, 'restantes=' + restantesCarga);
   await ctx.close();
 }
 

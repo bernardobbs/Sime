@@ -67,6 +67,7 @@ await p.route('**/modules/sime_dados.js', async (route) => {
     export function mapMidiaRow(){ return {}; }
     export async function getMidiasMap(){ return null; }
     export async function getRotasEstadoMap(){ return {}; }
+    export async function getRotasRecolhimentoMidia(){ return []; }
   `});
 });
 await p.goto('http://localhost:8917/modules/SIME_admin.html');

@@ -346,7 +346,7 @@ async function mcAtualizar() {
 
     const { data, error } = await sb.from('sime_atores').update(patch)
       .eq('zona_id', zonaId).eq('inscricao_eleitoral', normalizarTituloEleitor(l.inscricao)).select('id');
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     if (data && data.length) atualizados += data.length; else semMatch++;
   }
 
@@ -442,7 +442,7 @@ async function cpAtualizar() {
   for (const l of validas) {
     const { data, error } = await sb.from('sime_atores').update({ telefone_whatsapp: l.telefone })
       .eq('zona_id', zonaId).eq('inscricao_eleitoral', normalizarTituloEleitor(l.titulo)).select('id');
-    if (error) { showToast('⚠ ' + error.message); return; }
+    if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
     if (data && data.length) atualizados++; else semMatch++;
   }
   cpResultado = { linhas, atualizados, semMatch };

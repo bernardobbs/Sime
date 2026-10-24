@@ -9,3 +9,7 @@ __pycache__/
 # SQL gerado por scripts/parse_mesarios*.py a partir de exportações reais do
 # TRE (nome/CPF/telefone de mesário) — nunca deve ir pro histórico do repo.
 scripts/output/
+
+# PDFs/relatórios avulsos gerados sob demanda (nome/CPF/PIX de mesário real)
+# — entregues direto ao cartório, nunca versionados.
+relatorios/

@@ -1,0 +1,36 @@
+-- Nome completo do local de votação, sem abreviação, com o código do TSE
+-- na frente — 27/09/2026, pedido direto: "altere na base de dados os
+-- nomes dos locais tipo 1031 - SAAE - SERVICO AUTONOMO DE AGUA E ESGOTO...
+-- sem resumo, nome completo e codigo do local".
+--
+-- `sime_secoes.local_nome` deixou de ser a forma abreviada
+-- (U.E./G.E./Esc. Mun./Col. Est./etc., convenção usada desde o seed
+-- original da zona) e passou a ser literalmente "CÓDIGO - NOME COMPLETO",
+-- copiado do mesmo formulário de vistoria do TSE já usado pro backfill de
+-- `endereco` (ver `sql/SIME_secoes_endereco.sql`, mesmo dia). O código
+-- (ex.: "1031") é o número do local por MUNICÍPIO no formulário — não é
+-- globalmente único na zona (o mesmo "1031" é um prédio em Campo Maior,
+-- outro em Jatobá do Piauí, outro em Sigefredo Pacheco), mas como cada
+-- seção só pertence a UM município, isso nunca gera ambiguidade dentro do
+-- `local_nome` de cada seção.
+--
+-- Rodado uma vez via SQL Editor/MCP (não é migração, não reaplica
+-- sozinha) — 174 das 176 seções da 7ª Zona, casando por número de seção
+-- (mesma chave já usada pro backfill de endereço). As 2 que ficaram de
+-- fora (146 — U.E. Antônio Rodrigues; 263 — Penitenciária) não apareceram
+-- no formulário de vistoria usado como fonte, então mantiveram o nome
+-- antigo — nunca inventado.
+--
+-- ATENÇÃO — efeito colateral conhecido, não corrigido nesta rodada: rotas
+-- de recolhimento de mídia cujo `ponto_partida`/`destino` foi
+-- AUTO-SUGERIDO a partir do nome ANTIGO (abreviado) de uma parada
+-- (ver módulo 🗺️ Rotas, "Partida/Destino sugeridos") não são recasadas
+-- automaticamente contra o nome novo — `rtMapsUrl()` ainda indexa pelas
+-- DUAS formas antigas (com/sem número de seção, ver
+-- `sql/SIME_secoes_google_directions.sql`/`sime_rotas_modulo.js`), mas
+-- não pela forma "completa" criada agora. Na prática, o link do Google
+-- Maps de uma rota assim cai num tier de precisão mais baixo (texto +
+-- contexto de município) em vez da coordenada exata — nunca quebra, só
+-- fica menos preciso. Se for pedido, dá pra rodar um backfill análogo ao
+-- de "LOCAL DE VOTAÇÃO SEMPRE 'NÚMERO — NOME, MUNICÍPIO'" (27/09/2026)
+-- pra recasar `ponto_partida`/`destino` pro nome novo nas rotas afetadas.
