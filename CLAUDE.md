@@ -10516,6 +10516,52 @@ nenhum).
 
 ---
 
+## MENSAGEM DO PIX EDITÁVEL POR PESSOA (`sime_recibo_alimentacao.js`, 24/10/2026)
+
+Pedido direto, com um caso real anexado: "quero poder alterar a mensagem do
+pix em cada pix. por exemplo os membros da junta DANIEL IGO PESSOA
+MAGALHAES a mensagem é Auxílio Alimentação Eleições 2026 - Seção 157 e
+deveria ser junta eleitoral". Causa raiz: `raPixDescricao(p)` só olha se
+`p.sec` está resolvido (`"...${p.sec ? ` - Seção ${p.sec.numero}` : ''}"`) —
+nunca a FUNÇÃO da pessoa. Um Membro da Junta Eleitoral com `secao_id`
+preenchido (não é incomum — a mesma pessoa pode ter outro cadastro ligado a
+uma seção) ganhava a descrição de mesário/Presidente por engano, mesmo
+não tendo relação nenhuma com aquela seção pra fins de pagamento.
+
+Em vez de só corrigir o caso específico da Junta (o que esconderia a mesma
+confusão pra qualquer outra pessoa cujo `secao_id` resolvido não reflita o
+cargo de verdade pago), virou um campo editável de verdade —
+`sime_atores.auxilio_alimentacao_pix_mensagem`
+(`sql/SIME_atores_pix_mensagem.sql`, texto livre, nunca formatado/validado,
+mesmo critério já usado em `uc_equatorial`/`codigo_rastreio`/`pix`).
+
+**`raDestinoPix(p)`** passou a checar esse campo primeiro, nas DUAS
+situações (pagamento direto e via Presidente, do coordenador de
+acessibilidade) — preenchido, substitui INTEIRAMENTE a descrição
+auto-gerada; vazio, cai no texto automático de sempre
+(`raPixDescricao`/a descrição fixa do coordenador). Nunca recalcula nada
+sozinho — é sempre o que a pessoa digitou, verbatim.
+
+**Campo novo no modal de detalhe** (`#ra-modal-pix-mensagem`, logo abaixo
+de "Chave PIX"), mesmo padrão onblur-salva-sozinho de sempre
+(`raSalvarPixMensagem`, mesma ação de log de `raSalvarPix`/
+`raSalvarDocumentoEnvio` — `mesario_auxilio_alimentacao_pix_mensagem`).
+**O placeholder do campo mostra o texto automático** (calculado chamando
+`raDestinoPix` com o override zerado, `{ ...p,
+auxilio_alimentacao_pix_mensagem: null }` — não duplica a lógica de
+decisão) — o cartório vê de cara o que SAIRIA sem editar nada, antes de
+decidir sobrescrever. A linha de texto junto do QR (`${raFmtValor(valor)} —
+${destino.descricao}`) reflete a mesma escolha.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 26, 9 checks —
+378 no total no arquivo): reproduz o caso real (Junta Eleitoral com
+`secao_id` preenchido e PIX cadastrado) mostrando "Seção 5" por padrão no
+placeholder e na descrição junto do QR; editar grava e loga; o texto junto
+do QR passa a usar a mensagem personalizada; esvaziar o campo volta pro
+texto automático.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

@@ -177,7 +177,7 @@ async function raCarregar() {
     sb.from('sime_eleicoes').select('id, turno, data_d')
       .eq('zona_id', zonaId).eq('ativa', false).order('turno'),
     sb.from('sime_atores')
-      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, auxilio_alimentacao_isento, auxilio_alimentacao_isento_motivo, pix, observacao')
+      .select('id, nome_completo, funcao, funcao_mesa, secao_id, inscricao_eleitoral, auxilio_alimentacao_pago, auxilio_alimentacao_valor_pago, auxilio_alimentacao_pago_em, auxilio_alimentacao_documento, auxilio_alimentacao_frequencia, auxilio_alimentacao_devolvido, auxilio_alimentacao_devolvido_em, auxilio_alimentacao_devolucao_documento, auxilio_alimentacao_recibo_ausente, auxilio_alimentacao_isento, auxilio_alimentacao_isento_motivo, auxilio_alimentacao_pix_mensagem, pix, observacao')
       .eq('zona_id', zonaId).eq('ativo', true)
       .in('funcao', ['mesario', 'coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral']),
     // TODAS as seções da zona (23/10/2026, pedido direto: "quero que os
@@ -292,7 +292,17 @@ function raNomeLocalSemCodigo(localNome) {
 // nenhum Presidente ativo encontrado pra ele, não há destino — nunca
 // inventa um substituto. Demais funções continuam pagas na própria chave,
 // sem mudança nenhuma.
+//
+// `auxilio_alimentacao_pix_mensagem` (24/10/2026, pedido direto: "quero
+// poder alterar a mensagem do pix em cada pix" — achado real: Daniel Igo
+// Pessoa Magalhães, Membro da Junta Eleitoral, tinha seção resolvida e a
+// descrição automática mostrava "Seção 157", sem sentido pra um cargo que
+// não tem relação com seção nenhuma pra fins de pagamento) — quando a
+// PRÓPRIA pessoa tem esse campo preenchido (editável no modal), substitui
+// INTEIRAMENTE a descrição auto-gerada, nas duas situações (via Presidente
+// ou direto); vazio continua caindo no texto automático de sempre.
 function raDestinoPix(p) {
+  const mensagemPersonalizada = String(p.auxilio_alimentacao_pix_mensagem || '').trim();
   if (p.funcao === 'coord_acessibilidade' && p.sec) {
     const chave = `${p.sec.municipio}|||${p.sec.local_nome}`;
     const presidente = raDados.presidentePorLocal?.[chave];
@@ -301,14 +311,14 @@ function raDestinoPix(p) {
       return {
         chavePix: presidente.pix,
         nomeDestinatario: presidente.nome_completo,
-        descricao: `Eleições 2026 - Coordenador de Acessibilidade${localSemCodigo ? ` - ${localSemCodigo}` : ''}`,
+        descricao: mensagemPersonalizada || `Eleições 2026 - Coordenador de Acessibilidade${localSemCodigo ? ` - ${localSemCodigo}` : ''}`,
         viaPresidente: true,
         presidenteNome: presidente.nome_completo,
         presidenteSecao: presidente.sec.numero,
       };
     }
   }
-  return { chavePix: p.pix, nomeDestinatario: p.nome_completo, descricao: raPixDescricao(p), viaPresidente: false };
+  return { chavePix: p.pix, nomeDestinatario: p.nome_completo, descricao: mensagemPersonalizada || raPixDescricao(p), viaPresidente: false };
 }
 
 // Mesma pessoa (mesmo título de eleitor) segurando mais de um papel ATIVO
@@ -1338,6 +1348,27 @@ async function raSalvarPix(id) {
   if (raModalId === id) raRenderModal(); // redesenha o QR com a chave nova
 }
 
+// Mensagem/descrição do PIX, editável por pessoa (24/10/2026, pedido
+// direto) — quando preenchida, substitui a descrição auto-gerada
+// (`raPixDescricao()`/`raDestinoPix()`) que entra no QR; vazia, volta pro
+// texto automático de sempre. Nunca formatada/validada — mesmo critério
+// de uc_equatorial/codigo_rastreio/pix.
+async function raSalvarPixMensagem(id) {
+  const campo = document.getElementById('ra-modal-pix-mensagem');
+  if (!campo) return;
+  const msg = campo.value.trim();
+  const p = raPessoaModal();
+  if (!p || msg === (p.auxilio_alimentacao_pix_mensagem || '')) return;
+  const sb = window.supabaseAtores;
+  const { error } = await sb.from('sime_atores').update({ auxilio_alimentacao_pix_mensagem: msg || null }).eq('id', id);
+  if (error) { showToast('⚠ ' + mensagemErroAmigavel(error)); return; }
+  p.auxilio_alimentacao_pix_mensagem = msg || null;
+  const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
+  await log('mesario_auxilio_alimentacao_pix_mensagem', '', { ator_id: id, mensagem: p.auxilio_alimentacao_pix_mensagem, autor });
+  showToast('✓ Mensagem do PIX salva');
+  if (raModalId === id) raRenderModal(); // redesenha o QR com a descrição nova
+}
+
 // ── QR Code do PIX (30/09/2026, pedido direto: "conseguiriamos gerar o
 // qrcode do pix ao abrir o modal com o valor preenchido e informação
 // Auxilio alimentação eleições 2026 seção XXX?") — BR Code (o payload
@@ -1629,6 +1660,10 @@ function raRenderModal() {
   const destino = raDestinoPix(p);
   const chaveQr = destino.chavePix ? raPixChaveNormalizada(destino.chavePix) : '';
   const chaveQrMudou = destino.chavePix && chaveQr !== String(destino.chavePix).trim();
+  // Descrição que SAIRIA sem nenhuma mensagem personalizada — mostrada como
+  // placeholder do campo abaixo, pra o cartório ver o texto automático
+  // mesmo enquanto decide se quer sobrescrevê-lo.
+  const descricaoAuto = raDestinoPix({ ...p, auxilio_alimentacao_pix_mensagem: null }).descricao;
 
   modal.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -1645,6 +1680,12 @@ function raRenderModal() {
       <label>Chave PIX${destino.viaPresidente ? ' (do próprio coordenador — informativo)' : ''}</label>
       <input id="ra-modal-pix" type="text" value="${raEsc(p.pix || '')}" placeholder="CPF, telefone, e-mail ou chave aleatória" onblur="raSalvarPix('${p.id}')">
       ${destino.viaPresidente ? `<div class="ic-sub" style="margin:4px 0 0">ℹ️ Coordenador(a) de Acessibilidade: o pagamento deste cargo vai pro PIX do <b>Presidente de Mesa</b> da seção de menor número do local — este campo não é usado no QR abaixo.</div>` : ''}
+    </div>
+
+    <div class="form-group" style="margin-top:8px">
+      <label style="font-size:.72rem;color:var(--text2);display:block;margin-bottom:2px">Mensagem do PIX (texto que aparece no QR)</label>
+      <input id="ra-modal-pix-mensagem" type="text" value="${raEsc(p.auxilio_alimentacao_pix_mensagem || '')}" placeholder="${raEsc(descricaoAuto)}" onblur="raSalvarPixMensagem('${p.id}')" style="width:100%">
+      <div class="ic-sub" style="margin:4px 0 0">Vazio, usa o texto automático (acima, em cinza) — preencha pra sobrescrever, ex.: "Auxílio Alimentação Eleições 2026 - Junta Eleitoral".</div>
     </div>
 
     <div style="margin-top:8px">

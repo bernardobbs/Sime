@@ -1,0 +1,18 @@
+-- SIME — mensagem do PIX editável por pessoa (24/10/2026), pedido direto:
+-- "quero poder alterar a mensagem do pix em cada pix" — achado real: Daniel
+-- Igo Pessoa Magalhães (Membro da Junta Eleitoral) tinha seção resolvida
+-- (secao_id preenchido), então a descrição auto-gerada do QR
+-- (`raPixDescricao()`) mostrava "Auxílio Alimentação Eleições 2026 - Seção
+-- 157" — errado pra quem não é mesário/Presidente de mesa, já que o cargo
+-- de Junta não tem relação com nenhuma seção específica pra fins de
+-- pagamento.
+--
+-- Em vez de só corrigir o caso da Junta (o que esconderia a mesma
+-- confusão pra qualquer outra pessoa cuja seção resolvida não reflita o
+-- cargo real pago), virou um campo editável de verdade — mesmo critério
+-- "texto livre, nunca formatado/validado, nunca bloqueia" já usado em
+-- uc_equatorial/codigo_rastreio/pix: quando preenchido, substitui
+-- INTEIRAMENTE a descrição auto-gerada que entra no payload do QR
+-- (ver raDestinoPix()/raPixDescricao() em sime_recibo_alimentacao.js);
+-- vazio, continua caindo no texto automático de sempre.
+ALTER TABLE sime_atores ADD COLUMN IF NOT EXISTS auxilio_alimentacao_pix_mensagem TEXT;

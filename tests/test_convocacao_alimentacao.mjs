@@ -2096,6 +2096,59 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 26. Mensagem do PIX editável por pessoa (24/10/2026, pedido direto:
+// "quero poder alterar a mensagem do pix em cada pix" — achado real: um
+// membro da Junta Eleitoral com secao_id resolvido mostrava "Seção N" na
+// descrição do QR, sem sentido pro cargo). ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Reproduz o cenário real: Junta Eleitoral com secao_id preenchido (a
+  // mesma causa do bug) e uma chave PIX já cadastrada (sem chave, a linha
+  // de descrição nem aparece).
+  m.sime_atores.push({ id: 'j3', nome_completo: 'DANIEL IGO PESSOA MAGALHAES', funcao: 'junta_eleitoral', funcao_mesa: 'Membro', secao_id: 's1', inscricao_eleitoral: '131313131313', zona_id: 'z7', ativo: true, pix: 'daniel@example.com' });
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.selectOption('#ra-controle-unificado select', '');
+  await p.waitForTimeout(200);
+
+  await p.click('#ra-controle-unificado .m-hist-item:has-text("DANIEL IGO PESSOA MAGALHAES") b');
+  await p.waitForTimeout(300);
+
+  check('campo de mensagem do PIX começa vazio', await p.locator('#ra-modal-pix-mensagem').inputValue() === '');
+  const placeholder = await p.locator('#ra-modal-pix-mensagem').getAttribute('placeholder');
+  check('placeholder mostra o texto automático (com "Seção 5", o bug real)', /Seção 5/.test(placeholder || ''), placeholder);
+  const qrTxtAntes = (await p.locator('#ra-modal-qr-wrap').textContent()).replace(/\s+/g, ' ');
+  check('sem override, a descrição mostrada junto do QR ainda usa o texto automático', /Seção 5/.test(qrTxtAntes), qrTxtAntes);
+
+  await p.fill('#ra-modal-pix-mensagem', 'Auxílio Alimentação Eleições 2026 - Junta Eleitoral');
+  await p.locator('#ra-modal-pix-mensagem').blur();
+  await p.waitForTimeout(200);
+
+  const updMsg = await p.evaluate(() => window.__mock.escritas.find(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'j3' && e.payload.auxilio_alimentacao_pix_mensagem === 'Auxílio Alimentação Eleições 2026 - Junta Eleitoral'));
+  check('editar a mensagem do PIX grava em sime_atores', !!updMsg, JSON.stringify(updMsg));
+  const logMsg = await p.evaluate(() => window.__mock.sime_logs.find(l => l.acao === 'mesario_auxilio_alimentacao_pix_mensagem' && l.payload.ator_id === 'j3'));
+  check('grava log mesario_auxilio_alimentacao_pix_mensagem', !!logMsg, JSON.stringify(logMsg));
+
+  check('campo continua preenchido depois do re-render do modal', await p.locator('#ra-modal-pix-mensagem').inputValue() === 'Auxílio Alimentação Eleições 2026 - Junta Eleitoral');
+  const qrTxtDepois = (await p.locator('#ra-modal-qr-wrap').textContent()).replace(/\s+/g, ' ');
+  check('QR passa a usar a mensagem personalizada, não mais "Seção 5"', /Junta Eleitoral/.test(qrTxtDepois) && !/Seção 5/.test(qrTxtDepois), qrTxtDepois);
+
+  // Esvaziar o campo volta pro texto automático de sempre.
+  await p.fill('#ra-modal-pix-mensagem', '');
+  await p.locator('#ra-modal-pix-mensagem').blur();
+  await p.waitForTimeout(200);
+  const qrTxtLimpo = (await p.locator('#ra-modal-qr-wrap').textContent()).replace(/\s+/g, ' ');
+  check('esvaziar o campo volta pro texto automático (com "Seção 5")', /Seção 5/.test(qrTxtLimpo), qrTxtLimpo);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
