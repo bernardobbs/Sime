@@ -36,15 +36,19 @@ async function withFallback(cacheKey, fetcher, fallback) {
   }
 }
 
-// -> [{id, numero, local_nome, municipio, aptos, rota_codigo, parada}]
+// -> [{id, numero, local_nome, municipio, aptos, rota_codigo, parada, secao_agregada}]
 // `id` (UUID de sime_secoes) é necessário pra quem for GRAVAR em
 // sime_mesa_estado/sime_midias (FK secao_id) — os módulos de campo (Fase 4)
 // resolvem numero→id via este campo em vez de fazer uma consulta separada.
+// `secao_agregada` (25/10/2026) — seção sem mesa/urna própria, processada
+// junto de outra seção do mesmo prédio (ver sql/SIME_secoes_agregadas.sql) —
+// campo aditivo, consumido por agruparSecoesPorCidade() pra não tratar essas
+// seções como "sem dado"/"problema" nas TVs.
 export async function getSecoes({ fallback = [] } = {}) {
   return withFallback('secoes', async (c) => {
     const { data, error } = await c
       .from('sime_secoes')
-      .select('id, numero, local_nome, municipio, eleitores, parada, sime_rotas(codigo)')
+      .select('id, numero, local_nome, municipio, eleitores, parada, secao_agregada, sime_rotas(codigo)')
       .eq('ativo', true)
       .order('numero');
     if (error) throw error;
@@ -56,6 +60,7 @@ export async function getSecoes({ fallback = [] } = {}) {
       aptos: s.eleitores,
       rota_codigo: s.sime_rotas?.codigo ?? null,
       parada: s.parada ?? null,
+      secao_agregada: s.secao_agregada ?? false,
     }));
   }, fallback);
 }

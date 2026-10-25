@@ -91,9 +91,20 @@ const CORES_MUNICIPIO = ['#2d50a0', '#1e7048', '#5c3a98', '#a0522d', '#8a5c20', 
 // de duplicado em cada arquivo. `id` de cada local usa município+nome (estável
 // entre reloads) em vez do 'CM-01' sequencial da massa de fallback — só é
 // usado como chave interna (ex. cfg[loc.id]), nunca exibido.
+//
+// Seção "agregada" (25/10/2026, achado real: Seção 18 sempre com 0 mesário
+// designado, nunca vai ter urna/mesário próprio — processada junto da Seção
+// 20, mesmo prédio) nunca entra em `loc.s` — ela nunca vai gerar uma linha
+// própria em sime_mesa_estado (nenhum mesário loga pra ela), então incluí-la
+// aqui travaria pra sempre o rollup do prédio inteiro (nunca "completo"/
+// "encerrado"/"urna no cartório") e disparia "mesa incompleta"/"votação não
+// iniciada" numa seção que não existe operacionalmente como unidade própria
+// no Dia D. Continua existindo normal em getSecoes()/sime_secoes — só não
+// participa do agrupamento por prédio das TVs.
 export function agruparSecoesPorCidade(secoes) {
   const porMunicipio = new Map();
   for (const s of secoes) {
+    if (s.secao_agregada) continue;
     if (!porMunicipio.has(s.municipio)) porMunicipio.set(s.municipio, new Map());
     const locs = porMunicipio.get(s.municipio);
     if (!locs.has(s.local_nome)) {

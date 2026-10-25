@@ -433,7 +433,7 @@ const CITIES_CACHE_KEY = 'sime_tv_cities_v1';
   // Lista achatada {n, loc} — usada só pelo painel 🔮 Previsão (08/09/2026)
   // pra achar "qual seção é a mais lenta"; window.SECTIONS não existe nesta
   // TV (que usa CITIES, agrupado por cidade, formato diferente do Admin).
-  window.__secoesFlat = (secoesParaMesa || []).map((s) => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome }));
+  window.__secoesFlat = (secoesParaMesa || []).filter((s) => !s.secao_agregada).map((s) => ({ n: String(s.numero).padStart(4, '0'), loc: s.local_nome }));
   const mesaInicial = await getMesaEstadoMap({ fallback: null });
   let rerenderTimer = null;
   function agendarRerender() {
