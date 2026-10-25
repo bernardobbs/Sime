@@ -5,10 +5,35 @@
 // no await). NÃO é usado em produção nem pelos demais testes.
 const DB = () => globalThis.__SUPA;
 
+// Campos boolean de sime_acao_mesa que ganham um "_ts" carimbado só na
+// primeira vez que viram true (mesmo padrão do sql/SIME_schema.sql real) —
+// usado só pela simulação de sime_acao_mesa abaixo.
+const SIME_ACAO_MESA_BOOL_TS = ['urna_entregue', 'urna_recolhida', 'urna_cartorio', 'urna_chegou', 'urna_posicionada', 'urna_instalada'];
+
 export function createClient() {
   return {
     from(t) { return new QB(t); },
-    rpc(name) { DB().ops.push({ op: 'rpc', name }); return Promise.resolve({ data: DB().now, error: null }); },
+    rpc(name, params) {
+      const S = DB();
+      S.ops.push({ op: 'rpc', name, params });
+      if (name === 'sime_acao_mesa') {
+        const id = params.p_secao_id;
+        const prev = S.mesa[id] || {};
+        const row = { ...prev, secao_id: id, eleicao_id: params.p_eleicao_id || prev.eleicao_id, updated_at: S.now, updated_by_origem: params.p_origem || prev.updated_by_origem };
+        for (const campo of SIME_ACAO_MESA_BOOL_TS) {
+          const v = params[`p_${campo}`];
+          if (v != null) {
+            row[campo] = v;
+            if (v && !prev[`${campo}_ts`]) row[`${campo}_ts`] = S.now;
+          }
+        }
+        if (params.p_problema_instalacao != null) row.problema_instalacao = params.p_problema_instalacao;
+        if (params.p_problema_instalacao_resolvido != null) row.problema_instalacao_resolvido = params.p_problema_instalacao_resolvido;
+        S.mesa[id] = row;
+        return Promise.resolve({ data: row, error: null });
+      }
+      return Promise.resolve({ data: DB().now, error: null });
+    },
   };
 }
 

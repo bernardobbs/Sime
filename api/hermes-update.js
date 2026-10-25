@@ -57,6 +57,21 @@ const EVENTO_MAP = {
                       valor_fixo: 'pronta_para_coleta'                                      },
   panico_resolvido: { tabela: 'sime_mesa_estado', campo: null,               tipo: 'resolver'},
   mesa_completa:    { tabela: 'sime_mesa_estado', campo: null,               tipo: 'mesa'   },
+  // Etapas de instalação da urna na véspera — mesmos campos que
+  // SIME_instalador.html grava manualmente via RPC sime_acao_mesa (ver
+  // tipo 'urna_etapa' abaixo, que usa essa RPC em vez do upsert direto
+  // pra ganhar o carimbo de *_ts na primeira vez que o booleano vira true).
+  //
+  // ATENÇÃO (25/10/2026): esta entrada (e o branch 'urna_etapa' logo
+  // abaixo) já tinha sido adicionada em 02/10/2026 e some­nte desapareceu
+  // do branch em algum rebase/force-push concorrente entre sessões —
+  // reaplicado aqui depois de confirmar que não sobrou rastro nenhum em
+  // 437 commits de histórico. Se isto sumir de novo, o suspeito nº1 é
+  // outra sessão fazendo `git push --force` sem puxar este commit antes.
+  urna_chegou:         { tabela: 'sime_mesa_estado', campo: 'urna_chegou',         tipo: 'urna_etapa' },
+  urna_posicionada:    { tabela: 'sime_mesa_estado', campo: 'urna_posicionada',    tipo: 'urna_etapa' },
+  urna_instalada:      { tabela: 'sime_mesa_estado', campo: 'urna_instalada',      tipo: 'urna_etapa' },
+  problema_instalacao: { tabela: 'sime_mesa_estado', campo: 'problema_instalacao', tipo: 'urna_etapa' },
 };
 
 // Busca secao_id pelo numero, restrito à zona que autenticou a requisição
@@ -239,6 +254,21 @@ export default async function handler(req, res) {
         cidade: secaoData.municipio,
         ts: new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       }, zona.secret);
+    }
+
+    // Etapas de instalação da urna: via RPC sime_acao_mesa (não upsert
+    // direto) pra ganhar o mesmo carimbo de *_ts que SIME_instalador.html
+    // recebe — a RPC só seta a coluna "_ts" na primeira vez que o booleano
+    // vira true (ver sql/SIME_schema.sql).
+    else if (mapa.tipo === 'urna_etapa') {
+      const { error } = await supabase.rpc('sime_acao_mesa', {
+        p_secao_id: secaoData.id,
+        p_eleicao_id: eleicaoId,
+        [`p_${mapa.campo}`]: Boolean(valor),
+        p_origem: origem || 'hermes_whatsapp',
+      });
+      if (error) throw error;
+      resultado = { campo: mapa.campo, valor: Boolean(valor) };
     }
 
     // Caso padrao: campo booleano ou inteiro
