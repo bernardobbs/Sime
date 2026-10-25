@@ -48,7 +48,7 @@ export function createClient(url, key) {
 }
 `;
 
-async function withPage(run) {
+async function withPage(run, initOverrides = {}) {
   const page = await b.newPage();
   const logs = [];
   page.on('console', (msg) => logs.push(msg.text()));
@@ -83,15 +83,15 @@ async function withPage(run) {
     return route.fulfill({ status: 404, body: 'not found: ' + url.pathname });
   });
 
-  await page.addInitScript(() => {
-    window.__mockConfig = {
+  await page.addInitScript((overrides) => {
+    window.__mockConfig = Object.assign({
       rpcCalls: [],
       rpcShouldFail: false,
       rows: [
         { zona_numero: 7, secao_numero: 1, local_nome: '1279 - CENTRO DE EDUCAÇÃO DE JOVENS E ADULTOS MULATA LIMA', municipio: 'Campo Maior', endereco: 'Rua Benjamim Constant, 1158 - Centro', eleitores: 176, latitude: -4.8278589, longitude: -42.1645385 },
       ],
-    };
-  });
+    }, overrides);
+  }, initOverrides);
 
   await page.goto('http://localhost/onde-votar');
   await page.waitForTimeout(300);
@@ -117,9 +117,14 @@ await withPage(async (page, logs) => {
   await page.fill('#busca-input', '001');
   await page.waitForTimeout(600);
 
+  // 25/10/2026: o carregamento da página já dispara um RPC próprio pra
+  // contar acesso (sime_registrar_visita_local_votacao), separado da
+  // busca em si — por isso filtra por nome em vez de contar o total.
   const rpcCalls = await page.evaluate(() => window.__mockConfig.rpcCalls);
-  check('chama a RPC certa', rpcCalls.length === 1 && rpcCalls[0].name === 'sime_buscar_local_votacao', JSON.stringify(rpcCalls));
-  check('passa o termo digitado', rpcCalls[0]?.params?.p_termo === '001');
+  const buscaCalls = rpcCalls.filter((c) => c.name === 'sime_buscar_local_votacao');
+  check('chama a RPC certa', buscaCalls.length === 1, JSON.stringify(rpcCalls));
+  check('passa o termo digitado', buscaCalls[0]?.params?.p_termo === '001');
+  check('também registra visita ao carregar a página', rpcCalls.some((c) => c.name === 'sime_registrar_visita_local_votacao'), JSON.stringify(rpcCalls));
 
   const cardText = await page.locator('.loc-card').first().textContent();
   check('card do resultado mostra o nome do local', cardText.includes('CENTRO DE EDUCAÇÃO'), cardText);
@@ -170,6 +175,22 @@ await withPage(async (page) => {
   const vazio = await page.locator('.vazio').first().textContent();
   check('seção inexistente (ex.: "40") nunca é "resgatada" por nome embutido no prédio', vazio.includes('Nenhum local encontrado'), vazio);
 });
+
+// Caso 1d (25/10/2026): contador de acesso — registra visita ao carregar
+// a página, MESMO sem nenhuma busca ser feita, e uma falha nessa RPC
+// nunca impede a página de funcionar normalmente.
+await withPage(async (page, logs) => {
+  const rpcCalls = await page.evaluate(() => window.__mockConfig.rpcCalls);
+  check('visita registrada só de abrir a página (sem buscar nada)',
+    rpcCalls.filter((c) => c.name === 'sime_registrar_visita_local_votacao').length === 1, JSON.stringify(rpcCalls));
+  check('nenhuma busca disparada sozinha', !rpcCalls.some((c) => c.name === 'sime_buscar_local_votacao'), JSON.stringify(rpcCalls));
+});
+
+await withPage(async (page, logs) => {
+  check('falha ao registrar visita não gera pageerror nem trava a página',
+    !logs.some((l) => l.includes('PAGEERROR')), logs.join(' | '));
+  check('busca continua funcionando mesmo com o contador falhando', await page.locator('#busca-input').isEnabled());
+}, { rpcShouldFail: true });
 
 // Caso 2: busca sem resultado nunca trava, mostra o vazio de sempre.
 await withPage(async (page) => {

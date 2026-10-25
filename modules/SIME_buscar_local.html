@@ -251,6 +251,11 @@ inputEl.addEventListener('keydown', (e) => {
   }
 });
 
+// Contador de acesso (25/10/2026) — registra toda vez que a página é
+// aberta, mesmo sem buscar nada; fire-and-forget, nunca trava/afeta a
+// página se falhar (sem rede, RPC fora do ar etc.).
+supabase.rpc('sime_registrar_visita_local_votacao').catch(() => {});
+
 // Lê ?q= da URL — dá pra compartilhar um link já com a busca pronta
 const params = new URLSearchParams(location.search);
 const qInicial = params.get('q');

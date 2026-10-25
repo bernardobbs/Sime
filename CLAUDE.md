@@ -10623,6 +10623,43 @@ nunca entra no agrupamento por prédio) — sem regressão em
 
 ---
 
+## CONTADOR DE ACESSO NA BUSCA PÚBLICA (`SIME_buscar_local.html`, 25/10/2026)
+
+Pergunta exploratória: "seria possivel acrescentar algum tipo de contador de
+acesso no https://sime-cyan.vercel.app/onde-votar" — respondida com a
+recomendação (distinguir "página aberta" de "busca feita", já que
+`sime_busca_local_log`, 23/10/2026, só registra a segunda) e confirmada com
+"sim".
+
+Mesmo padrão arquitetural de `sime_busca_local_log`: tabela append-only
+(`sime_busca_local_visita_log`, zona_id/criado_em) + RPC
+`sime_registrar_visita_local_votacao()` `SECURITY DEFINER`, `GRANT EXECUTE`
+pra `anon`/`authenticated` (a página é pública, sem login — mesma trava de
+sempre: nunca abre a tabela em si via RLS pra `anon`, só a RPC escreve).
+`sql/SIME_busca_local_visita_log.sql`.
+
+**Chamado uma vez por carregamento da página**, não por busca —
+`supabase.rpc('sime_registrar_visita_local_votacao')` logo no topo do
+`<script type="module">`, fire-and-forget (`.catch(() => {})`, nunca
+aguardado) — uma falha (sem rede, RPC fora do ar) nunca atrasa nem trava a
+busca em si, mesmo critério de "nunca bloquear" de sempre. Dá dois números
+separados pro cartório conferir: quantas vezes a página foi aberta
+(`sime_busca_local_visita_log`) vs. quantas buscas de fato foram feitas
+(`sime_busca_local_log`) — sem SELECT pronto ainda, é SQL Editor/MCP por
+enquanto.
+
+Coberto por `tests/test_buscar_local.mjs` (4 checks novos — 22 no total no
+arquivo): visita registrada ao abrir a página mesmo sem buscar nada; nenhuma
+busca disparada sozinha; falha na RPC de visita não gera erro nem trava a
+página; busca continua funcionando normalmente com o contador falhando.
+
+> **Mesmo tool de migração (`mcp__Supabase__apply_migration`) travou de novo
+> nesta sessão (timeout, sem popup nos dois lados) — mesma intermitência já
+> documentada em sessões anteriores.** Aplicado via o mesmo fallback de
+> sempre: SQL entregue pro dono do projeto rodar manualmente no SQL Editor.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
