@@ -10562,6 +10562,67 @@ texto automático.
 
 ---
 
+## SEÇÕES AGREGADAS — SOMEM DO ALERTA DE MESA INCOMPLETA NAS TVs (`sime_tv_auth.js`, 25/10/2026)
+
+Pedido direto, no Dia D do 2º turno: "Seção 18 está agregada" → "as
+agregadas não devem aparecer como problema no SIME por mesa incompleta".
+
+**Investigado antes de mexer em código.** A Seção 18 (prédio "Col. Est.
+Profª Raimundinho Andrade", junto das 17/19/20/157) nunca teve nenhum dos 4
+cargos de mesa designados — confirmado contra produção: das 5 seções desse
+prédio, só 17 e 20 têm mesa completa; 18/19/157 sempre tiveram 0 mesário.
+Isso bate com o mesmo conceito de "seção agregada" do TSE já documentado em
+`sql/SIME_secoes_horario_encerramento_previsto.sql` (27/09/2026,
+"Tempo_de_Transmissão.xlsx" — grupo PRINCIPAL + agregadas do mesmo prédio,
+processadas com a mesma urna/mesa) — a horário de encerramento previsto de
+17 bate exatamente com 19 e 157 (18:20:00), e o de 20 bate exatamente com 18
+(15:42:00), confirmando o agrupamento.
+
+**Levantada a lista completa da zona** (qualquer seção ativa que NUNCA teve
+nenhum mesário designado desde que a convocação começou a sincronizar — meses
+de import do TRE/ELO, sem nenhuma oscilação, sinal mais forte que só casar
+por horário) — 26 seções: `6, 14, 16, 18, 19, 34, 36, 45, 49, 50, 112, 115,
+117, 149, 156, 157, 171, 174, 176, 220, 234, 237, 249, 258, 260, 262`.
+**Confirmado com o dono do projeto antes de aplicar** (`AskUserQuestion`) —
+decisão que o SIME não deveria adivinhar sozinho no dia da eleição: todas as
+26 são agregadas, nenhuma é vaga real por preencher.
+
+**`sime_secoes.secao_agregada`** (boolean, `sql/SIME_secoes_agregadas.sql`)
+— constatação administrativa do TSE, nunca calculada automaticamente (não
+existe regra que deduza isso sozinha; é sempre o cartório/TSE que sabe).
+`getSecoes()` (`sime_dados.js`) passou a expor o campo (aditivo, nenhuma
+mudança pra quem já consumia a função).
+
+**`agruparSecoesPorCidade()` (`sime_tv_auth.js`, compartilhada por TV
+Preparação/Véspera/Dia) passa a excluir seção agregada do agrupamento por
+prédio.** Não é só o alerta — é a causa raiz de um bug MAIOR que o pedido
+revelou ao investigar: uma seção agregada nunca gera linha em
+`sime_mesa_estado` (nenhum mesário loga pra ela, ela não existe como unidade
+operacional própria), então incluí-la no rollup do prédio travava o prédio
+INTEIRO pra sempre em "não completo"/"não encerrada"/"urna não recolhida" —
+mesmo depois da seção de verdade (17, 20) já ter zerésima, votação e urna no
+cartório. Excluir a seção fantasma do agrupamento corrige os dois problemas
+de uma vez: o badge "👥 Mesa incompleta"/"⏱ Votação não iniciada" nunca mais
+dispara pra ela, e o prédio volta a fechar "completo" assim que a seção real
+termina. `window.__secoesFlat` (TV Dia, usado só pelo painel 🔮 Previsão pra
+achar "qual seção é a mais lenta") também passou a excluir, mesma consistência.
+
+A seção continua existindo normal em `sime_secoes`/`getSecoes()` — só não
+participa mais do agrupamento por prédio das 3 TVs. Nenhuma mudança em
+`SIME_admin.html`/Convocação/Rotas: lá a seção 18 continua visível e
+administrável como sempre foi (é dado real de zona, só não é uma unidade de
+votação independente no Dia D).
+
+Coberto por `tests/test_tv_vespera.mjs` (seção agregada injetada no mock
+nunca entra no agrupamento por prédio) — sem regressão em
+`tests/test_tv_dia.mjs` (28/28), `tests/test_sime_dados.mjs` (23/23),
+`tests/test_tv_dia_previsao.mjs`, `tests/test_tv_preparacao.mjs` (+ `_realtime`),
+`tests/test_veiculos_mapa.mjs`, `tests/test_tv_distribuicao_mapa.mjs`,
+`tests/test_tv_panel_nav.mjs`, `tests/test_coord_prep.mjs` e
+`tests/test_admin_previsao.mjs`.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
