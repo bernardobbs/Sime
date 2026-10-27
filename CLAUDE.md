@@ -10660,6 +10660,101 @@ página; busca continua funcionando normalmente com o contador falhando.
 
 ---
 
+## CONFERÊNCIA DO EXTRATO BANCÁRIO — 2º TURNO, R$65/130/260/325 (27/10/2026)
+
+Pedido direto, com o extrato real anexado (`Extrato_conta_corrente_-_102026.xlsx`,
+01/10 a 26/10/2026, 320 Pix enviados): continuação do trabalho de conferência de
+extrato já documentado acima, agora cobrindo o período em que a zona já tinha
+virado pro **2º turno** (`data_d=2026-10-25`) — `sime_atores.auxilio_alimentacao_*`
+reflete só o turno ativo (o 1º turno já foi arquivado em `sime_auxilio_alimentacao_historico`
+na virada, ver "🗳️ Encerrar turno..." alhures), então o cruzamento foi escopado
+à janela `data >= 16/10` (o início do 1º lote de pagamento do 2º turno).
+
+**Mesmo critério de sempre, casado por NOME** (o extrato trunca o nome do
+recebedor em ~25 caracteres) **e desambiguado por VALOR quando o nome bate em
+mais de uma pessoa** — nunca por CPF/título (o banco não traz nenhum dos dois).
+136 lançamentos na janela do 2º turno; **122 reconciliados automaticamente**
+(documento do banco gravado em `auxilio_alimentacao_documento`, nunca
+sobrescrevendo `pago`/`valor_pago` já corretos) + **4 resolvidos por
+investigação pontual** (ver abaixo) = **126 de 136**.
+
+**Achado real, replicado em escala — o PIX do Coordenador de Acessibilidade sai
+pela chave do Presidente de menor seção do local, já documentado em 01/10/2026,
+mas desta vez como uma leva SEPARADA de 31 PIX de R$65 enviados em DIAS
+diferentes (22-23/10) do pagamento do próprio Presidente (21-22/10), não mais
+combinados num único R$325 como na leva de 16/10.** Sem isso, as 31 R$65
+teriam sido gravadas por engano como um "segundo pagamento" do próprio
+Presidente (cujo documento já estava preenchido desde 16/10) — confirmado
+pra cada um dos 31 casos que o Presidente batido pelo nome é de fato o de
+MENOR seção do local (`eh_menor_secao`) e que o local tem exatamente 1
+Coordenador ativo ainda sem documento — o documento foi gravado na linha do
+COORDENADOR, nunca na do Presidente.
+
+**Bug de digitação achado no caminho — `CLÁUIDIO VINÍCIUS DA SILVA AMORIM`
+(Presidente, Escola Municipal N. S. de Fátima) nunca batia com "CLAUDIO
+VINICIUS DA SILVA" do extrato por causa de um "I" a mais no nome cadastrado**
+("CLÁU**I**DIO" em vez de "CLÁUDIO") — só resolvido comparando data+valor
+exatos (260 em 21/10) depois do cruzamento por nome dar zero resultado pra
+essa pessoa inteira. Confirmado o typo, não corrigido o cadastro em si (fora
+do escopo desta conferência) — só os dois documentos (o dele e o da
+Coordenadora do mesmo local, roteado pela mesma chave) foram preenchidos.
+
+**2 casos de papel duplicado (Presidente + Auxiliar de Eleição sob o mesmo
+nome), mesmo padrão já documentado — resolvidos pela linha de Auxiliar de
+Eleição, nunca pela de Presidente (que já tinha documento de 16/10)**:
+CARLOS EDUARDO DA SILVA (R$65, 26/10) e FRANKISLANE MARIA CANUTO (R$130,
+26/10).
+
+**2 duplicatas reais, não corrigidas — ficam para o cartório confirmar**:
+ANTONIO PEREIRA DE OLIVEIRA (R$260 em 16/10, doc 4170, **e** R$260 de novo em
+26/10, doc 102611) e EDILSON OLIVEIRA DO NASCIMENTO (R$325 em 16/10, doc
+4177, **e** R$325 de novo em 21/10, doc 102117) — nenhum dos dois é explicado
+por roteamento de coordenador (valores batem com o próprio papel, não com um
+65 avulso) nem por papel duplo (nenhum dos dois tem outro cadastro ativo que
+justifique um segundo pagamento). Pode ser PIX repetido por engano ou algo que
+só o cartório sabe — não adivinhado, não revertido.
+
+**6 pagamentos sem NENHUM correspondente no cadastro ativo da zona, mesmo
+buscando por nome, CPF-like, variação de grafia e gênero** — todos do lote de
+22-26/10, valores de Presidente/Coordenador:
+- CLAUDIO VINICIUS DA SILVA — não, era o Cláuidio acima; mas há um SEGUNDO
+  "EDSON LIMA DO NASCIMENTO" (R$260, 22/10, doc 102201) sem rastro nenhum em
+  `sime_atores` da 7ª Zona, ativo ou inativo, sob qualquer grafia.
+- "Antônia Pereira de Olivei[ra]" (R$260 em 22/10 doc 102211 + R$65 em 23/10
+  doc 102308) — o único candidato parecido (ANTÔNIA CELENA PEREIRA DE
+  OLIVEIRA) é 2º Mesário, nunca elegível a receber direto, e nem bate o nome
+  por inteiro (falta "CELENA").
+- RAÍSA DE OLIVEIRA SANTOS (R$260, 26/10, doc 102610) — só existem 2
+  cadastros dela, os dois **inativos** (um como Presidente, um como 2º
+  Mesário) — nenhum ativo.
+- ANA BEATRIZ GOMES DA SILVA (R$260, 26/10, doc 102612) — cadastro ativo
+  existe, mas como **1º Secretário**, não Presidente — paga no valor de
+  Presidente mesmo sem estar registrada como tal.
+- LEANDRA DUARTE ALMEIDA (R$65, 26/10, doc 102613) — 3 cadastros, todos
+  **inativos** (2 Coordenadora de Acessibilidade — uma com
+  `dispensado_manual=true` — 1 mesário 1º Secretário).
+
+Os 3 últimos (Raísa/Ana Beatriz/Leandra) cheiram a substituição real já
+ocorrida em campo (alguém assumiu Presidente/Coordenador no lugar de quem
+estava cadastrado) que o roster ainda não reflete — mesmo padrão "nunca
+adivinha" de sempre: nenhum `ativo`/`funcao_mesa` foi tocado, fica pro
+cartório confirmar e, se for o caso, atualizar o cadastro (edição manual ou
+próximo sync do ELO) antes de eu gravar o pagamento em alguém errado.
+
+**14 pagamentos já `pago=true` no SIME sem nenhum PIX correspondente neste
+extrato** (8 Auxiliares de Eleição com `pago_em=25/10`, 3 Presidentes, 2
+Coordenadoras, 1 Membro da Junta) — podem ter sido pagos por outra conta/
+método, ou aguardam o próximo extrato. Não é erro deste cruzamento, só fora
+do alcance do arquivo recebido.
+
+Rodado via staging temporário (`tmp_extrato_pix_1027`, mesmo padrão de
+`tmp_situacao_all6_19_09` — tabela descartável, nunca reaplica sozinha) +
+MCP, não houve chamador de frontend nem teste de regressão (é conferência de
+dado de produção, mesmo critério das demais reconciliações bancárias já
+documentadas neste arquivo).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
