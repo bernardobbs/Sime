@@ -376,6 +376,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .ra-rel-grupo{margin-bottom:3mm;page-break-inside:avoid;}
   .ra-rel-local-titulo{font-weight:700;font-size:8.5pt;margin-bottom:1mm;}
   .ra-rel-tabela td,.ra-rel-tabela th{font-size:8pt;padding:1.5mm 2mm;}
+
+  /* Cabeçalho de grupo DENTRO da tabela da Conferência simplificada
+     (28/10/2026, sime_recibo_alimentacao.js — raHtmlGrupoCabecalhoTabela):
+     uma linha `colspan` na largura toda, a cada troca de seção (folha MRV)
+     ou de função (folha "demais funções") — é o que faz o número da seção/
+     o nome da função virar o destaque, não mais uma coluna estreita como
+     na 1ª versão. `page-break-inside:avoid` evita o cabeçalho do grupo
+     ficar sozinho no fim de uma página física, separado das próprias
+     linhas que ele anuncia. */
+  .ra-conf-grupo td{font-weight:800;font-size:9pt;border-top:2px solid #000;border-bottom:1px solid #000;padding:3mm 2.5mm 1.5mm;page-break-inside:avoid;}
 }
 </style>
 </head>

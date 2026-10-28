@@ -959,14 +959,42 @@ async function raImprimirRelatorioPresidentesCoordenadores() {
 // sem coluna de assinatura, sem bloco de fechamento, só a lista + um
 // resumo de quantos já receberam/ainda vão receber/estão isentos no topo
 // de cada folha.
+//
+// Revisado no mesmo dia, pedido direto: "deve ter nas mrv os numeros das
+// seções e na folha de outros os coordenadores de acessibilidade e outros
+// apoio logistico" — a 1ª versão já mostrava o número da seção (coluna
+// própria) e já juntava os 3 grupos na 2ª folha, só que tudo numa tabela
+// plana — o número da seção ficava pequeno, perdido entre as outras
+// colunas, e os 3 grupos da 2ª folha vinham misturados sem nenhuma
+// separação visual. Virou agrupamento de verdade dentro da MESMA tabela
+// (uma linha-cabeçalho, `colspan` na largura toda, a cada troca de chave —
+// mesmo princípio de "detecta a transição na lista já ordenada" já usado
+// em `raHtmlListaComGrupos`, só que dentro de `<table>` em vez de `<div>`,
+// porque aqui o cabeçalho precisa se alinhar com as colunas da tabela):
+// MRV agrupado por SEÇÃO (número bem grande no cabeçalho do grupo, não
+// mais uma coluna estreita); "outras funções" agrupada por FUNÇÃO, na
+// ordem do próprio pedido — Coordenadores de Acessibilidade primeiro,
+// depois Auxiliares de Eleição ("outros apoio logístico" — mesmo termo já
+// usado em todo o resto do projeto pra essa dupla), Junta Eleitoral por
+// último (continua aparecendo, mesmo não citada no pedido — sumir seria
+// perder gente que a folha já cobria antes).
 function raCalcularConferenciaSimplificada() {
   const mrv = (raDados.mesarios || []).slice().sort((a, b) =>
     (a.sec ? a.sec.numero : 9999) - (b.sec ? b.sec.numero : 9999) ||
     RA_ORDEM_MESA.indexOf(a.funcao_mesa) - RA_ORDEM_MESA.indexOf(b.funcao_mesa));
   const outras = [...(raDados.coord || []), ...(raDados.auxiliares || []), ...(raDados.junta || [])]
-    .sort((a, b) => raFuncaoLabel(a).localeCompare(raFuncaoLabel(b)) || a.nome_completo.localeCompare(b.nome_completo));
+    .sort((a, b) => RA_CONF_ORDEM_FUNCAO.indexOf(a.funcao) - RA_CONF_ORDEM_FUNCAO.indexOf(b.funcao) || a.nome_completo.localeCompare(b.nome_completo));
   return { mrv, outras };
 }
+
+// Ordem fixa, não alfabética (que colocaria "Auxiliar" antes de
+// "Coordenador") — é a ordem literal do pedido.
+const RA_CONF_ORDEM_FUNCAO = ['coord_acessibilidade', 'auxiliar_eleicao', 'junta_eleitoral'];
+const RA_CONF_ROTULO_GRUPO_FUNCAO = {
+  coord_acessibilidade: '♿ Coordenadores de Acessibilidade',
+  auxiliar_eleicao: '🧰 Outros Apoio Logístico (Auxiliares de Eleição)',
+  junta_eleitoral: '⚖️ Junta Eleitoral',
+};
 
 function raResumoConferencia(lista) {
   const pagos = lista.filter(p => p.auxilio_alimentacao_pago).length;
@@ -974,16 +1002,17 @@ function raResumoConferencia(lista) {
   return { total: lista.length, pagos, isentos, pendentes: lista.length - pagos - isentos };
 }
 
-// `comSecaoCargo` — true pra MRV (Seção+Cargo, que é o que diferencia uma
-// linha da outra numa mesa); false pra "outras funções" (Função+Local, já
-// que aqui a função em si é a informação que falta, não o cargo).
-function raHtmlLinhaConferencia(p, comSecaoCargo) {
-  const colsFixas = comSecaoCargo
-    ? `<td>${p.sec ? p.sec.numero : '—'}</td><td>${raEsc(p.funcao_mesa || '—')}</td>`
-    : `<td>${raEsc(raFuncaoLabel(p))}</td><td>${raEsc(p.sec ? `${p.sec.municipio} — ${raNomeLocalSemCodigo(p.sec.local_nome)}` : '—')}</td>`;
+// Linha-cabeçalho de grupo, dentro da própria tabela (`colspan` na largura
+// toda) — mesmo mecanismo usado pelos dois agrupamentos abaixo (por seção
+// na MRV, por função nas outras), só muda o texto/número de colunas.
+function raHtmlGrupoCabecalhoTabela(texto, cols) {
+  return `<tr class="ra-conf-grupo"><td colspan="${cols}">${raEsc(texto)}</td></tr>`;
+}
+
+function raHtmlLinhaConferenciaMrv(p) {
   return `
     <tr>
-      ${colsFixas}
+      <td>${raEsc(p.funcao_mesa || '—')}</td>
       <td>${raEsc(p.inscricao_eleitoral || '—')}</td>
       <td>${raEsc(p.nome_completo)}</td>
       <td>${raEsc(raStatusRelatorioTexto(p))}</td>
@@ -992,27 +1021,77 @@ function raHtmlLinhaConferencia(p, comSecaoCargo) {
     </tr>`;
 }
 
-function raHtmlPaginaConferencia(titulo, subtitulo, lista, comSecaoCargo, cfg, numeroPagina) {
+// Agrupada por SEÇÃO — o número vira o cabeçalho do grupo (bem maior/mais
+// visível que uma coluna estreita), com o local/município ao lado pra
+// contexto; dentro do grupo, só o cargo muda entre as linhas.
+function raHtmlPaginaConferenciaMrv(lista, cfg) {
   const r = raResumoConferencia(lista);
-  const colgroupExtra = comSecaoCargo
-    ? '<col style="width:7%"><col style="width:13%">'
-    : '<col style="width:18%"><col style="width:22%">';
-  const headExtra = comSecaoCargo ? '<th>Seção</th><th>Cargo</th>' : '<th>Função</th><th>Local</th>';
+  let corpo = '';
+  let secAtual = undefined;
+  for (const p of lista) {
+    const chave = p.sec ? p.sec.numero : null;
+    if (chave !== secAtual) {
+      secAtual = chave;
+      const label = p.sec ? `Seção ${p.sec.numero} — ${raNomeLocalSemCodigo(p.sec.local_nome)} (${p.sec.municipio})` : 'Sem seção definida';
+      corpo += raHtmlGrupoCabecalhoTabela(label, 6);
+    }
+    corpo += raHtmlLinhaConferenciaMrv(p);
+  }
+  if (!lista.length) corpo = `<tr><td colspan="6" style="color:#555">Nenhum registro.</td></tr>`;
   return `
     <div class="ra-pagina">
-      ${raHtmlTimbre(titulo, subtitulo, cfg, numeroPagina)}
+      ${raHtmlTimbre('Conferência de Recibos — Mesa Receptora (MRV)', 'Presidente + 1º/2º Mesário + 1º Secretário, agrupado por seção', cfg, 1)}
       <div class="ra-rel-resumo">${r.total} pessoa(s) — ✅ ${r.pagos} já recebeu/receberam · 🟡 ${r.isentos} isento(s) · ⏳ ${r.pendentes} ainda vai(ão) receber</div>
       <table class="ra-tabela">
-        <colgroup>${colgroupExtra}<col style="width:13%"><col><col style="width:16%"><col style="width:9%"><col style="width:11%"></colgroup>
-        <thead><tr>${headExtra}<th>Inscrição</th><th>Nome</th><th>Status</th><th>Valor</th><th>Documento</th></tr></thead>
-        <tbody>${lista.length ? lista.map(p => raHtmlLinhaConferencia(p, comSecaoCargo)).join('') : `<tr><td colspan="7" style="color:#555">Nenhum registro.</td></tr>`}</tbody>
+        <colgroup><col style="width:14%"><col style="width:13%"><col><col style="width:16%"><col style="width:9%"><col style="width:12%"></colgroup>
+        <thead><tr><th>Cargo</th><th>Inscrição</th><th>Nome</th><th>Status</th><th>Valor</th><th>Documento</th></tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+}
+
+function raHtmlLinhaConferenciaOutras(p) {
+  return `
+    <tr>
+      <td>${raEsc(p.sec ? `${p.sec.municipio} — ${raNomeLocalSemCodigo(p.sec.local_nome)}` : '—')}</td>
+      <td>${raEsc(p.inscricao_eleitoral || '—')}</td>
+      <td>${raEsc(p.nome_completo)}</td>
+      <td>${raEsc(raStatusRelatorioTexto(p))}</td>
+      <td>${p.auxilio_alimentacao_pago ? raFmtValor(p.auxilio_alimentacao_valor_pago) : '—'}</td>
+      <td>${raEsc(p.auxilio_alimentacao_documento || '—')}</td>
+    </tr>`;
+}
+
+// Agrupada por FUNÇÃO — Coordenadores de Acessibilidade, Outros Apoio
+// Logístico (Auxiliares de Eleição) e Junta Eleitoral, cada um com
+// cabeçalho próprio (`RA_CONF_ROTULO_GRUPO_FUNCAO`), na ordem fixa do
+// pedido — nunca misturados numa lista só como na 1ª versão.
+function raHtmlPaginaConferenciaOutras(lista, cfg) {
+  const r = raResumoConferencia(lista);
+  let corpo = '';
+  let funcaoAtual = undefined;
+  for (const p of lista) {
+    if (p.funcao !== funcaoAtual) {
+      funcaoAtual = p.funcao;
+      corpo += raHtmlGrupoCabecalhoTabela(RA_CONF_ROTULO_GRUPO_FUNCAO[p.funcao] || raFuncaoLabel(p), 6);
+    }
+    corpo += raHtmlLinhaConferenciaOutras(p);
+  }
+  if (!lista.length) corpo = `<tr><td colspan="6" style="color:#555">Nenhum registro.</td></tr>`;
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Conferência de Recibos — Demais Funções', 'Coordenadores de Acessibilidade, Outros Apoio Logístico e Junta Eleitoral', cfg, 2)}
+      <div class="ra-rel-resumo">${r.total} pessoa(s) — ✅ ${r.pagos} já recebeu/receberam · 🟡 ${r.isentos} isento(s) · ⏳ ${r.pendentes} ainda vai(ão) receber</div>
+      <table class="ra-tabela">
+        <colgroup><col style="width:22%"><col style="width:13%"><col><col style="width:16%"><col style="width:9%"><col style="width:12%"></colgroup>
+        <thead><tr><th>Local</th><th>Inscrição</th><th>Nome</th><th>Status</th><th>Valor</th><th>Documento</th></tr></thead>
+        <tbody>${corpo}</tbody>
       </table>
     </div>`;
 }
 
 function raHtmlConferenciaSimplificada(dados, cfg) {
-  return raHtmlPaginaConferencia('Conferência de Recibos — Mesa Receptora (MRV)', 'Presidente + 1º/2º Mesário + 1º Secretário', dados.mrv, true, cfg, 1) +
-    raHtmlPaginaConferencia('Conferência de Recibos — Demais Funções', 'Coordenador de Acessibilidade + Auxiliar de Eleição + Junta Eleitoral', dados.outras, false, cfg, 2);
+  return raHtmlPaginaConferenciaMrv(dados.mrv, cfg) + raHtmlPaginaConferenciaOutras(dados.outras, cfg);
 }
 
 async function raImprimirConferenciaSimplificada() {

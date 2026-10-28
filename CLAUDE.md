@@ -10755,6 +10755,77 @@ documentadas neste arquivo).
 
 ---
 
+## CONFERÊNCIA SIMPLIFICADA DE RECIBOS — 2 FOLHAS, MRV + DEMAIS FUNÇÕES (28/10/2026)
+
+Pedido direto: "quero um pdf simplificado para conferencia dos recibos
+alimentações, deve ter 1 folha para as mrv e uma folha para as outras
+funções". Botão novo em "💰📋 Controle de pagamento e frequência"
+(`sime_recibo_alimentacao.js`) — diferente dos dois relatórios já
+existentes (`raHtmlRelatorioPagamentos`/`raHtmlRelatorioPresidentesCoordenadores`,
+agrupados por local/município, pensados pra navegar o cadastro inteiro
+prédio a prédio), este é só uma lista corrida: 1 folha com a Mesa Receptora
+inteira (os 4 cargos — Presidente é quem de fato recebe, mas os outros 3
+aparecem igual, já que o documento é "conferência" contra o que a mesa
+deveria ter, não só quem é pago direto) e 1 folha com Coordenador de
+Acessibilidade + Auxiliar de Eleição + Junta Eleitoral juntos. Nunca é
+documento de assinatura (sem SUBSTITUIÇÕES/OBS/QR de devolução) — é
+relatório de leitura, com um resumo de quantos já receberam/estão isentos/
+ainda vão receber no topo de cada folha.
+
+**Revisado no mesmo dia, pedido direto: "deve ter nas mrv os numeros das
+seções e na folha de outros os coordenadores de acessibilidade e outros
+apoio logistico".** A 1ª versão já mostrava o número da seção (coluna
+própria, estreita) e já juntava os 3 grupos da 2ª folha numa lista plana só
+ordenada por função — não tinha nenhuma separação VISUAL, nem destaque pro
+número da seção. Virou agrupamento de verdade dentro da própria tabela (uma
+linha-cabeçalho `colspan` na largura toda, a cada troca de chave — mesmo
+princípio de "detecta a transição na lista já ordenada" já usado em
+`raHtmlListaComGrupos`, só que dentro de `<table>`, porque o cabeçalho
+precisa se alinhar com as colunas):
+
+- **Folha MRV, agrupada por SEÇÃO** (`raHtmlPaginaConferenciaMrv`) — o
+  número vira o cabeçalho do grupo ("Seção N — Local (Município)"), bem
+  maior/mais visível que uma coluna estreita; dentro do grupo, só o Cargo
+  muda entre as linhas (a seção já está dita no cabeçalho, não repete por
+  linha).
+- **Folha "Demais Funções", agrupada por FUNÇÃO**
+  (`raHtmlPaginaConferenciaOutras`) — 3 grupos com cabeçalho próprio
+  (`RA_CONF_ROTULO_GRUPO_FUNCAO`), numa ordem FIXA (não alfabética, que
+  colocaria "Auxiliar" antes de "Coordenador") — exatamente a ordem do
+  pedido: ♿ Coordenadores de Acessibilidade, depois 🧰 Outros Apoio
+  Logístico (Auxiliares de Eleição — mesmo termo já usado em todo o resto
+  do projeto pra essa dupla), por fim ⚖️ Junta Eleitoral (continua
+  aparecendo, mesmo não citada no pedido — sumir seria perder gente que a
+  folha já cobria antes).
+
+`.ra-conf-grupo` (CSS, `SIME_convocacao.html`) — borda superior grossa +
+`page-break-inside:avoid` (o cabeçalho do grupo nunca fica sozinho no fim
+de uma página física, separado das próprias linhas que anuncia).
+
+**Bug real, achado escrevendo o teste de regressão — não no código, no
+próprio TESTE.** A 1ª tentativa de verificar a ORDEM dos 3 grupos na folha 2
+comparava `indexOf('Coordenadores de Acessibilidade')` com
+`indexOf('Outros Apoio Logístico')` (frase solta, sem o emoji) — mas o
+SUBTÍTULO do timbre da própria folha ("Coordenadores de Acessibilidade,
+Outros Apoio Logístico e Junta Eleitoral") também contém essas mesmas
+palavras, e vem ANTES de qualquer linha da tabela (é o cabeçalho da
+página). O teste comparava contra essa primeira ocorrência (do subtítulo),
+não contra o cabeçalho de grupo de verdade — a ordem real na tabela já
+estava certa, só a asserção comparava com o texto errado. Corrigido usando
+os textos EXATOS dos cabeçalhos de grupo (com emoji + parênteses, únicos —
+não aparecem no subtítulo), em vez da frase solta.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 27, 401 checks
+no total no arquivo): as 3 seções do mock aparecem como cabeçalho de grupo
+na ordem certa (5, 12, 63), nome vem depois do cabeçalho da própria seção;
+os 3 grupos de função aparecem na ordem fixa do pedido (Coordenadores →
+Apoio Logístico → Junta), e cada pessoa aparece dentro do próprio grupo
+(nunca antes do cabeçalho dele, nunca depois do próximo); log de auditoria
+com a soma das duas folhas; PDF gerado em exatamente 2 páginas físicas
+(verificado com `page.pdf()`, não só innerHTML).
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

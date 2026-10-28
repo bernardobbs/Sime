@@ -2174,12 +2174,40 @@ async function login(p) {
   check('folha 1 traz os 4 cargos (Presidente, 1º/2º Mesário, 1º Secretário), não só o Presidente', /PRESIDENTE MARIA\b/.test(txtPag1) && /MESARIO 1 JOAO/.test(txtPag1) && /MESARIO 2 ANA/.test(txtPag1) && /JOAO PEDRO OLIVEIRA/.test(txtPag1) && /ANA CAROLINA FERREIRA/.test(txtPag1) && /FRANCISCO DAS CHAGAS/.test(txtPag1), txtPag1.slice(0, 400));
   check('mesário inativo nunca aparece', !/MESARIO INATIVO/.test(txtPag1));
   check('resumo da folha 1 conta as 7 pessoas (nenhuma paga/isenta no mock)', /7 pessoa\(s\)/.test(txtPag1) && /⏳ 7 ainda vai\(ão\) receber/.test(txtPag1), txtPag1.slice(0, 300));
+  // Agrupado por SEÇÃO (28/10/2026, pedido direto: "deve ter nas mrv os
+  // numeros das seções") — número vira cabeçalho de grupo, não mais uma
+  // coluna estreita; as 3 seções do mock (5, 12, 63) ficam na ORDEM certa.
+  check('cabeçalho de grupo mostra a Seção 5 com o local', /Seção 5 — Escola A \(Campo Maior\)/.test(txtPag1), txtPag1.slice(0, 500));
+  check('cabeçalho de grupo mostra a Seção 12 com o local', /Seção 12 — Escola B \(Jatobá do Piauí\)/.test(txtPag1), txtPag1.slice(0, 500));
+  check('cabeçalho de grupo mostra a Seção 63 (mesa completa)', /Seção 63 — Escola Municipal Grande do Centro \(Campo Maior\)/.test(txtPag1), txtPag1.slice(0, 500));
+  check('ordem das seções: 5 antes de 12, 12 antes de 63', txtPag1.indexOf('Seção 5 —') < txtPag1.indexOf('Seção 12 —') && txtPag1.indexOf('Seção 12 —') < txtPag1.indexOf('Seção 63 —'));
+  check('o nome vem DEPOIS do cabeçalho da própria seção (PRESIDENTE MARIA, seção 5)', txtPag1.indexOf('Seção 5 —') < txtPag1.indexOf('PRESIDENTE MARIA'));
 
   const txtPag2 = (await p.locator('#print-area .ra-pagina').nth(1).innerText());
   check('folha 2 é "Demais Funções"', /Demais Funções/.test(txtPag2));
   check('folha 2 junta Coordenador + Auxiliar + Junta (sem o juiz)', /COORDENADORA BEATRIZ/.test(txtPag2) && /COORDENADOR CARLOS SEM LOCAL/.test(txtPag2) && /AUXILIAR PEDRO/.test(txtPag2) && /AUXILIAR LUCIA/.test(txtPag2) && /JUNTA FERNANDO/.test(txtPag2), txtPag2.slice(0, 400));
   check('Presidente da Junta (juiz eleitoral) nunca aparece na folha 2', !/CARLOS MARCELLO SALES CAMPOS/.test(txtPag2));
   check('resumo da folha 2 conta as 5 pessoas', /5 pessoa\(s\)/.test(txtPag2), txtPag2.slice(0, 300));
+  // Agrupado por FUNÇÃO (28/10/2026, pedido direto: "na folha de outros os
+  // coordenadores de acessibilidade e outros apoio logistico") — 3 grupos
+  // com cabeçalho próprio, na ordem fixa do pedido (nunca alfabética, que
+  // colocaria Auxiliar antes de Coordenador).
+  check('cabeçalho "Coordenadores de Acessibilidade" presente', /Coordenadores de Acessibilidade/.test(txtPag2), txtPag2.slice(0, 500));
+  check('cabeçalho "Outros Apoio Logístico (Auxiliares de Eleição)" presente', /Outros Apoio Logístico \(Auxiliares de Eleição\)/.test(txtPag2), txtPag2.slice(0, 500));
+  check('cabeçalho "Junta Eleitoral" presente', /Junta Eleitoral/.test(txtPag2), txtPag2.slice(0, 500));
+  // As buscas de ORDEM abaixo usam os textos EXATOS dos cabeçalhos de grupo
+  // (com emoji+parênteses), não as frases soltas — o subtítulo do timbre
+  // ("Coordenadores de Acessibilidade, Outros Apoio Logístico e Junta
+  // Eleitoral") também contém essas mesmas palavras e vem ANTES de tudo na
+  // página, então comparar por frase solta dava falso negativo (achado
+  // real, investigado isolando o HTML antes de corrigir o teste — a ordem
+  // de verdade na tabela já estava certa, só a asserção comparava com o
+  // texto errado).
+  const GRUPO_COORD = '♿ Coordenadores de Acessibilidade';
+  const GRUPO_AUX = '🧰 Outros Apoio Logístico (Auxiliares de Eleição)';
+  const GRUPO_JUNTA = '⚖️ Junta Eleitoral';
+  check('ordem dos grupos: Coordenadores antes de Apoio Logístico, antes de Junta', txtPag2.indexOf(GRUPO_COORD) < txtPag2.indexOf(GRUPO_AUX) && txtPag2.indexOf(GRUPO_AUX) < txtPag2.indexOf(GRUPO_JUNTA), `${txtPag2.indexOf(GRUPO_COORD)}/${txtPag2.indexOf(GRUPO_AUX)}/${txtPag2.indexOf(GRUPO_JUNTA)}`);
+  check('coordenador aparece dentro do próprio grupo (depois do cabeçalho de Coordenadores, antes do de Apoio Logístico)', txtPag2.indexOf(GRUPO_COORD) < txtPag2.indexOf('COORDENADORA BEATRIZ') && txtPag2.indexOf('COORDENADORA BEATRIZ') < txtPag2.indexOf(GRUPO_AUX));
 
   const escritas = await p.evaluate(() => window.__mock.escritas);
   const logConf = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_conferencia_simplificada_impresso');
