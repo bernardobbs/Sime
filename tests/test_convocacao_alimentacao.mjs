@@ -2226,6 +2226,96 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 28. Checklists de conferência física — "recibos por seção" e "recibos
+//      por local de votação" (28/10/2026, pedido direto: "vou conferir
+//      inicialmente se todos os recibos estão presentes, então quero um
+//      checklist por seção de uma folha, e um check list de locais de
+//      votação em 1 folha") — diferente da Conferência simplificada: só
+//      caixinha ☐, nenhum dado de pagamento ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  // Checklist por seção
+  await p.click('button:has-text("recibos por seção")');
+  await p.waitForTimeout(300);
+  check('window.print() foi chamado (checklist de seções)', await p.evaluate(() => window.__printCalls) === 1);
+  let paginas = await p.locator('#print-area .ra-pagina').count();
+  check('checklist de seções sai em 1 única folha lógica', paginas === 1, String(paginas));
+  const txtSec = await p.locator('#print-area').innerText();
+  check('mostra as 3 seções do mock, cada uma com a caixinha ☐', /☐ Seção 5 —/.test(txtSec) && /☐ Seção 12 —/.test(txtSec) && /☐ Seção 63 —/.test(txtSec), txtSec.slice(0, 400));
+  check('mostra o município ao lado de cada seção', /\(Campo Maior\)/.test(txtSec) && /\(Jatobá do Piauí\)/.test(txtSec));
+  check('nunca mostra valor/documento/status (é checklist de papel, não de pagamento)', !/R\$/.test(txtSec) && !/Ainda vai receber/.test(txtSec), txtSec.slice(0, 400));
+  let escritas = await p.evaluate(() => window.__mock.escritas);
+  let logSec = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_secoes_impresso');
+  check('log de auditoria do checklist de seções com quantidade 3', !!logSec && logSec.payload.payload.quantidade === 3, JSON.stringify(logSec));
+
+  // Checklist por local de votação
+  await p.click('button:has-text("recibos por local de votação")');
+  await p.waitForTimeout(300);
+  check('window.print() chamado de novo (checklist de locais)', await p.evaluate(() => window.__printCalls) === 2);
+  paginas = await p.locator('#print-area .ra-pagina').count();
+  check('checklist de locais sai em 1 única folha lógica', paginas === 1, String(paginas));
+  const txtLoc = await p.locator('#print-area').innerText();
+  check('mostra os 3 locais distintos do mock, cada um com ☐', /☐ Escola A/.test(txtLoc) && /☐ Escola B/.test(txtLoc) && /☐ Escola Municipal Grande do Centro/.test(txtLoc), txtLoc.slice(0, 400));
+  escritas = await p.evaluate(() => window.__mock.escritas);
+  const logLoc = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_locais_impresso');
+  check('log de auditoria do checklist de locais com quantidade 3', !!logLoc && logLoc.payload.payload.quantidade === 3, JSON.stringify(logLoc));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 28b. Checklist de seções — escala REAL (175 seções, como a 7ª Zona de
+//      verdade) sai em EXATAMENTE 1 página física, verificado com
+//      page.pdf() (não só innerHTML/contagem de `.ra-pagina`) — a
+//      promessa de "uma folha" só vale se sobreviver ao tamanho real da
+//      zona, não só ao mock pequeno de 3 seções dos blocos anteriores ──
+{
+  const ctx = await b.newContext();
+  const mGrande = mock();
+  // Gera 175 seções sintéticas (nomes de local variados, pra simular
+  // largura de texto real) espalhadas por 3 municípios — mesmo tamanho da
+  // 7ª Zona real (ver "Números da operação" no CLAUDE.md).
+  const nomesLocal = ['G.E. Monsenhor Mateus', 'U.E. Miguel Rocha', 'Centro Ed. JA Mulata Lima', 'Esc. Mun. A.F. Ribeiro Paz', 'Col. Est. Profª Raimundinho Andrade'];
+  const municipios = ['Campo Maior', 'Jatobá do Piauí', 'Sigefredo Pacheco'];
+  const secoesGrandes = [];
+  for (let i = 1; i <= 175; i++) {
+    secoesGrandes.push({
+      id: `sg${i}`, numero: i,
+      local_nome: nomesLocal[i % nomesLocal.length],
+      municipio: municipios[i % municipios.length],
+      zona_id: 'z7', ativo: true,
+    });
+  }
+  mGrande.sime_secoes = secoesGrandes;
+  mGrande.sime_atores = []; // checklist de seções não depende de atores, só de sime_secoes
+
+  const { p, erros } = await abrir(ctx, mGrande);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('button:has-text("recibos por seção")');
+  await p.waitForTimeout(300);
+
+  const txtGrande = await p.locator('#print-area').innerText();
+  check('as 175 seções sintéticas aparecem (checa a última, seção 175)', /☐ Seção 175 —/.test(txtGrande));
+  await p.emulateMedia({ media: 'print' });
+  const pdf = await p.pdf({ printBackground: true });
+  const mediaBoxes = [...pdf.toString('latin1').matchAll(/\/MediaBox/g)];
+  check('175 seções (tamanho real da 7ª Zona) cabem em EXATAMENTE 1 página física', mediaBoxes.length === 1, String(mediaBoxes.length));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

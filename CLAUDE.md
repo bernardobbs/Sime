@@ -10824,6 +10824,59 @@ Apoio Logístico → Junta), e cada pessoa aparece dentro do próprio grupo
 com a soma das duas folhas; PDF gerado em exatamente 2 páginas físicas
 (verificado com `page.pdf()`, não só innerHTML).
 
+**Dois checklists NOVOS, no mesmo dia (28/10/2026), pedido direto: "vou
+conferir inicialmente se todos os recibos estão presentes, então quero um
+checklist por seção de uma folha, e um check list de locais de votação em
+1 folha".** Diferente de TUDO que já existe neste módulo (Conferência
+simplificada acima, Relatórios — todos mostram STATUS DE PAGAMENTO) — isto
+é sobre o PAPEL físico: só uma caixinha ☐ por seção/local
+(`raHtmlChecklistSecoes`/`raHtmlChecklistLocais`, `raImprimirChecklistSecoes`/
+`raImprimirChecklistLocais`), pra marcar à mão que o recibo assinado já
+voltou pro cartório — nenhum valor/documento/status de pagamento entra
+aqui de propósito, é checklist, não relatório.
+
+- **Checklist por seção** — fonte nova, `raDados.secoesZona`: toda seção
+  **ativa** da zona, uma linha por seção (`sime_secoes.numero/local_nome/
+  município`), ordenada por município+número. A query que já buscava
+  `local_nome`/`municipio` de TODA seção da zona (pra `raDados.locaisZona`,
+  deduplicado por prédio, desde 23/10/2026) ganhou `numero`/`ativo` —
+  `secoesZona` filtra `ativo!==false` (uma seção inativa duplicada do
+  mesmo prédio, achado já documentado alhures no projeto, criaria uma
+  linha de checklist sem sentido pra marcar numa seção que não existe mais
+  de verdade), `locaisZona` continua exatamente como era.
+- **Checklist por local de votação** — reaproveita `raDados.locaisZona`
+  (já existia, nenhuma consulta nova).
+
+**"Uma folha" é garantia de layout, não coincidência de zona pequena** —
+7ª Zona real tem ~175 seções/~64 locais (ver "Números da operação" no topo
+deste arquivo). `.ra-check-colunas` (CSS) distribui a lista em 5 colunas
+(como um jornal), `break-inside:avoid` por item.
+
+**Bug real, achado testando com dado de escala REAL (175 seções
+sintéticas, não só o mock pequeno de 3) — 5 colunas sozinhas não bastavam,
+saía em 2 páginas físicas mesmo com sobra teórica de espaço (175 itens ÷ 5
+colunas × ~3,2mm/linha ≈ 112mm, bem menos que os ~156mm úteis).**
+Investigado medindo com `page.pdf()` (não `getBoundingClientRect` sob
+`emulateMedia('print')` — essa medição não reflete o `@page` real, só o
+viewport da tela, confirmado comparando os dois): **sem uma `height`
+EXPLÍCITA em `.ra-check-colunas`, o balanceamento automático de colunas do
+Chromium na impressão simplesmente IGNORA o limite físico da página** —
+mesmo com várias colunas de sobra teórica, o conteúdo transbordava pra
+uma 2ª página. Corrigido com `height:150mm` (folga segura dentro dos
+~178mm úteis — A4 paisagem, margem de 10mm + padding de 6mm, menos o
+timbre) + `column-fill:auto` (preenche uma coluna por completo antes de
+passar pra próxima, em vez de "balance", que reintroduziria o mesmo
+problema) — testado em sweep de parâmetros antes de aplicar, confirmando
+que a `height` explícita era a peça que faltava, não o número de colunas.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 28, 415 checks
+no total no arquivo): as 3 seções/3 locais do mock aparecem cada um com a
+caixinha ☐; nunca mostra R$/status de pagamento (é checklist de papel, não
+relatório); log de auditoria dos dois; e um bloco dedicado (28b) com 175
+seções sintéticas (tamanho real da 7ª Zona, nomes de local variados)
+confirmando com `page.pdf()` que cabe em EXATAMENTE 1 página física — o
+mesmo teste que reproduziu o bug de 2 páginas antes da correção.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

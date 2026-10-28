@@ -386,6 +386,30 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      ficar sozinho no fim de uma página física, separado das próprias
      linhas que ele anuncia. */
   .ra-conf-grupo td{font-weight:800;font-size:9pt;border-top:2px solid #000;border-bottom:1px solid #000;padding:3mm 2.5mm 1.5mm;page-break-inside:avoid;}
+
+  /* Checklists de conferência física — "recibos por seção"/"por local"
+     (28/10/2026, sime_recibo_alimentacao.js — raHtmlChecklistSecoes/
+     raHtmlChecklistLocais): precisam caber INTEIROS numa única página
+     física mesmo em zona grande (~175 seções/~64 locais, ver "Números da
+     operação" no CLAUDE.md) — `column-count:5` distribui a lista em 5
+     colunas (como um jornal), em vez de uma coluna só que nunca caberia.
+     `break-inside:avoid` por item evita cortar um item no meio entre duas
+     colunas (o item inteiro pula pra coluna seguinte, não o contrário).
+
+     `height` EXPLÍCITA é o que de fato faz caber numa página (achado real,
+     medido com page.pdf() — sem altura fixa, o balanceamento automático de
+     colunas do Chromium na impressão simplesmente IGNORA o limite físico
+     da página e o conteúdo transborda pra uma 2ª, mesmo com várias colunas
+     de sobra; só definir a altura força o navegador a respeitar o espaço
+     de verdade). 150mm cabe com folga dentro dos ~178mm úteis da página
+     (A4 paisagem, margem de 10mm + padding de 6mm, menos o timbre) —
+     `column-fill:auto` preenche uma coluna por completo antes de passar
+     pra próxima, em vez de tentar equilibrar a altura entre todas (o que
+     reintroduziria o mesmo problema). */
+  .ra-check-colunas{column-count:5;column-gap:5mm;column-fill:auto;height:150mm;margin-top:2mm;}
+  .ra-check-item{font-size:7.5pt;line-height:1.5;break-inside:avoid;margin-bottom:0.3mm;}
+  .ra-check-box{display:inline-block;width:3mm;}
+  .ra-check-mun{color:#555;font-size:6.5pt;}
 }
 </style>
 </head>

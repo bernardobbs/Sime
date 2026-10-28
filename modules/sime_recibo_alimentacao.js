@@ -191,7 +191,7 @@ async function raCarregar() {
     // `secaoIds` logo abaixo, que também nunca filtrou): uma seção
     // duplicada/inativa do mesmo prédio nunca introduz um `local_nome`
     // novo, só repete um que já existiria de qualquer forma.
-    sb.from('sime_secoes').select('local_nome, municipio').eq('zona_id', zonaId),
+    sb.from('sime_secoes').select('numero, local_nome, municipio, ativo').eq('zona_id', zonaId),
   ]);
   if (error) { raDados = { erro: error.message }; render(); return; }
 
@@ -208,6 +208,18 @@ async function raCarregar() {
     if (!locaisMap[chave]) locaisMap[chave] = { municipio: s.municipio, local_nome: s.local_nome };
   }
   const locaisZona = Object.values(locaisMap).sort((a, b) => (a.municipio + a.local_nome).localeCompare(b.municipio + b.local_nome));
+
+  // Todas as SEÇÕES ativas da zona, uma linha por seção (28/10/2026, pros
+  // checklists de conferência física abaixo — `raImprimirChecklistSecoes`)
+  // — diferente de `locaisZona` (deduplicado por prédio, usado desde
+  // 23/10/2026), aqui cada seção precisa aparecer individualmente, e só a
+  // ATIVA: uma seção inativa duplicada do mesmo prédio (achado real já
+  // documentado no CLAUDE.md pra outros fluxos) criaria uma linha extra
+  // de checklist sem sentido, sobrando uma caixinha pra marcar numa seção
+  // que não existe mais de verdade.
+  const secoesZona = (locaisSecoes || [])
+    .filter(s => s.ativo !== false)
+    .sort((a, b) => a.municipio.localeCompare(b.municipio) || a.numero - b.numero);
 
   raDados = {
     zona: zona || {},
@@ -248,6 +260,9 @@ async function raCarregar() {
     // um local que ainda não tem ninguém nomeado (ver
     // `raAgruparPorLocalComVazios` abaixo).
     locaisZona,
+    // Toda SEÇÃO ativa da zona, uma linha por seção — ver
+    // `raImprimirChecklistSecoes` abaixo.
+    secoesZona,
   };
   raDados.conflitosPorTitulo = raCalcularConflitosPorTitulo(raDados.todos);
   raDados.presidentePorLocal = raCalcularPresidentePorLocal(raDados.mesarios);
@@ -1099,6 +1114,58 @@ async function raImprimirConferenciaSimplificada() {
   if (!dados.mrv.length && !dados.outras.length) { showToast('⚠ Nenhum mesário ou apoio logístico cadastrado nesta zona'); return; }
   const html = raHtmlConferenciaSimplificada(dados, raCfg());
   await raImprimirDocumento(html, 'recibo_alimentacao_conferencia_simplificada_impresso', dados.mrv.length + dados.outras.length);
+}
+
+// ── Checklists de conferência FÍSICA — 1 folha cada (28/10/2026, pedido
+// direto: "vou conferir inicialmente se todos os recibos estão presentes,
+// então quero um checklist por seção de uma folha, e um check list de
+// locais de votação em 1 folha"). Diferente de TUDO que já existe neste
+// módulo (Conferência simplificada/Relatórios, que mostram STATUS DE
+// PAGAMENTO) — isto é sobre o PAPEL: só uma caixinha ☐ por seção/local,
+// pra marcar à mão que o recibo físico (assinado) já voltou pro cartório.
+// Nenhum dado de pagamento/valor/documento entra aqui de propósito — é um
+// checklist, não um relatório.
+//
+// "Uma folha" é garantia de layout, não coincidência de dado pequeno —
+// zonas reais têm ~175 seções/~64 locais (ver "Números da operação" no
+// topo do CLAUDE.md), então a lista vira MULTI-COLUNA (CSS `column-count`,
+// `.ra-check-colunas`) pra caber tudo numa página física só, mesmo em
+// zona grande; cada item usa `break-inside:avoid` pra nunca ser cortado
+// no meio entre duas colunas.
+function raHtmlChecklistItem(texto, municipio) {
+  return `<div class="ra-check-item"><span class="ra-check-box">☐</span> ${raEsc(texto)}${municipio ? ` <span class="ra-check-mun">(${raEsc(municipio)})</span>` : ''}</div>`;
+}
+
+function raHtmlChecklistSecoes(secoes, cfg) {
+  const itens = secoes.map(s => raHtmlChecklistItem(`Seção ${s.numero} — ${raNomeLocalSemCodigo(s.local_nome)}`, s.municipio)).join('');
+  return `
+    <div class="ra-pagina ra-check-pagina">
+      ${raHtmlTimbre('Checklist de Conferência — Recibos por Seção (Mesa Receptora)', `${secoes.length} seção(ões) ativa(s)`, cfg, 1)}
+      <div class="ra-check-colunas">${itens}</div>
+    </div>`;
+}
+
+function raHtmlChecklistLocais(locais, cfg) {
+  const itens = locais.map(l => raHtmlChecklistItem(raNomeLocalSemCodigo(l.local_nome), l.municipio)).join('');
+  return `
+    <div class="ra-pagina ra-check-pagina">
+      ${raHtmlTimbre('Checklist de Conferência — Recibos por Local de Votação', `${locais.length} local(is) de votação`, cfg, 1)}
+      <div class="ra-check-colunas">${itens}</div>
+    </div>`;
+}
+
+async function raImprimirChecklistSecoes() {
+  const secoes = raDados.secoesZona || [];
+  if (!secoes.length) { showToast('⚠ Nenhuma seção ativa cadastrada nesta zona'); return; }
+  const html = raHtmlChecklistSecoes(secoes, raCfg());
+  await raImprimirDocumento(html, 'recibo_alimentacao_checklist_secoes_impresso', secoes.length);
+}
+
+async function raImprimirChecklistLocais() {
+  const locais = raDados.locaisZona || [];
+  if (!locais.length) { showToast('⚠ Nenhum local de votação cadastrado nesta zona'); return; }
+  const html = raHtmlChecklistLocais(locais, raCfg());
+  await raImprimirDocumento(html, 'recibo_alimentacao_checklist_locais_impresso', locais.length);
 }
 
 async function raSalvarConfig() {
@@ -2822,6 +2889,12 @@ function raHtmlSecaoControle() {
         <div class="ic-sub" style="margin-top:4px">Lista corrida, sem agrupar por local: 1 folha com a Mesa Receptora inteira (os 4 cargos) e 1 folha com
           Coordenador de Acessibilidade + Auxiliar de Eleição + Junta Eleitoral juntos — pra bater o olho rápido em
           quem já recebeu, quem falta e quem está isento, sem precisar abrir a tela.</div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirChecklistSecoes()">☐ Checklist — recibos por seção (1 folha)</button>
+        <button class="btn btn-out" onclick="raImprimirChecklistLocais()">☐ Checklist — recibos por local de votação (1 folha)</button>
+        <div class="ic-sub" style="margin-top:4px">Pra conferir se o PAPEL já voltou assinado, não pra ver status de pagamento — só uma caixinha ☐ por
+          seção/local, numa lista multi-coluna que cabe tudo numa única folha, mesmo em zona com muitas seções.</div>
       </div>
       <div id="ra-controle-unificado" style="margin-top:8px"></div>
     </div>`;
