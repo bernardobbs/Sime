@@ -2149,6 +2149,55 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 27. Conferência simplificada — 2 folhas, MRV + demais funções
+//      (28/10/2026, pedido direto: "pdf simplificado para conferencia dos
+//      recibos alimentações, deve ter 1 folha para as mrv e uma folha para
+//      as outras funções") ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  await p.click('button:has-text("Imprimir conferência simplificada")');
+  await p.waitForTimeout(300);
+
+  check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
+  const paginas = await p.locator('#print-area .ra-pagina').count();
+  check('exatamente 2 folhas (MRV + demais funções)', paginas === 2, String(paginas));
+
+  const txtPag1 = (await p.locator('#print-area .ra-pagina').nth(0).innerText());
+  check('folha 1 é a Mesa Receptora (MRV)', /Mesa Receptora \(MRV\)/.test(txtPag1));
+  check('folha 1 traz os 4 cargos (Presidente, 1º/2º Mesário, 1º Secretário), não só o Presidente', /PRESIDENTE MARIA\b/.test(txtPag1) && /MESARIO 1 JOAO/.test(txtPag1) && /MESARIO 2 ANA/.test(txtPag1) && /JOAO PEDRO OLIVEIRA/.test(txtPag1) && /ANA CAROLINA FERREIRA/.test(txtPag1) && /FRANCISCO DAS CHAGAS/.test(txtPag1), txtPag1.slice(0, 400));
+  check('mesário inativo nunca aparece', !/MESARIO INATIVO/.test(txtPag1));
+  check('resumo da folha 1 conta as 7 pessoas (nenhuma paga/isenta no mock)', /7 pessoa\(s\)/.test(txtPag1) && /⏳ 7 ainda vai\(ão\) receber/.test(txtPag1), txtPag1.slice(0, 300));
+
+  const txtPag2 = (await p.locator('#print-area .ra-pagina').nth(1).innerText());
+  check('folha 2 é "Demais Funções"', /Demais Funções/.test(txtPag2));
+  check('folha 2 junta Coordenador + Auxiliar + Junta (sem o juiz)', /COORDENADORA BEATRIZ/.test(txtPag2) && /COORDENADOR CARLOS SEM LOCAL/.test(txtPag2) && /AUXILIAR PEDRO/.test(txtPag2) && /AUXILIAR LUCIA/.test(txtPag2) && /JUNTA FERNANDO/.test(txtPag2), txtPag2.slice(0, 400));
+  check('Presidente da Junta (juiz eleitoral) nunca aparece na folha 2', !/CARLOS MARCELLO SALES CAMPOS/.test(txtPag2));
+  check('resumo da folha 2 conta as 5 pessoas', /5 pessoa\(s\)/.test(txtPag2), txtPag2.slice(0, 300));
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const logConf = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_conferencia_simplificada_impresso');
+  check('log de auditoria com a soma das duas folhas (7+5=12)', !!logConf && logConf.payload.payload.quantidade === 12, JSON.stringify(logConf));
+
+  // Verificado com page.pdf() de verdade (não só innerHTML/contagem de
+  // `.ra-pagina`), mesmo critério já usado nos demais documentos deste
+  // arquivo — confirma que as 2 folhas lógicas saem em exatamente 2
+  // páginas físicas (listas curtas, nunca deveriam transbordar).
+  await p.emulateMedia({ media: 'print' });
+  const confPdf = await p.pdf({ printBackground: true });
+  const confMediaBoxes = [...confPdf.toString('latin1').matchAll(/\/MediaBox/g)];
+  check('exatamente 2 páginas físicas no PDF gerado', confMediaBoxes.length === 2, String(confMediaBoxes.length));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

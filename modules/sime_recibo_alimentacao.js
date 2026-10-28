@@ -940,6 +940,88 @@ async function raImprimirRelatorioPresidentesCoordenadores() {
   await raImprimirDocumento(html, 'recibo_alimentacao_relatorio_presidentes_coordenadores_impresso', totalLocais);
 }
 
+// ── Conferência simplificada — 2 folhas, MRV + demais funções (28/10/2026,
+// pedido direto: "quero um pdf simplificado para conferencia dos recibos
+// alimentações, deve ter 1 folha para as mrv e uma folha para as outras
+// funções"). Diferente dos dois relatórios acima (agrupados por local/
+// município, pra navegar o cadastro inteiro prédio a prédio), este é só
+// uma lista corrida — pensado pra bater o olho rápido, sem abrir a tela:
+// uma folha com a Mesa Receptora inteira (os 4 cargos — Presidente é quem
+// de fato recebe, mas os outros 3 aparecem igual, já que o documento é
+// "conferência" contra o que a mesa deveria ter, não só quem é pago
+// direto) e outra com Coordenador de Acessibilidade + Auxiliar de Eleição
+// + Junta Eleitoral juntos (as "outras funções" do pedido).
+//
+// Nunca é o documento de assinatura (`raHtmlMesaReceptora`/
+// `raHtmlPorLocal`/`raHtmlListaFlat`, com SUBSTITUIÇÕES/OBS/QR de
+// devolução) — é um relatório de leitura, mesmo espírito de
+// `raHtmlRelatorioPagamentos`/`raHtmlRelatorioPresidentesCoordenadores`:
+// sem coluna de assinatura, sem bloco de fechamento, só a lista + um
+// resumo de quantos já receberam/ainda vão receber/estão isentos no topo
+// de cada folha.
+function raCalcularConferenciaSimplificada() {
+  const mrv = (raDados.mesarios || []).slice().sort((a, b) =>
+    (a.sec ? a.sec.numero : 9999) - (b.sec ? b.sec.numero : 9999) ||
+    RA_ORDEM_MESA.indexOf(a.funcao_mesa) - RA_ORDEM_MESA.indexOf(b.funcao_mesa));
+  const outras = [...(raDados.coord || []), ...(raDados.auxiliares || []), ...(raDados.junta || [])]
+    .sort((a, b) => raFuncaoLabel(a).localeCompare(raFuncaoLabel(b)) || a.nome_completo.localeCompare(b.nome_completo));
+  return { mrv, outras };
+}
+
+function raResumoConferencia(lista) {
+  const pagos = lista.filter(p => p.auxilio_alimentacao_pago).length;
+  const isentos = lista.filter(p => p.auxilio_alimentacao_isento).length;
+  return { total: lista.length, pagos, isentos, pendentes: lista.length - pagos - isentos };
+}
+
+// `comSecaoCargo` — true pra MRV (Seção+Cargo, que é o que diferencia uma
+// linha da outra numa mesa); false pra "outras funções" (Função+Local, já
+// que aqui a função em si é a informação que falta, não o cargo).
+function raHtmlLinhaConferencia(p, comSecaoCargo) {
+  const colsFixas = comSecaoCargo
+    ? `<td>${p.sec ? p.sec.numero : '—'}</td><td>${raEsc(p.funcao_mesa || '—')}</td>`
+    : `<td>${raEsc(raFuncaoLabel(p))}</td><td>${raEsc(p.sec ? `${p.sec.municipio} — ${raNomeLocalSemCodigo(p.sec.local_nome)}` : '—')}</td>`;
+  return `
+    <tr>
+      ${colsFixas}
+      <td>${raEsc(p.inscricao_eleitoral || '—')}</td>
+      <td>${raEsc(p.nome_completo)}</td>
+      <td>${raEsc(raStatusRelatorioTexto(p))}</td>
+      <td>${p.auxilio_alimentacao_pago ? raFmtValor(p.auxilio_alimentacao_valor_pago) : '—'}</td>
+      <td>${raEsc(p.auxilio_alimentacao_documento || '—')}</td>
+    </tr>`;
+}
+
+function raHtmlPaginaConferencia(titulo, subtitulo, lista, comSecaoCargo, cfg, numeroPagina) {
+  const r = raResumoConferencia(lista);
+  const colgroupExtra = comSecaoCargo
+    ? '<col style="width:7%"><col style="width:13%">'
+    : '<col style="width:18%"><col style="width:22%">';
+  const headExtra = comSecaoCargo ? '<th>Seção</th><th>Cargo</th>' : '<th>Função</th><th>Local</th>';
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre(titulo, subtitulo, cfg, numeroPagina)}
+      <div class="ra-rel-resumo">${r.total} pessoa(s) — ✅ ${r.pagos} já recebeu/receberam · 🟡 ${r.isentos} isento(s) · ⏳ ${r.pendentes} ainda vai(ão) receber</div>
+      <table class="ra-tabela">
+        <colgroup>${colgroupExtra}<col style="width:13%"><col><col style="width:16%"><col style="width:9%"><col style="width:11%"></colgroup>
+        <thead><tr>${headExtra}<th>Inscrição</th><th>Nome</th><th>Status</th><th>Valor</th><th>Documento</th></tr></thead>
+        <tbody>${lista.length ? lista.map(p => raHtmlLinhaConferencia(p, comSecaoCargo)).join('') : `<tr><td colspan="7" style="color:#555">Nenhum registro.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+function raHtmlConferenciaSimplificada(dados, cfg) {
+  return raHtmlPaginaConferencia('Conferência de Recibos — Mesa Receptora (MRV)', 'Presidente + 1º/2º Mesário + 1º Secretário', dados.mrv, true, cfg, 1) +
+    raHtmlPaginaConferencia('Conferência de Recibos — Demais Funções', 'Coordenador de Acessibilidade + Auxiliar de Eleição + Junta Eleitoral', dados.outras, false, cfg, 2);
+}
+
+async function raImprimirConferenciaSimplificada() {
+  const dados = raCalcularConferenciaSimplificada();
+  if (!dados.mrv.length && !dados.outras.length) { showToast('⚠ Nenhum mesário ou apoio logístico cadastrado nesta zona'); return; }
+  const html = raHtmlConferenciaSimplificada(dados, raCfg());
+  await raImprimirDocumento(html, 'recibo_alimentacao_conferencia_simplificada_impresso', dados.mrv.length + dados.outras.length);
+}
+
 async function raSalvarConfig() {
   if (!raDados?.eleicao?.id) { showToast('⚠ Nenhuma eleição ativa nesta zona — não há onde salvar'); return; }
   const valorTxt = document.getElementById('ra-valor').value.replace(',', '.');
@@ -2655,6 +2737,12 @@ function raHtmlSecaoControle() {
         <div class="ic-sub" style="margin-top:4px">Presidente de cada seção + Coordenador(a) de Acessibilidade do local, separado por cidade e local de votação —
           mostra quem já recebeu e quem ainda vai receber. Um local sem coordenador nomeado ainda aparece do mesmo
           jeito, com um aviso no lugar do nome.</div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirConferenciaSimplificada()">📝 Imprimir conferência simplificada (2 folhas — MRV e demais funções)</button>
+        <div class="ic-sub" style="margin-top:4px">Lista corrida, sem agrupar por local: 1 folha com a Mesa Receptora inteira (os 4 cargos) e 1 folha com
+          Coordenador de Acessibilidade + Auxiliar de Eleição + Junta Eleitoral juntos — pra bater o olho rápido em
+          quem já recebeu, quem falta e quem está isento, sem precisar abrir a tela.</div>
       </div>
       <div id="ra-controle-unificado" style="margin-top:8px"></div>
     </div>`;
