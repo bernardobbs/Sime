@@ -191,7 +191,12 @@ async function raCarregar() {
     // `secaoIds` logo abaixo, que também nunca filtrou): uma seção
     // duplicada/inativa do mesmo prédio nunca introduz um `local_nome`
     // novo, só repete um que já existiria de qualquer forma.
-    sb.from('sime_secoes').select('numero, local_nome, municipio, ativo').eq('zona_id', zonaId),
+    // `id` acrescentado em 29/10/2026 — antes só `numero/local_nome/
+    // municipio/ativo` bastava pro checklist impresso e pra `locaisZona`
+    // (nenhum dos dois precisa casar seção com ator); a grade de presença
+    // CLICÁVEL (`renderPresencaGrade`) precisa do id de verdade pra achar
+    // os membros da mesa via `secao_id`.
+    sb.from('sime_secoes').select('id, numero, local_nome, municipio, ativo').eq('zona_id', zonaId),
   ]);
   if (error) { raDados = { erro: error.message }; render(); return; }
 
@@ -2120,6 +2125,7 @@ async function raSalvarDocumentoDevolucao(id) {
 async function raModalMarcarFrequencia(atorId, frequencia) {
   await raMarcarFrequenciaCore(atorId, frequencia);
   renderControleUnificado();
+  renderPresencaGrade();
   if (raModalId === atorId) raRenderModal();
 }
 async function raModalToggleDevolvido(atorId, marcarDevolvido) {
@@ -2598,6 +2604,7 @@ async function raMudarTurnoView(valor) {
     raHistoricoCarregando = false;
   }
   renderControleUnificado();
+  renderPresencaGrade();
 }
 
 function raHtmlSeletorTurno() {
@@ -2833,6 +2840,149 @@ function renderConferencia() {
     ${!municipios.length && !semLocal.length ? '<div class="ic-sub" style="margin:0">Nenhum dado carregado ainda.</div>' : ''}`;
 }
 
+// ── ☑️ Grade de presença CLICÁVEL — mesmo visual do checklist impresso,
+// mas interativa (29/10/2026). Pedido direto depois do checklist impresso
+// de presença ter sido bem recebido ("gostei"): "como faço para marcar em
+// caixa de seleção no mesmo estilo, marcando presença ou ausencia" — o
+// papel só tem ☐ (marca à mão com caneta); isto é a versão NA TELA, pra
+// quem prefere marcar direto no sistema em vez de imprimir.
+//
+// Mesma ordenação FLAT, só por número de seção (nunca por município) do
+// checklist impresso — mesmo critério de sempre ("é a grade que mais bate
+// com a referência do TRE"), reaproveitando `raDados.secoesZona` (agora com
+// `id`, ver `raCarregar`) pra incluir TODA seção ativa da zona, mesmo sem
+// nenhum mesário designado ainda (cargo sem ninguém vira célula travada,
+// sem onclick — não dá pra marcar presença de alguém que não existe).
+//
+// Cada cargo (P/1M/2M/1S) é sua PRÓPRIA pílula clicável — um `sime_atores`
+// por cargo — nunca um clique só pra seção inteira (já existe
+// `raMarcarPresencaMesa` pra isso, botão "👥 Todos presentes" na lista de
+// baixo; aqui é deliberadamente granular, cargo por cargo). Um clique
+// avança um CICLO de 3 estados (`RA_FREQ_CICLO`) — ➖ sem marcar → ✅
+// presente → ❌ faltou → volta pra ➖ — toque único por estado, mesmo
+// padrão de toda ação rápida do projeto (nunca precisa de modal nem de
+// confirmação pra um estado reversível a qualquer momento).
+let raPresencaGradeAberto = false;
+function raTogglePresencaGrade() {
+  raPresencaGradeAberto = !raPresencaGradeAberto;
+  renderReciboAlimentacao();
+}
+
+const RA_FREQ_CICLO = { '': 'presente', presente: 'faltou', faltou: '' };
+
+async function raCicloFrequencia(atorId) {
+  const ator = raAcharAtorQualquer(atorId);
+  if (!ator) return;
+  const atual = ator.auxilio_alimentacao_frequencia || '';
+  const proxima = RA_FREQ_CICLO[atual] ?? 'presente';
+  const ok = await raMarcarFrequenciaCore(atorId, proxima || null);
+  if (!ok) return;
+  renderPresencaGrade();
+  renderControleUnificado();
+  if (raConferenciaAberto) renderConferencia();
+}
+
+// Classe/estilo por estado — mesmo trio de cores já usado no resto da tela
+// pra presente/faltou (`var(--green...)`/`var(--red...)`), sem inventar
+// paleta nova; "sem marcar" usa a borda neutra padrão de qualquer pílula.
+function raScrPillClasse(freq) {
+  return freq === 'presente' ? 'ra-scr-cel-presente' : freq === 'faltou' ? 'ra-scr-cel-faltou' : '';
+}
+
+function raHtmlPresencaCel(ator, rotulo) {
+  if (!ator) return `<span class="ra-scr-cel ra-scr-cel-vazia" title="Ninguém designado pra este cargo ainda">${raEsc(rotulo)} —</span>`;
+  const freq = ator.auxilio_alimentacao_frequencia || '';
+  const icone = freq === 'presente' ? '✅' : freq === 'faltou' ? '❌' : '➖';
+  return `<span class="ra-scr-cel ${raScrPillClasse(freq)}" onclick="raCicloFrequencia('${ator.id}')" title="${raEsc(ator.nome_completo)} — toque pra alternar presente/faltou/sem marcar">${raEsc(rotulo)} ${icone}</span>`;
+}
+
+// "👥" — marca os 4 cargos presentes de uma vez, DENTRO da própria pílula
+// (29/10/2026, mesmo dia — consolidação pedida depois que a grade nasceu:
+// "a grade vira o único jeito" de marcar presença, substituindo os botões
+// "✅ Presente"/"❌ Faltou"/"👥 Todos presentes" que viviam na lista de
+// Controle logo abaixo). Reaproveita o mesmo `raMarcarPresencaMesa()` de
+// sempre — só mudou ONDE o atalho mora, não a RPC/lógica por trás. Só
+// aparece quando a seção já tem pelo menos 1 cargo designado (marcar "todo
+// mundo presente" de uma mesa 100% vazia não faz sentido nenhum).
+function raHtmlPresencaPill(secao, membrosPorCargo) {
+  const temAlguem = Object.values(membrosPorCargo).some(Boolean);
+  return `
+    <div class="ra-scr-pill">
+      <b>${secao.numero}</b>
+      ${temAlguem ? `<span class="ra-scr-cel ra-scr-cel-bulk" onclick="raMarcarPresencaMesa('${secao.id}')" title="Marca presente os 4 cargos desta seção de uma vez">👥</span>` : ''}
+      ${raHtmlPresencaCel(membrosPorCargo.Presidente, 'P')}
+      ${raHtmlPresencaCel(membrosPorCargo['1º Mesário'], '1M')}
+      ${raHtmlPresencaCel(membrosPorCargo['2º Mesário'], '2M')}
+      ${raHtmlPresencaCel(membrosPorCargo['1º Secretário'], '1S')}
+    </div>`;
+}
+
+// Coordenador(a) de Acessibilidade / Auxiliar de Eleição / Junta Eleitoral
+// não têm a forma "seção + 4 cargos" — cada um é UMA pílula com UMA célula
+// só (mesmo ciclo ➖→✅→❌→➖ de sempre), mostrando o nome (raramente têm
+// seção resolvida, ver "Auxiliar de Eleição virou contagem por PESSOA"
+// alhures) em vez do número. Seção própria da grade, flat, ordenada por
+// nome — sem isso, remover os botões da lista de baixo deixaria esses 3
+// papéis SEM NENHUM jeito de marcar frequência (a grade original só cobria
+// mesa — achado ao revisar o pedido de simplificação antes de executar).
+function raHtmlPresencaPillSimples(p) {
+  const freq = p.auxilio_alimentacao_frequencia || '';
+  const icone = freq === 'presente' ? '✅' : freq === 'faltou' ? '❌' : '➖';
+  return `<div class="ra-scr-pill"><span class="ra-scr-cel ${raScrPillClasse(freq)}" onclick="raCicloFrequencia('${p.id}')" title="toque pra alternar presente/faltou/sem marcar">${raEsc(p.nome_completo)} ${icone}</span></div>`;
+}
+
+function raHtmlSecaoPresencaGrade() {
+  return `
+    <div class="import-card">
+      <div class="ic-title" style="font-size:.85rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="raTogglePresencaGrade()">
+        <span>☑️ Marcar presença — grade clicável por seção</span>
+        <span>${raPresencaGradeAberto ? '▾' : '▸'}</span>
+      </div>
+      <div class="ic-sub">Mesmo visual do checklist impresso (☐ Checklist — presença da mesa por seção), só que
+        direto na tela, e é o ÚNICO jeito de marcar presença/ausência nesta aba (os botões soltos que existiam na
+        lista de Controle de pagamento foram removidos daqui — o modal "❌ Faltou" continua lá, só pra quando
+        precisar marcar também o recibo ausente). Toque no cargo (P/1M/2M/1S) pra alternar ➖ sem marcar → ✅
+        presente → ❌ faltou; 👥 marca a mesa inteira de uma vez. Seções em ordem crescente de número, sem agrupar
+        por município — igual ao papel. Coordenadores, auxiliares e junta eleitoral ficam numa lista própria
+        abaixo, por nome.</div>
+      <div id="ra-presenca-grade-body" style="margin-top:8px"></div>
+    </div>`;
+}
+
+function renderPresencaGrade() {
+  const alvo = document.getElementById('ra-presenca-grade-body');
+  if (!alvo) return;
+  if (!raPresencaGradeAberto) { alvo.innerHTML = ''; return; }
+  // Turno arquivado (📜 Ver outro turno) é somente leitura — a grade
+  // clicável não faz sentido ali (mesmo critério já aplicado em
+  // `renderControleUnificado`/`renderConferencia`... na verdade a
+  // Conferência nunca escreve, mas esta grade escreve, então precisa do
+  // mesmo guard que a lista de Controle já tem).
+  if (raTurnoView) {
+    alvo.innerHTML = `<div class="ic-sub" style="margin:0">📜 Turno arquivado (somente leitura) — volte pro turno
+      atual no seletor acima pra marcar presença.</div>`;
+    return;
+  }
+  const secoes = raDados.secoesZona || [];
+  const porSecao = {};
+  for (const m of raDados.mesarios || []) {
+    if (!m.secao_id) continue;
+    (porSecao[m.secao_id] ??= {})[m.funcao_mesa] = m;
+  }
+  // `secoesZona` vem ordenado por município+número (uso compartilhado com
+  // os checklists de recibo) — aqui precisa ser SÓ por número, cópia
+  // ordenada à parte pra não afetar quem mais lê `secoesZona`.
+  const ordenadas = secoes.slice().sort((a, b) => a.numero - b.numero);
+  const outros = [...(raDados.coord || []), ...(raDados.auxiliares || []), ...(raDados.junta || [])]
+    .slice().sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+  if (!ordenadas.length && !outros.length) { alvo.innerHTML = '<div class="ic-sub" style="margin:0">Nenhuma seção/pessoa cadastrada nesta zona.</div>'; return; }
+  alvo.innerHTML = `
+    ${ordenadas.length ? `<div class="ra-scr-pill-grid">${ordenadas.map(s => raHtmlPresencaPill(s, porSecao[s.id] || {})).join('')}</div>` : ''}
+    ${outros.length ? `
+      <div style="font-weight:700;font-size:.8rem;margin:10px 0 4px">Coordenadores, auxiliares e junta eleitoral</div>
+      <div class="ra-scr-pill-grid">${outros.map(raHtmlPresencaPillSimples).join('')}</div>` : ''}`;
+}
+
 // Card "🗳️ Encerrar turno e começar o próximo" (09/10/2026, pedido direto,
 // a partir de uma pergunta sobre o recibo do 2º turno) — só aparece quando
 // `raDados.proximoTurno` existe (ver raCarregar). O FORMATO do recibo já
@@ -2969,7 +3119,9 @@ function raHtmlSecaoControle() {
         pagamento direto (R$260 — repassa aos outros 3 da mesa fora do sistema, por isso só ele aparece aqui);
         "❌ Faltou" nele abre um modal pra indicar qual(is) dos 4 cargos faltou e calcula a devolução sozinho
         (valor pago ÷ 4 × quantos faltaram). Auxiliar de eleição recebe por dia trabalhado (R$65 só domingo,
-        R$130 sábado + domingo — use o seletor 🗓️ ao lado do valor). Valor sempre editável, nunca travado.</div>
+        R$130 sábado + domingo — use o seletor 🗓️ ao lado do valor). Valor sempre editável, nunca travado.
+        <b>Marcar presente/faltou agora é só no painel "☑️ Marcar presença" acima</b> — aqui embaixo só sobrou o
+        "❌ Faltou" da mesa, que abre o modal pra também indicar recibo ausente.</div>
       <div style="margin-top:8px">
         <button class="btn btn-out" onclick="raImprimirRelatorioPagamentos()">🖨️ Imprimir relatório (valores pagos + documentos)</button>
         <div class="ic-sub" style="margin-top:4px">Imprime só quem já está marcado como pago — respeita os filtros de função/município/busca abaixo, ignora os de status de pagamento/situação.</div>
@@ -3119,10 +3271,7 @@ function renderControleUnificado() {
             ${a.auxilio_alimentacao_devolvido ? `<span class="ic-sub">✅ Devolvido${a.auxilio_alimentacao_devolvido_em ? ` em ${raFmtDataHora(new Date(a.auxilio_alimentacao_devolvido_em))}` : ''}</span>` : ''}
           </span>
           <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            ${!ehMesa ? `<button class="btn ${a.auxilio_alimentacao_frequencia === 'presente' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'presente')">✅ Presente</button>
-            <button class="btn ${a.auxilio_alimentacao_frequencia === 'faltou' ? 'btn-dark' : 'btn-out'}" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarFrequencia('${a.id}', 'faltou')">❌ Faltou</button>` : ''}
-            ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raMarcarPresencaMesa('${a.secao_id}')" title="Marca presente os 4 cargos da mesa desta seção de uma vez (nunca mexe no recibo)">👥 Todos presentes</button>
-            <button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raAbrirModalFalta('${a.secao_id}')" title="Indicar quem faltou e não foi substituído, ou marcar que só o recibo ficou faltando">❌ Faltou</button>` : ''}
+            ${ehMesa ? `<button class="btn btn-out" style="padding:5px 9px;font-size:.78rem" onclick="raAbrirModalFalta('${a.secao_id}')" title="Indicar quem faltou e não foi substituído, ou marcar que só o recibo ficou faltando">❌ Faltou</button>` : ''}
             ${a.auxilio_alimentacao_isento ? `
             <input type="text" id="ra-isento-motivo-${a.id}" value="${raEsc(a.auxilio_alimentacao_isento_motivo || '')}" placeholder="motivo (opcional)" onblur="raSalvarIsentoMotivo('${a.id}', this.value)" style="width:150px;font-size:.72rem;padding:4px 6px">
             <button class="btn btn-out" style="padding:4px 8px;font-size:.72rem" onclick="raToggleIsento('${a.id}', false)">↺ Desfazer isenção</button>
@@ -3265,21 +3414,20 @@ async function raMarcarFrequenciaCore(atorId, frequencia) {
   pessoa.auxilio_alimentacao_frequencia = frequencia;
   const autor = window.nomeDoUsuario ? await window.nomeDoUsuario() : 'Cartório';
   await log('mesario_auxilio_alimentacao_frequencia', '', { ator_id: atorId, nome: pessoa.nome_completo, frequencia, autor });
-  showToast(frequencia === 'presente' ? '✓ Marcado como presente' : '✓ Marcado como faltou');
+  // 3º caso (29/10/2026) — `raCicloFrequencia()` da grade clicável também
+  // chama este núcleo pra LIMPAR a marcação (ciclo volta a "sem marcar"),
+  // algo que nenhum chamador fazia antes; sem este `else if`, o fallback
+  // original diria "Marcado como faltou" por engano pra quem só desmarcou.
+  showToast(frequencia === 'presente' ? '✓ Marcado como presente' : frequencia === 'faltou' ? '✓ Marcado como faltou' : '✓ Marca removida');
   return true;
 }
-async function raMarcarFrequencia(atorId, frequencia) {
-  await raMarcarFrequenciaCore(atorId, frequencia);
-  renderControleUnificado();
-}
 
-// "Presença de toda a mesa" (05/10/2026, pedido direto) — a lista de
-// Frequência e Devolução só mostra o Presidente por seção (herda o mesmo
-// filtro de pagamento de `raDados.todos`: 1º/2º Mesário e 1º Secretário
-// nunca aparecem aqui, ver nota em `raCarregar`). Marcar frequência um a
-// um exigiria abrir os outros 3 cargos em outra tela — este botão marca
-// os 4 cargos da mesma seção de uma vez, lendo de `raDados.mesarios`
-// (lista cheia, não filtrada) em vez de `raDados.todos`.
+// "Presença de toda a mesa" (05/10/2026, pedido direto) — marca os 4
+// cargos da seção de uma vez, lendo de `raDados.mesarios` (lista cheia, só
+// ela tem os 4 cargos — `raDados.todos` só tem o Presidente, ver nota em
+// `raCarregar`). Chamada hoje pelo botão "👥" dentro de cada pílula da
+// grade (ver `raHtmlPresencaPill`) — morava na lista de Controle até
+// 29/10/2026, quando a grade virou o único lugar de marcar presença.
 async function raMarcarPresencaMesa(secaoId) {
   const membros = (raDados.mesarios || []).filter(a => a.secao_id === secaoId);
   if (!membros.length) return;
@@ -3292,6 +3440,7 @@ async function raMarcarPresencaMesa(secaoId) {
   await log('mesario_auxilio_alimentacao_frequencia_mesa', '', { secao_id: secaoId, quantidade: membros.length, autor });
   showToast(`✓ Mesa inteira marcada como presente (${membros.length})`);
   renderControleUnificado();
+  renderPresencaGrade();
 }
 
 // Modal "❌ Faltou" (06/10/2026, pedido direto: "quando marcar em faltou,
@@ -3406,6 +3555,7 @@ async function raConfirmarModalFalta() {
   showToast('✓ Frequência da mesa atualizada');
   raFecharModalFalta();
   renderControleUnificado();
+  renderPresencaGrade();
 }
 
 // Devolução — grava a data/hora da devolução; desmarcar limpa a data mas
@@ -3505,10 +3655,11 @@ function renderReciboAlimentacao() {
       </div>
     </div>
 
-    ${raSubTab === 'controle' ? raHtmlCardTurno() + raHtmlSecaoConferencia() + raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
+    ${raSubTab === 'controle' ? raHtmlCardTurno() + raHtmlSecaoConferencia() + raHtmlSecaoPresencaGrade() + raHtmlSecaoControle() : raHtmlSecaoImpressao(cfg)}
     ${raSubTab === 'controle' ? raHtmlSecaoVeiculos() : ''}
   `;
   if (raSubTab === 'controle') renderConferencia();
+  if (raSubTab === 'controle') renderPresencaGrade();
   if (raSubTab === 'controle') renderControleUnificado();
   if (raSubTab === 'controle') renderControleVeiculos();
 }

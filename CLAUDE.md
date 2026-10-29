@@ -10996,6 +10996,80 @@ de sub-célula, invisível pra `innerText`.
 
 ---
 
+## GRADE CLICÁVEL DE PRESENÇA — ÚNICO JEITO DE MARCAR, SUBSTITUINDO OS BOTÕES SOLTOS DO CONTROLE DE PAGAMENTO (`sime_recibo_alimentacao.js`, 29/10/2026)
+
+Pedido direto, depois de elogiar o checklist impresso: "gostei do Checklist
+— presença da mesa por seção, em ordem (1 folha) / como faço para marcar em
+caixa de seleção no mesmo estilo, marcando presença ou ausencia" — o pedido
+era levar o VISUAL do checklist de papel (pílula teal, números em ordem
+crescente, sem agrupar por município) pra dentro da tela, como um jeito
+interativo de marcar presença/ausência de verdade, não só de imprimir.
+
+**`raCicloFrequencia(atorId)`** — toque único cicla
+`➖ sem marcar → ✅ presente → ❌ faltou → ➖` (`RA_FREQ_CICLO`), reaproveitando
+o mesmo `raMarcarFrequenciaCore()` que o resto do controle de pagamento já
+usa (mesma escrita, mesmo log) — nenhuma lógica de gravação nova, só um
+jeito novo de disparar. `raHtmlPresencaPill(secao, membrosPorCargo)` desenha
+a pílula no mesmo estilo visual do checklist impresso (`.ra-scr-pill`/
+`.ra-scr-cel`, CSS novo em `SIME_convocacao.html`, fora de `@media print` —
+reaproveita as mesmas variáveis de tema já usadas no resto da tela,
+`--green-bg`/`--red-bg`/`--blue-bg` etc., confirmadas existentes no tema
+claro que esta página de fato carrega). Cargo sem ninguém designado mostra
+célula travada (`.ra-scr-cel-vazia`, sem `onclick`) — nunca finge um estado
+clicável pra uma vaga vazia. **"👥" marca a mesa inteira de uma vez**
+(reaproveita `raMarcarPresencaMesa()`, já existente desde a feature de
+Frequência e Devolução de 06/10/2026) — só aparece quando há pelo menos 1
+designado na pílula.
+
+**Pergunta de simplificação, respondida com "A grade vira o único jeito"**
+— "onde esta o controle de presentça? / como podemos simplificar ela?"
+levantou que havia 4 mecanismos sobrepostos fazendo a mesma coisa (botões
+"✅ Presente"/"❌ Faltou" inline na lista de Controle pra quem não é mesa,
+"👥 Todos presentes"/"❌ Faltou" na linha do Presidente, o modal de
+frequência dentro do detalhe da pessoa, e agora a grade nova). Resposta
+explícita, via `AskUserQuestion`: **"A grade vira o único jeito (recomendado)
+— Remove os botões '✅ Presente'/'❌ Faltou'/'👥 Todos presentes' da lista de
+baixo — marcar passa a ser só na grade nova. O modal '❌ Faltou' continua
+existindo só pra quando precisar marcar também o recibo ausente (a grade
+não cobre isso)."**
+
+**Lacuna real, achada e corrigida ANTES de remover qualquer botão — a grade
+original só cobria os 4 cargos de mesa, nunca Coordenador de Acessibilidade/
+Auxiliar de Eleição/Junta Eleitoral.** Executar o pedido ao pé da letra
+(remover os botões inline de quem não é mesa) teria apagado o ÚNICO jeito
+de marcar presença/ausência desses três grupos, já que a grade nova nunca
+tinha sido desenhada pra eles. Corrigido estendendo a grade, não só
+cumprindo a remoção: `raHtmlPresencaPillSimples(p)` (pílula de uma célula
+só, mesmo ciclo ➖→✅→❌→➖, sem a forma "seção+4 cargos") desenha uma 2ª
+lista ("Coordenadores, auxiliares e junta eleitoral"), logo abaixo da
+grade de seções, dentro do mesmo painel — `renderPresencaGrade()` junta
+`raDados.coord`+`raDados.auxiliares`+`raDados.junta` (já sem o juiz
+eleitoral, que `raDados.junta` já exclui desde 18/09/2026) ordenados por
+nome.
+
+**Consolidação de verdade, só depois da lacuna fechada**: `renderControleUnificado()`
+perdeu os botões "✅ Presente"/"❌ Faltou" (não-mesa) e "👥 Todos presentes"
+(mesa) — só sobrou "❌ Faltou" na linha de mesa, que abre o modal batch (pra
+indicar QUAL membro faltou e/ou marcar recibo ausente — a única coisa que a
+grade não cobre, porque ela é por CARGO, não por "quantos faltaram"). A
+descrição do card de Controle ganhou uma frase explícita apontando pra
+grade nova. `raMarcarFrequencia()` (wrapper antigo que só os botões
+removidos chamavam) virou código morto e foi **deletada**, não deixada
+parada — convenção do projeto.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 30/30b, 24
+checks: grade nasce fechada, abre com 3 pílulas — escopado ao grid de
+seções, já que coord/auxiliar/junta do mock caem num 2º grid que também usa
+`.ra-scr-pill` —, ordem flat por número puro, cargo vazio sem classe
+clicável, ciclo de 3 cliques grava os 3 updates certos no banco, cargo
+vazio nunca grava, 1º Mesário também responde; escala real de 176 seções
+sem nenhum mesário cadastrado ainda não quebra) e blocos 18/18b reescritos
+(o botão "👥 Todos presentes" que 18b testava foi substituído por abrir a
+grade e clicar no "👥" da pílula da seção 63 — mesma asserção de sempre:
+nunca abre o modal, zera o aviso de "deve devolver").
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no

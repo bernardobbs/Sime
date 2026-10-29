@@ -1184,7 +1184,7 @@ async function login(p) {
 
   const linhaPresidente = p.locator('.m-hist-item:has-text("PRESIDENTE MARIA DA SILVA")');
   check('linha do Presidente tem botão ❌ Faltou (abre modal, não marca direto)', await linhaPresidente.locator('button:has-text("❌ Faltou")').count() === 1);
-  check('linha do Presidente tem botão 👥 Todos presentes', await linhaPresidente.locator('button:has-text("👥 Todos presentes")').count() === 1);
+  check('linha do Presidente NÃO tem mais botão "👥 Todos presentes" (saiu pra grade)', await linhaPresidente.locator('button:has-text("👥 Todos presentes")').count() === 0);
 
   // Abre o modal e marca 2 dos 4 como faltou (1º Mesário e 1º Secretário).
   await linhaPresidente.locator('button:has-text("❌ Faltou")').click();
@@ -1226,8 +1226,8 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 18b. Reabrir o modal mostra o que já foi marcado; "👥 Todos presentes"
-// não passa pelo modal e zera a devolução ──
+// ── 18b. Reabrir o modal mostra o que já foi marcado; a grade clicável
+// (👥 na pílula da seção) não passa pelo modal e zera a devolução ──
 {
   const ctx = await b.newContext();
   const m = mock();
@@ -1255,15 +1255,18 @@ async function login(p) {
   await p.waitForTimeout(200);
   check('cancelar fecha sem gravar nada', await p.evaluate(() => window.__mock.escritas.filter(e => e.tabela === 'sime_atores').length) === 0);
 
-  await linhaPresidente.locator('button:has-text("👥 Todos presentes")').click();
+  // Abre a grade clicável e marca a mesa inteira pelo "👥" da pílula da seção 63.
+  await p.click('text=Marcar presença — grade clicável por seção');
+  await p.waitForTimeout(250);
+  await p.locator('.ra-scr-pill:has-text("63")').locator('.ra-scr-cel-bulk').click();
   await p.waitForTimeout(300);
   // "Cancelar" só esconde o overlay (classe "open") — igual a todo outro modal
   // da página, nunca limpa #modal-body no fechamento — então checar o overlay
-  // em si é o jeito certo de confirmar que "Todos presentes" não reabriu nada,
-  // não contar <label> (que ficariam do modal anterior, só visualmente ocultos).
-  check('"Todos presentes" nunca abre o modal', await p.evaluate(() => !document.getElementById('overlay').classList.contains('open')));
+  // em si é o jeito certo de confirmar que a grade não abriu nada, não contar
+  // <label> (que ficariam do modal anterior, só visualmente ocultos).
+  check('clicar "👥" na grade nunca abre o modal', await p.evaluate(() => !document.getElementById('overlay').classList.contains('open')));
   const txtDepois = (await p.locator('#content').textContent()).replace(/\s+/g, ' ');
-  check('depois de "Todos presentes", some o aviso de deve devolver', !/deve devolver/.test(txtDepois), txtDepois);
+  check('depois do "👥" na grade, some o aviso de deve devolver', !/deve devolver/.test(txtDepois), txtDepois);
 
   check('nenhum erro JS', erros.length === 0, erros.join(' | '));
   await ctx.close();
@@ -2403,6 +2406,113 @@ async function login(p) {
   const mediaBoxes = [...pdf.toString('latin1').matchAll(/\/MediaBox/g)];
   check('176 seções (tamanho real da 7ª Zona) cabem em EXATAMENTE 1 página física', mediaBoxes.length === 1, String(mediaBoxes.length));
 
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 30. Grade de presença CLICÁVEL (29/10/2026, pedido direto: "gostei do
+//      checklist de presença, como faço para marcar em caixa de seleção no
+//      mesmo estilo, marcando presença ou ausencia") — mesmo visual de
+//      pílula do checklist impresso, mas interativa na tela: cada cargo é
+//      clicável e cicla ➖ sem marcar → ✅ presente → ❌ faltou → ➖ ──
+{
+  const ctx = await b.newContext();
+  const mGrade = mock();
+  // Seção 5: Presidente + 1º Mesário designados, 2M/1S vazios (de
+  // propósito — confirma que cargo sem ninguém mostra célula travada, sem
+  // onclick). Seção 12 fora de ordem no mock (igual ao bloco 29) pra
+  // confirmar que a grade também é FLAT/por número puro.
+  mGrade.sime_atores = mGrade.sime_atores.filter(a => a.funcao !== 'mesario').concat([
+    { id: 'gm1', nome_completo: 'PRESIDENTE GRADE', funcao: 'mesario', funcao_mesa: 'Presidente', secao_id: 's1', inscricao_eleitoral: '111111111111', zona_id: 'z7', ativo: true },
+    { id: 'gm2', nome_completo: 'MESARIO 1 GRADE', funcao: 'mesario', funcao_mesa: '1º Mesário', secao_id: 's1', inscricao_eleitoral: '222222222222', zona_id: 'z7', ativo: true },
+  ]);
+  const { p, erros } = await abrir(ctx, mGrade);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  // Nasce fechada
+  check('corpo da grade vazio antes de expandir', (await p.locator('#ra-presenca-grade-body').innerText()).trim() === '');
+  await p.click('text=Marcar presença — grade clicável por seção');
+  await p.waitForTimeout(300);
+
+  // Escopado ao 1º .ra-scr-pill-grid (seções) — o mock também tem coord/
+  // auxiliar/junta, que caem no 2º grid ("outras funções") e também usam
+  // a classe .ra-scr-pill, então um seletor sem escopo contaria os dois.
+  const pills = p.locator('.ra-scr-pill-grid').nth(0).locator('.ra-scr-pill');
+  check('3 pílulas na grade (uma por seção do mock)', await pills.count() === 3);
+  const txtSeq = await p.locator('#ra-presenca-grade-body').innerText();
+  check('ordem é 5, depois 12, depois 63 (número puro, não município+número)', txtSeq.indexOf('\n5\n') < txtSeq.indexOf('\n12\n') && txtSeq.indexOf('\n12\n') < txtSeq.indexOf('\n63\n'), txtSeq.slice(0, 200));
+
+  // Seção 5 tem gente designada (Presidente+1º Mesário), então a pílula
+  // também ganha a célula de bulk ("👥") ANTES dos 4 cargos — não dá pra
+  // contar por índice posicional (nth), tem que escolher pelo rótulo P/
+  // 1M/2M/1S dentro do próprio texto da célula.
+  const pillS1 = pills.filter({ hasText: '5' }).first();
+  const celP = pillS1.locator('.ra-scr-cel', { hasText: 'P' }).first();
+  const cel1M = pillS1.locator('.ra-scr-cel', { hasText: '1M' });
+  const cel2M = pillS1.locator('.ra-scr-cel', { hasText: '2M' });
+  check('cargo sem ninguém designado (2M) não tem classe clicável', !(await cel2M.getAttribute('class')).includes('ra-scr-cel-presente') && (await cel2M.getAttribute('class')).includes('ra-scr-cel-vazia'));
+  check('cargo com gente começa "sem marcar" (➖)', (await celP.innerText()).includes('➖'));
+
+  await celP.click();
+  await p.waitForTimeout(250);
+  check('1º clique marca presente (✅)', (await celP.innerText()).includes('✅'));
+  let escritas = await p.evaluate(() => window.__mock.escritas);
+  let upd = escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'gm1');
+  check('grava auxilio_alimentacao_frequencia=presente no banco', upd.length === 1 && upd[0].payload.auxilio_alimentacao_frequencia === 'presente', JSON.stringify(upd));
+
+  await celP.click();
+  await p.waitForTimeout(250);
+  check('2º clique marca faltou (❌)', (await celP.innerText()).includes('❌'));
+
+  await celP.click();
+  await p.waitForTimeout(250);
+  check('3º clique volta pra sem marcar (➖) — ciclo completo', (await celP.innerText()).includes('➖'));
+  escritas = await p.evaluate(() => window.__mock.escritas);
+  upd = escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores' && e.filtro.id === 'gm1');
+  check('3 updates no total pra gm1 (presente → faltou → limpo/null)', upd.length === 3 && upd[2].payload.auxilio_alimentacao_frequencia === null, JSON.stringify(upd));
+
+  // Clicar no cargo vazio (2M) não grava nada — célula sem onclick
+  await cel2M.click({ force: true }).catch(() => {});
+  await p.waitForTimeout(200);
+  escritas = await p.evaluate(() => window.__mock.escritas);
+  check('clicar num cargo vazio não grava update nenhum', escritas.filter(e => e.op === 'update' && e.tabela === 'sime_atores').length === 3);
+
+  // 1º Mesário (outro cargo da mesma pílula) também responde ao clique
+  await cel1M.click();
+  await p.waitForTimeout(250);
+  check('1º Mesário (gm2) também é clicável e grava', (await cel1M.innerText()).includes('✅'));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 30b. Grade de presença — escala REAL (176 seções) sem mesário nenhum
+//      cadastrado ainda — todas as 176 pílulas aparecem, todas com os 4
+//      cargos vazios (travados), sem erro nenhum ──
+{
+  const ctx = await b.newContext();
+  const mGrande = mock();
+  const nomesLocal = ['G.E. Monsenhor Mateus', 'U.E. Miguel Rocha', 'Centro Ed. JA Mulata Lima', 'Esc. Mun. A.F. Ribeiro Paz', 'Col. Est. Profª Raimundinho Andrade'];
+  const municipios = ['Campo Maior', 'Jatobá do Piauí', 'Sigefredo Pacheco'];
+  const secoesGrandes = [];
+  for (let i = 1; i <= 176; i++) secoesGrandes.push({ id: `sg${i}`, numero: i, local_nome: nomesLocal[i % nomesLocal.length], municipio: municipios[i % municipios.length], zona_id: 'z7', ativo: true });
+  mGrande.sime_secoes = secoesGrandes;
+  mGrande.sime_atores = [];
+
+  const { p, erros } = await abrir(ctx, mGrande);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('text=Marcar presença — grade clicável por seção');
+  await p.waitForTimeout(400);
+
+  check('176 pílulas na grade', await p.locator('.ra-scr-pill').count() === 176);
   check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
   await ctx.close();
 }

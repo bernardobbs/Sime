@@ -115,6 +115,28 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .m-section{border-top:1px solid var(--border);padding-top:12px;}
 .m-section-hdr{font-size:.7rem;font-weight:800;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;}
 
+/* ☑️ Grade de presença CLICÁVEL (29/10/2026, sime_recibo_alimentacao.js —
+   raHtmlSecaoPresencaGrade/renderPresencaGrade): versão NA TELA do
+   checklist impresso de presença, mesmo visual de pílula (número + 4
+   cargos P/1M/2M/1S), mas com cor por estado em vez de ☐ em branco — usa
+   as mesmas variáveis de verde/vermelho já usadas no resto da tela pra
+   presente/faltou (`raIconFrequencia`), nunca uma paleta nova. Cada
+   `.ra-scr-cel` é o cargo clicável; `.ra-scr-cel-vazia` (cargo sem ninguém
+   designado) não tem onclick nenhum, só um tom apagado. */
+.ra-scr-pill-grid{display:flex;flex-wrap:wrap;gap:6px;}
+.ra-scr-pill{display:inline-flex;align-items:center;gap:3px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:4px 6px;font-size:.76rem;}
+.ra-scr-pill>b{margin-right:2px;}
+.ra-scr-cel{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border2);border-radius:5px;padding:2px 5px;cursor:pointer;user-select:none;background:var(--card);}
+.ra-scr-cel:hover{filter:brightness(0.97);}
+.ra-scr-cel-presente{background:var(--green-bg);border-color:var(--green-bd);color:var(--green);}
+.ra-scr-cel-faltou{background:var(--red-bg);border-color:var(--red-bd);color:var(--red);}
+.ra-scr-cel-vazia{cursor:default;color:var(--text2);background:transparent;opacity:.6;}
+/* "👥" — marca os 4 cargos da seção presentes de uma vez (29/10/2026,
+   `raMarcarPresencaMesa`, movido pra dentro da pílula quando a grade virou
+   o único lugar de marcar presença) — cor própria (azul, não verde/
+   vermelho) pra nunca ser confundida com um cargo marcado presente. */
+.ra-scr-cel-bulk{background:var(--blue-bg);border-color:var(--blue);color:var(--blue);font-weight:700;}
+
 /* CORRESPONDÊNCIA — impressão de etiqueta/AR (sime_correspondencia.js).
    #print-area fica invisível na tela e só aparece no papel — evita depender
    de popup (bloqueado por padrão em muitos navegadores). Layout alinhado ao
