@@ -11068,6 +11068,36 @@ sem nenhum mesário cadastrado ainda não quebra) e blocos 18/18b reescritos
 grade e clicar no "👥" da pílula da seção 63 — mesma asserção de sempre:
 nunca abre o modal, zera o aviso de "deve devolver").
 
+**Seção AGREGADA fica de fora da grade (e dos dois checklists impressos
+que também usam `secoesZona`) — pedido direto, no mesmo dia: "as seções
+agregadas estão inoperantes, exemplo 176, as seções operantes se um dos
+membros designados, devemos poder marcar a ausência [ou presença]".**
+Uma seção agregada nunca tem mesa/Presidente/urna própria — é processada
+junto de outra seção do mesmo prédio (mesmo critério já usado pras TVs
+desde 25/10/2026, ver "SEÇÕES AGREGADAS" mais abaixo neste arquivo) — então
+ela sempre apareceria na grade com os 4 cargos vazios, pura poluição visual
+que nunca vai ter ninguém pra marcar. `sime_secoes.secao_agregada`
+acrescentado ao `select()` de `raCarregar()`; `secoesZona` (consumida pelos
+3 fluxos que assumem "isso é uma mesa de verdade" — a grade clicável, o
+checklist de presença impresso e o checklist de recibos por seção) passou
+a filtrar `!s.secao_agregada`, junto do filtro de `ativo` que já existia.
+`locaisZona` (usado só pra completar o recibo de Coordenador com um prédio
+sem ninguém nomeado) **não é afetado** — o PRÉDIO continua existindo
+normalmente, só a seção agregada em si que some dos 3 fluxos "por seção".
+
+**A 2ª parte do pedido já funcionava, sem mudança de código** — uma seção
+OPERANTE (não agregada) com só 1 dos 4 cargos designado já permite marcar
+presença/ausência normalmente desde que a grade nasceu (`raHtmlPresencaCel`
+decide por CARGO, independente de quantos dos 4 já estão preenchidos) —
+coberto só por um teste novo confirmando o comportamento, não por correção
+nenhuma.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 30c, 6 checks —
+456 no total no arquivo): só 2 pílulas na grade com a 3ª (seção 63) marcada
+agregada; seção 63 não aparece em lugar nenhum do grid; seção operante com
+só Presidente+1º Mesário designados (2M/1S vazios) continua clicável e
+grava; os dois checklists impressos também não listam a seção agregada.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

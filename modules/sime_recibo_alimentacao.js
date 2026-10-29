@@ -196,7 +196,14 @@ async function raCarregar() {
     // (nenhum dos dois precisa casar seção com ator); a grade de presença
     // CLICÁVEL (`renderPresencaGrade`) precisa do id de verdade pra achar
     // os membros da mesa via `secao_id`.
-    sb.from('sime_secoes').select('id, numero, local_nome, municipio, ativo').eq('zona_id', zonaId),
+    // `secao_agregada` acrescentado em 29/10/2026, pedido direto: "as
+    // seções agregadas estão inoperantes" (ex.: seção 176) — uma seção
+    // agregada nunca tem mesa/presidente/urna própria (é processada junto
+    // de outra seção do mesmo prédio, ver "SEÇÕES AGREGADAS" no CLAUDE.md,
+    // 25/10/2026); sem esse campo, `secoesZona` (abaixo) incluía ela nos
+    // checklists/grade de presença como se fosse uma mesa real — sempre
+    // com os 4 cargos vazios, pura poluição visual que nunca vai preencher.
+    sb.from('sime_secoes').select('id, numero, local_nome, municipio, ativo, secao_agregada').eq('zona_id', zonaId),
   ]);
   if (error) { raDados = { erro: error.message }; render(); return; }
 
@@ -222,8 +229,17 @@ async function raCarregar() {
   // documentado no CLAUDE.md pra outros fluxos) criaria uma linha extra
   // de checklist sem sentido, sobrando uma caixinha pra marcar numa seção
   // que não existe mais de verdade.
+  //
+  // Também fora: seção AGREGADA (29/10/2026, pedido direto — ver nota na
+  // consulta acima) — nunca tem mesa própria, então entraria nos 3
+  // consumidores de `secoesZona` (checklist de recibo por seção, checklist
+  // de presença impresso, e a grade clicável) sempre com os 4 cargos
+  // vazios, sem nada pra marcar/conferir ali. `local_nome`/`municipio` da
+  // seção agregada continuam intactos em `locaisZona` (que não usa este
+  // filtro) — o PRÉDIO continua existindo pro resto do sistema, só a seção
+  // em si não entra como unidade operacional própria nestes 3 fluxos.
   const secoesZona = (locaisSecoes || [])
-    .filter(s => s.ativo !== false)
+    .filter(s => s.ativo !== false && !s.secao_agregada)
     .sort((a, b) => a.municipio.localeCompare(b.municipio) || a.numero - b.numero);
 
   raDados = {

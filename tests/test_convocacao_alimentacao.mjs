@@ -2517,6 +2517,55 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 30c. Seção AGREGADA (29/10/2026, pedido direto: "as seções agregadas
+// estão inoperantes, exemplo 176" — mesmo critério já usado nas TVs desde
+// 25/10/2026) nunca aparece na grade clicável nem nos dois checklists
+// impressos que também usam `secoesZona` — ela nunca tem mesa própria, só
+// poluiria com 4 cargos vazios de propósito. Seção OPERANTE continua
+// marcável normalmente, mesmo com só 1 dos 4 cargos designado. ──
+{
+  const ctx = await b.newContext();
+  const mAgg = mock();
+  mAgg.sime_secoes = mAgg.sime_secoes.map(s => s.numero === 63 ? { ...s, secao_agregada: true } : s);
+  // Seção 63 (agora agregada) nunca tem gente designada de verdade — tira
+  // os 4 mesários do mock pra refletir isso (mesmo critério real: uma
+  // seção agregada nunca tem Presidente/mesa próprios).
+  mAgg.sime_atores = mAgg.sime_atores.filter(a => a.secao_id !== 's3');
+  const { p, erros } = await abrir(ctx, mAgg);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('text=Marcar presença — grade clicável por seção');
+  await p.waitForTimeout(300);
+
+  const pillsAgg = p.locator('.ra-scr-pill-grid').nth(0).locator('.ra-scr-pill');
+  check('só 2 pílulas na grade (seção 63, agregada, fica de fora)', await pillsAgg.count() === 2);
+  check('seção 63 não aparece em lugar nenhum da grade de seções', !(await p.locator('.ra-scr-pill-grid').nth(0).innerText()).includes('63'));
+  // Seção 5 (operante, só Presidente+1º Mesário designados — 2M/1S vazios)
+  // continua marcável normalmente, mesmo sem a mesa completa.
+  const pillS1 = pillsAgg.filter({ hasText: '5' }).first();
+  const celP = pillS1.locator('.ra-scr-cel', { hasText: 'P' }).first();
+  check('seção operante com só 1 cargo designado continua clicável', (await celP.innerText()).includes('➖'));
+  await celP.click();
+  await p.waitForTimeout(250);
+  check('clique marca presente numa seção operante incompleta', (await celP.innerText()).includes('✅'));
+
+  await p.click('button:has-text("☐ Checklist — presença da mesa por seção, em ordem (1 folha)")');
+  await p.waitForTimeout(150);
+  const checklistPresencaHtml = await p.evaluate(() => document.getElementById('print-area').innerHTML);
+  check('checklist de presença impresso também não lista a seção 63', !checklistPresencaHtml.includes('>63<'));
+
+  await p.click('button:has-text("☐ Checklist — recibos por seção (1 folha)")');
+  await p.waitForTimeout(150);
+  const checklistSecoesHtml = await p.evaluate(() => document.getElementById('print-area').innerHTML);
+  check('checklist de recibos por seção também não lista a seção 63', !checklistSecoesHtml.includes('>63<'));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
