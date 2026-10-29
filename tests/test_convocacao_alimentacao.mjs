@@ -2614,6 +2614,83 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 31. Relatório de Pendências — Frequência e Devolução (29/10/2026,
+// pedido direto: "faça um relatorio com quais seções faltam todos
+// assinarem, quais coordenadores de acessbilidade não tem presença e
+// falta e quais seções houve falta de mesário e o valor ainda nao
+// devolvido"). 3 páginas num documento só. ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Página 1 — recibo ausente só na seção 63 (as outras 2 nunca marcadas).
+  m.sime_atores.find(a => a.id === 'm5').auxilio_alimentacao_recibo_ausente = true;
+  // Página 2 — Beatriz (com local, s1) nunca marcada; Carlos (sem local)
+  // marcado faltou — os dois contam como "sem presença confirmada".
+  m.sime_atores.find(a => a.id === 'c2').auxilio_alimentacao_frequencia = 'faltou';
+  // Página 3 — seção 63: 1º Mesário faltou, Presidente já pago e ainda não
+  // devolveu → deve aparecer com 1 faltante e R$65,00 a devolver (260÷4).
+  m.sime_atores.find(a => a.id === 'm6').auxilio_alimentacao_frequencia = 'faltou';
+  m.sime_atores.find(a => a.id === 'm5').auxilio_alimentacao_pago = true;
+  m.sime_atores.find(a => a.id === 'm5').auxilio_alimentacao_valor_pago = 260;
+
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('button:has-text("⚠️ Imprimir relatório de pendências")');
+  await p.waitForTimeout(150);
+  const html = await p.evaluate(() => document.getElementById('print-area').innerHTML);
+  const paginas = p.locator('#print-area .ra-pagina');
+  check('3 páginas no documento', (html.match(/class="ra-pagina"/g) || []).length === 3);
+  // Checks escopados por PÁGINA (não ao texto inteiro do documento) — as
+  // 3 páginas legitimamente compartilham texto (ex.: "Escola A, Campo
+  // Maior" é o local da Coordenadora na página 2, mas também apareceria
+  // num `.includes()` sem escopo mesmo sem ter nada a ver com a página 1).
+  const txt1 = await paginas.nth(0).innerText();
+  const txt2 = await paginas.nth(1).innerText();
+  const txt3 = await paginas.nth(2).innerText();
+  check('página 1: seção 63 (recibo ausente) aparece com o Presidente', /63[\s\S]{0,200}PRESIDENTE MARIA/.test(txt1), txt1);
+  check('página 1: seções 5 e 12 (recibo OK) nunca entram na lista de pendentes', !txt1.includes('Escola A') && !txt1.includes('Escola B'), txt1);
+  check('página 2: COORDENADORA BEATRIZ aparece como "Sem marcação"', /COORDENADORA BEATRIZ[\s\S]{0,60}Sem marcação/.test(txt2), txt2);
+  check('página 2: COORDENADOR CARLOS aparece como "Faltou", com "sem local definido"', /COORDENADOR CARLOS SEM LOCAL[\s\S]{0,60}sem local definido[\s\S]{0,60}Faltou/.test(txt2), txt2);
+  check('página 3: seção 63 aparece com 1 faltante e R$ 65,00 a devolver', /63[\s\S]{0,200}PRESIDENTE MARIA[\s\S]{0,60}1[\s\S]{0,30}R\$ 65,00/.test(txt3), txt3);
+  check('rodapé da página 3 mostra o total ainda a devolver', /Total ainda a devolver:[\s\S]{0,20}R\$ 65,00/.test(txt3), txt3);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 31b. Relatório de Pendências com as 3 listas vazias — "tudo em dia",
+// nunca bloqueia a impressão (zona com dado cadastrado, só sem nenhuma
+// pendência) ──
+{
+  const ctx = await b.newContext();
+  const m = mock();
+  // Marca os 2 coordenadores do mock como presente — sem isso a página 2
+  // nunca ficaria vazia de verdade (nenhum dos dois é 'presente' por
+  // padrão no mock), e este bloco é especificamente sobre as 3 listas
+  // vazias ao mesmo tempo.
+  m.sime_atores.find(a => a.id === 'c1').auxilio_alimentacao_frequencia = 'presente';
+  m.sime_atores.find(a => a.id === 'c2').auxilio_alimentacao_frequencia = 'presente';
+  const { p, erros } = await abrir(ctx, m);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('button:has-text("⚠️ Imprimir relatório de pendências")');
+  await p.waitForTimeout(150);
+  const txt = await p.locator('#print-area').innerText();
+  check('página 1 avisa "Nenhuma" quando não há recibo pendente', txt.includes('Nenhuma — todas as seções já tiveram o recibo assinado/recolhido.'));
+  check('página 2 avisa "Nenhum" quando todos os coordenadores já estão presente', txt.includes('Nenhum — todos os Coordenadores de Acessibilidade já estão marcados presente.'));
+  check('página 3 avisa "Nenhuma" quando não há devolução pendente', txt.includes('Nenhuma — toda seção com falta de mesário já teve a devolução registrada.'));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);

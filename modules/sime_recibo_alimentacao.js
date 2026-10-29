@@ -1137,6 +1137,133 @@ async function raImprimirConferenciaSimplificada() {
   await raImprimirDocumento(html, 'recibo_alimentacao_conferencia_simplificada_impresso', dados.mrv.length + dados.outras.length);
 }
 
+// ── Relatório de Pendências — Frequência e Devolução (29/10/2026, pedido
+// direto: "faça um relatorio com quais seções faltam todos assinarem,
+// quais coordenadores de acessbilidade não tem presença e falta e quais
+// seções houve falta de mesário e o valor ainda nao devolvido"). 3 folhas,
+// cada uma respondendo uma das 3 perguntas — nenhuma é dado NOVO (as 3 já
+// são deriváveis de campos/helpers que já existiam: `raMesaReciboAusente`
+// desde 06/10/2026, `auxilio_alimentacao_frequencia` desde a mesma data,
+// `raDeveDevolver`/`raValorADevolverMesa` também), só nunca tinham sido
+// reunidas num relatório de conferência rápida — sempre sobre o turno
+// ATIVO (`raDados.mesarios`/`raDados.coord`, nunca afetado por
+// `raTurnoView` — mesmo critério já usado pelos demais botões de
+// impressão desta aba, que nunca leem o turno arquivado).
+function raCalcularRelatorioPendencias() {
+  const presidentes = (raDados.mesarios || []).filter(p => p.funcao_mesa === 'Presidente');
+
+  // A — "seções faltam todos assinarem": o recibo físico (a folha de
+  // assinatura da mesa inteira) ainda não voltou pro cartório — flag
+  // própria, independente de quantos dos 4 cargos compareceram.
+  const reciboPendente = presidentes
+    .filter(p => raMesaReciboAusente(p.secao_id))
+    .slice()
+    .sort((a, b) => (a.sec?.numero || 0) - (b.sec?.numero || 0));
+
+  // B — "coordenadores sem presença e falta": quem ainda NÃO está marcado
+  // 'presente' — cobre os dois casos (nunca marcado / já marcado
+  // 'faltou'), porque pro pedido os dois são igualmente "sem presença
+  // confirmada ainda"; o rótulo de cada linha distingue qual dos dois é.
+  const coordSemPresenca = (raDados.coord || [])
+    .slice()
+    .filter(c => c.auxilio_alimentacao_frequencia !== 'presente')
+    .sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+
+  // C — "seções com falta de mesário e valor ainda não devolvido": pelo
+  // menos 1 dos 4 cargos marcado 'faltou' E a fração correspondente
+  // (valor pago ÷ 4 × quantos faltaram) ainda não foi devolvida.
+  const faltaSemDevolver = presidentes
+    .filter(p => raQtdFaltantesMesa(p.secao_id) > 0 && raDeveDevolver(p))
+    .map(p => ({ p, qtd: raQtdFaltantesMesa(p.secao_id), valor: raValorADevolverMesa(p) }))
+    .sort((a, b) => (a.p.sec?.numero || 0) - (b.p.sec?.numero || 0));
+
+  return { reciboPendente, coordSemPresenca, faltaSemDevolver };
+}
+
+function raHtmlPaginaRelatorioRecibo(lista, cfg) {
+  const corpo = lista.length ? lista.map(p => `
+    <tr>
+      <td>${p.sec ? p.sec.numero : '—'}</td>
+      <td>${raEsc(p.sec ? raNomeLocalSemCodigo(p.sec.local_nome) : '—')}</td>
+      <td>${raEsc(p.sec?.municipio || '—')}</td>
+      <td>${raEsc(p.nome_completo)}</td>
+    </tr>`).join('') : `<tr><td colspan="4" style="color:#555">Nenhuma — todas as seções já tiveram o recibo assinado/recolhido.</td></tr>`;
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Relatório de Pendências — Frequência e Devolução', 'Seções com recibo ainda não assinado/recolhido (mesa receptora)', cfg, 1)}
+      <div class="ra-rel-resumo">${lista.length} seção(ões) com recibo pendente</div>
+      <table class="ra-tabela">
+        <colgroup><col style="width:10%"><col><col style="width:22%"><col style="width:26%"></colgroup>
+        <thead><tr><th>Seção</th><th>Local de votação</th><th>Município</th><th>Presidente</th></tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+}
+
+function raHtmlPaginaRelatorioCoord(lista, cfg) {
+  const corpo = lista.length ? lista.map(c => `
+    <tr>
+      <td>${raEsc(c.nome_completo)}</td>
+      <td>${raEsc(c.sec ? `${raNomeLocalSemCodigo(c.sec.local_nome)}, ${c.sec.municipio}` : 'sem local definido')}</td>
+      <td>${c.auxilio_alimentacao_frequencia === 'faltou' ? '❌ Faltou' : '➖ Sem marcação'}</td>
+    </tr>`).join('') : `<tr><td colspan="3" style="color:#555">Nenhum — todos os Coordenadores de Acessibilidade já estão marcados presente.</td></tr>`;
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Relatório de Pendências — Frequência e Devolução', 'Coordenadores de Acessibilidade sem presença confirmada', cfg, 2)}
+      <div class="ra-rel-resumo">${lista.length} coordenador(es) sem presença confirmada</div>
+      <table class="ra-tabela">
+        <colgroup><col><col style="width:32%"><col style="width:18%"></colgroup>
+        <thead><tr><th>Nome</th><th>Local de trabalho</th><th>Situação</th></tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+}
+
+function raHtmlPaginaRelatorioFaltaDevolucao(lista, cfg) {
+  const totalPendente = lista.reduce((s, it) => s + it.valor, 0);
+  const corpo = lista.length ? lista.map(it => `
+    <tr>
+      <td>${it.p.sec ? it.p.sec.numero : '—'}</td>
+      <td>${raEsc(it.p.sec ? raNomeLocalSemCodigo(it.p.sec.local_nome) : '—')}</td>
+      <td>${raEsc(it.p.sec?.municipio || '—')}</td>
+      <td>${raEsc(it.p.nome_completo)}</td>
+      <td>${it.qtd}</td>
+      <td>${raFmtValor(it.valor)}</td>
+    </tr>`).join('') : `<tr><td colspan="6" style="color:#555">Nenhuma — toda seção com falta de mesário já teve a devolução registrada.</td></tr>`;
+  return `
+    <div class="ra-pagina">
+      ${raHtmlTimbre('Relatório de Pendências — Frequência e Devolução', 'Seções com falta de mesário e devolução ainda pendente', cfg, 3)}
+      <div class="ra-rel-resumo">${lista.length} seção(ões) — ${raFmtValor(totalPendente)} ainda a devolver</div>
+      <table class="ra-tabela">
+        <colgroup><col style="width:9%"><col><col style="width:18%"><col style="width:22%"><col style="width:9%"><col style="width:12%"></colgroup>
+        <thead><tr><th>Seção</th><th>Local de votação</th><th>Município</th><th>Presidente</th><th>Faltantes</th><th>A devolver</th></tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+      <div class="ra-rodape-total">
+        <div><b>Total ainda a devolver:</b> ${raFmtValor(totalPendente)}</div>
+      </div>
+    </div>`;
+}
+
+async function raImprimirRelatorioPendencias() {
+  // Guarda só contra "zona sem nenhum dado pra relatar" — diferente de
+  // `raImprimirRelatorioPagamentos` (que exige ALGUÉM já pago), aqui as 3
+  // listas vazias são uma resposta válida e útil ("tudo em dia"), então só
+  // bloqueia quando não há mesário nem coordenador cadastrado pra sequer
+  // ter o que avaliar.
+  if (!(raDados.mesarios || []).length && !(raDados.coord || []).length) {
+    showToast('⚠ Nenhum mesário ou coordenador cadastrado nesta zona');
+    return;
+  }
+  const dados = raCalcularRelatorioPendencias();
+  const cfg = raCfg();
+  const html = raHtmlPaginaRelatorioRecibo(dados.reciboPendente, cfg)
+    + raHtmlPaginaRelatorioCoord(dados.coordSemPresenca, cfg)
+    + raHtmlPaginaRelatorioFaltaDevolucao(dados.faltaSemDevolver, cfg);
+  const quantidade = dados.reciboPendente.length + dados.coordSemPresenca.length + dados.faltaSemDevolver.length;
+  await raImprimirDocumento(html, 'recibo_alimentacao_relatorio_pendencias_impresso', quantidade);
+}
+
 // ── Checklists de conferência FÍSICA — 1 folha cada (28/10/2026, pedido
 // direto: "vou conferir inicialmente se todos os recibos estão presentes,
 // então quero um checklist por seção de uma folha, e um check list de
@@ -3193,6 +3320,12 @@ function raHtmlSecaoControle() {
         <div class="ic-sub" style="margin-top:4px">Pra marcar no Dia D quem compareceu — 4 caixinhas por seção (P / 1M / 2M / 1S), sem nome nenhum, seções em
           ordem crescente de número (não por município). Não é a lista de presença com assinatura (essa é o recibo
           de verdade, aba 🖨️ Impressão) — é só um tally sheet rápido.</div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirRelatorioPendencias()">⚠️ Imprimir relatório de pendências — recibo, presença e devolução</button>
+        <div class="ic-sub" style="margin-top:4px">3 folhas: (1) seções com recibo ainda não assinado/recolhido, (2) Coordenadores de Acessibilidade sem
+          presença confirmada (nunca marcados ou marcados faltou), (3) seções com falta de mesário cuja devolução
+          ainda não foi registrada. Sempre sobre o turno atual, mesmo com o seletor acima olhando um turno arquivado.</div>
       </div>
       <div id="ra-controle-unificado" style="margin-top:8px"></div>
     </div>`;

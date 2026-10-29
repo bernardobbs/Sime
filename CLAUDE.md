@@ -11129,6 +11129,63 @@ COM seção mostra "Escola A, Campo Maior", coordenador SEM seção mostra
 
 ---
 
+## RELATÓRIO DE PENDÊNCIAS — RECIBO, PRESENÇA E DEVOLUÇÃO (`sime_recibo_alimentacao.js`, 29/10/2026)
+
+Pedido direto: "faça um relatorio com quais seções faltam todos assinarem,
+quais coordenadores de acessbilidade não tem presença e falta e quais
+seções houve falta de mesário e o valor ainda nao devolvido". Botão novo
+("⚠️ Imprimir relatório de pendências — recibo, presença e devolução"),
+dentro de "💰📋 Controle de pagamento e frequência", logo depois dos 3
+checklists — documento de 3 páginas, uma por pergunta do pedido, todas
+sempre sobre o turno ATIVO (nunca afetado pelo seletor "📜 Ver outro
+turno", mesmo critério já usado pelos demais botões de impressão desta
+aba, que nunca leem turno arquivado).
+
+**Nenhuma das 3 listas é dado novo** — todas já eram deriváveis de campos/
+helpers que já existiam, só nunca tinham sido reunidas num relatório de
+conferência rápida:
+- **Página 1 — "seções faltam todos assinarem"** = `raMesaReciboAusente()`
+  (06/10/2026, "tambem pode acontecer de faltar o recibo e a mesa
+  funcionar completa") — a folha física de assinatura da mesa inteira
+  ainda não voltou pro cartório, independente de quantos dos 4 cargos
+  compareceram. Mostra seção/local/município/Presidente.
+- **Página 2 — "coordenadores sem presença e falta"** = Coordenador de
+  Acessibilidade cujo `auxilio_alimentacao_frequencia` ainda **não** é
+  `'presente'` — cobre os dois casos que o pedido junta na mesma frase
+  (nunca marcado / já marcado `'faltou'`), com o rótulo de cada linha
+  distinguindo qual dos dois é ("➖ Sem marcação" / "❌ Faltou"). Mostra o
+  local de trabalho (mesmo campo que a grade de presença ganhou mais
+  cedo no mesmo dia — "sem local definido" quando não há).
+- **Página 3 — "falta de mesário e valor ainda não devolvido"** =
+  `raQtdFaltantesMesa() > 0` **e** `raDeveDevolver(presidente)` ainda
+  verdadeiro (pago, mas não devolvido) — mesmos helpers já existentes
+  desde a feature de Frequência e Devolução. Mostra quantidade de
+  faltantes e o valor proporcional (pago ÷ 4 × faltantes), com rodapé de
+  total geral ainda a devolver.
+
+**Nunca bloqueia a impressão por lista vazia** — diferente de
+`raImprimirRelatorioPagamentos()` (que exige alguém já pago pra fazer
+sentido imprimir), aqui as 3 listas vazias são uma resposta válida e útil
+("tudo em dia") — cada página mostra "Nenhuma/Nenhum — ..." no lugar da
+tabela vazia. Só bloqueia (toast) quando não há NENHUM mesário nem
+coordenador cadastrado na zona — aí não haveria nem contexto pra avaliar.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 31/31b, 17
+checks — 475 no total no arquivo): as 3 páginas no documento; seção com
+recibo ausente aparece na página 1, as outras duas (recibo OK) nunca
+entram; coordenador sem marcação e coordenador marcado faltou aparecem na
+página 2 com o rótulo certo e o local (ou "sem local definido"); seção com
+mesário faltante e devolução pendente aparece na página 3 com a
+quantidade e o valor certos, rodapé com o total; as 3 páginas "tudo em
+dia" quando não há pendência nenhuma. **Checks escopados por `.ra-pagina`
+individual** (`nth(0)`/`nth(1)`/`nth(2)`), não ao texto do documento
+inteiro — achado real escrevendo o teste: um `.includes()` sem escopo
+("Escola A" não pode aparecer na página 1") dava falso positivo, porque
+"Escola A, Campo Maior" aparece legitimamente na página 2 como local da
+Coordenadora, sem relação nenhuma com a página 1.
+
+---
+
 ## PENDÊNCIAS (atualizado em 27/07/2026)
 
 Os itens 1 a 5 da lista antiga (módulo de acessibilidade, novos perfis no
