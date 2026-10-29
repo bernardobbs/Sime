@@ -11098,6 +11098,35 @@ agregada; seção 63 não aparece em lugar nenhum do grid; seção operante com
 só Presidente+1º Mesário designados (2M/1S vazios) continua clicável e
 grava; os dois checklists impressos também não listam a seção agregada.
 
+**Lista "outros" da grade separada em 3 grupos próprios + local de trabalho
+do Coordenador, pedido direto no mesmo dia: "dos auxiliares separe os
+coordenadores dos outros e membros da junta" / "na parte de coordenadores
+indique o local de trabalho".** A lista única "Coordenadores, auxiliares e
+junta eleitoral" (um único cabeçalho genérico, nomes misturados em ordem
+alfabética sem distinção de função) virou 3 blocos (`grupoHtml()`), cada um
+com seu próprio título e `.ra-scr-pill-grid` — Coordenadores de
+Acessibilidade, Auxiliares de Eleição, Junta Eleitoral, nessa ordem; um
+grupo vazio (zona sem ninguém daquela função ainda) simplesmente não entra
+no HTML, nunca um cabeçalho sem grid embaixo.
+
+Só o grupo de Coordenadores ganhou o local (`raHtmlPresencaPillSimples(p,
+comLocal)`, novo 2º parâmetro) — Auxiliar de Eleição/Junta Eleitoral
+continuam sem, mesmo critério de sempre documentado alhures ("o TRE quase
+nunca traz 'Seção local de trabalho' preenchido pra apoio logístico") —
+mostrar "sem local definido" nesses dois grupos inteiros seria só ruído.
+`p.sec` já vem resolvido por `raCarregar()` (join por `secao_id`); sem
+seção designada, mostra "sem local definido" em texto, nunca esconde o
+rótulo — mesmo critério "nunca finge dado que não existe" de sempre.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 30d, 10 checks —
+463 no total no arquivo): os 3 títulos presentes, na ordem certa, sem
+sobrar o título genérico antigo; cada pessoa do mock cai no grupo certo
+(Coordenadora depois do título de Coordenadores e antes do de Auxiliares,
+Auxiliar depois do de Auxiliares e antes do de Junta, membro da Junta
+depois do de Junta); o juiz eleitoral continua nunca aparecendo; coordenador
+COM seção mostra "Escola A, Campo Maior", coordenador SEM seção mostra
+"sem local definido", e o grupo de Auxiliares nunca ganha nenhum dos dois.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

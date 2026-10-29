@@ -2941,10 +2941,22 @@ function raHtmlPresencaPill(secao, membrosPorCargo) {
 // nome — sem isso, remover os botões da lista de baixo deixaria esses 3
 // papéis SEM NENHUM jeito de marcar frequência (a grade original só cobria
 // mesa — achado ao revisar o pedido de simplificação antes de executar).
-function raHtmlPresencaPillSimples(p) {
+// `comLocal` (29/10/2026, pedido direto: "na parte de coordenadores indique
+// o local de trabalho") — só o grupo de Coordenadores de Acessibilidade
+// passa `true`; Auxiliar de Eleição/Junta Eleitoral continuam sem local
+// nenhum, mesmo critério de sempre ("o TRE quase nunca traz essa coluna
+// pra essas duas funções", já documentado alhures — mostrar "sem local
+// definido" pros dois grupos inteiros seria só ruído). `p.sec` já vem
+// resolvido por `raCarregar()` (`secao_id` → `secoesPorId`); sem seção
+// designada, mostra "sem local definido" em vez de esconder o rótulo —
+// nunca finge que a pessoa tem local quando não tem.
+function raHtmlPresencaPillSimples(p, comLocal) {
   const freq = p.auxilio_alimentacao_frequencia || '';
   const icone = freq === 'presente' ? '✅' : freq === 'faltou' ? '❌' : '➖';
-  return `<div class="ra-scr-pill"><span class="ra-scr-cel ${raScrPillClasse(freq)}" onclick="raCicloFrequencia('${p.id}')" title="toque pra alternar presente/faltou/sem marcar">${raEsc(p.nome_completo)} ${icone}</span></div>`;
+  const local = comLocal
+    ? ` <span style="opacity:.65;font-size:.72rem">— ${p.sec ? `${raEsc(raNomeLocalSemCodigo(p.sec.local_nome))}, ${raEsc(p.sec.municipio)}` : 'sem local definido'}</span>`
+    : '';
+  return `<div class="ra-scr-pill"><span class="ra-scr-cel ${raScrPillClasse(freq)}" onclick="raCicloFrequencia('${p.id}')" title="toque pra alternar presente/faltou/sem marcar">${raEsc(p.nome_completo)} ${icone}</span>${local}</div>`;
 }
 
 function raHtmlSecaoPresencaGrade() {
@@ -2959,8 +2971,8 @@ function raHtmlSecaoPresencaGrade() {
         lista de Controle de pagamento foram removidos daqui — o modal "❌ Faltou" continua lá, só pra quando
         precisar marcar também o recibo ausente). Toque no cargo (P/1M/2M/1S) pra alternar ➖ sem marcar → ✅
         presente → ❌ faltou; 👥 marca a mesa inteira de uma vez. Seções em ordem crescente de número, sem agrupar
-        por município — igual ao papel. Coordenadores, auxiliares e junta eleitoral ficam numa lista própria
-        abaixo, por nome.</div>
+        por município — igual ao papel. Coordenadores de Acessibilidade, Auxiliares de Eleição e Junta Eleitoral
+        ficam em 3 listas próprias e separadas abaixo, cada uma por nome.</div>
       <div id="ra-presenca-grade-body" style="margin-top:8px"></div>
     </div>`;
 }
@@ -2989,14 +3001,30 @@ function renderPresencaGrade() {
   // os checklists de recibo) — aqui precisa ser SÓ por número, cópia
   // ordenada à parte pra não afetar quem mais lê `secoesZona`.
   const ordenadas = secoes.slice().sort((a, b) => a.numero - b.numero);
-  const outros = [...(raDados.coord || []), ...(raDados.auxiliares || []), ...(raDados.junta || [])]
-    .slice().sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
-  if (!ordenadas.length && !outros.length) { alvo.innerHTML = '<div class="ic-sub" style="margin:0">Nenhuma seção/pessoa cadastrada nesta zona.</div>'; return; }
+  // Separado em 3 grupos próprios (29/10/2026, pedido direto: "dos
+  // auxiliares separe os coordenadores dos outros e membros da junta") —
+  // antes era uma lista só, misturando Coordenador de Acessibilidade/
+  // Auxiliar de Eleição/Junta Eleitoral sob um único cabeçalho genérico;
+  // cada grupo agora tem seu próprio título e grid, mesmo padrão de
+  // cabeçalho já usado na seção de seções acima. Um grupo vazio (zona sem
+  // ninguém daquela função ainda) simplesmente não entra no HTML — nunca
+  // um cabeçalho sem grid embaixo.
+  const ordenarPorNome = (arr) => arr.slice().sort((a, b) => a.nome_completo.localeCompare(b.nome_completo));
+  const coordenadores = ordenarPorNome(raDados.coord || []);
+  const auxiliares = ordenarPorNome(raDados.auxiliares || []);
+  const junta = ordenarPorNome(raDados.junta || []);
+  const grupoHtml = (titulo, pessoas, comLocal) => pessoas.length ? `
+      <div style="font-weight:700;font-size:.8rem;margin:10px 0 4px">${titulo}</div>
+      <div class="ra-scr-pill-grid">${pessoas.map(p => raHtmlPresencaPillSimples(p, comLocal)).join('')}</div>` : '';
+  if (!ordenadas.length && !coordenadores.length && !auxiliares.length && !junta.length) {
+    alvo.innerHTML = '<div class="ic-sub" style="margin:0">Nenhuma seção/pessoa cadastrada nesta zona.</div>';
+    return;
+  }
   alvo.innerHTML = `
     ${ordenadas.length ? `<div class="ra-scr-pill-grid">${ordenadas.map(s => raHtmlPresencaPill(s, porSecao[s.id] || {})).join('')}</div>` : ''}
-    ${outros.length ? `
-      <div style="font-weight:700;font-size:.8rem;margin:10px 0 4px">Coordenadores, auxiliares e junta eleitoral</div>
-      <div class="ra-scr-pill-grid">${outros.map(raHtmlPresencaPillSimples).join('')}</div>` : ''}`;
+    ${grupoHtml('Coordenadores de Acessibilidade', coordenadores, true)}
+    ${grupoHtml('Auxiliares de Eleição', auxiliares)}
+    ${grupoHtml('Junta Eleitoral', junta)}`;
 }
 
 // Card "🗳️ Encerrar turno e começar o próximo" (09/10/2026, pedido direto,

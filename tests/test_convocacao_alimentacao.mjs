@@ -2566,6 +2566,54 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 30d. Grade de presença — "dos auxiliares separe os coordenadores dos
+// outros e membros da junta" (29/10/2026) — Coordenador de Acessibilidade/
+// Auxiliar de Eleição/Junta Eleitoral ganham 3 listas próprias, cada uma
+// com título e grid separados, em vez de uma lista única misturada ──
+{
+  const ctx = await b.newContext();
+  const { p, erros } = await abrir(ctx, mock());
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('text=Marcar presença — grade clicável por seção');
+  await p.waitForTimeout(300);
+
+  const corpo = p.locator('#ra-presenca-grade-body');
+  const txtCorpo = await corpo.innerText();
+  check('título "Coordenadores de Acessibilidade" presente', txtCorpo.includes('Coordenadores de Acessibilidade'));
+  check('título "Auxiliares de Eleição" presente', txtCorpo.includes('Auxiliares de Eleição'));
+  check('título "Junta Eleitoral" presente', txtCorpo.includes('Junta Eleitoral'));
+  check('nenhum título genérico "Coordenadores, auxiliares e junta eleitoral" sobra', !txtCorpo.includes('Coordenadores, auxiliares e junta eleitoral'));
+  check('ordem dos 3 títulos: Coordenadores antes de Auxiliares, antes de Junta',
+    txtCorpo.indexOf('Coordenadores de Acessibilidade') < txtCorpo.indexOf('Auxiliares de Eleição') &&
+    txtCorpo.indexOf('Auxiliares de Eleição') < txtCorpo.indexOf('Junta Eleitoral'), txtCorpo);
+
+  // COORDENADORA BEATRIZ (coord) aparece DEPOIS do título de Coordenadores
+  // e ANTES do de Auxiliares — nunca misturada no grupo errado.
+  const idxCoordTitulo = txtCorpo.indexOf('Coordenadores de Acessibilidade');
+  const idxAuxTitulo = txtCorpo.indexOf('Auxiliares de Eleição');
+  const idxJuntaTitulo = txtCorpo.indexOf('Junta Eleitoral');
+  const idxBeatriz = txtCorpo.indexOf('COORDENADORA BEATRIZ');
+  const idxPedro = txtCorpo.indexOf('AUXILIAR PEDRO');
+  const idxFernando = txtCorpo.indexOf('JUNTA FERNANDO');
+  check('COORDENADORA BEATRIZ cai no grupo de Coordenadores', idxBeatriz > idxCoordTitulo && idxBeatriz < idxAuxTitulo, txtCorpo);
+  check('AUXILIAR PEDRO cai no grupo de Auxiliares', idxPedro > idxAuxTitulo && idxPedro < idxJuntaTitulo, txtCorpo);
+  check('JUNTA FERNANDO cai no grupo de Junta Eleitoral (depois do título, sem mais nenhum grupo embaixo)', idxFernando > idxJuntaTitulo, txtCorpo);
+  check('o juiz eleitoral (CARLOS MARCELLO) nunca aparece na grade', !txtCorpo.includes('CARLOS MARCELLO'));
+
+  // "na parte de coordenadores indique o local de trabalho" (29/10/2026) —
+  // só o grupo de Coordenadores mostra local; Auxiliar/Junta continuam sem.
+  check('COORDENADORA BEATRIZ (com local) mostra o local de votação', txtCorpo.includes('COORDENADORA BEATRIZ ➖ — Escola A, Campo Maior') || /COORDENADORA BEATRIZ[\s\S]{0,20}Escola A, Campo Maior/.test(txtCorpo), txtCorpo);
+  check('COORDENADOR CARLOS (sem local) mostra "sem local definido"', /COORDENADOR CARLOS SEM LOCAL[\s\S]{0,20}sem local definido/.test(txtCorpo), txtCorpo);
+  check('AUXILIAR PEDRO não ganha local nenhum (grupo de auxiliares fica sem)', !/AUXILIAR PEDRO[\s\S]{0,20}(Escola|sem local definido)/.test(txtCorpo), txtCorpo);
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
