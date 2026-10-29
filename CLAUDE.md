@@ -10877,6 +10877,39 @@ seções sintéticas (tamanho real da 7ª Zona, nomes de local variados)
 confirmando com `page.pdf()` que cabe em EXATAMENTE 1 página física — o
 mesmo teste que reproduziu o bug de 2 páginas antes da correção.
 
+**Terceiro checklist no dia seguinte (29/10/2026) — "presença da mesa",
+não "recibo presente".** Pedido direto: "quero que apareça o numero das
+seções por ordem crescente de numero de seção, com um local para marcar a
+presença dos membros da mesa de forma resumida. cabendo em uma só pagina".
+Diferente dos dois checklists de 28/10 (uma caixinha só, pra conferir se o
+PAPEL voltou) — este é um tally sheet pro Dia D: 4 caixinhas por seção (P /
+1M / 2M / 1S), sem nome nenhum ("de forma resumida") —
+`raHtmlChecklistPresenca`/`raImprimirChecklistPresenca`.
+
+**Ordenado só por NÚMERO de seção, nunca por município** — diferente de
+TODOS os outros documentos deste módulo (que sempre ordenam por
+município+número, mais fácil de achar dentro de uma cidade) — o pedido foi
+explícito ("por ordem crescente de numero de seção"), então
+`raHtmlChecklistPresenca()` ordena `secoesZona` só por `numero`, ignorando
+município de propósito. Fonte de dado é `raDados.secoesZona` (28/10/2026) —
+toda seção ATIVA da zona, mesmo sem nenhum mesário cadastrado ainda (no Dia
+D ela vai ter mesa física mesmo assim).
+
+**CSS próprio** (`.ra-pres-colunas`/`.ra-pres-item`/`.ra-pres-cargo`) — item
+mais largo que os outros checklists (4 caixinhas por linha em vez de 1),
+então `column-count:3` (não 5) com a mesma técnica de `height` EXPLÍCITA +
+`column-fill:auto` já descoberta no dia anterior — testado em sweep de
+parâmetros ANTES de aplicar (não só confiando no primeiro palpite, mesmo
+critério já usado pro checklist de recibos) contra 176 seções sintéticas,
+confirmando 1 página física em todas as combinações testadas.
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (bloco 29, 426 checks
+no total no arquivo): as 4 caixinhas (P/1M/2M/1S) aparecem por seção; nunca
+mostra nome/valor/status (puro tally sheet); ordem é estritamente por
+número (5, 12, 63 — nunca município+número, que ordenaria diferente);
+log de auditoria; e um bloco dedicado (29b) com 176 seções sintéticas
+confirmando com `page.pdf()` que cabe em EXATAMENTE 1 página física.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

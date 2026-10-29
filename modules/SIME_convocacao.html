@@ -410,6 +410,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   .ra-check-item{font-size:7.5pt;line-height:1.5;break-inside:avoid;margin-bottom:0.3mm;}
   .ra-check-box{display:inline-block;width:3mm;}
   .ra-check-mun{color:#555;font-size:6.5pt;}
+
+  /* Checklist de presença da mesa por seção (29/10/2026,
+     sime_recibo_alimentacao.js — raHtmlChecklistPresenca): item mais
+     largo que os checklists acima (4 caixinhas por linha, P/1M/2M/1S),
+     por isso colunas/altura à parte, tunadas em separado (ver nota de
+     `.ra-check-colunas` sobre a `height` explícita ser o que de fato
+     garante 1 página — mesmo critério aqui). */
+  .ra-pres-colunas{column-count:3;column-gap:6mm;column-fill:auto;height:150mm;margin-top:2mm;}
+  .ra-pres-item{font-size:8pt;line-height:1.6;break-inside:avoid;margin-bottom:0.3mm;white-space:nowrap;}
+  .ra-pres-cargo{font-size:6.5pt;color:#555;margin-left:1.5mm;}
 }
 </style>
 </head>

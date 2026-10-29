@@ -1168,6 +1168,46 @@ async function raImprimirChecklistLocais() {
   await raImprimirDocumento(html, 'recibo_alimentacao_checklist_locais_impresso', locais.length);
 }
 
+// ── Checklist de PRESENÇA DA MESA, por seção em ordem crescente, 1 folha
+// (29/10/2026, pedido direto: "quero que apareça o numero das seções por
+// ordem crescente de numero de seção, com um local para marcar a presença
+// dos membros da mesa de forma resumida. cabendo em uma só pagina").
+// Diferente dos dois checklists acima (recibos por seção/local — uma
+// caixinha só, pra conferir se o PAPEL voltou): este é pra marcar, no Dia
+// D, QUAIS dos 4 cargos de mesa de fato compareceram — 4 caixinhas por
+// seção (P / 1M / 2M / 1S), sem nome nenhum ("de forma resumida" — é um
+// tally sheet, não uma lista de presença com assinatura, essa já existe
+// no recibo de verdade da Mesa Receptora).
+//
+// Ordenado só por NÚMERO de seção, nunca por município — o pedido foi
+// explícito ("por ordem crescente de numero de seção"), diferente dos
+// outros checklists (que ordenam por município+número, pra ficar mais
+// fácil de achar visualmente dentro de uma cidade). `raDados.secoesZona`
+// (28/10/2026) já traz toda seção ATIVA da zona — usado aqui também, já
+// que o pedido é sobre os NÚMEROS das seções, não sobre quem está
+// designado (uma seção sem mesário nenhum no cadastro ainda precisa
+// aparecer, porque no Dia D ela vai ter mesa física mesmo assim).
+function raHtmlChecklistPresencaItem(s) {
+  return `<div class="ra-pres-item"><b>${s.numero}</b> <span class="ra-pres-cargo">P</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">1M</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">2M</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">1S</span><span class="ra-check-box">☐</span></div>`;
+}
+
+function raHtmlChecklistPresenca(secoes, cfg) {
+  const ordenadas = secoes.slice().sort((a, b) => a.numero - b.numero);
+  const itens = ordenadas.map(raHtmlChecklistPresencaItem).join('');
+  return `
+    <div class="ra-pagina ra-check-pagina">
+      ${raHtmlTimbre('Checklist de Presença — Membros da Mesa por Seção', `${secoes.length} seção(ões), em ordem crescente de número — P / 1º Mesário / 2º Mesário / 1º Secretário`, cfg, 1)}
+      <div class="ra-pres-colunas">${itens}</div>
+    </div>`;
+}
+
+async function raImprimirChecklistPresenca() {
+  const secoes = raDados.secoesZona || [];
+  if (!secoes.length) { showToast('⚠ Nenhuma seção ativa cadastrada nesta zona'); return; }
+  const html = raHtmlChecklistPresenca(secoes, raCfg());
+  await raImprimirDocumento(html, 'recibo_alimentacao_checklist_presenca_mesa_impresso', secoes.length);
+}
+
 async function raSalvarConfig() {
   if (!raDados?.eleicao?.id) { showToast('⚠ Nenhuma eleição ativa nesta zona — não há onde salvar'); return; }
   const valorTxt = document.getElementById('ra-valor').value.replace(',', '.');
@@ -2895,6 +2935,12 @@ function raHtmlSecaoControle() {
         <button class="btn btn-out" onclick="raImprimirChecklistLocais()">☐ Checklist — recibos por local de votação (1 folha)</button>
         <div class="ic-sub" style="margin-top:4px">Pra conferir se o PAPEL já voltou assinado, não pra ver status de pagamento — só uma caixinha ☐ por
           seção/local, numa lista multi-coluna que cabe tudo numa única folha, mesmo em zona com muitas seções.</div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-out" onclick="raImprimirChecklistPresenca()">☐ Checklist — presença da mesa por seção, em ordem (1 folha)</button>
+        <div class="ic-sub" style="margin-top:4px">Pra marcar no Dia D quem compareceu — 4 caixinhas por seção (P / 1M / 2M / 1S), sem nome nenhum, seções em
+          ordem crescente de número (não por município). Não é a lista de presença com assinatura (essa é o recibo
+          de verdade, aba 🖨️ Impressão) — é só um tally sheet rápido.</div>
       </div>
       <div id="ra-controle-unificado" style="margin-top:8px"></div>
     </div>`;

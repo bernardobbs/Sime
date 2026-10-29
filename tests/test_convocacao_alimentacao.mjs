@@ -2316,6 +2316,86 @@ async function login(p) {
   await ctx.close();
 }
 
+// ── 29. Checklist de presença da mesa por seção, ordem crescente de
+//      número (29/10/2026, pedido direto: "quero que apareça o numero das
+//      seções por ordem crescente de numero de seção, com um local para
+//      marcar a presença dos membros da mesa de forma resumida. cabendo
+//      em uma só pagina") ──
+{
+  const ctx = await b.newContext();
+  // Mock com números de seção fora de ordem e espalhados entre
+  // municípios — pra garantir que a ordenação é puramente por NÚMERO, não
+  // por município+número como os outros checklists (bug óbvio de copiar
+  // o padrão errado seria fácil de cometer aqui).
+  const mOrdem = mock();
+  mOrdem.sime_secoes = [
+    { id: 's1', numero: 63, local_nome: 'Escola A', municipio: 'Campo Maior', zona_id: 'z7', ativo: true },
+    { id: 's2', numero: 5, local_nome: 'Escola B', municipio: 'Jatobá do Piauí', zona_id: 'z7', ativo: true },
+    { id: 's3', numero: 12, local_nome: 'Escola C', municipio: 'Campo Maior', zona_id: 'z7', ativo: true },
+  ];
+  const { p, erros } = await abrir(ctx, mOrdem);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+
+  await p.click('button:has-text("presença da mesa")');
+  await p.waitForTimeout(300);
+  check('window.print() foi chamado', await p.evaluate(() => window.__printCalls) === 1);
+  const paginas = await p.locator('#print-area .ra-pagina').count();
+  check('sai em 1 única folha lógica', paginas === 1, String(paginas));
+
+  const txt = await p.locator('#print-area').innerText();
+  check('mostra as 4 caixinhas por seção (P, 1M, 2M, 1S)', /P☐/.test(txt) && /1M☐/.test(txt) && /2M☐/.test(txt) && /1S☐/.test(txt), txt.slice(0, 400));
+  check('mostra os números das 3 seções', /\b5\b/.test(txt) && /\b12\b/.test(txt) && /\b63\b/.test(txt), txt.slice(0, 400));
+  check('nunca mostra nome/valor/documento/status (é tally sheet, sem dado de pessoa)', !/R\$/.test(txt) && !/Ainda vai receber/.test(txt) && !/PRESIDENTE/i.test(txt));
+  // Ordenação por NÚMERO puro (5, 12, 63), não por município+número (que
+  // ordenaria Campo Maior — 12, 63 — antes de Jatobá — 5).
+  check('ordem é 5, depois 12, depois 63 (número puro, não município+número)', txt.indexOf('5 ') < txt.indexOf('12 ') && txt.indexOf('12 ') < txt.indexOf('63 '), txt.slice(0, 300));
+
+  const escritas = await p.evaluate(() => window.__mock.escritas);
+  const log = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_presenca_mesa_impresso');
+  check('log de auditoria com quantidade 3', !!log && log.payload.payload.quantidade === 3, JSON.stringify(log));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
+// ── 29b. Checklist de presença da mesa — escala REAL (176 seções) sai em
+//      EXATAMENTE 1 página física (page.pdf(), não innerHTML) ──
+{
+  const ctx = await b.newContext();
+  const mGrande = mock();
+  const nomesLocal = ['G.E. Monsenhor Mateus', 'U.E. Miguel Rocha', 'Centro Ed. JA Mulata Lima', 'Esc. Mun. A.F. Ribeiro Paz', 'Col. Est. Profª Raimundinho Andrade'];
+  const municipios = ['Campo Maior', 'Jatobá do Piauí', 'Sigefredo Pacheco'];
+  const secoesGrandes = [];
+  for (let i = 1; i <= 176; i++) {
+    secoesGrandes.push({ id: `sg${i}`, numero: i, local_nome: nomesLocal[i % nomesLocal.length], municipio: municipios[i % municipios.length], zona_id: 'z7', ativo: true });
+  }
+  mGrande.sime_secoes = secoesGrandes;
+  mGrande.sime_atores = [];
+
+  const { p, erros } = await abrir(ctx, mGrande);
+  await login(p);
+  await p.click('#tab-alimentacao-btn');
+  await p.waitForTimeout(400);
+  await p.click('button:has-text("Controle de pagamento e frequência")');
+  await p.waitForTimeout(300);
+  await p.click('button:has-text("presença da mesa")');
+  await p.waitForTimeout(300);
+
+  const txtGrande = await p.locator('#print-area').innerText();
+  check('as 176 seções sintéticas aparecem (checa a última, seção 176)', /\b176\b/.test(txtGrande));
+  await p.emulateMedia({ media: 'print' });
+  const pdf = await p.pdf({ printBackground: true });
+  const mediaBoxes = [...pdf.toString('latin1').matchAll(/\/MediaBox/g)];
+  check('176 seções (tamanho real da 7ª Zona) cabem em EXATAMENTE 1 página física', mediaBoxes.length === 1, String(mediaBoxes.length));
+
+  check('nenhum erro JS na aba', erros.length === 0, erros.join(' | '));
+  await ctx.close();
+}
+
 await b.close();
 const fails = results.filter(r => !r.ok);
 for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.n}${r.ok ? '' : ' — ' + r.e}`);
