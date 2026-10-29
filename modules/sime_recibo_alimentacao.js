@@ -1232,8 +1232,19 @@ async function raImprimirChecklistLocais() {
 // grade só, sem recorte por cidade) — e agrupar aqui reabriria a mesma
 // discussão já fechada na criação deste checklist ("ordenado só por
 // NÚMERO de seção, nunca por município").
+//
+// 4 cargos separados por divisória (29/10/2026, mesmo dia, PDF real
+// anexado pelo cartório: "ficou otimo, precisa melhorar a organização" —
+// esclarecido via pergunta direta: o problema era "P☐1M☐2M☐1S☐" espremido
+// numa string só, difícil de marcar certo com caneta de madrugada/com
+// sono). Cada cargo vira uma "sub-célula" própria (`.ra-pres-cel`, uma
+// linha vertical fina separando uma da outra e do número) — ainda dentro
+// da MESMA pílula (não quatro pílulas soltas, que perderia a ligação
+// visual "isso tudo é da seção N"), só com fronteira clara entre os 4
+// pares cargo+caixinha.
 function raHtmlPillPresenca(s) {
-  return `<b>${s.numero}</b><span class="ra-pres-cargo">P</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">1M</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">2M</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">1S</span><span class="ra-pill-box">☐</span>`;
+  const cel = (rotulo) => `<span class="ra-pres-cel"><span class="ra-pres-cargo">${rotulo}</span><span class="ra-pill-box">☐</span></span>`;
+  return `<b class="ra-pres-num">${s.numero}</b>${cel('P')}${cel('1M')}${cel('2M')}${cel('1S')}`;
 }
 
 function raHtmlChecklistPresenca(secoes, cfg) {

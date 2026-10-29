@@ -418,10 +418,21 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      176 pílulas largas enchem a página bem mais que as dos outros dois
      checklists (que são só número, bem mais estreitas) — por isso ganham
      seu próprio aperto de `gap`/padding/fonte, medido com page.pdf() até
-     sobrar folga segura, não só "parece que cabe". */
+     sobrar folga segura, não só "parece que cabe".
+
+     4 CARGOS SEPARADOS por divisória fina (29/10/2026, mesmo dia, PDF real
+     anexado pelo cartório — "ficou otimo, precisa melhorar a organização"
+     — esclarecido: os 4 pares cargo+caixinha ficavam uma string só,
+     "P☐1M☐2M☐1S☐", difícil de marcar certo com caneta de madrugada/com
+     sono). Cada `.ra-pres-cel` (P / 1M / 2M / 1S) ganha uma linha vertical
+     fina à esquerda (mesma cor da borda da pílula) + um respiro de
+     padding — lê como 4 caixinhas claramente distintas dentro da mesma
+     pílula da seção, não mais uma sopa de letrinhas grudadas. */
   .ra-pill-grid-presenca{gap:1mm;}
-  .ra-pill-presenca{gap:0.4mm;padding:0.4mm 1.2mm;font-size:7pt;}
-  .ra-pres-cargo{font-size:5.8pt;color:#555;margin-left:0.5mm;}
+  .ra-pill-presenca{gap:0;padding:0.3mm 0.9mm;font-size:7pt;}
+  .ra-pres-num{margin-right:0.5mm;}
+  .ra-pres-cel{display:inline-flex;align-items:center;gap:0.3mm;border-left:0.25mm solid #9ecdc3;padding:0 0.6mm 0 0.6mm;}
+  .ra-pres-cargo{font-size:5.6pt;color:#45695f;font-weight:700;}
 }
 </style>
 </head>

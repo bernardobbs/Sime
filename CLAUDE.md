@@ -10965,6 +10965,35 @@ ausente no de presença (flat, de propósito); as três garantias de "1
 página física" re-confirmadas com `page.pdf()` na escala real da 7ª Zona
 (175/64/176 itens).
 
+**Os 4 cargos (P/1M/2M/1S) separados por divisória, no mesmo dia — "ficou
+otimo, precisa melhorar a organização".** Pedido direto com o PDF real
+anexado pelo cartório (exportado da própria tela, 173 seções) — a reação
+foi positiva ao estilo pílula, mas sem detalhar o quê melhorar.
+Esclarecido via `AskUserQuestion` (3 opções: agrupar por município / separar
+melhor as 4 caixinhas dentro da pílula / aumentar as caixinhas): escolhida
+"separar melhor as 4 caixinhas" — dentro de cada pílula, `P☐1M☐2M☐1S☐` lia
+como uma sopa de letrinhas grudadas, difícil de marcar certo com caneta às
+5h30 com sono (mesma preocupação da filosofia de sempre, "botões grandes").
+
+`raHtmlPillPresenca()` (`sime_recibo_alimentacao.js`) passou a envolver
+cada par cargo+caixinha num `<span class="ra-pres-cel">` próprio — 4
+"sub-células" dentro da MESMA pílula (não 4 pílulas soltas, que perderia a
+ligação visual "isso tudo é da seção N"). CSS (`.ra-pres-cel`) dá a cada
+sub-célula uma linha vertical fina (`border-left`) + um respiro de padding
+— lê como 4 caixinhas claramente distintas, não mais uma string corrida.
+
+**A 1ª tentativa de separação estourou pra 2 páginas com as 176 seções
+reais** (medido com `page.pdf()`, não assumido) — a divisória+padding por
+cargo somava quase 10mm a mais por pílula. Corrigido com sweep de
+parâmetros (`gap`/padding/`font-size` da sub-célula) até achar uma
+combinação que volta a caber em 1 página física, confirmado de novo
+visualmente (PDF→JPEG via `pdftoppm`) — a separação ficou clara mesmo com
+fonte um pouco menor (6pt no número, 5.6pt no rótulo do cargo).
+
+Nenhum teste precisou de ajuste — a concatenação de texto (`5P☐1M☐2M☐1S☐`)
+é idêntica à de antes; só a estrutura do DOM por baixo ganhou os 4 `<span>`
+de sub-célula, invisível pra `innerText`.
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)
