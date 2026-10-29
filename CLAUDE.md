@@ -10910,6 +10910,61 @@ número (5, 12, 63 — nunca município+número, que ordenaria diferente);
 log de auditoria; e um bloco dedicado (29b) com 176 seções sintéticas
 confirmando com `page.pdf()` que cabe em EXATAMENTE 1 página física.
 
+**Redesenho no estilo "pílula" do TRE (29/10/2026, mesmo dia, print anexado
+do próprio sistema do TRE: "MRV - Mesa Receptora de Votos", grade de
+caixinhas arredondadas com o número da seção, cor teal, em ordem crescente,
+quebrando linha sozinhas) — "o checklist deve ser nesse estilo".** Os três
+checklists acima nasceram como lista em `column-count` (um "jornal" de
+texto corrido); viraram uma grade `display:flex;flex-wrap:wrap` de
+pequenas pílulas arredondadas (`raHtmlPill()`/`.ra-pill`, nova, compartilhada
+pelos três) — cada uma com o número (ou o nome do local) + a caixinha ☐
+embutida, sem espaço entre os dois (`<b>N</b><span>☐</span>`, conferido
+lendo o DOM antes de escrever qualquer asserção de teste, não assumido).
+
+**Agrupamento por município virou cabeçalho de GRUPO, não mais texto dentro
+de cada item** — pros dois checklists de 28/10/2026 (recibos por seção/por
+local): `raAgruparPorMunicipioSimples()` (nova, casca fina de agrupamento —
+`secoesZona`/`locaisZona` já vêm ordenados por município+número/nome) monta
+um cabeçalho "Campo Maior (58)" seguido da grade de pílulas daquele grupo
+(`raHtmlPillGrupo()`). Perdeu o `(município)` sufixo que cada pílula tinha
+individualmente antes — decisão deliberada: a referência do TRE em si não
+mostra cidade nenhuma (é zona inteira, sem recorte), mas as duas zonas do
+SIME cobrem vários municípios cada, então o cabeçalho de grupo preserva
+esse contexto sem poluir CADA pílula com texto que a referência não tem —
+meio-termo entre "nesse estilo" (pílulas limpas, só número/nome) e a
+convenção de agrupar por local já usada em todo o resto do módulo.
+
+**"Presença da mesa" (29/10/2026, criado mais cedo no mesmo dia) continua
+FLAT, sem cabeçalho nenhum** — é, das três, a que mais bate literalmente
+com a referência (ordem puramente por número de seção, sem recorte por
+cidade — a própria regra já documentada acima, "nunca por município"), e
+reaproveita o mesmo componente `.ra-pill` com uma variante mais larga
+(`.ra-pill-presenca`, número + 4 caixinhas P/1M/2M/1S inline).
+
+**`height` explícita + `column-fill:auto` (o fix do bug de paginação de
+28/10/2026) deixou de ser necessário** — flex-wrap não usa balanceamento de
+coluna, é fluxo de bloco normal; o navegador pagina sozinho sem precisar de
+altura fixa forçada. A garantia de "1 folha" continua só confirmada com
+`page.pdf()` em escala real, nunca por estimativa — e a troca pra pílula
+tornou os dois checklists de "recibos" bem mais compactos que antes (175
+seções cabem com folga larga, antes só cabiam ajustado nos 150mm de altura
+reservados). A pílula de "presença" (mais larga — número + 4 caixinhas) foi
+a única que precisou de ajuste fino de verdade: a 1ª versão (mesmo
+`font-size`/padding/`gap` dos outros dois) estourava pra 2 páginas com as
+176 seções reais (medido com `page.pdf()`, não assumido) — corrigido
+reduzindo `gap`/padding/fonte só da variante `.ra-pill-presenca`/
+`.ra-pill-grid-presenca` até sobrar folga real na página (confirmado
+visualmente convertendo o PDF em imagem, `pdftoppm`, não só pela contagem
+de `/MediaBox`).
+
+Coberto por `tests/test_convocacao_alimentacao.mjs` (blocos 28/28b/29/29b
+revisados pro novo DOM — 428 checks no total no arquivo): pílulas contadas
+por `.ra-pill`; número/local emendado com ☐ sem espaço (`5☐`, `Escola A☐`);
+cabeçalho de grupo por município presente nos dois checklists de recibo,
+ausente no de presença (flat, de propósito); as três garantias de "1
+página física" re-confirmadas com `page.pdf()` na escala real da 7ª Zona
+(175/64/176 itens).
+
 ---
 
 ## PENDÊNCIAS (atualizado em 27/07/2026)

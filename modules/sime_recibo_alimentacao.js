@@ -1128,29 +1128,67 @@ async function raImprimirConferenciaSimplificada() {
 //
 // "Uma folha" é garantia de layout, não coincidência de dado pequeno —
 // zonas reais têm ~175 seções/~64 locais (ver "Números da operação" no
-// topo do CLAUDE.md), então a lista vira MULTI-COLUNA (CSS `column-count`,
-// `.ra-check-colunas`) pra caber tudo numa página física só, mesmo em
-// zona grande; cada item usa `break-inside:avoid` pra nunca ser cortado
-// no meio entre duas colunas.
-function raHtmlChecklistItem(texto, municipio) {
-  return `<div class="ra-check-item"><span class="ra-check-box">☐</span> ${raEsc(texto)}${municipio ? ` <span class="ra-check-mun">(${raEsc(municipio)})</span>` : ''}</div>`;
+// topo do CLAUDE.md).
+//
+// Estilo "pílula" — redesenhado em 29/10/2026, pedido direto com print
+// anexado do próprio sistema do TRE ("MRV - Mesa Receptora de Votos", grade
+// de caixinhas arredondadas com o número da seção, em ordem crescente,
+// quebrando linha sozinha): "o checklist deve ser nesse estilo". Trocou a
+// lista em colunas de texto (`.ra-check-colunas`, CSS `column-count`) por
+// uma grade `display:flex;flex-wrap:wrap` de pílulas pequenas — mesma
+// forma do grid oficial, com uma caixinha ☐ embutida em cada uma pra
+// marcar a conferência. Agrupado por MUNICÍPIO (cabeçalho de grupo, mesma
+// convenção já usada no resto deste módulo — Mesa Receptora/Coordenador
+// por local, Conferência por cidade) — a referência do TRE em si não
+// agrupa (é zona inteira, sem recorte por cidade), mas as duas zonas do
+// SIME cobrem vários municípios cada, então manter o agrupamento evita
+// perder esse contexto só pra copiar o visual à risca.
+//
+// Flex-wrap (não mais CSS multicol) não precisa de `height` explícita pra
+// caber numa página — diferente do bug de `column-count` já documentado
+// alhures (balanceamento de coluna ignora a altura física da página sem
+// ela): aqui é fluxo de bloco normal, o navegador pagina sozinho se
+// transbordar — mas a garantia de "1 folha" continua só verificada de
+// verdade com `page.pdf()` (ver blocos 28b/29b dos testes), nunca por
+// estimativa.
+function raHtmlPill(conteudo, extraClass) {
+  return `<div class="ra-pill${extraClass ? ' ' + extraClass : ''}">${conteudo}</div>`;
+}
+
+function raHtmlPillGrupo(titulo, pills) {
+  return `
+    <div class="ra-pill-municipio">${raEsc(titulo)} <span class="ra-pill-n">(${pills.length})</span></div>
+    <div class="ra-pill-grid">${pills.map(p => raHtmlPill(p)).join('')}</div>`;
+}
+
+function raAgruparPorMunicipioSimples(itens, getMunicipio) {
+  const grupos = [];
+  let atual = null;
+  itens.forEach(it => {
+    const mun = getMunicipio(it) || '—';
+    if (!atual || atual.titulo !== mun) { atual = { titulo: mun, itens: [] }; grupos.push(atual); }
+    atual.itens.push(it);
+  });
+  return grupos;
 }
 
 function raHtmlChecklistSecoes(secoes, cfg) {
-  const itens = secoes.map(s => raHtmlChecklistItem(`Seção ${s.numero} — ${raNomeLocalSemCodigo(s.local_nome)}`, s.municipio)).join('');
+  const grupos = raAgruparPorMunicipioSimples(secoes, s => s.municipio);
+  const corpo = grupos.map(g => raHtmlPillGrupo(g.titulo, g.itens.map(s => `<b>${s.numero}</b><span class="ra-pill-box">☐</span>`))).join('');
   return `
     <div class="ra-pagina ra-check-pagina">
-      ${raHtmlTimbre('Checklist de Conferência — Recibos por Seção (Mesa Receptora)', `${secoes.length} seção(ões) ativa(s)`, cfg, 1)}
-      <div class="ra-check-colunas">${itens}</div>
+      ${raHtmlTimbre('Checklist de Conferência — Recibos por Seção (Mesa Receptora)', `${secoes.length} seção(ões) ativa(s) — ☐ marca o recibo já de volta no cartório`, cfg, 1)}
+      ${corpo}
     </div>`;
 }
 
 function raHtmlChecklistLocais(locais, cfg) {
-  const itens = locais.map(l => raHtmlChecklistItem(raNomeLocalSemCodigo(l.local_nome), l.municipio)).join('');
+  const grupos = raAgruparPorMunicipioSimples(locais, l => l.municipio);
+  const corpo = grupos.map(g => raHtmlPillGrupo(g.titulo, g.itens.map(l => `${raEsc(raNomeLocalSemCodigo(l.local_nome))}<span class="ra-pill-box">☐</span>`))).join('');
   return `
     <div class="ra-pagina ra-check-pagina">
-      ${raHtmlTimbre('Checklist de Conferência — Recibos por Local de Votação', `${locais.length} local(is) de votação`, cfg, 1)}
-      <div class="ra-check-colunas">${itens}</div>
+      ${raHtmlTimbre('Checklist de Conferência — Recibos por Local de Votação', `${locais.length} local(is) de votação — ☐ marca o recibo já de volta no cartório`, cfg, 1)}
+      ${corpo}
     </div>`;
 }
 
@@ -1187,17 +1225,24 @@ async function raImprimirChecklistLocais() {
 // que o pedido é sobre os NÚMEROS das seções, não sobre quem está
 // designado (uma seção sem mesário nenhum no cadastro ainda precisa
 // aparecer, porque no Dia D ela vai ter mesa física mesmo assim).
-function raHtmlChecklistPresencaItem(s) {
-  return `<div class="ra-pres-item"><b>${s.numero}</b> <span class="ra-pres-cargo">P</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">1M</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">2M</span><span class="ra-check-box">☐</span><span class="ra-pres-cargo">1S</span><span class="ra-check-box">☐</span></div>`;
+//
+// Estilo "pílula" (29/10/2026, mesma revisão de cima) — FLAT, sem
+// agrupamento por município, de propósito: é a grade que mais bate
+// literalmente com a referência do TRE (números em ordem crescente, uma
+// grade só, sem recorte por cidade) — e agrupar aqui reabriria a mesma
+// discussão já fechada na criação deste checklist ("ordenado só por
+// NÚMERO de seção, nunca por município").
+function raHtmlPillPresenca(s) {
+  return `<b>${s.numero}</b><span class="ra-pres-cargo">P</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">1M</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">2M</span><span class="ra-pill-box">☐</span><span class="ra-pres-cargo">1S</span><span class="ra-pill-box">☐</span>`;
 }
 
 function raHtmlChecklistPresenca(secoes, cfg) {
   const ordenadas = secoes.slice().sort((a, b) => a.numero - b.numero);
-  const itens = ordenadas.map(raHtmlChecklistPresencaItem).join('');
+  const pills = ordenadas.map(s => raHtmlPill(raHtmlPillPresenca(s), 'ra-pill-presenca')).join('');
   return `
     <div class="ra-pagina ra-check-pagina">
       ${raHtmlTimbre('Checklist de Presença — Membros da Mesa por Seção', `${secoes.length} seção(ões), em ordem crescente de número — P / 1º Mesário / 2º Mesário / 1º Secretário`, cfg, 1)}
-      <div class="ra-pres-colunas">${itens}</div>
+      <div class="ra-pill-grid ra-pill-grid-presenca">${pills}</div>
     </div>`;
 }
 

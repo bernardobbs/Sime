@@ -2231,7 +2231,12 @@ async function login(p) {
 //      inicialmente se todos os recibos estão presentes, então quero um
 //      checklist por seção de uma folha, e um check list de locais de
 //      votação em 1 folha") — diferente da Conferência simplificada: só
-//      caixinha ☐, nenhum dado de pagamento ──
+//      caixinha ☐, nenhum dado de pagamento. Redesenhado em 29/10/2026
+//      pro estilo "pílula" (print anexado do grid real do TRE) — cada
+//      item é um `<b>número</b><span>☐</span>` sem espaço entre os dois
+//      (confirmado lendo o DOM antes de escrever a asserção), agrupado
+//      por cabeçalho de município (ex.: "Campo Maior (2)") em vez de
+//      mostrar o nome da cidade dentro de cada item ──
 {
   const ctx = await b.newContext();
   const { p, erros } = await abrir(ctx, mock());
@@ -2247,9 +2252,11 @@ async function login(p) {
   check('window.print() foi chamado (checklist de seções)', await p.evaluate(() => window.__printCalls) === 1);
   let paginas = await p.locator('#print-area .ra-pagina').count();
   check('checklist de seções sai em 1 única folha lógica', paginas === 1, String(paginas));
+  let pills = await p.locator('#print-area .ra-pill').count();
+  check('3 pílulas, uma por seção do mock', pills === 3, String(pills));
   const txtSec = await p.locator('#print-area').innerText();
-  check('mostra as 3 seções do mock, cada uma com a caixinha ☐', /☐ Seção 5 —/.test(txtSec) && /☐ Seção 12 —/.test(txtSec) && /☐ Seção 63 —/.test(txtSec), txtSec.slice(0, 400));
-  check('mostra o município ao lado de cada seção', /\(Campo Maior\)/.test(txtSec) && /\(Jatobá do Piauí\)/.test(txtSec));
+  check('mostra as 3 seções do mock, cada uma com a caixinha ☐', /5☐/.test(txtSec) && /12☐/.test(txtSec) && /63☐/.test(txtSec), txtSec.slice(0, 400));
+  check('agrupa por cabeçalho de município (não mais nome da cidade dentro do item)', /Campo Maior \(2\)/.test(txtSec) && /Jatobá do Piauí \(1\)/.test(txtSec), txtSec.slice(0, 400));
   check('nunca mostra valor/documento/status (é checklist de papel, não de pagamento)', !/R\$/.test(txtSec) && !/Ainda vai receber/.test(txtSec), txtSec.slice(0, 400));
   let escritas = await p.evaluate(() => window.__mock.escritas);
   let logSec = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_secoes_impresso');
@@ -2261,8 +2268,10 @@ async function login(p) {
   check('window.print() chamado de novo (checklist de locais)', await p.evaluate(() => window.__printCalls) === 2);
   paginas = await p.locator('#print-area .ra-pagina').count();
   check('checklist de locais sai em 1 única folha lógica', paginas === 1, String(paginas));
+  pills = await p.locator('#print-area .ra-pill').count();
+  check('3 pílulas, uma por local do mock', pills === 3, String(pills));
   const txtLoc = await p.locator('#print-area').innerText();
-  check('mostra os 3 locais distintos do mock, cada um com ☐', /☐ Escola A/.test(txtLoc) && /☐ Escola B/.test(txtLoc) && /☐ Escola Municipal Grande do Centro/.test(txtLoc), txtLoc.slice(0, 400));
+  check('mostra os 3 locais distintos do mock, cada um com ☐', /Escola A☐/.test(txtLoc) && /Escola B☐/.test(txtLoc) && /Escola Municipal Grande do Centro☐/.test(txtLoc), txtLoc.slice(0, 400));
   escritas = await p.evaluate(() => window.__mock.escritas);
   const logLoc = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_locais_impresso');
   check('log de auditoria do checklist de locais com quantidade 3', !!logLoc && logLoc.payload.payload.quantidade === 3, JSON.stringify(logLoc));
@@ -2306,7 +2315,7 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const txtGrande = await p.locator('#print-area').innerText();
-  check('as 175 seções sintéticas aparecem (checa a última, seção 175)', /☐ Seção 175 —/.test(txtGrande));
+  check('as 175 seções sintéticas aparecem (checa a última, seção 175)', /(?<!\d)175☐/.test(txtGrande));
   await p.emulateMedia({ media: 'print' });
   const pdf = await p.pdf({ printBackground: true });
   const mediaBoxes = [...pdf.toString('latin1').matchAll(/\/MediaBox/g)];
@@ -2320,7 +2329,9 @@ async function login(p) {
 //      número (29/10/2026, pedido direto: "quero que apareça o numero das
 //      seções por ordem crescente de numero de seção, com um local para
 //      marcar a presença dos membros da mesa de forma resumida. cabendo
-//      em uma só pagina") ──
+//      em uma só pagina") — estilo "pílula" FLAT (sem agrupar por
+//      município, por ser a grade que mais bate com a referência do TRE:
+//      ordem puramente numérica, sem cabeçalho de cidade nenhum) ──
 {
   const ctx = await b.newContext();
   // Mock com números de seção fora de ordem e espalhados entre
@@ -2348,11 +2359,11 @@ async function login(p) {
 
   const txt = await p.locator('#print-area').innerText();
   check('mostra as 4 caixinhas por seção (P, 1M, 2M, 1S)', /P☐/.test(txt) && /1M☐/.test(txt) && /2M☐/.test(txt) && /1S☐/.test(txt), txt.slice(0, 400));
-  check('mostra os números das 3 seções', /\b5\b/.test(txt) && /\b12\b/.test(txt) && /\b63\b/.test(txt), txt.slice(0, 400));
-  check('nunca mostra nome/valor/documento/status (é tally sheet, sem dado de pessoa)', !/R\$/.test(txt) && !/Ainda vai receber/.test(txt) && !/PRESIDENTE/i.test(txt));
+  check('mostra os números das 3 seções, cada um emendado na pílula (5P☐, 12P☐, 63P☐)', /5P☐/.test(txt) && /12P☐/.test(txt) && /63P☐/.test(txt), txt.slice(0, 400));
+  check('nunca mostra nome/valor/documento/status/município (é tally sheet, flat, sem dado de pessoa)', !/R\$/.test(txt) && !/Ainda vai receber/.test(txt) && !/PRESIDENTE/i.test(txt) && !/Campo Maior \(/.test(txt));
   // Ordenação por NÚMERO puro (5, 12, 63), não por município+número (que
   // ordenaria Campo Maior — 12, 63 — antes de Jatobá — 5).
-  check('ordem é 5, depois 12, depois 63 (número puro, não município+número)', txt.indexOf('5 ') < txt.indexOf('12 ') && txt.indexOf('12 ') < txt.indexOf('63 '), txt.slice(0, 300));
+  check('ordem é 5, depois 12, depois 63 (número puro, não município+número)', txt.indexOf('5P☐') < txt.indexOf('12P☐') && txt.indexOf('12P☐') < txt.indexOf('63P☐'), txt.slice(0, 300));
 
   const escritas = await p.evaluate(() => window.__mock.escritas);
   const log = escritas.find(e => e.op === 'insert' && e.tabela === 'sime_logs' && e.payload.acao === 'recibo_alimentacao_checklist_presenca_mesa_impresso');
@@ -2386,7 +2397,7 @@ async function login(p) {
   await p.waitForTimeout(300);
 
   const txtGrande = await p.locator('#print-area').innerText();
-  check('as 176 seções sintéticas aparecem (checa a última, seção 176)', /\b176\b/.test(txtGrande));
+  check('as 176 seções sintéticas aparecem (checa a última, seção 176)', /(?<!\d)176P☐/.test(txtGrande));
   await p.emulateMedia({ media: 'print' });
   const pdf = await p.pdf({ printBackground: true });
   const mediaBoxes = [...pdf.toString('latin1').matchAll(/\/MediaBox/g)];

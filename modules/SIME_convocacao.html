@@ -387,39 +387,41 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
      linhas que ele anuncia. */
   .ra-conf-grupo td{font-weight:800;font-size:9pt;border-top:2px solid #000;border-bottom:1px solid #000;padding:3mm 2.5mm 1.5mm;page-break-inside:avoid;}
 
-  /* Checklists de conferência física — "recibos por seção"/"por local"
-     (28/10/2026, sime_recibo_alimentacao.js — raHtmlChecklistSecoes/
-     raHtmlChecklistLocais): precisam caber INTEIROS numa única página
-     física mesmo em zona grande (~175 seções/~64 locais, ver "Números da
-     operação" no CLAUDE.md) — `column-count:5` distribui a lista em 5
-     colunas (como um jornal), em vez de uma coluna só que nunca caberia.
-     `break-inside:avoid` por item evita cortar um item no meio entre duas
-     colunas (o item inteiro pula pra coluna seguinte, não o contrário).
+  /* Checklists de conferência física — "recibos por seção"/"por local"/
+     "presença da mesa" (28-29/10/2026, sime_recibo_alimentacao.js —
+     raHtmlChecklistSecoes/raHtmlChecklistLocais/raHtmlChecklistPresenca):
+     precisam caber INTEIROS numa única página física mesmo em zona grande
+     (~175 seções/~64 locais, ver "Números da operação" no CLAUDE.md).
 
-     `height` EXPLÍCITA é o que de fato faz caber numa página (achado real,
-     medido com page.pdf() — sem altura fixa, o balanceamento automático de
-     colunas do Chromium na impressão simplesmente IGNORA o limite físico
-     da página e o conteúdo transborda pra uma 2ª, mesmo com várias colunas
-     de sobra; só definir a altura força o navegador a respeitar o espaço
-     de verdade). 150mm cabe com folga dentro dos ~178mm úteis da página
-     (A4 paisagem, margem de 10mm + padding de 6mm, menos o timbre) —
-     `column-fill:auto` preenche uma coluna por completo antes de passar
-     pra próxima, em vez de tentar equilibrar a altura entre todas (o que
-     reintroduziria o mesmo problema). */
-  .ra-check-colunas{column-count:5;column-gap:5mm;column-fill:auto;height:150mm;margin-top:2mm;}
-  .ra-check-item{font-size:7.5pt;line-height:1.5;break-inside:avoid;margin-bottom:0.3mm;}
-  .ra-check-box{display:inline-block;width:3mm;}
-  .ra-check-mun{color:#555;font-size:6.5pt;}
+     Redesenhado em 29/10/2026 pro estilo "pílula" do próprio sistema do
+     TRE (print anexado do grid "MRV - Mesa Receptora de Votos" — caixinhas
+     arredondadas com o número, em ordem crescente, quebrando linha
+     sozinhas): `display:flex;flex-wrap:wrap` em vez de CSS `column-count`
+     — cada pílula é pequena o bastante pra várias caberem numa linha só, e
+     o navegador quebra linha/página sozinho (fluxo de bloco normal, sem o
+     bug de balanceamento de coluna ignorando a altura física já
+     documentado alhures pra este mesmo módulo — aqui não há coluna
+     nenhuma pra balancear). A garantia de "1 folha" continua só
+     confirmada de verdade com `page.pdf()` (testes 28b/29b), nunca por
+     estimativa de tamanho. */
+  .ra-pill-grid{display:flex;flex-wrap:wrap;gap:1.2mm;margin:0 0 2.5mm;}
+  .ra-pill{display:inline-flex;align-items:center;gap:0.8mm;background:#e3f6f2;border:0.3mm solid #9ecdc3;border-radius:1.2mm;padding:0.6mm 1.6mm;font-size:7.5pt;line-height:1.3;white-space:nowrap;break-inside:avoid;}
+  .ra-pill b{font-weight:800;}
+  .ra-pill-box{font-size:7.5pt;}
+  .ra-pill-municipio{font-size:8.5pt;font-weight:800;color:#0e6e5e;margin:2.5mm 0 1mm;break-inside:avoid;break-after:avoid;}
+  .ra-pill-municipio:first-of-type{margin-top:0;}
+  .ra-pill-municipio .ra-pill-n{font-weight:400;color:#555;font-size:7pt;}
 
-  /* Checklist de presença da mesa por seção (29/10/2026,
-     sime_recibo_alimentacao.js — raHtmlChecklistPresenca): item mais
-     largo que os checklists acima (4 caixinhas por linha, P/1M/2M/1S),
-     por isso colunas/altura à parte, tunadas em separado (ver nota de
-     `.ra-check-colunas` sobre a `height` explícita ser o que de fato
-     garante 1 página — mesmo critério aqui). */
-  .ra-pres-colunas{column-count:3;column-gap:6mm;column-fill:auto;height:150mm;margin-top:2mm;}
-  .ra-pres-item{font-size:8pt;line-height:1.6;break-inside:avoid;margin-bottom:0.3mm;white-space:nowrap;}
-  .ra-pres-cargo{font-size:6.5pt;color:#555;margin-left:1.5mm;}
+  /* Presença da mesa — pílula mais larga (número + 4 caixinhas P/1M/2M/1S),
+     flat, sem agrupamento por município de propósito (ordenação é só por
+     NÚMERO de seção, pedido explícito desde que este checklist nasceu).
+     176 pílulas largas enchem a página bem mais que as dos outros dois
+     checklists (que são só número, bem mais estreitas) — por isso ganham
+     seu próprio aperto de `gap`/padding/fonte, medido com page.pdf() até
+     sobrar folga segura, não só "parece que cabe". */
+  .ra-pill-grid-presenca{gap:1mm;}
+  .ra-pill-presenca{gap:0.4mm;padding:0.4mm 1.2mm;font-size:7pt;}
+  .ra-pres-cargo{font-size:5.8pt;color:#555;margin-left:0.5mm;}
 }
 </style>
 </head>
