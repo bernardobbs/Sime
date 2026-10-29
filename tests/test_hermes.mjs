@@ -120,6 +120,32 @@ globalThis.__SUPA.mesa['sec-63-z7']={secao_id:'sec-63-z7',panico_energia:true,pa
   check('panico_resolvido NÃO marca urna_resolvido (não estava ativo)', globalThis.__SUPA.mesa['sec-63-z7'].panico_urna_resolvido===undefined);
 }
 
+// ── ETAPAS DE INSTALAÇÃO DA URNA (via RPC sime_acao_mesa, com carimbo de ts) ──
+resetDB();
+r7 = await call('POST',AUTH_Z7,{secao:'63',evento:'urna_instalada',valor:true,origem:'hermes_whatsapp'});
+check('urna_instalada → 200', r7.code===200);
+check('urna_instalada grava via RPC sime_acao_mesa (não upsert direto)', globalThis.__SUPA.ops.some(o=>o.op==='rpc'&&o.name==='sime_acao_mesa'&&o.params.p_urna_instalada===true));
+check('urna_instalada marca o booleano', globalThis.__SUPA.mesa['sec-63-z7']?.urna_instalada===true);
+check('urna_instalada carimba urna_instalada_ts na primeira vez', globalThis.__SUPA.mesa['sec-63-z7']?.urna_instalada_ts===globalThis.__SUPA.now);
+check('urna_instalada registra log', globalThis.__SUPA.logs.some(l=>l.acao==='hermes_atualizou_sime'&&l.payload.evento==='urna_instalada'));
+
+resetDB();
+await call('POST',AUTH_Z7,{secao:'63',evento:'urna_chegou',valor:true});
+await call('POST',AUTH_Z7,{secao:'63',evento:'urna_posicionada',valor:true});
+await call('POST',AUTH_Z7,{secao:'63',evento:'urna_instalada',valor:true});
+check('cadeia chegou→posicionada→instalada preserva as 3 etapas (upsert não se sobrescreve)', ['urna_chegou','urna_posicionada','urna_instalada'].every(k=>globalThis.__SUPA.mesa['sec-63-z7']?.[k]===true));
+
+resetDB();
+globalThis.__SUPA.mesa['sec-63-z7'] = { secao_id:'sec-63-z7', eleicao_id:'ele-z7', urna_instalada:true, urna_instalada_ts:'2026-10-03T08:00:00.000Z' };
+globalThis.__SUPA.now = '2026-10-03T09:00:00.000Z';
+await call('POST',AUTH_Z7,{secao:'63',evento:'urna_instalada',valor:true});
+check('urna_instalada NÃO recarimba o ts se já tinha sido marcado antes', globalThis.__SUPA.mesa['sec-63-z7']?.urna_instalada_ts==='2026-10-03T08:00:00.000Z');
+
+resetDB();
+r7 = await call('POST',AUTH_Z7,{secao:'63',evento:'problema_instalacao',valor:true});
+check('problema_instalacao → 200', r7.code===200);
+check('problema_instalacao marca o booleano', globalThis.__SUPA.mesa['sec-63-z7']?.problema_instalacao===true);
+
 let pass=0,fail=0;
 for(const x of results){ console.log((x.ok?'PASS':'FAIL')+' — '+x.n+(x.e?'  ['+x.e+']':'')); x.ok?pass++:fail++; }
 console.log(`\n${pass} passed, ${fail} failed`);

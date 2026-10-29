@@ -35,23 +35,34 @@ body.tudo-lacrado .fc.lacre .fc-val,
 body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
 
 .center { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 40px 16px; }
-.data { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:300; color:#999; letter-spacing:0.08em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(4px,1.2vh,16px); }
+/* Data e hora são o dado principal desta tela — o que qualquer um precisa
+   enxergar de longe primeiro (22/09/2026, pedido direto: "os dados
+   principais são data e hora, eles devem ser as maiores informações").
+   Antes a data era um subtítulo fino e cinza-claro acima do relógio — lia
+   como legenda, não como informação principal; agora é escura, em negrito
+   e bem maior (ainda menor que a hora, que continua sendo o maior elemento
+   da tela — as duas juntas dominam, o status/contadores ficam menores). */
+.data { font-size:clamp(2.2rem,8.5vw,6.2rem); font-weight:800; color:#222; letter-spacing:0.01em; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:clamp(6px,1.6vh,20px); }
 .hora { display:flex; align-items:baseline; line-height:1; }
 .hora-hm { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; }
 .hora-sep { font-size:clamp(4rem,16vw,11rem); font-weight:900; color:#444; letter-spacing:-0.06em; animation:blink 1s step-end infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.07} }
 .hora-s { font-size:clamp(1.8rem,6vw,4.5rem); font-weight:700; color:#aaa; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; align-self:flex-end; padding-bottom:clamp(6px,1vw,16px); margin-left:clamp(4px,0.5vw,12px); }
 
-/* Dado que mais importa (status de carga/preparação/lacre) — antes minúsculo
-   e cinza claro no rodapé, atrás de um relógio gigante que domina a tela. */
-.status-hero { font-size:clamp(1.6rem,5.5vw,3.6rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
+/* Status de carga/preparação/lacre — continua com destaque (achado "alto"
+   da auditoria original: nunca mais minúsculo/cinza no rodapé), mas agora
+   é secundário a data+hora, que passaram a ser o dado principal da tela. */
+.status-hero { font-size:clamp(1.4rem,4.5vw,2.8rem); font-weight:800; letter-spacing:0.02em; color:#111; margin-top:clamp(10px,2.5vh,26px); text-align:center; }
 .status-hero.done { color:#0a7a3d; }
 
 .footer { padding:10px 52px 14px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #efefef; flex-shrink:0; }
 .f-brand { font-size:0.58rem; letter-spacing:0.2em; text-transform:uppercase; color:#ccc; font-weight:700; }
 /* Nenhuma indicação de última atualização/status de conexão em toda a tela
-   (achado "médio") — mesmo padrão já usado no TV Dia e TV Véspera. */
-.rt-status{font-size:.58rem;font-weight:700;padding:2px 8px;border-radius:99px;background:#f0f0f0;color:#999;margin-top:6px;}
+   (achado "médio") — mesmo padrão já usado no TV Dia e TV Véspera.
+   Redesenhado em 27/09/2026 (mais legível à distância) — mesmo padrão
+   bolinha+texto por extenso das outras 3 TVs, adaptado ao tema claro. */
+.rt-status{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:99px;background:#f0f0f0;color:#999;margin-top:6px;display:inline-flex;align-items:center;gap:6px;}
+.rt-status .tsd{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .rt-status.warn{background:#fff3e0;color:#c2410c;}
 .rt-status.stale{background:#fde8e6;color:#dc2626;}
 .f-counts { display:flex; gap:22px; }
@@ -80,7 +91,7 @@ body.tudo-lacrado .fc.lacre .fc-lbl { color:#0a7a3d; }
     <span class="hora-s"  id="c-s">00</span>
   </div>
   <div class="status-hero" id="f-status">—</div>
-  <div class="rt-status" id="rt-status">— sem sessão</div>
+  <div class="rt-status" id="rt-status"><span class="tsd" style="background:#999"></span>— sem sessão</div>
 </div>
 <div class="footer">
   <div class="f-brand">SIME TV Preparação · 7ª Zona/PI</div>
@@ -119,12 +130,26 @@ window.SIME_CARGA_LACRE_REAL = null; // { c, p, l }
   if (secoes) window.SIME_TOTAL_REAL = secoes.length;
   if (zona) document.querySelector('.f-brand').textContent = `SIME TV Preparação · ${zona.numero}ª Zona · ${zona.municipio}`;
   if (!eleicao) { if (window.updateBars) window.updateBars(); return; } // sem eleição ativa — segue no fallback local
+  // Total de urnas configurado pelo cartório (22/09/2026, ver
+  // sql/SIME_eleicoes_urnas_total.sql) — quando presente, calcTotal() o
+  // prefere sobre a contagem de seções.
+  window.ELEICAO_ATIVA = eleicao;
 
   function marcarAtualizado() { window.__ultimaAtualizacaoTs = Date.now(); window.updateRtStatus?.(); }
   async function refetch() {
     const { data } = await client.from('sime_carga_lacre').select('carga,preparacao,lacre').eq('eleicao_id', eleicao.id);
     let c = 0, p = 0, l = 0;
     for (const r of data || []) { if (r.carga) c++; if (r.preparacao) p++; if (r.lacre) l++; }
+    // Urnas de contingência (sql/SIME_eleicoes_contingencia_estagios.sql,
+    // 01/10/2026) não têm sime_secoes/sime_carga_lacre próprios — são só um
+    // número (urnas_contingencia) com 3 flags de estágio EM LOTE pra zona
+    // inteira (o cartório confirma "todas as N foram carregadas" de uma vez,
+    // não urna por urna). Quando marcada, soma o lote inteiro no numerador
+    // daquele estágio — nunca parcial, nunca inventado.
+    const cont = window.ELEICAO_ATIVA?.urnas_contingencia || 0;
+    if (window.ELEICAO_ATIVA?.contingencia_carga) c += cont;
+    if (window.ELEICAO_ATIVA?.contingencia_preparacao) p += cont;
+    if (window.ELEICAO_ATIVA?.contingencia_lacre) l += cont;
     window.SIME_CARGA_LACRE_REAL = { c, p, l };
     marcarAtualizado();
     if (window.updateBars) window.updateBars();
@@ -147,10 +172,21 @@ function tick() {
 }
 tick(); setInterval(tick,1000);
 
-// Total real vem do Supabase (window.SIME_TOTAL_REAL, zona-scoped via RLS);
-// sem sessão de TV configurada ainda, cai no total local (sime_lacre_v3) e,
-// por fim, no fallback histórico da 7ª Zona/PI (174) — offline-first.
+// Total de urnas — prioridade (22/09/2026, pedido direto: "serão preparadas
+// 147 urnas de seções, 27 contigencias, 174 urnas ao todo"):
+//   1. urnas_secoes+urnas_contingencia configurado em sime_eleicoes (o
+//      número operacional real, guardado separado — ver
+//      sql/SIME_eleicoes_urnas_total.sql), quando o cartório já preencheu
+//      os dois;
+//   2. window.SIME_TOTAL_REAL (nº de seções da zona via Supabase, o
+//      comportamento de sempre quando ainda não há configuração);
+//   3. total local (sime_lacre_v3) e, por fim, o fallback histórico da
+//      7ª Zona/PI (174) — offline-first.
 function calcTotal(){
+  const e = window.ELEICAO_ATIVA;
+  if (e && Number.isFinite(e.urnas_secoes) && Number.isFinite(e.urnas_contingencia)) {
+    return e.urnas_secoes + e.urnas_contingencia;
+  }
   if (window.SIME_TOTAL_REAL) return window.SIME_TOTAL_REAL;
   try{ const d=localStorage.getItem('sime_lacre_v3'); if(d){ const t=Object.keys(JSON.parse(d)).length; return t>0?t:174; }}catch(e){} return 174;
 }
@@ -172,7 +208,11 @@ function updateBars(){
   document.getElementById('fc-lacre').textContent=l;
   const f=TOTAL-l;
   const statusEl=document.getElementById('f-status');
-  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?'todas lacradas':l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
+  // "todas lacradas" virou mensagem de parabéns (01/10/2026, pedido direto:
+  // "agora que acabou o tv preparação pode mostrar parabéns?") — mesmo
+  // gatilho de sempre (l===TOTAL), só o texto do estado final que mudou de
+  // informativo pra comemorativo.
+  statusEl.textContent=l===0&&c===0?'aguardando início':l===TOTAL?`🎉 Parabéns! As ${TOTAL} urnas estão prontas`:l>=TOTAL*0.75?`faltam ${f} urna${f>1?'s':''}`:`${l} de ${TOTAL} lacradas`;
   const tudoLacrado = l===TOTAL && TOTAL>0;
   statusEl.classList.toggle('done', tudoLacrado);
   document.body.classList.toggle('tudo-lacrado', tudoLacrado);
@@ -186,14 +226,15 @@ function updateRtStatus(){
   const el=document.getElementById('rt-status');
   if(!el) return;
   const ts=window.__ultimaAtualizacaoTs;
-  if(!ts){ el.textContent='— sem sessão'; el.className='rt-status'; return; }
+  if(!ts){ el.innerHTML='<span class="tsd" style="background:#999"></span>— sem sessão'; el.className='rt-status'; return; }
   const s=Math.floor((Date.now()-ts)/1000);
-  const txt = s<5?'agora':s<60?s+'s atrás':Math.floor(s/60)+'min atrás';
-  if(s>=90){ el.textContent='🔴 '+txt; el.className='rt-status stale'; }
-  else if(s>=30){ el.textContent='🟡 '+txt; el.className='rt-status warn'; }
-  else{ el.textContent='🟢 '+txt; el.className='rt-status'; }
+  const tempo = s<5?'agora':s<60?('há '+s+'s'):('há '+Math.floor(s/60)+'min');
+  if(s>=90){ el.innerHTML='<span class="tsd" style="background:#dc2626"></span>Sem atualização '+tempo; el.className='rt-status stale'; }
+  else if(s>=30){ el.innerHTML='<span class="tsd" style="background:#c2410c"></span>Atualizado '+tempo; el.className='rt-status warn'; }
+  else{ el.innerHTML='<span class="tsd" style="background:#16a34a"></span>Atualizado '+tempo; el.className='rt-status'; }
 }
 setInterval(updateRtStatus,1000); updateRtStatus();
 </script>
+<script src="./sime_tv_nav.js"></script>
 </body>
 </html>

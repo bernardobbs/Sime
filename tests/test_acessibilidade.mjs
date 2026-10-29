@@ -184,6 +184,53 @@ async function loginPIN(p) {
   await ctx.close();
 }
 
+// ── 4. Local real fora do array de demonstração (bug real de 16/09/2026) ──
+// A lista SECOES do <script> clássico é só homologação (5 locais fixos da
+// 7ª Zona) — um coordenador com local de votação de verdade fora dela ficava
+// sem NENHUMA seção visível, mesmo com token/PIN corretos, porque
+// secoesVisiveis() filtrava só esse array fixo. window.SECOES_REAIS (vindo
+// de getSecoes()) precisa assumir assim que a sessão real resolve.
+{
+  const ctx = await b.newContext();
+  const cfg = baseMockConfig();
+  cfg.sime_secoes = [
+    { id: 'sec-uuid-193', numero: 193, local_nome: 'Esc. Rural Sto. Antônio C.V.', municipio: 'Sigefredo Pacheco', eleitores: 80, ativo: true, parada: null, sime_rotas: null },
+    { id: 'sec-uuid-214', numero: 214, local_nome: 'Esc. Rural Sto. Antônio C.V.', municipio: 'Sigefredo Pacheco', eleitores: 95, ativo: true, parada: null, sime_rotas: null },
+  ];
+  await ctx.route('**/functions/v1/sime-login', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      jwt: 'jwt.x', exp: Math.floor(Date.now() / 1000) + 999, zona_id: 'zona-7', tipo: 'coord_acessibilidade',
+    }) });
+  });
+  const tokensForaDoDemo = { ACES002: { id: 'ACES002', nome: 'Rural', pin: '1122', local: 'Esc. Rural Sto. Antônio C.V.' } };
+  const p = await newPage(ctx, cfg, tokensForaDoDemo);
+  const erros = [];
+  p.on('pageerror', (e) => erros.push(String(e)));
+  await p.goto('http://localhost:8917/modules/SIME_acessibilidade.html');
+  for (let i = 0; i < 4; i++) await p.fill(`#pin-${i}`, '1122'[i]);
+  await p.waitForFunction(() => document.getElementById('view-app').classList.contains('active'));
+  // A tela nasce com window.SECOES_REAIS ainda vazio (fire-and-forget) — a
+  // condição real do bug é essa janela inicial, corrigida assim que
+  // resolverEscopo() chama window.aoEscopoResolvido().
+  await p.waitForFunction(() => (window.SECOES_REAIS || []).length === 2);
+  await p.waitForTimeout(200);
+  const listaTxt = await p.locator('#list').textContent();
+  check('local real fora da lista de demo mostra as seções de verdade', listaTxt.includes('193') && listaTxt.includes('214'), listaTxt.slice(0, 200));
+  check('NÃO mostra mais "Nenhuma seção atribuída"', !listaTxt.includes('Nenhuma seção atribuída'));
+  const subTxt = await p.locator('#d-sub').textContent();
+  check('cabeçalho conta 2 seções (não 0)', subTxt.includes('2 seç'), subTxt);
+  check('zero erros JS não tratados', erros.length === 0, erros.join(';'));
+
+  // Ajustar fila numa dessas seções reais confirma que os UUIDs certos (do
+  // servidor, não do array de demo) chegam na RPC.
+  await p.click('.fbtn.plus');
+  await p.waitForFunction(() => window.__mockConfig.rpcCalls.some(c => c.params?.p_fila === 1));
+  const calls = await p.evaluate(() => window.__mockConfig.rpcCalls);
+  const filaCall = calls.find(c => c.params?.p_fila === 1);
+  check('fila da seção real sincroniza com o secao_id certo', filaCall?.params?.p_secao_id === 'sec-uuid-193');
+  await ctx.close();
+}
+
 await b.close();
 
 let pass = 0, fail = 0;

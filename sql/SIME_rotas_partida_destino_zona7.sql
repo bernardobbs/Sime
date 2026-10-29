@@ -1,0 +1,41 @@
+-- Popula ponto_partida/destino das 35 rotas de recolhimento de mídia da 7ª
+-- Zona (04/09/2026), a partir de regras confirmadas com o dono do projeto:
+--
+-- "cada rota de recolhimento de midia vai iniciar em um local de votação e
+-- terá como ponto final um ponto de transmissão que são: cartório eleitoral
+-- da 7ª zona eleitoral, creche mamae lima em jatobá, escola monsenhor
+-- matheus em sigefredo pacheco e escola da baixinha em sigefredo pacheco."
+--
+-- Os 4 pontos de transmissão canônicos usados aqui:
+--   'Cartório Eleitoral da 7ª Zona Eleitoral'  (= "Sede da 7ª Zona" no
+--     texto livre do itinerário, vindo do MaxLog)
+--   'Creche Mamãe Lima (Jatobá)'
+--   'Escola Monsenhor Mateus (Sigefredo Pacheco)'
+--   'Escola da Baixinha (Sigefredo Pacheco)' — citada pelo dono do projeto,
+--     mas NENHUMA das 35 rotas atuais termina nela (nem existe em
+--     sime_secoes.local_nome ainda) — só documentado aqui, sem dado pra
+--     popular agora.
+--
+-- `ponto_partida` = primeiro trecho do itinerário (texto livre, antes do
+-- primeiro "→"); `destino` = ponto de transmissão reconhecido no ÚLTIMO
+-- trecho. Rodado uma vez via SQL Editor/MCP — não é idempotente/reaplicável
+-- (não é uma migração de schema), só um preenchimento de dado.
+--
+-- **2 rotas ficaram de propósito SEM destino, não adivinhadas:**
+-- - Rota 001 ("U.E. Miguel Rocha → G.E. Manoel Pereira dos Reis → U.E.
+--   Antônio Pereira Santos → G.E. Manoel Francisco") termina numa seção
+--   comum (G.E. Manoel Francisco), não em nenhum dos 4 pontos de
+--   transmissão — mesmo sendo 4 locais de Sigefredo Pacheco (mesmo
+--   município das rotas 014-016/035, que consolidam em Monsenhor Mateus),
+--   o itinerário do MaxLog não menciona a consolidação. Pode ser dado
+--   incompleto do export, ou pode faltar mesmo o trecho final — precisa o
+--   cartório confirmar antes de eu supor Monsenhor Mateus.
+-- - Rota 005 ("Secretaria (Campo Maior)") é dado ANTIGO, de antes do
+--   export do MaxLog de 31/08/2026 — já documentado em outro lugar do
+--   CLAUDE.md que "Rota 005 não veio no export desta vez e ficou intocada"
+--   — não representa o padrão de recolhimento de mídia (não começa numa
+--   seção, não tem sentido de rota nenhum no formato atual).
+--
+-- Ver histórico do chat pro script Python que gerou os 33 UPDATEs
+-- aplicados (não fica reaplicável aqui, mesmo padrão dos demais scripts de
+-- preenchimento de dado deste projeto).

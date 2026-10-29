@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f2efe9">
+<title>SIME · Onde Votar</title>
+<meta name="description" content="Busque sua seção eleitoral e veja o local de votação, endereço e mapa.">
+<link rel="apple-touch-icon" href="/modules/assets/icon-192.png">
+<link rel="stylesheet" href="/modules/sime_theme_cream.css">
+<link rel="stylesheet" href="/modules/sime_components.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{min-height:100%;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;}
+
+.header{width:100%;background:var(--card);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;}
+.logo{width:40px;height:40px;border-radius:10px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;flex-shrink:0;font-size:1.1rem;}
+.h-info{flex:1;min-width:0;}
+.h-title{font-weight:800;font-size:1rem;}
+.h-sub{font-size:.72rem;color:var(--text2);}
+
+.content{flex:1;width:100%;max-width:560px;padding:18px 16px 60px;display:flex;flex-direction:column;gap:16px;}
+
+.busca-card{background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:18px;}
+.busca-titulo{font-weight:800;font-size:1.1rem;margin-bottom:4px;}
+.busca-sub{font-size:.8rem;color:var(--text2);margin-bottom:14px;line-height:1.5;}
+.busca-row{display:flex;gap:8px;}
+#busca-input{
+  flex:1;width:100%;padding:16px 14px;border-radius:12px;border:2px solid var(--border2);
+  background:var(--bg2);font-size:1.15rem;color:var(--text);outline:none;font-family:inherit;
+  font-weight:600;
+}
+#busca-input:focus{border-color:var(--blue-bd);}
+.btn-buscar{
+  padding:16px 20px;border-radius:12px;border:none;background:#2a2a2a;color:#fff;
+  font-size:1.05rem;font-weight:800;cursor:pointer;white-space:nowrap;
+}
+.btn-buscar:active{transform:translateY(1px);}
+.busca-exemplos{font-size:.72rem;color:var(--text3);margin-top:10px;}
+
+#status{font-size:.85rem;color:var(--text2);text-align:center;padding:6px 0;}
+
+.resultados{display:flex;flex-direction:column;gap:12px;}
+
+.loc-card{background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:16px 18px;}
+.loc-nome{font-weight:800;font-size:1rem;line-height:1.3;}
+.loc-mun{font-size:.8rem;color:var(--text2);margin-top:3px;}
+.loc-secoes{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0;}
+.sec-chip{background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue-bd);font-weight:800;font-size:.82rem;padding:6px 12px;border-radius:99px;}
+.loc-endereco{font-size:.85rem;color:var(--text);line-height:1.5;margin-bottom:12px;}
+.loc-endereco.falta{color:var(--yellow);font-style:italic;}
+.loc-acoes{display:flex;gap:8px;flex-wrap:wrap;}
+.loc-maps{
+  display:inline-flex;align-items:center;gap:6px;padding:11px 16px;border-radius:10px;
+  background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd);
+  text-decoration:none;font-weight:700;font-size:.85rem;
+}
+
+.vazio{text-align:center;padding:30px 20px;color:var(--text2);font-size:.9rem;line-height:1.6;}
+.vazio b{color:var(--text);}
+
+.rodape{font-size:.68rem;color:var(--text3);text-align:center;margin-top:10px;line-height:1.6;}
+
+.loc-qr{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:10px;}
+.loc-qr canvas{border-radius:10px;background:#fff;padding:8px;border:1px solid var(--border);flex-shrink:0;max-width:100%;height:auto;}
+.loc-qr-legenda{font-size:.78rem;color:var(--text2);line-height:1.4;text-align:center;max-width:280px;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">S</div>
+  <div class="h-info">
+    <div class="h-title">SIME · Onde Votar</div>
+    <div class="h-sub" id="h-sub">7ª Zona Eleitoral do Piauí — busque sua seção ou o nome do local/bairro</div>
+  </div>
+</div>
+
+<div class="content">
+  <div class="busca-card">
+    <div class="busca-titulo">🔎 Encontre seu local de votação</div>
+    <div class="busca-sub">Consulta válida para a <b>7ª Zona Eleitoral do Piauí</b> (Campo Maior, Jatobá do Piauí e Sigefredo Pacheco). Digite o número da sua seção (ex.: 001) ou o nome do local, bairro ou povoado.</div>
+    <div class="busca-row">
+      <input id="busca-input" type="text" inputmode="search" autocomplete="off" autocapitalize="off"
+             placeholder="Ex.: 001, ou Monsenhor Mateus" aria-label="Buscar seção ou local de votação">
+      <button class="btn-buscar" id="btn-buscar" onclick="buscar()">🔍 Buscar</button>
+    </div>
+    <div class="busca-exemplos">Dica: pode digitar só o número da seção, o nome do prédio, ou o bairro/povoado — sem precisar de acento.</div>
+  </div>
+
+  <div id="status"></div>
+  <div class="resultados" id="resultados"></div>
+
+  <div class="rodape">
+    Dados do SIME — Sistema de Monitoramento Eleitoral. Confira sempre o título de eleitor ou o site oficial do TSE em caso de dúvida.
+  </div>
+</div>
+
+<script src="/modules/vendor/qrcode.min.js"></script>
+<script type="module">
+import { createClient } from '/modules/vendor/supabase-js.esm.js';
+import { SIME_CONFIG } from '/modules/sime_config.js';
+
+const supabase = createClient(SIME_CONFIG.supabaseUrl, SIME_CONFIG.supabaseAnonKey);
+
+const inputEl = document.getElementById('busca-input');
+const statusEl = document.getElementById('status');
+const resultadosEl = document.getElementById('resultados');
+
+let debounceTimer = null;
+let buscaAtual = 0;
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function fmtSecao(n) {
+  return String(n).padStart(3, '0');
+}
+
+function linkMapa(row) {
+  if (row.latitude != null && row.longitude != null) {
+    return `https://www.google.com/maps?q=${row.latitude},${row.longitude}`;
+  }
+  if (row.endereco) {
+    const q = encodeURIComponent(`${row.endereco}, ${row.municipio}, PI`);
+    return `https://www.google.com/maps/search/?api=1&query=${q}`;
+  }
+  const q = encodeURIComponent(`${row.local_nome}, ${row.municipio}, PI`);
+  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+
+function qrSizePx(texto) {
+  // QR grande de propósito (23/10/2026, pedido direto: "quero o qrcode
+  // maior, o mesário vai consultar e um terceiro vai ler o qrcode") — quem
+  // olha o resultado na tela do próprio celular precisa conseguir MOSTRAR
+  // o QR pra outra pessoa escanear de uma distância razoável, não só ler
+  // de perto. Mesmo princípio de escalar pela URL já usado em
+  // rtQrSizePx()/tkQrCanvasPx() (SIME_rotas.html/SIME_tokens.html) — um
+  // link mais longo (ex.: busca por endereço, sem coordenada) precisa de
+  // mais módulos, então o canvas cresce junto pra não borrar.
+  const n = (texto || '').length;
+  if (n <= 60) return 220;
+  if (n <= 150) return 280;
+  if (n <= 260) return 340;
+  return 400;
+}
+
+function agruparPorLocal(linhas) {
+  const grupos = [];
+  const porChave = new Map();
+  for (const row of linhas) {
+    const chave = `${row.zona_numero}|||${row.municipio}|||${row.local_nome}`;
+    let g = porChave.get(chave);
+    if (!g) {
+      g = { ...row, secoes: [] };
+      porChave.set(chave, g);
+      grupos.push(g);
+    }
+    g.secoes.push(row.secao_numero);
+  }
+  return grupos;
+}
+
+function renderResultados(linhas, termo) {
+  if (!linhas.length) {
+    resultadosEl.innerHTML = `
+      <div class="vazio">
+        Nenhum local encontrado para <b>"${esc(termo)}"</b>.<br>
+        Confira o número da seção (no seu título de eleitor) ou tente digitar só parte do nome do bairro/povoado.
+      </div>`;
+    return;
+  }
+  const grupos = agruparPorLocal(linhas);
+  resultadosEl.innerHTML = grupos.map((g, i) => {
+    const secoesHtml = g.secoes
+      .sort((a, b) => a - b)
+      .map(n => `<span class="sec-chip">Seção ${fmtSecao(n)}</span>`)
+      .join('');
+    const enderecoHtml = g.endereco
+      ? `<div class="loc-endereco">📍 ${esc(g.endereco)}</div>`
+      : `<div class="loc-endereco falta">⚠ Endereço ainda não cadastrado para este local — confira o nome/bairro acima com a Justiça Eleitoral.</div>`;
+    return `
+      <div class="loc-card">
+        <div class="loc-nome">${esc(g.local_nome)}</div>
+        <div class="loc-mun">${esc(g.municipio)} — ${g.zona_numero}ª Zona Eleitoral do Piauí</div>
+        <div class="loc-secoes">${secoesHtml}</div>
+        ${enderecoHtml}
+        <div class="loc-acoes">
+          <a class="loc-maps" href="${linkMapa(g)}" target="_blank" rel="noopener">🗺️ Ver no mapa</a>
+        </div>
+        <div class="loc-qr" id="loc-qr-${i}"></div>
+      </div>`;
+  }).join('');
+
+  grupos.forEach((g, i) => {
+    const el = document.getElementById(`loc-qr-${i}`);
+    if (!el || !window.QRCode) return;
+    const url = linkMapa(g);
+    try {
+      const px = qrSizePx(url);
+      const canvasWrap = document.createElement('div');
+      el.appendChild(canvasWrap);
+      new QRCode(canvasWrap, { text: url, width: px, height: px, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+      const legenda = document.createElement('div');
+      legenda.className = 'loc-qr-legenda';
+      legenda.textContent = 'Aponte a câmera do celular pra abrir a navegação até aqui.';
+      el.appendChild(legenda);
+    } catch (e) { el.innerHTML = ''; }
+  });
+}
+
+async function buscar() {
+  const termo = inputEl.value.trim();
+  if (!termo) {
+    statusEl.textContent = '';
+    resultadosEl.innerHTML = '';
+    return;
+  }
+  const minhaBusca = ++buscaAtual;
+  statusEl.textContent = 'Buscando…';
+  resultadosEl.innerHTML = '';
+  try {
+    const { data, error } = await supabase.rpc('sime_buscar_local_votacao', { p_termo: termo });
+    if (minhaBusca !== buscaAtual) return; // busca mais nova já chegou
+    if (error) {
+      statusEl.textContent = '';
+      resultadosEl.innerHTML = `<div class="vazio">⚠ Não deu pra buscar agora — verifique sua conexão com a internet e tente de novo.</div>`;
+      return;
+    }
+    statusEl.textContent = '';
+    renderResultados(data || [], termo);
+  } catch (e) {
+    if (minhaBusca !== buscaAtual) return;
+    statusEl.textContent = '';
+    resultadosEl.innerHTML = `<div class="vazio">⚠ Sem conexão com a internet. Tente de novo quando tiver sinal.</div>`;
+  }
+}
+
+inputEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(buscar, 400);
+});
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    clearTimeout(debounceTimer);
+    buscar();
+  }
+});
+
+// Contador de acesso (25/10/2026) — registra toda vez que a página é
+// aberta, mesmo sem buscar nada; fire-and-forget, nunca trava/afeta a
+// página se falhar (sem rede, RPC fora do ar etc.).
+supabase.rpc('sime_registrar_visita_local_votacao').catch(() => {});
+
+// Lê ?q= da URL — dá pra compartilhar um link já com a busca pronta
+const params = new URLSearchParams(location.search);
+const qInicial = params.get('q');
+if (qInicial) {
+  inputEl.value = qInicial;
+  buscar();
+} else {
+  inputEl.focus();
+}
+</script>
+
+</body>
+</html>

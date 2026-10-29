@@ -26,6 +26,7 @@ const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const PERFIS_VALIDOS = new Set([
   'super_admin', 'coordenador', 'monitor', 'gestor_prob', 'gestor_dist',
   'observador', 'coord_motoristas', 'coord_acessibilidade', 'coletor_midias',
+  'auxiliar_eleicao',
 ]);
 // perfis que têm permissão de config_equipe (podem criar outros membros)
 const PODE_CRIAR = new Set(['super_admin', 'coordenador']);

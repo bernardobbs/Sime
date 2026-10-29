@@ -12,6 +12,36 @@ const check = (n, c, e = '') => results.push({ n, ok: !!c, e });
 
 const b = await chromium.launch();
 
+// Mesmo algoritmo de `domingosDeOutubro()`/`anoEleitoralPadrao()` em
+// SIME_principal.html — replicado aqui (não importado) pra calcular o
+// 2º turno (último domingo de outubro) e a véspera derivada em relação ao
+// ANO QUE O PADRÃO DE FATO USA agora, não travado em 2026 (ver
+// test_datas_eleicao.mjs pro mesmo raciocínio — sem isso, o teste vira
+// time-bomb e falha sozinho a partir do dia seguinte à eleição daquele ano).
+function domingosDeOutubro(ano) {
+  const primeiro = new Date(ano, 9, 1);
+  primeiro.setDate(1 + ((7 - primeiro.getDay()) % 7));
+  const ultimo = new Date(ano, 9, 31);
+  ultimo.setDate(31 - ultimo.getDay());
+  return { primeiro, ultimo };
+}
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function anoEleitoralPadrao() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const ano = hoje.getFullYear();
+  const primeiro = new Date(ano, 9, 1);
+  primeiro.setDate(1 + ((7 - primeiro.getDay()) % 7));
+  return primeiro < hoje ? ano + 1 : ano;
+}
+function vesperaDe(ymdDiaD) {
+  const [a, m, d] = ymdDiaD.split('-').map(Number);
+  const dt = new Date(a, m - 1, d);
+  dt.setDate(dt.getDate() - 1);
+  return ymd(dt);
+}
+
 const STUB = ({ zonaId, eleicoes }) => `
 const MEU = { perfil:'coordenador', zona_id:${JSON.stringify(zonaId)} };
 const ELEICOES = ${JSON.stringify(eleicoes)};
@@ -112,10 +142,15 @@ async function logar(p) {
   check('salvar faz upsert em sime_eleicoes', !!chamada);
   check('upsert usa a chave (zona_id, turno)', chamada?.opts?.onConflict === 'zona_id,turno', JSON.stringify(chamada?.opts));
 
+  const anoEsperado = anoEleitoralPadrao();
+  const { primeiro: primeiroEsperado, ultimo: ultimoEsperado } = domingosDeOutubro(anoEsperado);
+  const d1Esperado = vesperaDe(ymd(primeiroEsperado));
+  const t2dEsperado = ymd(ultimoEsperado);
+
   const l1 = chamada?.linhas?.find(l => l.turno === 1);
   check('grava a zona do usuário', l1?.zona_id === 'z-7', l1?.zona_id);
   check('grava a carga e lacre digitada', l1?.data_dx_ini === '2026-09-25', l1?.data_dx_ini);
-  check('grava a véspera derivada', l1?.data_d1 === '2026-10-03', l1?.data_d1);
+  check('grava a véspera derivada', l1?.data_d1 === d1Esperado, `${l1?.data_d1} (esperado ${d1Esperado})`);
   check('marca o turno ativo', l1?.ativa === true, String(l1?.ativa));
   check('grava o nome da eleição', l1?.nome === 'Eleições Municipais 2026', l1?.nome);
   check('grava o início da distribuição', l1?.dist_inicio === '06:00', l1?.dist_inicio);
@@ -127,7 +162,7 @@ async function logar(p) {
 
   // 2º turno tem Dia D padrão (último domingo), então também é gravado.
   const l2 = chamada?.linhas?.find(l => l.turno === 2);
-  check('2º turno gravado com o padrão de outubro', l2?.data_d === '2026-10-25', l2?.data_d);
+  check('2º turno gravado com o padrão de outubro', l2?.data_d === t2dEsperado, `${l2?.data_d} (esperado ${t2dEsperado})`);
   check('2º turno não é o ativo', l2?.ativa === false, String(l2?.ativa));
 
   const toast = await p.textContent('#toast');

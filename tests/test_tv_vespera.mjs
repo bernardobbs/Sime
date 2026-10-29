@@ -16,6 +16,9 @@ export function createClient(url, key, opts) {
             return resolve({ data: [
               { numero: 501, local_nome: 'Escola Teste Um', municipio: 'Zona De Teste', eleitores: 100, parada: null, sime_rotas: null },
               { numero: 502, local_nome: 'Escola Teste Um', municipio: 'Zona De Teste', eleitores: 90,  parada: null, sime_rotas: null },
+              // 25/10/2026: seção agregada (sem mesa/urna própria, mesmo prédio) —
+              // nunca deve entrar no agrupamento por prédio das TVs.
+              { numero: 503, local_nome: 'Escola Teste Um', municipio: 'Zona De Teste', eleitores: 0, parada: null, sime_rotas: null, secao_agregada: true },
               { numero: 601, local_nome: 'Escola Teste Dois', municipio: 'Outra Zona', eleitores: 80,  parada: null, sime_rotas: null },
             ], error: null });
           }
@@ -78,6 +81,7 @@ function setupRoutes(p) {
   check('município real "Zona De Teste" presente', !!zonaTeste);
   check('local agrupa as 2 seções (501,502) sob 1 local', zonaTeste?.locs?.[0]?.s?.length === 2);
   check('id do local é estável (município::nome, não CM-01)', zonaTeste?.locs?.[0]?.id === 'Zona De Teste::Escola Teste Um');
+  check('seção agregada (503) nunca entra no agrupamento por prédio', !zonaTeste?.locs?.[0]?.s?.includes('0503'), JSON.stringify(zonaTeste?.locs?.[0]?.s));
 
   const cache = await p.evaluate(() => localStorage.getItem('sime_tv_cities_v1'));
   check('cache de cidades persistido em localStorage', !!cache);

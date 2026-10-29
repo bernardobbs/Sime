@@ -223,30 +223,39 @@ async function login(p) {
   await ctx.close();
 }
 
-// ── 6. Merge de tokens remotos: os já gravados em sime_tokens (ex.: via SQL)
-//      aparecem na tela de impressão após login; tipo='tv' é ignorado ──
+// ── 6. Merge de tokens remotos: os já gravados em sime_tokens (ex.: via SQL
+//      ou pela própria UI) aparecem na tela de impressão após login —
+//      inclusive tipo='tv' desde 08/09/2026 (antes era ignorado de propósito
+//      por não existir UI pra criá-lo; ver #grp-tv-modulo em SIME_tokens.html) ──
 {
   const ctx = await b.newContext();
   const cfg = baseMockConfig();
   cfg.sime_tokens = [
     { token: 'ABCD1234', pin: '4321', tipo: 'mesario', rotas: null, local_nome: null, secoes: ['0063'], expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
     { token: 'EFGH5678', pin: '8765', tipo: 'conferente', rotas: ['004'], local_nome: null, secoes: null, expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
+    // Token de TV provisionado manualmente antes desta feature — sem
+    // local_nome (não guardava qual dos 4 painéis), degrada com honestidade
+    // ("TV — ?", buildUrl cai no default SIME_tv_dia.html) em vez de inventar.
     { token: 'TVAA0000', pin: '0000', tipo: 'tv', rotas: null, local_nome: null, secoes: null, expira_em: null, usado_em: null, created_at: '2026-07-01', eleicao_id: 'ele-uuid-1' },
+    { token: 'TVBB1111', pin: '0000', tipo: 'tv', rotas: null, local_nome: 'tv_dia', secoes: null, expira_em: null, usado_em: null, created_at: '2026-07-02', eleicao_id: 'ele-uuid-1' },
   ];
   const p = await newPage(ctx, cfg);
   const erros = [];
   p.on('pageerror', (e) => erros.push(String(e)));
   await p.goto('http://localhost:8917/modules/SIME_tokens.html');
   await login(p);
-  await p.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).length >= 2);
+  await p.waitForFunction(() => Object.keys(JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}')).length >= 4);
 
   const local = await p.evaluate(() => JSON.parse(localStorage.getItem('sime_tokens_v1') || '{}'));
-  check('merge remoto: 2 tokens de campo carregados (tv ignorado)', Object.keys(local).length === 2, 'n=' + Object.keys(local).length);
-  check('merge remoto: token tv NÃO entra', !local['TVAA0000']);
+  check('merge remoto: 4 tokens carregados (tv incluído)', Object.keys(local).length === 4, 'n=' + Object.keys(local).length);
   check('merge remoto: nome do mesário reconstruído do escopo', local['ABCD1234']?.nome === 'Mesário — Seção 0063', local['ABCD1234']?.nome);
   check('merge remoto: rota convertida de "004" para "Rota 004"', JSON.stringify(local['EFGH5678']?.rotas) === JSON.stringify(['Rota 004']));
+  check('merge remoto: token tv sem local_nome degrada honesto', local['TVAA0000']?.nome === 'TV — ?', local['TVAA0000']?.nome);
+  check('merge remoto: token tv com local_nome resolve o painel', local['TVBB1111']?.nome === 'TV — TV Dia da Eleição', local['TVBB1111']?.nome);
   const cards = await p.locator('.token-card').count();
-  check('merge remoto: 2 cartões renderizados na tela', cards === 2, 'cards=' + cards);
+  check('merge remoto: 4 cartões renderizados na tela', cards === 4, 'cards=' + cards);
+  const urlTv = await p.evaluate(() => document.querySelector('#tc-TVBB1111 .tc-url')?.textContent || '');
+  check('merge remoto: URL do token tv usa tv_token= e o módulo certo', /tv_token=TVBB1111/.test(urlTv) && /SIME_tv_dia\.html/.test(urlTv), urlTv);
   check('merge remoto: zero erros JS', erros.length === 0, erros.join(';'));
   await ctx.close();
 }
